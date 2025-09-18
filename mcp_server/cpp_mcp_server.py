@@ -1512,9 +1512,21 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
         if name == "set_project_directory":
             project_path = arguments["project_path"]
-            if not os.path.exists(project_path):
+
+            if not isinstance(project_path, str) or not project_path.strip():
+                return [TextContent(type="text", text="Error: 'project_path' must be a non-empty string")]
+
+            if project_path != project_path.strip():
+                return [TextContent(type="text", text="Error: 'project_path' may not include leading or trailing whitespace")]
+
+            project_path = project_path.strip()
+
+            if not os.path.isabs(project_path):
+                return [TextContent(type="text", text=f"Error: '{project_path}' is not an absolute path")]
+
+            if not os.path.isdir(project_path):
                 return [TextContent(type="text", text=f"Error: Directory '{project_path}' does not exist")]
-            
+
             # Re-initialize analyzer with new path
             global analyzer, analyzer_initialized
             analyzer = EnhancedCppAnalyzer(project_path)
