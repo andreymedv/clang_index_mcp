@@ -11,6 +11,7 @@ import sys
 import re
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple
 from collections import defaultdict
@@ -72,6 +73,9 @@ class CppAnalyzer:
         
         # Threading
         self.index_lock = threading.Lock()
+        self._thread_local = threading.local()
+        cpu_count = os.cpu_count() or 1
+        self.max_workers = max(1, min(16, cpu_count * 2))
         
         # Initialize cache manager and file scanner with config
         self.cache_manager = CacheManager(self.project_root)
@@ -96,7 +100,15 @@ class CppAnalyzer:
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
-    
+
+    def _get_thread_index(self) -> Index:
+        """Return a thread-local libclang Index instance."""
+        index = getattr(self._thread_local, "index", None)
+        if index is None:
+            index = Index.create()
+            self._thread_local.index = index
+        return index
+
     def _save_file_cache(self, file_path: str, symbols: List[SymbolInfo], file_hash: str):
         """Save parsed symbols for a single file to cache"""
         self.cache_manager.save_file_cache(file_path, symbols, file_hash)
@@ -274,10 +286,9 @@ class CppAnalyzer:
                         if symbol.called_by:
                             for caller_usr in symbol.called_by:
                                 self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
-                
-                self.file_hashes[file_path] = current_hash
+                    self.file_hashes[file_path] = current_hash
                 return (True, True)  # Successfully loaded from cache
-        
+
         try:
             # Parse the file
             args = [
@@ -310,7 +321,8 @@ class CppAnalyzer:
             
             # Create translation unit with detailed diagnostics
             # Note: We no longer skip function bodies to enable call graph analysis
-            tu = self.index.parse(
+            index = self._get_thread_index()
+            tu = index.parse(
                 file_path, 
                 args=args,
                 options=TranslationUnit.PARSE_INCOMPLETE |
@@ -368,26 +380,31 @@ class CppAnalyzer:
             self._save_file_cache(file_path, collected_symbols, current_hash)
             
             # Update tracking
-            self.translation_units[file_path] = tu
-            self.file_hashes[file_path] = current_hash
-            
+            with self.index_lock:
+                self.translation_units[file_path] = tu
+                self.file_hashes[file_path] = current_hash
+
             return (True, False)  # Success, not from cache
-            
+
         except Exception as e:
             # Don't print full error for each file - too noisy
             # Just return False to indicate failure
             return (False, False)  # Failed, not from cache
-    
+
     def index_project(self, force: bool = False, include_dependencies: bool = True) -> int:
         """Index all C++ files in the project"""
         start_time = time.time()
-        
+
         # Store the include_dependencies setting BEFORE loading cache
         self.include_dependencies = include_dependencies
-        
+
         # Try to load from cache if not forcing
         if not force and self._load_cache():
-            print("Using cached index", file=sys.stderr)
+            refreshed = self.refresh_if_needed()
+            if refreshed > 0:
+                print(f"Using cached index (updated {refreshed} files)", file=sys.stderr)
+            else:
+                print("Using cached index", file=sys.stderr)
             return self.indexed_file_count
         
         print(f"Finding C++ files (include_dependencies={include_dependencies})...", file=sys.stderr)
@@ -414,53 +431,70 @@ class CppAnalyzer:
         
         # No special test mode needed - we'll handle Windows console properly
         
-        for i, file_path in enumerate(files):
-            # Ensure we use absolute path
-            file_path = os.path.abspath(file_path)
-            
-            success, was_cached = self.index_file(file_path, force)
-            if success:
-                indexed_count += 1
-                if was_cached:
-                    cache_hits += 1
-            else:
-                failed_count += 1
-            
-            # Progress reporting
-            current_time = time.time()
-            
-            # Different reporting frequency based on environment
-            if is_terminal:
-                # In terminal: report every file for the first 5, then every 5 files or every 2 seconds
-                should_report = (i < 5) or (i + 1) % 5 == 0 or (current_time - last_report_time) > 2.0 or (i + 1) == len(files)
-            else:
-                # In MCP/redirected: report every 50 files or every 5 seconds to prevent timeout
-                should_report = (i + 1) % 50 == 0 or (current_time - last_report_time) > 5.0 or (i + 1) == len(files)
-            
-            if should_report:
-                elapsed = current_time - start_time
-                rate = (i + 1) / elapsed if elapsed > 0 else 0
-                eta = (len(files) - (i + 1)) / rate if rate > 0 else 0
-                
-                cache_rate = (cache_hits * 100 // (i + 1)) if (i + 1) > 0 else 0
-                
-                if is_terminal:
-                    # Use ANSI escape code to clear line before overwriting
-                    progress_str = f"Progress: {i + 1}/{len(files)} files ({100 * (i + 1) // len(files)}%) - " \
-                                  f"Success: {indexed_count} - Failed: {failed_count} - " \
-                                  f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s"
-                    
-                    # Always clear the entire line before writing
-                    # \033[2K clears the entire line, \r returns to start
-                    print(f"\033[2K\r{progress_str}", end='', file=sys.stderr, flush=True)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_file = {
+                executor.submit(self.index_file, os.path.abspath(file_path), force): os.path.abspath(file_path)
+                for file_path in files
+            }
+
+            for i, future in enumerate(as_completed(future_to_file)):
+                file_path = future_to_file[future]
+                try:
+                    success, was_cached = future.result()
+                except Exception as exc:
+                    print(f"Error indexing {file_path}: {exc}", file=sys.stderr)
+                    success, was_cached = False, False
+
+                if success:
+                    indexed_count += 1
+                    if was_cached:
+                        cache_hits += 1
                 else:
-                    # Regular newline output for non-terminal
-                    print(f"Progress: {i + 1}/{len(files)} files ({100 * (i + 1) // len(files)}%) - "
-                          f"Success: {indexed_count} - Failed: {failed_count} - "
-                          f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s", 
-                          file=sys.stderr, flush=True)
-                
-                last_report_time = current_time
+                    failed_count += 1
+
+                processed = i + 1
+
+                # Progress reporting
+                current_time = time.time()
+
+                if is_terminal:
+                    should_report = (
+                        (processed <= 5) or
+                        (processed % 5 == 0) or
+                        ((current_time - last_report_time) > 2.0) or
+                        (processed == len(files))
+                    )
+                else:
+                    should_report = (
+                        (processed % 50 == 0) or
+                        ((current_time - last_report_time) > 5.0) or
+                        (processed == len(files))
+                    )
+
+                if should_report:
+                    elapsed = current_time - start_time
+                    rate = processed / elapsed if elapsed > 0 else 0
+                    eta = (len(files) - processed) / rate if rate > 0 else 0
+
+                    cache_rate = (cache_hits * 100 // processed) if processed > 0 else 0
+
+                    if is_terminal:
+                        progress_str = (
+                            f"Progress: {processed}/{len(files)} files ({100 * processed // len(files)}%) - "
+                            f"Success: {indexed_count} - Failed: {failed_count} - "
+                            f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s"
+                        )
+                        print(f"\033[2K\r{progress_str}", end='', file=sys.stderr, flush=True)
+                    else:
+                        print(
+                            f"Progress: {processed}/{len(files)} files ({100 * processed // len(files)}%) - "
+                            f"Success: {indexed_count} - Failed: {failed_count} - "
+                            f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
+                    last_report_time = current_time
         
         self.indexed_file_count = indexed_count
         self.last_index_time = time.time() - start_time
@@ -506,14 +540,25 @@ class CppAnalyzer:
             self.class_index.clear()
             for name, infos in cache_data.get("class_index", {}).items():
                 self.class_index[name] = [SymbolInfo(**info) for info in infos]
-            
+
             self.function_index.clear()
             for name, infos in cache_data.get("function_index", {}).items():
                 self.function_index[name] = [SymbolInfo(**info) for info in infos]
-            
+
+            # Rebuild file index mapping from loaded symbols
+            self.file_index.clear()
+            for infos in self.class_index.values():
+                for symbol in infos:
+                    if symbol.file:
+                        self.file_index[symbol.file].append(symbol)
+            for infos in self.function_index.values():
+                for symbol in infos:
+                    if symbol.file:
+                        self.file_index[symbol.file].append(symbol)
+
             self.file_hashes = cache_data.get("file_hashes", {})
             self.indexed_file_count = cache_data.get("indexed_file_count", 0)
-            
+
             # Rebuild USR index and call graphs from loaded data
             self.usr_index.clear()
             self.call_graph_analyzer.clear()
@@ -586,7 +631,7 @@ class CppAnalyzer:
         """Refresh index for changed files and remove deleted files"""
         refreshed = 0
         deleted = 0
-        
+
         # Get currently existing files
         current_files = set(self._find_cpp_files(self.include_dependencies))
         tracked_files = set(self.file_hashes.keys())
@@ -628,7 +673,10 @@ class CppAnalyzer:
             self._save_cache()
             if deleted > 0:
                 print(f"Removed {deleted} deleted files from indexes", file=sys.stderr)
-        
+
+        # Keep tracked file count in sync with current state
+        self.indexed_file_count = len(self.file_hashes)
+
         return refreshed
     
     def _remove_file_from_indexes(self, file_path: str):
