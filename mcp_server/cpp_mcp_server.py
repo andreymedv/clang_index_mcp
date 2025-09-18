@@ -61,10 +61,32 @@ def find_and_configure_libclang():
             os.path.join(parent_dir, "lib", "linux", "libclang.so"),
         ]
     
+    def _preload_linux_dependencies(lib_dir: str) -> None:
+        """Load additional shared objects required by bundled libclang."""
+        if platform.system() != "Linux":
+            return
+
+        try:
+            import ctypes
+        except ImportError:
+            return
+
+        for name in ("libtinfo.so.5", "libtinfo.so.5.9"):
+            candidate = os.path.join(lib_dir, name)
+            if os.path.exists(candidate):
+                try:
+                    ctypes.CDLL(candidate)
+                    print(f"Preloaded dependency {candidate}", file=sys.stderr)
+                    break
+                except OSError as exc:
+                    print(f"Warning: failed to preload {candidate}: {exc}", file=sys.stderr)
+
     # Try bundled libraries first
     for path in bundled_paths:
         if os.path.exists(path):
             print(f"Using bundled libclang at: {path}", file=sys.stderr)
+            lib_dir = os.path.dirname(path)
+            _preload_linux_dependencies(lib_dir)
             Config.set_library_file(path)
             return True
     

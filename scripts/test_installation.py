@@ -171,9 +171,9 @@ def main():
     else:
         print("✗ Some tests failed. Please check the errors above.")
         print("\nCommon fixes:")
-        print("- Run server_setup.bat to install dependencies")
+        print("- Run server_setup.bat (Windows) or server_setup.sh (Linux/macOS)")
         print("- Make sure you're in the virtual environment")
-        print("- Check that libclang.dll exists in lib\\windows\\")
+        print("- Check that libclang exists in the lib/<platform>/ directory")
         return 1
 
 if __name__ == "__main__":

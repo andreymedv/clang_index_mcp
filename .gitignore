@@ -5,8 +5,13 @@ mcp_env/
 .mcp_cache/*
 !.mcp_cache/.gitkeep
 
+# Local tool state
+.claude/
+.mcp.json
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+
 # Downloaded libclang binaries
-lib/windows/libclang.dll
-lib/macos/libclang.dylib
-lib/linux/libclang.so
-lib/linux/libclang.so.1
+lib/**/libclang*

@@ -22,10 +22,10 @@ Context-efficient C++ code analysis:
 
 ## Prerequisites
 
-- Windows operating system (may work on macOS/Linux but not tested)
 - Python 3.9 or higher
 - pip (Python package manager)
 - Git (for cloning the repository)
+- LLVM's libclang (the setup scripts will attempt to download a portable build)
 
 ## Setup
 
@@ -35,10 +35,15 @@ git clone <repository-url>
 cd CPlusPlus-MCP-Server
 ```
 
-2. Run the setup script (this will create a virtual environment, install dependencies, and download libclang):
-```bash
-server_setup.bat
-```
+2. Run the setup script for your platform (this creates a virtual environment, installs dependencies, and fetches libclang if possible):
+   - **Windows**
+     ```bash
+     server_setup.bat
+     ```
+   - **Linux/macOS**
+     ```bash
+     ./server_setup.sh
+     ```
 
 3. Test the installation (recommended):
 ```bash
@@ -49,7 +54,7 @@ mcp_env\Scripts\activate
 python scripts\test_installation.py
 ```
 
-This will verify that all components are properly installed and working. The test script is located at `scripts\test_installation.py`.
+This will verify that all components are properly installed and working. The test script lives at `scripts/test_installation.py`.
 
 ## Configuring Claude Code
 
@@ -86,6 +91,39 @@ To use this MCP server with Claude Code, you need to add it to your Claude confi
    **IMPORTANT:** Replace `YOUR_INSTALLATION_PATH_HERE` with the actual path where you cloned this repository.
 
 3. Restart Claude Desktop for the changes to take effect.
+
+## Configuring Codex CLI
+
+To use this MCP server inside the OpenAI Codex CLI:
+
+1. Make sure the virtual environment is created (see setup above).
+2. Create a `.mcp.json` file in the project you open with Codex. The CLI reads this file to discover MCP servers.
+3. Add an entry that points to the Python module inside the virtual environment. Replace `YOUR_REPO_PATH` with the absolute path to this repository.
+
+   ```json
+   {
+     "mcpServers": {
+       "cpp-analyzer": {
+         "type": "stdio",
+         "command": "YOUR_REPO_PATH/mcp_env/bin/python",
+         "args": [
+           "-m",
+           "mcp_server.cpp_mcp_server"
+         ],
+         "env": {
+           "PYTHONPATH": "YOUR_REPO_PATH"
+         }
+       }
+     }
+   }
+   ```
+
+   On Windows change `command` to `YOUR_REPO_PATH\\mcp_env\\Scripts\\python.exe`.
+
+4. Restart the Codex CLI (or run `codex reload`) so it picks up the new server definition.
+5. Inside Codex, use the MCP palette or prompt instructions (for example, "use the cpp-analyzer tool to set the project directory to ...") to start indexing your C++ project.
+
+If you keep the `.mcp.json` file inside this repository you can also add a `"cwd": "YOUR_REPO_PATH"` entry so Codex launches the server from the correct directory.
 
 ## Usage with Claude
 
@@ -143,7 +181,7 @@ The server behavior can be configured via `cpp-analyzer-config.json`:
 ### Common Issues
 
 1. **"libclang not found" error**
-   - Run `server_setup.bat` to download libclang automatically
+   - Run `server_setup.bat` (Windows) or `./server_setup.sh` (Linux/macOS) to let the project download libclang automatically
    - If automatic download fails, manually download libclang:
      1. Go to: https://github.com/llvm/llvm-project/releases
      2. Download the appropriate file for your system:
