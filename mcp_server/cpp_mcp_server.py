@@ -203,7 +203,7 @@ class CppAnalyzer:
         # Don't parse immediately - do it on first search to avoid timeout
         print("CppAnalyzer ready for lazy initialization", file=sys.stderr)
         if self.compile_commands_manager.enabled:
-            print(f"Compile commands support enabled", file=sys.stderr)
+            print("Compile commands support enabled", file=sys.stderr)
     
     def _load_config(self):
         """Load configuration for file scanner and compile commands"""
