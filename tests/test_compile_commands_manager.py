@@ -214,14 +214,15 @@ class TestCompileCommandsManager(unittest.TestCase):
         """Test parsing of command strings with quoted arguments."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
-        
-        # Test command with quotes
+
+        # Test command with quotes - quotes should be removed by shell parsing
         command = 'clang++ -std=c++17 -I"include/path" -D"DEFINE=value" -c main.cpp'
         args = manager._parse_command_string(command)
-        
+
         self.assertIn('-std=c++17', args)
-        self.assertIn('-I"include/path"', args)
-        self.assertIn('-D"DEFINE=value"', args)
+        # Quotes are removed by shlex.split() as per shell parsing rules
+        self.assertIn('-Iinclude/path', args)
+        self.assertIn('-DDEFINE=value', args)
         self.assertIn('-c', args)
         self.assertIn('main.cpp', args)
     
