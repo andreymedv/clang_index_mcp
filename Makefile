@@ -64,6 +64,11 @@ test-coverage: ## Run tests with coverage report
 	$(PYTHON) -m pytest --cov=mcp_server --cov-report=html --cov-report=term -v
 	@echo "$(GREEN)Coverage report generated in htmlcov/$(NC)"
 
+test-compile-commands: ## Run compile_commands integration tests
+	@echo "$(BLUE)Running compile_commands integration tests...$(NC)"
+	$(PYTHON) tests/test_runner.py
+	@echo "$(GREEN)Compile commands tests complete!$(NC)"
+
 test-installation: ## Test installation and basic functionality
 	@echo "$(BLUE)Testing installation...$(NC)"
 	$(PYTHON) scripts/test_installation.py
@@ -165,6 +170,7 @@ info: ## Show project information
 # Shortcuts
 t: test ## Shortcut for test
 tc: test-coverage ## Shortcut for test-coverage
+tcc: test-compile-commands ## Shortcut for test-compile-commands
 l: lint ## Shortcut for lint
 f: format ## Shortcut for format
 c: clean ## Shortcut for clean
