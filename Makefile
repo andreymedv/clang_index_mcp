@@ -1,0 +1,171 @@
+.PHONY: help setup clean test test-coverage lint format check install run dev
+
+# Detect operating system
+ifeq ($(OS),Windows_NT)
+	PYTHON := python
+	VENV_BIN := mcp_env\Scripts
+	ACTIVATE := $(VENV_BIN)\activate
+	RM := del /Q
+	RMDIR := rmdir /S /Q
+else
+	PYTHON := python3
+	VENV_BIN := mcp_env/bin
+	ACTIVATE := source $(VENV_BIN)/activate
+	RM := rm -f
+	RMDIR := rm -rf
+endif
+
+# Colors for output (Unix-like systems)
+ifndef NO_COLOR
+	GREEN := \033[0;32m
+	BLUE := \033[0;34m
+	YELLOW := \033[0;33m
+	RED := \033[0;31m
+	NC := \033[0m # No Color
+endif
+
+help: ## Show this help message
+	@echo "$(BLUE)Clang Index MCP - Development Commands$(NC)"
+	@echo ""
+	@echo "$(GREEN)Available targets:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+
+setup: ## Set up development environment
+	@echo "$(BLUE)Setting up development environment...$(NC)"
+ifeq ($(OS),Windows_NT)
+	server_setup.bat
+else
+	./server_setup.sh
+endif
+	@echo "$(GREEN)Setup complete!$(NC)"
+	@echo "Activate environment: $(ACTIVATE)"
+
+install: ## Install dependencies in existing environment
+	@echo "$(BLUE)Installing dependencies...$(NC)"
+	$(PYTHON) -m pip install --upgrade pip
+	$(PYTHON) -m pip install -r requirements.txt
+	@echo "$(GREEN)Dependencies installed!$(NC)"
+
+install-dev: ## Install development dependencies
+	@echo "$(BLUE)Installing development dependencies...$(NC)"
+	$(PYTHON) -m pip install --upgrade pip
+	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
+	@echo "$(GREEN)Development dependencies installed!$(NC)"
+
+test: ## Run all tests
+	@echo "$(BLUE)Running tests...$(NC)"
+	$(PYTHON) -m pytest -v
+	@echo "$(GREEN)Tests complete!$(NC)"
+
+test-coverage: ## Run tests with coverage report
+	@echo "$(BLUE)Running tests with coverage...$(NC)"
+	$(PYTHON) -m pytest --cov=mcp_server --cov-report=html --cov-report=term -v
+	@echo "$(GREEN)Coverage report generated in htmlcov/$(NC)"
+
+test-installation: ## Test installation and basic functionality
+	@echo "$(BLUE)Testing installation...$(NC)"
+	$(PYTHON) scripts/test_installation.py
+	@echo "$(GREEN)Installation test complete!$(NC)"
+
+lint: ## Run linting checks (flake8)
+	@echo "$(BLUE)Running linting checks...$(NC)"
+	$(PYTHON) -m flake8 mcp_server/ scripts/ --max-line-length=100 --ignore=E501,W503
+	@echo "$(GREEN)Linting complete!$(NC)"
+
+format: ## Format code with black
+	@echo "$(BLUE)Formatting code...$(NC)"
+	$(PYTHON) -m black mcp_server/ scripts/ --line-length=100
+	@echo "$(GREEN)Code formatted!$(NC)"
+
+format-check: ## Check code formatting without making changes
+	@echo "$(BLUE)Checking code format...$(NC)"
+	$(PYTHON) -m black mcp_server/ scripts/ --line-length=100 --check
+	@echo "$(GREEN)Format check complete!$(NC)"
+
+type-check: ## Run type checking with mypy
+	@echo "$(BLUE)Running type checks...$(NC)"
+	$(PYTHON) -m mypy mcp_server/ --ignore-missing-imports
+	@echo "$(GREEN)Type checking complete!$(NC)"
+
+check: format-check lint type-check ## Run all checks (format, lint, type)
+	@echo "$(GREEN)All checks passed!$(NC)"
+
+run: ## Run the MCP server
+	@echo "$(BLUE)Starting MCP server...$(NC)"
+	$(PYTHON) -m mcp_server.cpp_mcp_server
+
+dev: ## Run in development mode with debug output
+	@echo "$(BLUE)Starting MCP server in development mode...$(NC)"
+	MCP_DEBUG=1 PYTHONUNBUFFERED=1 $(PYTHON) -m mcp_server.cpp_mcp_server
+
+clean: ## Clean cache and build artifacts
+	@echo "$(BLUE)Cleaning up...$(NC)"
+	@$(RMDIR) .mcp_cache 2>/dev/null || true
+	@$(RMDIR) __pycache__ 2>/dev/null || true
+	@$(RMDIR) mcp_server/__pycache__ 2>/dev/null || true
+	@$(RMDIR) scripts/__pycache__ 2>/dev/null || true
+	@$(RMDIR) .pytest_cache 2>/dev/null || true
+	@$(RMDIR) htmlcov 2>/dev/null || true
+	@$(RM) .coverage 2>/dev/null || true
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@find . -type f -name "*.pyo" -delete 2>/dev/null || true
+	@echo "$(GREEN)Cleanup complete!$(NC)"
+
+clean-cache: ## Clean only the MCP cache
+	@echo "$(BLUE)Cleaning MCP cache...$(NC)"
+	@$(RMDIR) .mcp_cache 2>/dev/null || true
+	@echo "$(GREEN)Cache cleaned!$(NC)"
+
+clean-all: clean ## Clean everything including virtual environment
+	@echo "$(BLUE)Removing virtual environment...$(NC)"
+	@$(RMDIR) mcp_env 2>/dev/null || true
+	@echo "$(GREEN)Complete cleanup done!$(NC)"
+
+download-libclang: ## Download libclang binary for your platform
+	@echo "$(BLUE)Downloading libclang...$(NC)"
+	$(PYTHON) scripts/download_libclang.py
+	@echo "$(GREEN)libclang downloaded!$(NC)"
+
+pre-commit-install: ## Install pre-commit hooks
+	@echo "$(BLUE)Installing pre-commit hooks...$(NC)"
+	$(PYTHON) -m pre_commit install
+	@echo "$(GREEN)Pre-commit hooks installed!$(NC)"
+
+pre-commit-run: ## Run pre-commit on all files
+	@echo "$(BLUE)Running pre-commit on all files...$(NC)"
+	$(PYTHON) -m pre_commit run --all-files
+	@echo "$(GREEN)Pre-commit checks complete!$(NC)"
+
+info: ## Show project information
+	@echo "$(BLUE)Project Information$(NC)"
+	@echo "$(GREEN)Python:$(NC) $$($(PYTHON) --version)"
+	@echo "$(GREEN)Virtual Environment:$(NC) $(VENV_BIN)"
+	@echo "$(GREEN)Working Directory:$(NC) $$(pwd)"
+	@echo ""
+	@echo "$(BLUE)Environment Status:$(NC)"
+	@if [ -d "mcp_env" ]; then \
+		echo "$(GREEN)✓$(NC) Virtual environment exists"; \
+	else \
+		echo "$(RED)✗$(NC) Virtual environment not found (run: make setup)"; \
+	fi
+	@if [ -d "lib" ] && [ -n "$$(ls -A lib 2>/dev/null)" ]; then \
+		echo "$(GREEN)✓$(NC) libclang libraries present"; \
+	else \
+		echo "$(RED)✗$(NC) libclang libraries not found (run: make download-libclang)"; \
+	fi
+	@if [ -d ".mcp_cache" ]; then \
+		echo "$(GREEN)✓$(NC) Cache directory exists"; \
+	else \
+		echo "$(YELLOW)!$(NC) No cache directory (will be created on first use)"; \
+	fi
+
+# Shortcuts
+t: test ## Shortcut for test
+tc: test-coverage ## Shortcut for test-coverage
+l: lint ## Shortcut for lint
+f: format ## Shortcut for format
+c: clean ## Shortcut for clean
+r: run ## Shortcut for run
