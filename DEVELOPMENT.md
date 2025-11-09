@@ -23,6 +23,7 @@ clang_index_mcp/
 │   ├── cpp_analyzer.py        # Core C++ analysis engine
 │   ├── cache_manager.py       # Caching system
 │   ├── call_graph.py          # Call graph analysis
+│   ├── compile_commands_manager.py # compile_commands.json support
 │   ├── cpp_analyzer_config.py # Configuration loader
 │   ├── file_scanner.py        # File discovery
 │   ├── search_engine.py       # Search functionality
@@ -31,12 +32,20 @@ clang_index_mcp/
 │   ├── download_libclang.py   # Downloads libclang binaries
 │   ├── test_installation.py   # Installation verification
 │   └── test_deletion_fix.py   # Deletion handling test
+├── tests/                      # Test suite
+│   ├── __init__.py
+│   ├── test_analyzer_integration.py    # Analyzer integration tests
+│   ├── test_compile_commands_manager.py # Compile commands tests
+│   └── test_runner.py         # Test runner script
+├── examples/                   # Example projects
+│   └── compile_commands_example/       # CMake project example
 ├── lib/                        # Platform-specific libraries
 │   ├── windows/
 │   ├── macos/
 │   └── linux/
 ├── .mcp_cache/                 # Cache directory (gitignored)
 ├── cpp-analyzer-config.json   # Project configuration
+├── COMPILE_COMMANDS_INTEGRATION.md # compile_commands.json guide
 ├── requirements.txt           # Python dependencies
 ├── server_setup.sh            # Linux/macOS setup
 ├── server_setup.bat           # Windows setup
@@ -119,13 +128,14 @@ pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
 │  • Project indexing                         │
 │  • Symbol extraction                        │
 │  • Query handling                           │
-└──┬──────┬──────┬──────┬──────┬──────┬──────┘
-   │      │      │      │      │      │
-   ▼      ▼      ▼      ▼      ▼      ▼
-┌──────┐ ┌────┐ ┌─────┐ ┌────┐ ┌────┐ ┌──────┐
-│File  │ │lib │ │Sym  │ │Call│ │Sear│ │Cache │
-│Scan  │ │clang│ │Info │ │Graph│ │ch  │ │Mgr  │
-└──────┘ └────┘ └─────┘ └────┘ └────┘ └──────┘
+│  • compile_commands.json support            │
+└──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┘
+   │      │      │      │      │      │      │
+   ▼      ▼      ▼      ▼      ▼      ▼      ▼
+┌──────┐ ┌────┐ ┌─────┐ ┌────┐ ┌────┐ ┌──────┐ ┌────────┐
+│File  │ │lib │ │Sym  │ │Call│ │Sear│ │Cache │ │Compile │
+│Scan  │ │clang│ │Info │ │Graph│ │ch  │ │Mgr  │ │Commands│
+└──────┘ └────┘ └─────┘ └────┘ └────┘ └──────┘ └────────┘
 ```
 
 ### Data Flow
@@ -133,16 +143,18 @@ pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
 #### Indexing Flow
 ```
 1. set_project_directory() called
-2. FileScanner finds all C++ files
-3. Files filtered by config (exclude patterns)
-4. Parallel parsing with ThreadPoolExecutor
-5. libclang parses each file → AST
-6. AST traversal extracts symbols
-7. SymbolInfo objects created
-8. Indexes built (class_index, function_index, etc.)
-9. CallGraph tracks function calls
-10. Per-file cache saved
-11. Global cache saved
+2. CompileCommandsManager loads compile_commands.json (if available)
+3. FileScanner finds all C++ files
+4. Files filtered by config (exclude patterns)
+5. Parallel parsing with ThreadPoolExecutor
+6. CompileCommandsManager provides compilation args per file
+7. libclang parses each file → AST (with project-specific build args)
+8. AST traversal extracts symbols
+9. SymbolInfo objects created
+10. Indexes built (class_index, function_index, etc.)
+11. CallGraph tracks function calls
+12. Per-file cache saved
+13. Global cache saved
 ```
 
 #### Query Flow
@@ -278,11 +290,10 @@ make setup          # Run setup script
 ```
 tests/
 ├── __init__.py
-├── test_cpp_analyzer.py      # Core analyzer tests
-├── test_cache_manager.py     # Cache tests
-├── test_call_graph.py        # Call graph tests
-├── test_search_engine.py     # Search tests
-└── fixtures/                  # Test data
+├── test_analyzer_integration.py        # Analyzer integration tests
+├── test_compile_commands_manager.py    # Compile commands tests
+├── test_runner.py                      # Test runner script
+└── fixtures/                           # Test data
     └── sample_project/
 ```
 
@@ -292,11 +303,14 @@ tests/
 # All tests
 pytest
 
+# Run with test runner (compile_commands integration tests)
+python tests/test_runner.py
+
 # Specific test file
-pytest tests/test_cpp_analyzer.py
+pytest tests/test_compile_commands_manager.py
 
 # Specific test
-pytest tests/test_cpp_analyzer.py::test_class_search
+pytest tests/test_analyzer_integration.py::test_specific
 
 # With coverage
 pytest --cov=mcp_server --cov-report=html
@@ -463,6 +477,7 @@ rm -rf .mcp_cache/your_project_*
 - **MCP Documentation**: https://modelcontextprotocol.io
 - **libclang Documentation**: https://libclang.readthedocs.io
 - **Python AST**: https://clang.llvm.org/doxygen/group__CINDEX.html
+- **Compile Commands Integration**: See [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)
 
 ## Getting Help
 
@@ -470,3 +485,4 @@ rm -rf .mcp_cache/your_project_*
 - Review [Discussions](https://github.com/andreymedv/clang_index_mcp/discussions)
 - Read the [README](README.md)
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
+- For compile_commands.json setup: [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)
