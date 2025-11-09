@@ -188,7 +188,11 @@ class CompileCommandsManager:
         """Get compilation arguments for a specific file."""
         if not self.enabled:
             return None
-        
+
+        # Resolve relative paths relative to project_root
+        if not file_path.is_absolute():
+            file_path = self.project_root / file_path
+
         # Normalize the file path
         file_path_str = str(file_path.resolve())
         
