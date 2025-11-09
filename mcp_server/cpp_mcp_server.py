@@ -188,8 +188,89 @@ class CppAnalyzer:
         self.vcpkg_triplet = self._detect_vcpkg_triplet()
         self.vcpkg_dependencies = self._read_vcpkg_dependencies()
         
+        # Initialize compile commands manager
+        compile_commands_config = {
+            'compile_commands_enabled': True,
+            'compile_commands_path': 'compile_commands.json',
+            'compile_commands_cache_enabled': True,
+            'fallback_to_hardcoded': True
+        }
+        self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
+        
+        # Load configuration for file scanner
+        self._load_config()
+        
         # Don't parse immediately - do it on first search to avoid timeout
         print("CppAnalyzer ready for lazy initialization", file=sys.stderr)
+        if self.compile_commands_manager.enabled:
+            print(f"Compile commands support enabled", file=sys.stderr)
+    
+    def _load_config(self):
+        """Load configuration for file scanner and compile commands"""
+        try:
+            config_path = self.project_root / "cpp-analyzer-config.json"
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                self.exclude_dirs = set(config.get('exclude_directories', []))
+                self.dependency_dirs = set(config.get('dependency_directories', []))
+                
+                # Load compile commands configuration
+                compile_commands_config = config.get('compile_commands', {})
+                self.compile_commands_manager.enabled = compile_commands_config.get('enabled', True)
+                self.compile_commands_manager.compile_commands_path = compile_commands_config.get('path', 'compile_commands.json')
+                self.compile_commands_manager.cache_enabled = compile_commands_config.get('cache_enabled', True)
+                self.compile_commands_manager.cache_expiry_seconds = compile_commands_config.get('cache_expiry_seconds', 300)
+                self.compile_commands_manager.supported_extensions = set(compile_commands_config.get('supported_extensions',
+                    [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]))
+                self.compile_commands_manager.exclude_patterns = compile_commands_config.get('exclude_patterns', [])
+                
+                print(f"Loaded configuration: {len(self.exclude_dirs)} exclude dirs, {len(self.dependency_dirs)} dependency dirs", file=sys.stderr)
+                print(f"Compile commands enabled: {self.compile_commands_manager.enabled}, path: {self.compile_commands_manager.compile_commands_path}", file=sys.stderr)
+            else:
+                # Default configuration
+                self.exclude_dirs = {
+                    '.git', '.svn', '.hg', 'node_modules', '__pycache__',
+                    '.pytest_cache', '.vs', '.vscode', '.idea', 'CMakeFiles',
+                    'CMakeCache.txt', 'RepoExamples', 'Intermediate', 'Binaries',
+                    'DerivedDataCache', 'Saved', 'Build', 'cmake-build-windows-vcpkg'
+                }
+                self.dependency_dirs = {
+                    'vcpkg_installed', 'third_party', 'ThirdParty', 'thirdpary',
+                    'external', 'External', 'dependencies'
+                }
+                
+                # Default compile commands configuration
+                self.compile_commands_manager.enabled = True
+                self.compile_commands_manager.compile_commands_path = 'compile_commands.json'
+                self.compile_commands_manager.cache_enabled = True
+                self.compile_commands_manager.cache_expiry_seconds = 300
+                self.compile_commands_manager.supported_extensions = {".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"}
+                self.compile_commands_manager.exclude_patterns = []
+                
+                print("Using default configuration", file=sys.stderr)
+        except Exception as e:
+            print(f"Warning: Could not load configuration: {e}", file=sys.stderr)
+            # Use defaults
+            self.exclude_dirs = {
+                '.git', '.svn', '.hg', 'node_modules', '__pycache__',
+                '.pytest_cache', '.vs', '.vscode', '.idea', 'CMakeFiles',
+                'CMakeCache.txt', 'RepoExamples', 'Intermediate', 'Binaries',
+                'DerivedDataCache', 'Saved', 'Build', 'cmake-build-windows-vcpkg'
+            }
+            self.dependency_dirs = {
+                'vcpkg_installed', 'third_party', 'ThirdParty', 'thirdpary',
+                'external', 'External', 'dependencies'
+            }
+            
+            # Default compile commands configuration
+            self.compile_commands_manager.enabled = True
+            self.compile_commands_manager.compile_commands_path = 'compile_commands.json'
+            self.compile_commands_manager.cache_enabled = True
+            self.compile_commands_manager.cache_expiry_seconds = 300
+            self.compile_commands_manager.supported_extensions = {".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"}
+            self.compile_commands_manager.exclude_patterns = []
     
     def _find_vcpkg_root(self) -> Optional[Path]:
         """Find vcpkg installation directory by reading project configuration"""
@@ -563,70 +644,56 @@ class CppAnalyzer:
     def _parse_file_internal(self, file_path: Path) -> Optional[Tuple[str, Any, float, Dict[str, List], Dict[str, List]]]:
         """Internal file parsing logic (called from thread)"""
         try:
-            # Build comprehensive compile args for vcpkg project
-            args = [
-                '-std=c++17',
-                '-I.',
-                f'-I{self.project_root}',
-                f'-I{self.project_root}/src',
-                # Preprocessor defines for common libraries
-                '-DWIN32',
-                '-D_WIN32',
-                '-D_WINDOWS',
-                '-DNOMINMAX',
-                # Common warnings to suppress
-                '-Wno-pragma-once-outside-header',
-                '-Wno-unknown-pragmas',
-                '-Wno-deprecated-declarations',
-                # Parse as C++
-                '-x', 'c++',
-            ]
+            # Use compile commands if available, otherwise fall back to hardcoded args
+            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path)
             
-            # Add vcpkg includes if found
-            if self.vcpkg_root and self.vcpkg_triplet:
-                vcpkg_include = self.vcpkg_root / "installed" / self.vcpkg_triplet / "include"
-                if vcpkg_include.exists():
-                    args.append(f'-I{vcpkg_include}')
-                    
-                    # Add include paths for specific dependencies found in vcpkg.json
-                    common_subdir_mappings = {
-                        'sdl2': 'SDL2',
-                        'bgfx': 'bgfx',
-                        'bx': 'bx', 
-                        'bimg': 'bimg',
-                        'imgui': 'imgui',
-                        'assimp': 'assimp',
-                        'joltphysics': 'Jolt',
-                        'openssl': 'openssl',
-                        'protobuf': 'google/protobuf',
-                        'nlohmann-json': 'nlohmann',
-                        'sol2': 'sol'
-                    }
-                    
-                    for dep in self.vcpkg_dependencies:
-                        # Check if this dependency has a known subdirectory
-                        if dep in common_subdir_mappings:
-                            subdir = common_subdir_mappings[dep]
-                            lib_path = vcpkg_include / subdir
-                            if lib_path.exists():
-                                args.append(f'-I{lib_path}')
+            # If compile commands are not available and we're using fallback, add vcpkg includes
+            if not self.compile_commands_manager.is_file_supported(file_path):
+                # Add vcpkg includes if found
+                if self.vcpkg_root and self.vcpkg_triplet:
+                    vcpkg_include = self.vcpkg_root / "installed" / self.vcpkg_triplet / "include"
+                    if vcpkg_include.exists():
+                        args.append(f'-I{vcpkg_include}')
                         
-                        # Also check for exact directory match
-                        dep_path = vcpkg_include / dep
-                        if dep_path.exists() and dep_path.is_dir():
-                            args.append(f'-I{dep_path}')
-            
-            # Add Windows SDK includes (try to find current version)
-            import glob
-            winsdk_patterns = [
-                "C:/Program Files (x86)/Windows Kits/10/Include/*/ucrt",
-                "C:/Program Files (x86)/Windows Kits/10/Include/*/um",
-                "C:/Program Files (x86)/Windows Kits/10/Include/*/shared"
-            ]
-            for pattern in winsdk_patterns:
-                matches = glob.glob(pattern)
-                if matches:
-                    args.append(f'-I{matches[-1]}')  # Use latest version
+                        # Add include paths for specific dependencies found in vcpkg.json
+                        common_subdir_mappings = {
+                            'sdl2': 'SDL2',
+                            'bgfx': 'bgfx',
+                            'bx': 'bx',
+                            'bimg': 'bimg',
+                            'imgui': 'imgui',
+                            'assimp': 'assimp',
+                            'joltphysics': 'Jolt',
+                            'openssl': 'openssl',
+                            'protobuf': 'google/protobuf',
+                            'nlohmann-json': 'nlohmann',
+                            'sol2': 'sol'
+                        }
+                        
+                        for dep in self.vcpkg_dependencies:
+                            # Check if this dependency has a known subdirectory
+                            if dep in common_subdir_mappings:
+                                subdir = common_subdir_mappings[dep]
+                                lib_path = vcpkg_include / subdir
+                                if lib_path.exists():
+                                    args.append(f'-I{lib_path}')
+                            
+                            # Also check for exact directory match
+                            dep_path = vcpkg_include / dep
+                            if dep_path.exists() and dep_path.is_dir():
+                                args.append(f'-I{dep_path}')
+                
+                # Add Windows SDK includes (try to find current version)
+                import glob
+                winsdk_patterns = [
+                    "C:/Program Files (x86)/Windows Kits/10/Include/*/ucrt",
+                    "C:/Program Files (x86)/Windows Kits/10/Include/*/um",
+                    "C:/Program Files (x86)/Windows Kits/10/Include/*/shared"
+                ]
+                for pattern in winsdk_patterns:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        args.append(f'-I{matches[-1]}')  # Use latest version
             
             tu = self.index.parse(str(file_path), args=args)
             if tu:
@@ -1017,29 +1084,24 @@ class CppAnalyzer:
             }
 
     def _extract_missing_dependencies(self, errors: List[str]) -> List[str]:
-        """Check if clang++ is available"""
-        try:
-            # Try to find clang++ in PATH
-            clang_path = shutil.which("clang++")
-            if clang_path:
-                return True
+        """Extract missing dependencies from error messages"""
+        missing_deps = []
+        
+        for error in errors:
+            # Look for include file not found errors
+            if "fatal error:" in error and "file not found" in error:
+                # Extract the header name
+                import re
+                match = re.search(r"'([^']+)'\s+file not found", error)
+                if match:
+                    missing_deps.append(match.group(1))
             
-            # Try common Windows locations
-            common_paths = [
-                r"C:\Program Files\LLVM\bin\clang++.exe",
-                r"C:\Program Files (x86)\LLVM\bin\clang++.exe",
-                r"C:\msys64\ucrt64\bin\clang++.exe",
-                r"C:\msys64\mingw64\bin\clang++.exe"
-            ]
-            
-            for path in common_paths:
-                if os.path.exists(path):
-                    return True
-            
-            return False
-            
-        except Exception:
-            return False
+            # Look for undefined symbol errors
+            elif "undefined reference" in error or "unresolved external symbol" in error:
+                # Could extract symbol names here in the future
+                pass
+        
+        return list(set(missing_deps))  # Remove duplicates
     
     def _get_clang_command(self) -> str:
         """Get the clang++ command to use"""
@@ -1217,33 +1279,16 @@ class CppAnalyzer:
         
         return messages
     
-    def _extract_missing_dependencies(self, errors: List[str]) -> List[str]:
-        """Extract missing dependencies from error messages"""
-        missing_deps = []
-        
-        for error in errors:
-            # Look for include file not found errors
-            if "fatal error:" in error and "file not found" in error:
-                # Extract the header name
-                import re
-                match = re.search(r"'([^']+)'\s+file not found", error)
-                if match:
-                    missing_deps.append(match.group(1))
-            
-            # Look for undefined symbol errors
-            elif "undefined reference" in error or "unresolved external symbol" in error:
-                # Could extract symbol names here in the future
-                pass
-        
-        return list(set(missing_deps))  # Remove duplicates
 
-# Import the enhanced Python analyzer
+# Import the enhanced Python analyzer and compile commands manager
 try:
     # Try package import first (when run as module)
     from mcp_server.cpp_analyzer import CppAnalyzer as EnhancedCppAnalyzer
+    from mcp_server.compile_commands_manager import CompileCommandsManager
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer as EnhancedCppAnalyzer
+    from compile_commands_manager import CompileCommandsManager
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
@@ -1587,18 +1632,18 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             status = {
                 "analyzer_type": analyzer_type,
                 "call_graph_enabled": True,
-                "usr_tracking_enabled": True
+                "usr_tracking_enabled": True,
+                "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
+                "compile_commands_path": analyzer.compile_commands_manager.compile_commands_path,
+                "compile_commands_cache_enabled": analyzer.compile_commands_manager.cache_enabled
             }
             
             # Add analyzer stats from enhanced Python analyzer
             status.update({
-                "parsed_files": len(analyzer.file_index),
+                "parsed_files": len(analyzer.translation_units),
                 "indexed_classes": len(analyzer.class_index),
                 "indexed_functions": len(analyzer.function_index),
-                "indexed_symbols": len(analyzer.usr_index),
-                "call_graph_size": len(analyzer.call_graph_analyzer.call_graph),
-                "project_files": sum(1 for symbols in analyzer.file_index.values() 
-                                   for s in symbols if s.is_project)
+                "project_files": len(analyzer.translation_units)  # Approximate count
             })
             return [TextContent(type="text", text=json.dumps(status, indent=2))]
         
