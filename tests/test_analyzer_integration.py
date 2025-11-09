@@ -464,31 +464,40 @@ void helper_function();
     def test_fallback_args_generation(self):
         """Test fallback arguments generation on different platforms."""
         # Test Linux fallback args
-        with patch('sys.platform', 'linux'):
+        with patch('mcp_server.compile_commands_manager.sys.platform', 'linux'):
             config = {'compile_commands_enabled': False}
             manager = CompileCommandsManager(self.project_root, config)
-            
+
             args = manager.fallback_args
-            
+
             self.assertIn('-std=c++17', args)
             self.assertIn('-I.', args)
             self.assertIn('-DNOMINMAX', args)
             self.assertIn('-DWIN32', args)  # Should still be included for compatibility
-            self.assertNotIn('-IC:/Program Files', args)  # No Windows-specific paths
-        
+            # Verify no Windows SDK paths were added
+            for arg in args:
+                self.assertNotIn('C:/Program Files', arg)
+
         # Test Windows fallback args
-        with patch('sys.platform', 'win32'):
+        with patch('mcp_server.compile_commands_manager.sys.platform', 'win32'):
             with patch('glob.glob') as mock_glob:
-                mock_glob.return_value = [
-                    'C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/ucrt',
-                    'C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/um'
-                ]
-                
+                # Mock glob to return Windows SDK paths
+                def glob_side_effect(pattern):
+                    if 'ucrt' in pattern:
+                        return ['C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/ucrt']
+                    elif 'um' in pattern:
+                        return ['C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/um']
+                    elif 'shared' in pattern:
+                        return ['C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/shared']
+                    return []
+
+                mock_glob.side_effect = glob_side_effect
+
                 config = {'compile_commands_enabled': False}
                 manager = CompileCommandsManager(self.project_root, config)
-                
+
                 args = manager.fallback_args
-                
+
                 self.assertIn('-std=c++17', args)
                 self.assertIn('-I.', args)
                 self.assertIn('-DNOMINMAX', args)
