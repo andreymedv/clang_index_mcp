@@ -189,13 +189,18 @@ class CompileCommandsManager:
         if not self.enabled:
             return None
 
+        # Check if compile_commands.json still exists
+        compile_commands_file = self.project_root / self.compile_commands_path
+        if not compile_commands_file.exists():
+            return None
+
         # Resolve relative paths relative to project_root
         if not file_path.is_absolute():
             file_path = self.project_root / file_path
 
         # Normalize the file path
         file_path_str = str(file_path.resolve())
-        
+
         # Check cache first
         with self.cache_lock:
             if file_path_str in self.file_to_command_map:
@@ -203,7 +208,7 @@ class CompileCommandsManager:
                 commands = self.file_to_command_map[file_path_str]
                 if commands:
                     return commands[-1]['arguments'].copy()
-        
+
         return None
     
     def get_compile_args_with_fallback(self, file_path: Path) -> List[str]:
