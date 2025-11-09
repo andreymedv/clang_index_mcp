@@ -221,10 +221,15 @@ class CompileCommandsManager:
         """Refresh compile commands if the file has been modified."""
         if not self.enabled:
             return False
-        
+
         compile_commands_file = self.project_root / self.compile_commands_path
-        
+
         if not compile_commands_file.exists():
+            # Clear cache if file no longer exists
+            with self.cache_lock:
+                self.compile_commands.clear()
+                self.file_to_command_map.clear()
+                self.last_modified = 0
             return False
         
         # Check if file has been modified
