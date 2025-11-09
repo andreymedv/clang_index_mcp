@@ -107,7 +107,7 @@ class CppAnalyzer:
         if self.config.config_path.exists():
             print(f"Using project configuration from: {self.config.config_path}", file=sys.stderr)
         if self.compile_commands_manager.enabled:
-            print(f"Compile commands support enabled", file=sys.stderr)
+            print("Compile commands support enabled", file=sys.stderr)
     
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""

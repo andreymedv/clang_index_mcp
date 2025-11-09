@@ -97,7 +97,7 @@ class CompileCommandsManager:
                 data = json.load(f)
             
             if not isinstance(data, list):
-                print(f"Error: compile_commands.json must contain a list of commands", file=sys.stderr)
+                print("Error: compile_commands.json must contain a list of commands", file=sys.stderr)
                 return False
             
             # Parse and cache the commands
@@ -249,7 +249,7 @@ class CompileCommandsManager:
         # Reload the commands
         success = self._load_compile_commands()
         if success:
-            print(f"Refreshed compile_commands.json cache", file=sys.stderr)
+            print("Refreshed compile_commands.json cache", file=sys.stderr)
         
         return success
     
