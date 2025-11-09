@@ -441,22 +441,23 @@ void helper_function();
                 "command": 'clang++ -std=c++17 -I"include path" -D"DEFINE=value" -c main.cpp'
             }
         ]
-        
+
         compile_commands_file = self.project_root / "compile_commands.json"
         with open(compile_commands_file, 'w') as f:
             json.dump(compile_commands, f)
-        
+
         # Create manager
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
-        
+
         # Test command parsing
         args = manager.get_compile_args(self.project_root / "src" / "main.cpp")
-        
+
         self.assertIsNotNone(args)
         self.assertIn('-std=c++17', args)
-        self.assertIn('-I"include path"', args)
-        self.assertIn('-D"DEFINE=value"', args)
+        # Quotes are removed by shell parsing, but spaces are preserved within the token
+        self.assertIn('-Iinclude path', args)
+        self.assertIn('-DDEFINE=value', args)
         self.assertIn('-c', args)
         self.assertIn('main.cpp', args)
     
