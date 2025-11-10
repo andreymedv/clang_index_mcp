@@ -54,6 +54,12 @@ install-dev: ## Install development dependencies
 	$(PYTHON) -m pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
 	@echo "$(GREEN)Development dependencies installed!$(NC)"
 
+install-editable: ## Install package in editable mode for development
+	@echo "$(BLUE)Installing package in editable mode...$(NC)"
+	$(PYTHON) -m pip install -e .
+	@echo "$(GREEN)Package installed in editable mode!$(NC)"
+	@echo "You can now run: clang-index-mcp"
+
 test: ## Run all tests
 	@echo "$(BLUE)Running tests...$(NC)"
 	$(PYTHON) -m pytest -v
@@ -204,3 +210,4 @@ f: format ## Shortcut for format
 c: clean ## Shortcut for clean
 r: run ## Shortcut for run
 b: build ## Shortcut for build
+ie: install-editable ## Shortcut for install-editable
