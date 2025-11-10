@@ -12,6 +12,9 @@ mcp_env/
 # Python build artifacts
 __pycache__/
 *.py[cod]
+build/
+dist/
+*.egg-info/
 
 # Downloaded libclang binaries
 lib/**/libclang*
