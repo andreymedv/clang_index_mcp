@@ -166,15 +166,38 @@ The server behavior can be configured via `cpp-analyzer-config.json`:
   "exclude_patterns": ["*.generated.h", "*.generated.cpp", "*_test.cpp"],
   "dependency_directories": ["vcpkg_installed", "third_party", "external"],
   "include_dependencies": true,
-  "max_file_size_mb": 10
+  "max_file_size_mb": 10,
+  "compile_commands": {
+    "enabled": true,
+    "path": "compile_commands.json",
+    "cache_enabled": true,
+    "fallback_to_hardcoded": true,
+    "cache_expiry_seconds": 300
+  }
 }
 ```
+
+### General Options
 
 - **exclude_directories**: Directories to skip during project scanning
 - **exclude_patterns**: File patterns to exclude from analysis
 - **dependency_directories**: Directories containing third-party dependencies
 - **include_dependencies**: Whether to analyze files in dependency directories
 - **max_file_size_mb**: Maximum file size to analyze (larger files are skipped)
+
+### Compile Commands Integration
+
+The server supports using `compile_commands.json` to provide accurate compilation arguments:
+
+- **compile_commands.enabled**: Enable/disable compile commands support (default: `true`)
+- **compile_commands.path**: Path to compile_commands.json file (default: `"compile_commands.json"`)
+  - Can be relative to project root or absolute path
+  - Examples: `"build/compile_commands.json"`, `"../compile_commands.json"`
+- **compile_commands.cache_enabled**: Enable caching of compile commands (default: `true`)
+- **compile_commands.fallback_to_hardcoded**: Fall back to default args if compile_commands.json not found (default: `true`)
+- **compile_commands.cache_expiry_seconds**: Cache expiry time in seconds (default: `300`)
+
+**For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)**
 
 ## Troubleshooting
 
