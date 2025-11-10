@@ -692,6 +692,90 @@ int main() {
         self.assertIn('new_include', args)
         self.assertNotIn('-std=c++17', args)
 
+    def test_custom_compile_commands_path_in_subdirectory(self):
+        """Test loading compile_commands.json from a custom subdirectory path."""
+        # Create a build subdirectory
+        build_dir = self.project_root / "build"
+        build_dir.mkdir(exist_ok=True)
+
+        # Create compile_commands.json in the build directory
+        compile_commands = [
+            {
+                "file": "src/main.cpp",
+                "directory": str(self.project_root),
+                "arguments": ["-std=c++20", "-I", "include", "-DCUSTOM_BUILD"],
+                "command": "clang++ -std=c++20 -I include -DCUSTOM_BUILD src/main.cpp"
+            },
+            {
+                "file": "src/utils.cpp",
+                "directory": str(self.project_root),
+                "arguments": ["-std=c++20", "-I", "include", "-DCUSTOM_BUILD"],
+                "command": "clang++ -std=c++20 -I include -DCUSTOM_BUILD src/utils.cpp"
+            }
+        ]
+
+        custom_compile_commands_file = build_dir / "compile_commands.json"
+        with open(custom_compile_commands_file, 'w') as f:
+            json.dump(compile_commands, f)
+
+        # Configure manager to use custom path
+        config = {
+            'compile_commands_enabled': True,
+            'compile_commands_path': 'build/compile_commands.json'
+        }
+        manager = CompileCommandsManager(self.project_root, config)
+
+        # Verify it loaded the custom compile commands
+        self.assertTrue(manager.enabled)
+        self.assertEqual(len(manager.compile_commands), 2)
+
+        # Verify we can get compile args from the custom location
+        args = manager.get_compile_args(self.project_root / "src" / "main.cpp")
+        self.assertIsNotNone(args)
+        self.assertIn('-std=c++20', args)
+        self.assertIn('-DCUSTOM_BUILD', args)
+
+        # Verify file mapping works correctly
+        main_cpp_path = str((self.project_root / "src" / "main.cpp").resolve())
+        self.assertIn(main_cpp_path, manager.file_to_command_map)
+
+    def test_custom_compile_commands_absolute_path(self):
+        """Test loading compile_commands.json from an absolute path."""
+        # Create a temporary directory outside the project
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create compile_commands.json in the temporary directory
+            compile_commands = [
+                {
+                    "file": str(self.project_root / "src" / "main.cpp"),
+                    "directory": str(self.project_root),
+                    "arguments": ["-std=c++17", "-I", "include", "-DEXTERNAL_BUILD"],
+                    "command": "clang++ -std=c++17 -I include -DEXTERNAL_BUILD src/main.cpp"
+                }
+            ]
+
+            absolute_compile_commands_file = temp_path / "compile_commands.json"
+            with open(absolute_compile_commands_file, 'w') as f:
+                json.dump(compile_commands, f)
+
+            # Configure manager to use absolute path
+            config = {
+                'compile_commands_enabled': True,
+                'compile_commands_path': str(absolute_compile_commands_file)
+            }
+            manager = CompileCommandsManager(self.project_root, config)
+
+            # Verify it loaded the compile commands
+            self.assertTrue(manager.enabled)
+            self.assertEqual(len(manager.compile_commands), 1)
+
+            # Verify compile args
+            args = manager.get_compile_args(self.project_root / "src" / "main.cpp")
+            self.assertIsNotNone(args)
+            self.assertIn('-DEXTERNAL_BUILD', args)
+
 
 if __name__ == '__main__':
     unittest.main()
