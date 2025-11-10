@@ -56,74 +56,40 @@ python scripts\test_installation.py
 
 This will verify that all components are properly installed and working. The test script lives at `scripts/test_installation.py`.
 
-## Configuring Claude Code
+## Client Configuration
 
-To use this MCP server with Claude Code, you need to add it to your Claude configuration file.
+This MCP server can be used with various AI coding assistants and IDEs. See **[CLIENT_SETUP.md](CLIENT_SETUP.md)** for detailed configuration instructions for:
 
-1. Find and open your Claude configuration file. Common locations include:
-   ```
-   C:\Users\<YourUsername>\.claude.json
-   C:\Users\<YourUsername>\AppData\Roaming\Claude\.claude.json
-   %APPDATA%\Claude\.claude.json
-   ```
-   
-   The exact location may vary depending on your Claude installation.
-   
-2. Add the C++ MCP server to the `mcpServers` section:
-   ```json
-   {
-     "mcpServers": {
-       "cpp-analyzer": {
-         "command": "python",
-         "args": [
-           "-m",
-           "mcp_server.cpp_mcp_server"
-         ],
-         "cwd": "YOUR_INSTALLATION_PATH_HERE",
-         "env": {
-           "PYTHONPATH": "YOUR_INSTALLATION_PATH_HERE"
-         }
-       }
-     }
-   }
-   ```
+- **Claude Desktop** - Anthropic's desktop application
+- **Claude Code** - VS Code extension by Anthropic
+- **Cursor** - AI-first IDE
+- **Cline** - VS Code extension (formerly Claude Dev)
+- **Windsurf** - AI-native IDE
+- **Continue** - Open-source VS Code extension
+- **Other MCP clients** - Generic configuration guide
 
-   **IMPORTANT:** Replace `YOUR_INSTALLATION_PATH_HERE` with the actual path where you cloned this repository.
+### Quick Start (Claude Desktop)
 
-3. Restart Claude Desktop for the changes to take effect.
+For Claude Desktop, add to your config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
-## Configuring Codex CLI
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "command": "python",
+      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "cwd": "/absolute/path/to/clang_index_mcp",
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/clang_index_mcp"
+      }
+    }
+  }
+}
+```
 
-To use this MCP server inside the OpenAI Codex CLI:
+Replace `/absolute/path/to/clang_index_mcp` with your actual installation path, then restart Claude Desktop.
 
-1. Make sure the virtual environment is created (see setup above).
-2. Create a `.mcp.json` file in the project you open with Codex. The CLI reads this file to discover MCP servers.
-3. Add an entry that points to the Python module inside the virtual environment. Replace `YOUR_REPO_PATH` with the absolute path to this repository.
-
-   ```json
-   {
-     "mcpServers": {
-       "cpp-analyzer": {
-         "type": "stdio",
-         "command": "YOUR_REPO_PATH/mcp_env/bin/python",
-         "args": [
-           "-m",
-           "mcp_server.cpp_mcp_server"
-         ],
-         "env": {
-           "PYTHONPATH": "YOUR_REPO_PATH"
-         }
-       }
-     }
-   }
-   ```
-
-   On Windows change `command` to `YOUR_REPO_PATH\\mcp_env\\Scripts\\python.exe`.
-
-4. Restart the Codex CLI (or run `codex reload`) so it picks up the new server definition.
-5. Inside Codex, use the MCP palette or prompt instructions (for example, "use the cpp-analyzer tool to set the project directory to ...") to start indexing your C++ project.
-
-If you keep the `.mcp.json` file inside this repository you can also add a `"cwd": "YOUR_REPO_PATH"` entry so Codex launches the server from the correct directory.
+**For complete setup instructions for your specific client, see [CLIENT_SETUP.md](CLIENT_SETUP.md)**
 
 ## Usage with Claude
 

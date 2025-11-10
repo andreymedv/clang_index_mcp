@@ -3,6 +3,7 @@ include README.md
 include LICENSE
 include CONTRIBUTING.md
 include DEVELOPMENT.md
+include CLIENT_SETUP.md
 include COMPILE_COMMANDS_INTEGRATION.md
 
 # Include configuration files
