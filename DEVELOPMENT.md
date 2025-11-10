@@ -205,16 +205,17 @@ python -m mcp_server.cpp_mcp_server
 
 Common commands:
 ```bash
-make help           # Show all available commands
-make test           # Run all tests
-make test-coverage  # Run tests with coverage report
-make lint           # Run linting checks
-make format         # Format code with black
-make clean          # Clean cache and build artifacts
-make setup          # Run setup script
-make build          # Build wheel and source distributions
-make build-wheel    # Build wheel distribution only
-make install-wheel  # Build and install wheel locally
+make help            # Show all available commands
+make test            # Run all tests
+make test-coverage   # Run tests with coverage report
+make lint            # Run linting checks
+make format          # Format code with black
+make clean           # Clean cache and build artifacts
+make setup           # Run setup script
+make build           # Build wheel and source distributions
+make build-wheel     # Build wheel distribution only
+make install-wheel   # Build and install wheel locally
+make install-editable # Install package in editable mode
 ```
 
 ### Building and Distributing the Package
@@ -246,10 +247,24 @@ make install-wheel
 
 # Or manually with pip
 pip install dist/clang_index_mcp-0.1.0-py3-none-any.whl
+```
 
-# Or install in editable mode for development
+#### Installing in Editable Mode (Recommended for Development)
+
+For development, install the package in editable mode so changes are immediately reflected:
+
+```bash
+# Install in editable mode
+make install-editable
+
+# Or manually with pip
 pip install -e .
 ```
+
+Editable mode creates a link to your source code instead of copying files. This means:
+- Changes to the code are immediately available without reinstalling
+- The `clang-index-mcp` command always runs the latest code
+- Ideal for active development and testing
 
 #### Installing the Package Entry Point
 
