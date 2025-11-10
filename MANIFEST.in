@@ -1,0 +1,37 @@
+# Include documentation files
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include DEVELOPMENT.md
+include COMPILE_COMMANDS_INTEGRATION.md
+
+# Include configuration files
+include cpp-analyzer-config.json
+include requirements.txt
+include pyproject.toml
+
+# Include setup scripts
+include server_setup.sh
+include server_setup.bat
+
+# Include examples
+recursive-include examples *.cpp *.h *.md *.json
+
+# Exclude unnecessary files
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude *.dylib
+global-exclude *.dll
+
+# Exclude build artifacts and caches
+prune .git
+prune .github
+prune .mcp_cache
+prune mcp_env
+prune build
+prune dist
+prune *.egg-info
+prune htmlcov
+prune .pytest_cache
