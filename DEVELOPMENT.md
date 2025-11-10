@@ -47,6 +47,7 @@ clang_index_mcp/
 │   └── linux/
 ├── .mcp_cache/                 # Cache directory (gitignored)
 ├── cpp-analyzer-config.json   # Project configuration
+├── CLIENT_SETUP.md            # Client/IDE configuration guide
 ├── COMPILE_COMMANDS_INTEGRATION.md # compile_commands.json guide
 ├── requirements.txt           # Python dependencies
 ├── server_setup.sh            # Linux/macOS setup
@@ -603,6 +604,7 @@ rm -rf .mcp_cache/your_project_*
 - **MCP Documentation**: https://modelcontextprotocol.io
 - **libclang Documentation**: https://libclang.readthedocs.io
 - **Python AST**: https://clang.llvm.org/doxygen/group__CINDEX.html
+- **Client/IDE Configuration**: See [CLIENT_SETUP.md](CLIENT_SETUP.md)
 - **Compile Commands Integration**: See [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)
 
 ## Getting Help
@@ -611,4 +613,5 @@ rm -rf .mcp_cache/your_project_*
 - Review [Discussions](https://github.com/andreymedv/clang_index_mcp/discussions)
 - Read the [README](README.md)
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
+- For client/IDE setup: [CLIENT_SETUP.md](CLIENT_SETUP.md)
 - For compile_commands.json setup: [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)
