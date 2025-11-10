@@ -105,6 +105,29 @@ dev: ## Run in development mode with debug output
 	@echo "$(BLUE)Starting MCP server in development mode...$(NC)"
 	MCP_DEBUG=1 PYTHONUNBUFFERED=1 $(PYTHON) -m mcp_server.cpp_mcp_server
 
+build: ## Build wheel package
+	@echo "$(BLUE)Building wheel package...$(NC)"
+	$(PYTHON) -m pip install --upgrade build
+	$(PYTHON) -m build
+	@echo "$(GREEN)Build complete! Package available in dist/$(NC)"
+
+build-sdist: ## Build source distribution only
+	@echo "$(BLUE)Building source distribution...$(NC)"
+	$(PYTHON) -m pip install --upgrade build
+	$(PYTHON) -m build --sdist
+	@echo "$(GREEN)Source distribution built in dist/$(NC)"
+
+build-wheel: ## Build wheel distribution only
+	@echo "$(BLUE)Building wheel distribution...$(NC)"
+	$(PYTHON) -m pip install --upgrade build
+	$(PYTHON) -m build --wheel
+	@echo "$(GREEN)Wheel distribution built in dist/$(NC)"
+
+install-wheel: build-wheel ## Build and install the wheel package locally
+	@echo "$(BLUE)Installing wheel package...$(NC)"
+	$(PYTHON) -m pip install --force-reinstall dist/*.whl
+	@echo "$(GREEN)Package installed!$(NC)"
+
 clean: ## Clean cache and build artifacts
 	@echo "$(BLUE)Cleaning up...$(NC)"
 	@$(RMDIR) .mcp_cache 2>/dev/null || true
@@ -113,8 +136,13 @@ clean: ## Clean cache and build artifacts
 	@$(RMDIR) scripts/__pycache__ 2>/dev/null || true
 	@$(RMDIR) .pytest_cache 2>/dev/null || true
 	@$(RMDIR) htmlcov 2>/dev/null || true
+	@$(RMDIR) build 2>/dev/null || true
+	@$(RMDIR) dist 2>/dev/null || true
+	@$(RMDIR) *.egg-info 2>/dev/null || true
+	@$(RMDIR) clang_index_mcp.egg-info 2>/dev/null || true
 	@$(RM) .coverage 2>/dev/null || true
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@find . -type f -name "*.pyo" -delete 2>/dev/null || true
 	@echo "$(GREEN)Cleanup complete!$(NC)"
@@ -175,3 +203,4 @@ l: lint ## Shortcut for lint
 f: format ## Shortcut for format
 c: clean ## Shortcut for clean
 r: run ## Shortcut for run
+b: build ## Shortcut for build

@@ -8,6 +8,8 @@ This guide covers everything you need to know to develop and contribute to Clang
 - [Development Setup](#development-setup)
 - [Architecture Overview](#architecture-overview)
 - [Common Development Tasks](#common-development-tasks)
+  - [Using the Makefile](#using-the-makefile)
+  - [Building and Distributing the Package](#building-and-distributing-the-package)
 - [Testing](#testing)
 - [Debugging](#debugging)
 - [Performance Optimization](#performance-optimization)
@@ -210,7 +212,116 @@ make lint           # Run linting checks
 make format         # Format code with black
 make clean          # Clean cache and build artifacts
 make setup          # Run setup script
+make build          # Build wheel and source distributions
+make build-wheel    # Build wheel distribution only
+make install-wheel  # Build and install wheel locally
 ```
+
+### Building and Distributing the Package
+
+The project supports building wheel packages for distribution.
+
+#### Building a Wheel Package
+
+```bash
+# Build both wheel and source distributions
+make build
+
+# Or build wheel only
+make build-wheel
+
+# Or build source distribution only
+make build-sdist
+```
+
+The built packages will be available in the `dist/` directory:
+- **Wheel package**: `dist/clang_index_mcp-0.1.0-py3-none-any.whl`
+- **Source distribution**: `dist/clang_index_mcp-0.1.0.tar.gz`
+
+#### Installing from Wheel
+
+```bash
+# Install locally built wheel
+make install-wheel
+
+# Or manually with pip
+pip install dist/clang_index_mcp-0.1.0-py3-none-any.whl
+
+# Or install in editable mode for development
+pip install -e .
+```
+
+#### Installing the Package Entry Point
+
+The wheel package includes an entry point script `clang-index-mcp` that can be used to run the server:
+
+```bash
+# After installing the wheel
+clang-index-mcp
+```
+
+This is equivalent to:
+```bash
+python -m mcp_server.cpp_mcp_server
+```
+
+#### Package Configuration
+
+The package configuration is managed in `pyproject.toml`:
+
+- **Package metadata**: name, version, description, authors
+- **Dependencies**: MCP and libclang libraries
+- **Build system**: setuptools with wheel support
+- **Entry points**: Command-line scripts
+- **Development dependencies**: Testing and linting tools
+
+Additional files included in the distribution are specified in `MANIFEST.in`:
+- Documentation files (README.md, LICENSE, etc.)
+- Configuration examples (cpp-analyzer-config.json)
+- Setup scripts (server_setup.sh, server_setup.bat)
+- Example projects
+
+#### Publishing to PyPI
+
+To publish the package to PyPI (requires PyPI account and credentials):
+
+```bash
+# Install twine for uploading
+pip install twine
+
+# Build the distributions
+make build
+
+# Check the distributions
+twine check dist/*
+
+# Upload to Test PyPI first (recommended)
+twine upload --repository testpypi dist/*
+
+# Upload to PyPI
+twine upload dist/*
+```
+
+#### Version Management
+
+To update the package version:
+
+1. Update the version in `pyproject.toml`:
+   ```toml
+   [project]
+   name = "clang-index-mcp"
+   version = "0.2.0"  # Update this
+   ```
+
+2. Clean old builds:
+   ```bash
+   make clean
+   ```
+
+3. Build new package:
+   ```bash
+   make build
+   ```
 
 ### Adding a New MCP Tool
 
