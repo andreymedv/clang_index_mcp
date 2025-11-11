@@ -19,7 +19,6 @@ import subprocess
 
 
 LLVM_VERSION = "19.1.7"
-LIBTINFO_DEB_URL = "https://deb.debian.org/debian/pool/main/n/ncurses/libtinfo5_6.4-4_amd64.deb"
 
 
 class DownloadConfig:
@@ -127,152 +126,6 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
     return copied
 
 
-def _find_system_libtinfo() -> Optional[Path]:
-    """Locate a libtinfo shared library on the host system."""
-
-    search_dirs = [
-        Path("/lib"),
-        Path("/lib64"),
-        Path("/usr/lib"),
-        Path("/usr/lib64"),
-        Path("/lib/x86_64-linux-gnu"),
-        Path("/usr/lib/x86_64-linux-gnu"),
-    ]
-
-    candidates = []
-    pattern = re.compile(r"libtinfo\.so\.(\d+(?:\.\d+)*)")
-
-    for directory in search_dirs:
-        if not directory.exists():
-            continue
-        for path in directory.glob("libtinfo.so.*"):
-            if path.is_symlink():
-                continue  # Prefer real files to avoid copying symlinks
-            match = pattern.match(path.name)
-            if match:
-                version = tuple(int(part) for part in match.group(1).split('.'))
-                candidates.append((version, path))
-
-    if not candidates:
-        return None
-
-    # Return the highest version available
-    candidates.sort(reverse=True)
-    return candidates[0][1]
-
-
-def _download_libtinfo(dest_dir: Path) -> bool:
-    """Download a compatible libtinfo build and copy it into the destination."""
-
-    try:
-        with tempfile.TemporaryDirectory() as temp_dir_str:
-            temp_dir = Path(temp_dir_str)
-            deb_path = temp_dir / "libtinfo5.deb"
-            print(f"Downloading libtinfo from {LIBTINFO_DEB_URL} ...")
-            urllib.request.urlretrieve(LIBTINFO_DEB_URL, deb_path)
-
-            # Extract the deb (ar archive)
-            result = subprocess.run(["ar", "x", str(deb_path)], cwd=temp_dir, capture_output=True)
-            if result.returncode != 0:
-                print("⚠ Failed to extract libtinfo archive (missing 'ar' tool?)", file=sys.stderr)
-                return False
-
-            data_tar = temp_dir / "data.tar.xz"
-            if not data_tar.exists():
-                print("⚠ libtinfo package did not contain data.tar.xz", file=sys.stderr)
-                return False
-
-            with tarfile.open(data_tar, "r:xz") as tar:
-                tar.extractall(temp_dir)
-
-            lib_dirs = [
-                temp_dir / "usr/lib/x86_64-linux-gnu",
-                temp_dir / "lib/x86_64-linux-gnu",
-            ]
-
-            copied_any = False
-            for lib_dir in lib_dirs:
-                if not lib_dir.exists():
-                    continue
-
-                for candidate in lib_dir.glob("libtinfo.so*"):
-                    dest_path = dest_dir / candidate.name
-                    if candidate.is_symlink():
-                        link_target = os.readlink(candidate)
-                        try:
-                            os.symlink(link_target, dest_path)
-                        except FileExistsError:
-                            pass
-                        continue
-
-                    shutil.copy2(candidate, dest_path)
-                    copied_any = True
-                    print(f"✓ Copied {candidate.name} to {dest_path}")
-
-            if not copied_any:
-                print("⚠ libtinfo package did not contain expected files", file=sys.stderr)
-                return False
-
-            return True
-
-    except Exception as exc:
-        print(f"⚠ Failed to download libtinfo: {exc}", file=sys.stderr)
-
-    return False
-
-
-def _ensure_linux_dependencies(config: DownloadConfig) -> None:
-    """Ensure additional shared library dependencies are available on Linux."""
-
-    if config.system != "Linux":
-        return
-
-    dest_dir = config.dest_dir
-
-    # Skip if libtinfo already present (copy or symlink)
-    if any(dest_dir.glob("libtinfo.so*")):
-        return
-
-    system_libtinfo = _find_system_libtinfo()
-    if system_libtinfo and system_libtinfo.name.startswith("libtinfo.so.5"):
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        copied_name = system_libtinfo.name
-        target_path = dest_dir / copied_name
-
-        try:
-            shutil.copy2(system_libtinfo, target_path)
-            print(f"✓ Copied {copied_name} to {target_path}")
-        except Exception as exc:
-            print(f"⚠ Failed to copy libtinfo from {system_libtinfo}: {exc}", file=sys.stderr)
-            return
-
-        source_name = copied_name
-    else:
-        if not _download_libtinfo(dest_dir):
-            print(
-                "⚠ Could not provision libtinfo automatically. Install 'libtinfo5' or copy libtinfo.so.5 manually.",
-                file=sys.stderr,
-            )
-            return
-        # Use the copied file as target for symlinks
-        candidates = sorted(dest_dir.glob("libtinfo.so.*"))
-        source_name = candidates[-1].name if candidates else ""
-
-    if not source_name:
-        return
-
-    # Provide compatibility symlinks expected by libclang builds
-    for link_name in ["libtinfo.so.6", "libtinfo.so.5"]:
-        link_path = dest_dir / link_name
-        if link_path.exists():
-            continue
-        try:
-            os.symlink(source_name, link_path)
-            print(f"✓ Created symlink {link_path} -> {source_name}")
-        except OSError as exc:
-            print(f"⚠ Failed to create symlink {link_path}: {exc}", file=sys.stderr)
-
-
 def download_libclang(system_override: Optional[str] = None) -> bool:
     """Download and extract a libclang build for the current platform."""
 
@@ -288,7 +141,6 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
 
     if _already_present(config.dest_dir, expected_names):
         print("✓ libclang already present, skipping download")
-        _ensure_linux_dependencies(config)
         return True
 
     temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
@@ -308,8 +160,6 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
         with tempfile.TemporaryDirectory() as extract_dir:
             tar.extractall(extract_dir)
             success = _copy_libclang(Path(extract_dir), config)
-            if success:
-                _ensure_linux_dependencies(config)
 
     try:
         temp_file.unlink()
