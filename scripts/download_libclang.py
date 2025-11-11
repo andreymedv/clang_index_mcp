@@ -56,7 +56,7 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
     if system == "darwin":
         return DownloadConfig(
             system="macOS",
-            archive_name=f"clang+llvm-{LLVM_VERSION}-arm64-apple-darwin24.0.tar.xz",
+            archive_name=f"LLVM-{LLVM_VERSION}-macOS-ARM64.tar.xz",
             lib_paths=("lib/libclang.dylib",),
             dest_dir=base_dir / "macos",
         )
@@ -64,8 +64,9 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
     # Default to Linux (x86_64)
     return DownloadConfig(
         system="Linux",
-        archive_name=f"clang+llvm-{LLVM_VERSION}-x86_64-linux-gnu-ubuntu-22.04.tar.xz",
+        archive_name=f"LLVM-{LLVM_VERSION}-Linux-X64.tar.xz",
         lib_paths=(
+            "lib/libclang.so.19",
             "lib/libclang.so.18",
             "lib/libclang.so.17",
             "lib/libclang.so.16",
