@@ -10,20 +10,10 @@ import asyncio
 import json
 import sys
 import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import re
-import time
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-import threading
-import multiprocessing
-import tempfile
-import subprocess
-import shutil
+from typing import Any, Dict, List
 
 try:
-    import clang.cindex
-    from clang.cindex import Index, CursorKind, TypeKind, Config
+    from clang.cindex import Config
 except ImportError:
     print("Error: clang package not found. Install with: pip install libclang", file=sys.stderr)
     sys.exit(1)
