@@ -18,7 +18,7 @@ import urllib.request
 import subprocess
 
 
-LLVM_VERSION = "18.1.8"
+LLVM_VERSION = "19.1.7"
 LIBTINFO_DEB_URL = "https://deb.debian.org/debian/pool/main/n/ncurses/libtinfo5_6.4-4_amd64.deb"
 
 
