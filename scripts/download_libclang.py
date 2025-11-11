@@ -73,9 +73,6 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
         archive_name=f"LLVM-{LLVM_VERSION}-Linux-X64.tar.xz",
         lib_paths=(
             "lib/libclang.so.19",
-            "lib/libclang.so.18",
-            "lib/libclang.so.17",
-            "lib/libclang.so.16",
             "lib/libclang.so.1",
             "lib/libclang.so",
         ),
@@ -143,7 +140,7 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
     expected_names = {
         "Windows": ["libclang.dll"],
         "macOS": ["libclang.dylib"],
-        "Linux": ["libclang.so", "libclang.so.1", "libclang.so.18"],
+        "Linux": ["libclang.so", "libclang.so.1", "libclang.so.19"],
     }[config.system]
 
     if _already_present(config.dest_dir, expected_names):
