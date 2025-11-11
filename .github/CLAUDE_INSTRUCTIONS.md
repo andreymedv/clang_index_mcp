@@ -2,30 +2,49 @@
 
 This file contains important workflow instructions for Claude when working on this repository.
 
+---
+
+## Current Development Context
+
+**Last Updated**: 2025-11-11
+**Current Base Branch**: `compile_commands-support`
+**Reason**: Active development of compile_commands.json integration features
+
+> **Note to Claude**: If the user asks you to work from a different branch than what's documented here, ask if this file should be updated to reflect the new development focus. Don't automatically assume this file is always correct - it needs manual updates when development priorities change.
+
+---
+
 ## Branch Workflow
 
-### CRITICAL: Always Use compile_commands-support Branch
+### Start Work from the Current Base Branch
 
 **⚠️ IMPORTANT: When starting ANY session involving code analysis, documentation, or development work:**
 
-1. **FIRST ACTION**: Checkout the `compile_commands-support` branch
+1. **CHECK USER'S REQUEST**: See which branch the user mentions in their initial request
+
+2. **COMPARE WITH THIS FILE**: Check if it matches the "Current Base Branch" above
+
+3. **IF MISMATCH**: Ask the user:
+   - "I see `.github/CLAUDE_INSTRUCTIONS.md` says to use `[branch-from-file]`, but you mentioned `[branch-from-user]`. Should I update the instructions file to reflect the new development focus?"
+
+4. **FIRST ACTION**: Checkout the appropriate base branch
    ```bash
-   git checkout compile_commands-support
+   git checkout compile_commands-support  # Or whatever the current base is
    ```
 
-2. **VERIFY**: Confirm you're on the correct branch before analyzing code
+5. **VERIFY**: Confirm you're on the correct branch before analyzing code
    ```bash
    git branch --show-current
    ```
 
-3. **BASE YOUR WORK**: Create feature branches from `compile_commands-support`, not from main
+6. **BASE YOUR WORK**: Create feature branches from the current base branch
    ```bash
    git checkout -b claude/feature-name-<session-id>
    ```
 
 ### Why This Matters
 
-The `compile_commands-support` branch contains critical features not present in main/master:
+**Currently**, the `compile_commands-support` branch contains critical features not present in other branches:
 
 - **CompileCommandsManager**: Integration with `compile_commands.json` for accurate parsing
 - **Enhanced CppAnalyzer**: Support for project-specific compilation flags
@@ -37,6 +56,8 @@ Working from the wrong branch will result in:
 - ❌ Incorrect documentation
 - ❌ Missing key features in recommendations
 - ❌ Wasted time re-doing work
+
+> **This section will change** when compile_commands-support is merged or when development shifts to a different branch.
 
 ## Feature Branch Naming Convention
 
@@ -139,6 +160,25 @@ git push -u origin main
 ```
 
 **On network failures**: Retry up to 4 times with exponential backoff (2s, 4s, 8s, 16s)
+
+## Updating This File
+
+**When development focus changes** (e.g., feature branch gets merged, working on a different feature, etc.):
+
+1. Update the "Current Development Context" section at the top:
+   - **Last Updated**: Current date
+   - **Current Base Branch**: New base branch name
+   - **Reason**: Why this branch is now the base
+
+2. Update the "Why This Matters" section to reflect features in the new base branch
+
+3. Commit the changes:
+   ```bash
+   git add .github/CLAUDE_INSTRUCTIONS.md
+   git commit -m "Update Claude instructions: switch base branch to [new-branch]"
+   ```
+
+**Claude should offer to help** with this update when it detects a mismatch between user requests and documented instructions.
 
 ## Questions or Issues?
 
