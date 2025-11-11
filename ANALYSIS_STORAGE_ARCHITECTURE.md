@@ -127,7 +127,9 @@ Stores symbols for individual files:
 ```python
 def _get_cache_dir(self) -> Path:
     """Get cache directory for this project"""
-    cache_base = Path(__file__).parent / ".mcp_cache"
+    # Use the MCP server directory for cache, not the project being analyzed
+    mcp_server_root = Path(__file__).parent.parent  # Go up from mcp_server/cache_manager.py to root
+    cache_base = mcp_server_root / ".mcp_cache"
 
     # Create unique cache dir based on project path hash
     project_hash = hashlib.md5(str(self.project_root).encode()).hexdigest()[:8]
@@ -444,7 +446,9 @@ The system uses **completely isolated storage** for each codebase with **no shar
 ```python
 def _get_cache_dir(self) -> Path:
     """Get cache directory for this project"""
-    cache_base = Path(__file__).parent / ".mcp_cache"
+    # Use the MCP server directory for cache, not the project being analyzed
+    mcp_server_root = Path(__file__).parent.parent  # Go up from mcp_server/cache_manager.py to root
+    cache_base = mcp_server_root / ".mcp_cache"
 
     # Create unique cache dir based on project path hash
     project_hash = hashlib.md5(str(self.project_root).encode()).hexdigest()[:8]
