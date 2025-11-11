@@ -53,9 +53,16 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
         )
 
     if system == "darwin":
+        # Detect Mac architecture (Apple Silicon vs Intel)
+        arch = platform.machine().lower()
+        if arch in ("arm64", "aarch64"):
+            archive_name = f"LLVM-{LLVM_VERSION}-macOS-ARM64.tar.xz"
+        else:  # x86_64, AMD64, i386
+            archive_name = f"LLVM-{LLVM_VERSION}-macOS-X64.tar.xz"
+
         return DownloadConfig(
             system="macOS",
-            archive_name=f"LLVM-{LLVM_VERSION}-macOS-ARM64.tar.xz",
+            archive_name=archive_name,
             lib_paths=("lib/libclang.dylib",),
             dest_dir=base_dir / "macos",
         )
