@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "MCP server providing semantic analysis of C++ codebases using libclang"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Andrey Medvedev"}
 ]
@@ -16,7 +17,6 @@ keywords = ["mcp", "clang", "c++", "code-analysis", "libclang", "semantic-search
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -29,6 +29,16 @@ dependencies = [
     "mcp>=1.0.0",
     "libclang>=16.0.0",
 ]
+
+[project.scripts]
+clang-index-mcp = "mcp_server.cpp_mcp_server:main"
+
+[tool.setuptools]
+packages = ["mcp_server"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+mcp_server = ["py.typed"]
 
 [project.optional-dependencies]
 dev = [
