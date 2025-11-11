@@ -40,11 +40,13 @@ async def test_mcp_server(project_path: str):
     # 3. Get server status
     print("\n3. Getting server status...")
     status = {
-        "parsed_files": len(analyzer.file_index),
+        "parsed_files": len(analyzer.translation_units),
         "indexed_classes": len(analyzer.class_index),
         "indexed_functions": len(analyzer.function_index),
         "indexed_symbols": len(analyzer.usr_index),
         "call_graph_size": len(analyzer.call_graph_analyzer.call_graph),
+        "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
+        "compile_commands_path": str(analyzer.compile_commands_manager.compile_commands_path),
     }
     print(f"✓ Server status:")
     for key, value in status.items():
