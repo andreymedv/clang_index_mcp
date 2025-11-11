@@ -554,7 +554,6 @@ python -m pstats profile.stats
 **Solutions**:
 - Run `python scripts/download_libclang.py` again
 - Check `lib/` directory for platform-specific binaries
-- On Linux, ensure `libtinfo` is available
 - Set `LIBCLANG_PATH` environment variable
 
 ### Parse Errors
