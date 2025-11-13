@@ -23,6 +23,7 @@ from .file_scanner import FileScanner
 from .call_graph import CallGraphAnalyzer
 from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
+from .compile_commands_manager import CompileCommandsManager
 
 try:
     import clang.cindex
@@ -92,16 +93,23 @@ class CppAnalyzer:
         self.last_index_time = 0
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
-
+        
         # Initialize compile commands manager with config
         compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
 
         print(f"CppAnalyzer initialized for project: {self.project_root}", file=sys.stderr)
-        if self.config.config_path and self.config.config_path.exists():
-            print(f"Using configuration from: {self.config.config_path}", file=sys.stderr)
+
+        # Print compile commands configuration status
         if self.compile_commands_manager.enabled:
-            print("Compile commands support enabled", file=sys.stderr)
+            cc_path = self.project_root / compile_commands_config['compile_commands_path']
+            if cc_path.exists():
+                # This message will be followed by actual load message from CompileCommandsManager
+                print(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}", file=sys.stderr)
+            else:
+                print(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args", file=sys.stderr)
+        else:
+            print("Compile commands disabled in configuration", file=sys.stderr)
     
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
@@ -296,34 +304,26 @@ class CppAnalyzer:
                 return (True, True)  # Successfully loaded from cache
 
         try:
-            # Parse the file
-            args = [
-                '-std=c++17',
-                '-I.',
-                f'-I{self.project_root}',
-                f'-I{self.project_root}/src',
-                f'-I{self.project_root}/include',
-                '-DWIN32',
-                '-D_WIN32',
-                '-D_WINDOWS',
-                '-DNOMINMAX',
-                '-x', 'c++'
-            ]
+            # Use compile commands if available, otherwise fall back to hardcoded args
+            file_path_obj = Path(file_path)
+            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
             
-            # Add vcpkg includes if available
-            vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-            if vcpkg_include.exists():
-                args.append(f'-I{vcpkg_include}')
-            
-            # Add common vcpkg paths
-            vcpkg_paths = [
-                "C:/vcpkg/installed/x64-windows/include",
-                "C:/dev/vcpkg/installed/x64-windows/include"
-            ]
-            for path in vcpkg_paths:
-                if Path(path).exists():
-                    args.append(f'-I{path}')
-                    break
+            # If compile commands are not available and we're using fallback, add vcpkg includes
+            if not self.compile_commands_manager.is_file_supported(file_path_obj):
+                # Add vcpkg includes if available
+                vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                if vcpkg_include.exists():
+                    args.append(f'-I{vcpkg_include}')
+                
+                # Add common vcpkg paths
+                vcpkg_paths = [
+                    "C:/vcpkg/installed/x64-windows/include",
+                    "C:/dev/vcpkg/installed/x64-windows/include"
+                ]
+                for path in vcpkg_paths:
+                    if Path(path).exists():
+                        args.append(f'-I{path}')
+                        break
             
             # Create translation unit with detailed diagnostics
             # Note: We no longer skip function bodies to enable call graph analysis
@@ -627,16 +627,40 @@ class CppAnalyzer:
     def get_stats(self) -> Dict[str, int]:
         """Get indexer statistics"""
         with self.index_lock:
-            return {
+            stats = {
                 "class_count": len(self.class_index),
                 "function_count": len(self.function_index),
                 "file_count": self.indexed_file_count
             }
+            
+            # Add compile commands statistics if enabled
+            if self.compile_commands_manager.enabled:
+                compile_stats = self.compile_commands_manager.get_stats()
+                stats.update({
+                    "compile_commands_enabled": compile_stats['enabled'],
+                    "compile_commands_count": compile_stats['compile_commands_count'],
+                    "compile_commands_file_mapping_count": compile_stats['file_mapping_count']
+                })
+            
+            return stats
+    
+    def get_compile_commands_stats(self) -> Dict[str, Any]:
+        """Get compile commands statistics"""
+        if not self.compile_commands_manager.enabled:
+            return {"enabled": False}
+        
+        return self.compile_commands_manager.get_stats()
     
     def refresh_if_needed(self) -> int:
         """Refresh index for changed files and remove deleted files"""
         refreshed = 0
         deleted = 0
+
+        # Refresh compile commands if needed
+        if self.compile_commands_manager.enabled:
+            compile_commands_refreshed = self.compile_commands_manager.refresh_if_needed()
+            if compile_commands_refreshed:
+                print("Compile commands refreshed", file=sys.stderr)
 
         # Get currently existing files
         current_files = set(self._find_cpp_files(self.include_dependencies))
@@ -801,7 +825,7 @@ class CppAnalyzer:
         # Get the class info
         class_info = self.get_class_info(class_name)
         if not class_info:
-            return None
+            return {"error": f"Class '{class_name}' not found"}
         
         # Get direct base classes from the class info
         base_classes = []
