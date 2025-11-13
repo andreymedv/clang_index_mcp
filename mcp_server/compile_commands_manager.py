@@ -85,11 +85,14 @@ class CompileCommandsManager:
         """Load compile commands from compile_commands.json file."""
         if not self.enabled:
             return False
-        
+
         compile_commands_file = self.project_root / self.compile_commands_path
-        
+
         if not compile_commands_file.exists():
-            print(f"compile_commands.json not found at: {compile_commands_file}", file=sys.stderr)
+            if self.fallback_to_hardcoded:
+                print(f"compile_commands.json not found at: {compile_commands_file} - using fallback compilation arguments", file=sys.stderr)
+            else:
+                print(f"compile_commands.json not found at: {compile_commands_file} - fallback disabled", file=sys.stderr)
             return False
         
         try:
@@ -102,11 +105,12 @@ class CompileCommandsManager:
             
             # Parse and cache the commands
             self._parse_compile_commands(data)
-            
+
             # Update last modified time
             self.last_modified = compile_commands_file.stat().st_mtime
-            
-            print(f"Loaded {len(self.compile_commands)} compile commands from {compile_commands_file}", file=sys.stderr)
+
+            print(f"Successfully loaded {len(self.compile_commands)} compile commands from: {compile_commands_file}", file=sys.stderr)
+            print(f"Compile commands will be used for accurate C++ parsing", file=sys.stderr)
             return True
             
         except json.JSONDecodeError as e:
