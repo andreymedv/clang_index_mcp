@@ -535,17 +535,43 @@ class CppAnalyzer:
     
     def _save_cache(self):
         """Save index to cache file"""
+        # Get current config file info
+        config_path = self.config.config_path
+        config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
+
+        # Get current compile_commands.json info
+        cc_path = self.project_root / self.compile_commands_manager.compile_commands_path
+        cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+
         self.cache_manager.save_cache(
             self.class_index,
             self.function_index,
             self.file_hashes,
             self.indexed_file_count,
-            self.include_dependencies
+            self.include_dependencies,
+            config_file_path=config_path,
+            config_file_mtime=config_mtime,
+            compile_commands_path=cc_path if cc_path.exists() else None,
+            compile_commands_mtime=cc_mtime
         )
     
     def _load_cache(self) -> bool:
         """Load index from cache file"""
-        cache_data = self.cache_manager.load_cache(self.include_dependencies)
+        # Get current config file info
+        config_path = self.config.config_path
+        config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
+
+        # Get current compile_commands.json info
+        cc_path = self.project_root / self.compile_commands_manager.compile_commands_path
+        cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+
+        cache_data = self.cache_manager.load_cache(
+            self.include_dependencies,
+            config_file_path=config_path,
+            config_file_mtime=config_mtime,
+            compile_commands_path=cc_path if cc_path.exists() else None,
+            compile_commands_mtime=cc_mtime
+        )
         if not cache_data:
             return False
         

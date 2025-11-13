@@ -38,19 +38,27 @@ class CacheManager:
         except:
             return ""
     
-    def save_cache(self, class_index: Dict[str, List[SymbolInfo]], 
+    def save_cache(self, class_index: Dict[str, List[SymbolInfo]],
                    function_index: Dict[str, List[SymbolInfo]],
                    file_hashes: Dict[str, str],
                    indexed_file_count: int,
-                   include_dependencies: bool = False) -> bool:
-        """Save indexes to cache file"""
+                   include_dependencies: bool = False,
+                   config_file_path: Optional[Path] = None,
+                   config_file_mtime: Optional[float] = None,
+                   compile_commands_path: Optional[Path] = None,
+                   compile_commands_mtime: Optional[float] = None) -> bool:
+        """Save indexes to cache file with configuration metadata"""
         try:
             cache_file = self.cache_dir / "cache_info.json"
-            
+
             # Convert to serializable format
             cache_data = {
                 "version": "2.0",  # Cache version
                 "include_dependencies": include_dependencies,
+                "config_file_path": str(config_file_path) if config_file_path else None,
+                "config_file_mtime": config_file_mtime,
+                "compile_commands_path": str(compile_commands_path) if compile_commands_path else None,
+                "compile_commands_mtime": compile_commands_mtime,
                 "class_index": {},
                 "function_index": {},
                 "file_hashes": file_hashes,
@@ -76,31 +84,69 @@ class CacheManager:
             print(f"Error saving cache: {e}", file=sys.stderr)
             return False
     
-    def load_cache(self, include_dependencies: bool = False) -> Optional[Dict[str, Any]]:
-        """Load cache if it exists and is valid"""
+    def load_cache(self, include_dependencies: bool = False,
+                   config_file_path: Optional[Path] = None,
+                   config_file_mtime: Optional[float] = None,
+                   compile_commands_path: Optional[Path] = None,
+                   compile_commands_mtime: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """Load cache if it exists and is valid, checking for configuration changes"""
         cache_file = self.cache_dir / "cache_info.json"
-        
+
         if not cache_file.exists():
             return None
-        
+
         try:
             with open(cache_file, 'r') as f:
                 cache_data = json.load(f)
-            
+
             # Check cache version
             if cache_data.get("version") != "2.0":
                 print("Cache version mismatch, rebuilding...", file=sys.stderr)
                 return None
-            
+
             # Check if dependencies setting matches
             cached_include_deps = cache_data.get("include_dependencies", False)
             if cached_include_deps != include_dependencies:
-                print(f"Cache dependencies setting mismatch (cached={cached_include_deps}, current={include_dependencies})", 
+                print(f"Cache dependencies setting mismatch (cached={cached_include_deps}, current={include_dependencies})",
                       file=sys.stderr)
                 return None
-            
+
+            # Check if config file has changed
+            cached_config_path = cache_data.get("config_file_path")
+            cached_config_mtime = cache_data.get("config_file_mtime")
+
+            current_config_path = str(config_file_path) if config_file_path else None
+
+            # Detect config file changes
+            if cached_config_path != current_config_path:
+                # Config file path changed (created, deleted, or switched)
+                print("Configuration file path changed, rebuilding index...", file=sys.stderr)
+                return None
+
+            if cached_config_mtime != config_file_mtime:
+                # Config file modified
+                print("Configuration file modified, rebuilding index...", file=sys.stderr)
+                return None
+
+            # Check if compile_commands.json has changed
+            cached_cc_path = cache_data.get("compile_commands_path")
+            cached_cc_mtime = cache_data.get("compile_commands_mtime")
+
+            current_cc_path = str(compile_commands_path) if compile_commands_path else None
+
+            # Detect compile_commands.json changes
+            if cached_cc_path != current_cc_path:
+                # compile_commands.json path changed (created, deleted, or moved)
+                print("compile_commands.json path changed, rebuilding index...", file=sys.stderr)
+                return None
+
+            if cached_cc_mtime != compile_commands_mtime:
+                # compile_commands.json modified
+                print("compile_commands.json modified, rebuilding index...", file=sys.stderr)
+                return None
+
             return cache_data
-            
+
         except Exception as e:
             print(f"Error loading cache: {e}", file=sys.stderr)
             return None
