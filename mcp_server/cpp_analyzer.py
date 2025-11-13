@@ -25,11 +25,17 @@ from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
 
+# Handle both package and script imports
+try:
+    from . import diagnostics
+except ImportError:
+    import diagnostics
+
 try:
     import clang.cindex
     from clang.cindex import Index, CursorKind, TranslationUnit, Config
 except ImportError:
-    print("Error: clang package not found. Install with: pip install libclang", file=sys.stderr)
+    diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
 
 
@@ -98,18 +104,18 @@ class CppAnalyzer:
         compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
 
-        print(f"CppAnalyzer initialized for project: {self.project_root}", file=sys.stderr)
+        diagnostics.info(f"CppAnalyzer initialized for project: {self.project_root}")
 
         # Print compile commands configuration status
         if self.compile_commands_manager.enabled:
             cc_path = self.project_root / compile_commands_config['compile_commands_path']
             if cc_path.exists():
                 # This message will be followed by actual load message from CompileCommandsManager
-                print(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}", file=sys.stderr)
+                diagnostics.info(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}")
             else:
-                print(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args", file=sys.stderr)
+                diagnostics.info(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args")
         else:
-            print("Compile commands disabled in configuration", file=sys.stderr)
+            diagnostics.info("Compile commands disabled in configuration")
     
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
@@ -334,9 +340,10 @@ class CppAnalyzer:
                 options=TranslationUnit.PARSE_INCOMPLETE |
                        TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
             )
-            
+
+
             if not tu:
-                print(f"Failed to parse {file_path}", file=sys.stderr)
+                diagnostics.error(f"Failed to parse {file_path}")
                 return False
             
             # Don't print diagnostics - too noisy for universal analyzer
@@ -408,19 +415,19 @@ class CppAnalyzer:
         if not force and self._load_cache():
             refreshed = self.refresh_if_needed()
             if refreshed > 0:
-                print(f"Using cached index (updated {refreshed} files)", file=sys.stderr)
+                diagnostics.info(f"Using cached index (updated {refreshed} files)")
             else:
-                print("Using cached index", file=sys.stderr)
+                diagnostics.info("Using cached index")
             return self.indexed_file_count
-        
-        print(f"Finding C++ files (include_dependencies={include_dependencies})...", file=sys.stderr)
+
+        diagnostics.info(f"Finding C++ files (include_dependencies={include_dependencies})...")
         files = self._find_cpp_files(include_dependencies=include_dependencies)
-        
+
         if not files:
-            print("No C++ files found in project", file=sys.stderr)
+            diagnostics.warning("No C++ files found in project")
             return 0
-        
-        print(f"Found {len(files)} C++ files to index", file=sys.stderr)
+
+        diagnostics.info(f"Found {len(files)} C++ files to index")
         
         # Show detailed progress
         indexed_count = 0
@@ -448,7 +455,7 @@ class CppAnalyzer:
                 try:
                     success, was_cached = future.result()
                 except Exception as exc:
-                    print(f"Error indexing {file_path}: {exc}", file=sys.stderr)
+                    diagnostics.error(f"Error indexing {file_path}: {exc}")
                     success, was_cached = False, False
 
                 if success:
@@ -508,16 +515,17 @@ class CppAnalyzer:
         with self.index_lock:
             class_count = len(self.class_index)
             function_count = len(self.function_index)
-        
+
+
         # Print newline after progress to move to next line (only if using terminal progress)
         if is_terminal:
             print("", file=sys.stderr)
-        print(f"Indexing complete in {self.last_index_time:.2f}s", file=sys.stderr)
-        print(f"Indexed {indexed_count}/{len(files)} files successfully ({cache_hits} from cache, {failed_count} failed)", file=sys.stderr)
-        print(f"Found {class_count} class names, {function_count} function names", file=sys.stderr)
-        
+        diagnostics.info(f"Indexing complete in {self.last_index_time:.2f}s")
+        diagnostics.info(f"Indexed {indexed_count}/{len(files)} files successfully ({cache_hits} from cache, {failed_count} failed)")
+        diagnostics.info(f"Found {class_count} class names, {function_count} function names")
+
         if failed_count > 0:
-            print(f"Note: {failed_count} files failed to parse - this is normal for complex projects", file=sys.stderr)
+            diagnostics.info(f"Note: {failed_count} files failed to parse - this is normal for complex projects")
         
         # Save overall cache and progress summary
         self._save_cache()
@@ -585,13 +593,12 @@ class CppAnalyzer:
             
             # Rebuild call graph from all symbols
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
-            
-            print(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions", 
-                  file=sys.stderr)
+
+            diagnostics.debug(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions")
             return True
-            
+
         except Exception as e:
-            print(f"Error loading cache: {e}", file=sys.stderr)
+            diagnostics.error(f"Error loading cache: {e}")
             return False
     
     def _save_progress_summary(self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0):
@@ -613,15 +620,15 @@ class CppAnalyzer:
         try:
             return self.search_engine.search_classes(pattern, project_only)
         except re.error as e:
-            print(f"Invalid regex pattern: {e}", file=sys.stderr)
+            diagnostics.error(f"Invalid regex pattern: {e}")
             return []
-    
+
     def search_functions(self, pattern: str, project_only: bool = True, class_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search for functions matching pattern, optionally within a specific class"""
         try:
             return self.search_engine.search_functions(pattern, project_only, class_name)
         except re.error as e:
-            print(f"Invalid regex pattern: {e}", file=sys.stderr)
+            diagnostics.error(f"Invalid regex pattern: {e}")
             return []
     
     def get_stats(self) -> Dict[str, int]:
@@ -660,7 +667,7 @@ class CppAnalyzer:
         if self.compile_commands_manager.enabled:
             compile_commands_refreshed = self.compile_commands_manager.refresh_if_needed()
             if compile_commands_refreshed:
-                print("Compile commands refreshed", file=sys.stderr)
+                diagnostics.info("Compile commands refreshed")
 
         # Get currently existing files
         current_files = set(self._find_cpp_files(self.include_dependencies))
@@ -702,7 +709,7 @@ class CppAnalyzer:
         if refreshed > 0 or deleted > 0:
             self._save_cache()
             if deleted > 0:
-                print(f"Removed {deleted} deleted files from indexes", file=sys.stderr)
+                diagnostics.info(f"Removed {deleted} deleted files from indexes")
 
         # Keep tracked file count in sync with current state
         self.indexed_file_count = len(self.file_hashes)
@@ -761,20 +768,20 @@ class CppAnalyzer:
     def search_symbols(self, pattern: str, project_only: bool = True, symbol_types: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
         Search for all symbols (classes and functions) matching pattern.
-        
+
         Args:
             pattern: Regex pattern to search for
             project_only: Only include project files (exclude dependencies)
             symbol_types: List of symbol types to include. Options: ['class', 'struct', 'function', 'method']
                          If None, includes all types.
-        
+
         Returns:
             Dictionary with keys 'classes' and 'functions' containing matching symbols
         """
         try:
             return self.search_engine.search_symbols(pattern, project_only, symbol_types)
         except re.error as e:
-            print(f"Invalid regex pattern: {e}", file=sys.stderr)
+            diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
     
     def get_derived_classes(self, class_name: str, project_only: bool = True) -> List[Dict[str, Any]]:
