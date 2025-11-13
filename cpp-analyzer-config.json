@@ -35,5 +35,21 @@
   ],
   "include_dependencies": true,
   "max_file_size_mb": 10,
+  "compile_commands": {
+    "enabled": true,
+    "path": "compile_commands.json",
+    "cache_enabled": true,
+    "fallback_to_hardcoded": true,
+    "cache_expiry_seconds": 300,
+    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
+    "exclude_patterns": [
+      "*/build/*",
+      "*/cmake-build-*",
+      "*/CMakeFiles/*",
+      "*/node_modules/*",
+      "*/third_party/*",
+      "*/external/*"
+    ]
+  },
   "_comment": "This configuration applies to all C++ projects analyzed by this MCP server"
 }

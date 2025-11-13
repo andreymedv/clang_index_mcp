@@ -1,0 +1,46 @@
+{
+  "exclude_directories": [
+    ".git",
+    "CMakeFiles",
+    "cmake-build-*",
+    "__pycache__",
+    ".vs",
+    ".vscode",
+    "build",
+    "dist"
+  ],
+  "exclude_patterns": [
+    "*.generated.h",
+    "*.generated.cpp",
+    "*.o",
+    "*.so",
+    "*.dll",
+    "*.exe"
+  ],
+  "dependency_directories": [
+    "third_party",
+    "external",
+    "vendor",
+    "deps"
+  ],
+  "include_dependencies": true,
+  "max_file_size_mb": 10,
+  "compile_commands": {
+    "enabled": true,
+    "path": "compile_commands.json",
+    "cache_enabled": true,
+    "fallback_to_hardcoded": true,
+    "cache_expiry_seconds": 300,
+    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++", ".inl"],
+    "exclude_patterns": [
+      "*/CMakeFiles/*",
+      "*/cmake-build-*",
+      "*/build/*",
+      "*/dist/*",
+      "*/node_modules/*",
+      "*/third_party/*",
+      "*/external/*",
+      "*/vendor/*"
+    ]
+  }
+}
