@@ -5,6 +5,12 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
+# Handle both package and script imports
+try:
+    from . import diagnostics
+except ImportError:
+    import diagnostics
+
 
 class CppAnalyzerConfig:
     """Loads and manages configuration for the C++ analyzer."""
@@ -37,7 +43,11 @@ class CppAnalyzerConfig:
         ],
         "exclude_patterns": [],
         "include_dependencies": True,
-        "max_file_size_mb": 10
+        "max_file_size_mb": 10,
+        "diagnostics": {
+            "level": "info",  # debug, info, warning, error, fatal
+            "enabled": True
+        }
     }
     
     def __init__(self, project_root: Path):
@@ -61,7 +71,7 @@ class CppAnalyzerConfig:
             if env_path.exists():
                 return (env_path, "environment variable CPP_ANALYZER_CONFIG")
             else:
-                print(f"Warning: CPP_ANALYZER_CONFIG points to non-existent file: {env_path}", file=os.sys.stderr)
+                diagnostics.warning(f"CPP_ANALYZER_CONFIG points to non-existent file: {env_path}")
 
         # 2. Check project root
         project_config = self.project_root / self.CONFIG_FILENAME
@@ -74,26 +84,34 @@ class CppAnalyzerConfig:
         """Load configuration from file or use defaults."""
         config_file, config_source = self._find_config_file()
 
+        config = self.DEFAULT_CONFIG.copy()
+
         if config_file:
             self.config_path = config_file
             try:
                 with open(config_file, 'r') as f:
                     user_config = json.load(f)
                 # Merge with defaults (user config takes precedence)
-                config = self.DEFAULT_CONFIG.copy()
                 config.update(user_config)
-                print(f"Configuration loaded from {config_source}: {config_file}", file=os.sys.stderr)
+
+                # Configure diagnostics system from config
+                diagnostics.configure_from_config(config)
+
+                diagnostics.info(f"Configuration loaded from {config_source}: {config_file}")
                 return config
             except Exception as e:
-                print(f"Error loading config from {config_file}: {e}", file=os.sys.stderr)
-                print("Using default configuration", file=os.sys.stderr)
+                diagnostics.error(f"Error loading config from {config_file}: {e}")
+                diagnostics.warning("Using default configuration")
         else:
-            print("No config file found, using defaults", file=os.sys.stderr)
-            print(f"You can create a config file at:", file=os.sys.stderr)
-            print(f"  - Project: {self.project_root / self.CONFIG_FILENAME}", file=os.sys.stderr)
-            print(f"  - Or set:  CPP_ANALYZER_CONFIG=<path>", file=os.sys.stderr)
+            # Configure diagnostics with defaults
+            diagnostics.configure_from_config(config)
 
-        return self.DEFAULT_CONFIG.copy()
+            diagnostics.info("No config file found, using defaults")
+            diagnostics.info(f"You can create a config file at:")
+            diagnostics.info(f"  - Project: {self.project_root / self.CONFIG_FILENAME}")
+            diagnostics.info(f"  - Or set:  CPP_ANALYZER_CONFIG=<path>")
+
+        return config
     
     def get_exclude_directories(self) -> List[str]:
         """Get list of directories to exclude."""
@@ -175,6 +193,10 @@ class CppAnalyzerConfig:
                 "cache_enabled": True,
                 "fallback_to_hardcoded": True,
                 "cache_expiry_seconds": 300
+            },
+            "diagnostics": {
+                "level": "info",
+                "enabled": True
             }
         }
 
@@ -194,5 +216,5 @@ class CppAnalyzerConfig:
         with open(target_path, 'w') as f:
             json.dump(example_config, f, indent=2)
 
-        print(f"Created example config at: {target_path}", file=os.sys.stderr)
+        diagnostics.info(f"Created example config at: {target_path}")
         return target_path
