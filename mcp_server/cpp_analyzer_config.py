@@ -8,8 +8,8 @@ from typing import Dict, List, Any, Optional, Tuple
 
 class CppAnalyzerConfig:
     """Loads and manages configuration for the C++ analyzer."""
-    
-    CONFIG_FILENAME = "cpp-analyzer-config.json"
+
+    CONFIG_FILENAME = ".cpp-analyzer-config.json"
     
     DEFAULT_CONFIG = {
         "exclude_directories": [
@@ -45,22 +45,12 @@ class CppAnalyzerConfig:
         self.config_path = None  # Will be set by _find_config_file
         self.config = self._load_config()
 
-    def _get_user_config_dir(self) -> Path:
-        """Get the user-specific config directory based on platform."""
-        if os.name == 'nt':  # Windows
-            base = Path(os.environ.get('APPDATA', Path.home() / 'AppData' / 'Roaming'))
-        else:  # Linux, macOS
-            base = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
-        return base / 'cpp-analyzer'
-
     def _find_config_file(self) -> Optional[Tuple[Path, str]]:
         """Find config file by checking multiple locations in priority order.
 
         Priority order:
         1. Environment variable CPP_ANALYZER_CONFIG
-        2. Project root (analyzed C++ project)
-        3. User config directory (~/.config/cpp-analyzer/ or %APPDATA%/cpp-analyzer/)
-        4. MCP server installation directory (for backward compatibility)
+        2. Project root (.cpp-analyzer-config.json)
 
         Returns tuple of (config_path, source_description) or (None, None) if not found.
         """
@@ -77,18 +67,6 @@ class CppAnalyzerConfig:
         project_config = self.project_root / self.CONFIG_FILENAME
         if project_config.exists():
             return (project_config, "project root directory")
-
-        # 3. Check user config directory
-        user_config_dir = self._get_user_config_dir()
-        user_config = user_config_dir / self.CONFIG_FILENAME
-        if user_config.exists():
-            return (user_config, "user config directory")
-
-        # 4. Check MCP server installation directory (backward compatibility)
-        mcp_server_root = Path(__file__).parent.parent
-        package_config = mcp_server_root / self.CONFIG_FILENAME
-        if package_config.exists():
-            return (package_config, "package installation directory")
 
         return (None, None)
 
@@ -111,10 +89,9 @@ class CppAnalyzerConfig:
                 print("Using default configuration", file=os.sys.stderr)
         else:
             print("No config file found, using defaults", file=os.sys.stderr)
-            print(f"You can create a config file at one of these locations:", file=os.sys.stderr)
+            print(f"You can create a config file at:", file=os.sys.stderr)
             print(f"  - Project: {self.project_root / self.CONFIG_FILENAME}", file=os.sys.stderr)
-            print(f"  - User:    {self._get_user_config_dir() / self.CONFIG_FILENAME}", file=os.sys.stderr)
-            print(f"  - Env var: CPP_ANALYZER_CONFIG=<path>", file=os.sys.stderr)
+            print(f"  - Or set:  CPP_ANALYZER_CONFIG=<path>", file=os.sys.stderr)
 
         return self.DEFAULT_CONFIG.copy()
     
@@ -156,13 +133,12 @@ class CppAnalyzerConfig:
             'exclude_patterns': compile_commands.get('exclude_patterns', [])
         }
     
-    def create_example_config(self, location: str = 'user') -> Path:
+    def create_example_config(self, location: str = 'project') -> Path:
         """Create an example configuration file.
 
         Args:
             location: Where to create the config file:
-                     'user' - User config directory (default)
-                     'project' - Project root directory
+                     'project' - Project root directory (default)
                      'path' - Custom path (uses self.config_path if set)
 
         Returns:
@@ -203,20 +179,16 @@ class CppAnalyzerConfig:
         }
 
         # Determine target path
-        if location == 'user':
-            target_dir = self._get_user_config_dir()
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target_path = target_dir / self.CONFIG_FILENAME
-        elif location == 'project':
+        if location == 'project':
             target_path = self.project_root / self.CONFIG_FILENAME
-        else:  # 'path' or custom
+        elif location == 'path':
             if self.config_path:
                 target_path = self.config_path
             else:
-                # Default to user config directory
-                target_dir = self._get_user_config_dir()
-                target_dir.mkdir(parents=True, exist_ok=True)
-                target_path = target_dir / self.CONFIG_FILENAME
+                # Default to project root
+                target_path = self.project_root / self.CONFIG_FILENAME
+        else:
+            raise ValueError(f"Invalid location: {location}. Use 'project' or 'path'.")
 
         # Write the config file
         with open(target_path, 'w') as f:
