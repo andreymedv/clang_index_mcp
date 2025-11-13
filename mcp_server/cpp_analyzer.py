@@ -94,20 +94,22 @@ class CppAnalyzer:
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
         
-        # Initialize compile commands manager
-        compile_commands_config = {
-            'compile_commands_enabled': True,
-            'compile_commands_path': 'compile_commands.json',
-            'compile_commands_cache_enabled': True,
-            'fallback_to_hardcoded': True
-        }
+        # Initialize compile commands manager with config
+        compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
-        
+
         print(f"CppAnalyzer initialized for project: {self.project_root}", file=sys.stderr)
-        if self.config.config_path.exists():
-            print(f"Using project configuration from: {self.config.config_path}", file=sys.stderr)
+
+        # Print compile commands configuration status
         if self.compile_commands_manager.enabled:
-            print("Compile commands support enabled", file=sys.stderr)
+            cc_path = self.project_root / compile_commands_config['compile_commands_path']
+            if cc_path.exists():
+                # This message will be followed by actual load message from CompileCommandsManager
+                print(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}", file=sys.stderr)
+            else:
+                print(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args", file=sys.stderr)
+        else:
+            print("Compile commands disabled in configuration", file=sys.stderr)
     
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
