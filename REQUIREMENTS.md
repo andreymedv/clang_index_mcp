@@ -231,7 +231,7 @@ This document captures the functional requirements for the Clang Index MCP Serve
 
 ## 4. MCP Tool Requirements
 
-The system provides 13 MCP tools. Each tool has specific requirements for inputs, outputs, and behavior.
+The system provides 14 MCP tools. Each tool has specific requirements for inputs, outputs, and behavior.
 
 ### 4.1 search_classes
 
@@ -422,20 +422,40 @@ The system provides 13 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-4.12.4**: SHALL use USR-based matching for accurate identification.
 
-### 4.13 get_call_path
+### 4.13 find_callees
 
 **REQ-4.13.1**: SHALL accept:
+- `function_name`: string (function name to find callees for)
+- `class_name`: optional string (if searching for a method)
+
+**REQ-4.13.2**: SHALL return all functions called by the specified function.
+
+**REQ-4.13.3**: SHALL include:
+- name
+- kind
+- file
+- line
+- column
+- signature
+- parent_class
+- is_project
+
+**REQ-4.13.4**: SHALL use USR-based matching for accurate identification.
+
+### 4.14 get_call_path
+
+**REQ-4.14.1**: SHALL accept:
 - `from_function`: string (starting function name)
 - `to_function`: string (target function name)
 - `max_depth`: integer (default: 10)
 
-**REQ-4.13.2**: SHALL return list of call paths, where each path is a list of function names.
+**REQ-4.14.2**: SHALL return list of call paths, where each path is a list of function names.
 
-**REQ-4.13.3**: SHALL use breadth-first search to find paths.
+**REQ-4.14.3**: SHALL use breadth-first search to find paths.
 
-**REQ-4.13.4**: SHALL format method names as "ClassName::methodName".
+**REQ-4.14.4**: SHALL format method names as "ClassName::methodName".
 
-**REQ-4.13.5**: SHALL respect max_depth limit to prevent infinite searches.
+**REQ-4.14.5**: SHALL respect max_depth limit to prevent infinite searches.
 
 ---
 
@@ -723,7 +743,7 @@ These requirements imply the following testing needs:
 
 1. **Entity Extraction Tests**: Verify each C++ entity variant is correctly extracted
 2. **Relationship Tests**: Verify all relationships are correctly established
-3. **MCP Tool Tests**: Verify each of the 13 tools works correctly with various inputs
+3. **MCP Tool Tests**: Verify each of the 14 tools works correctly with various inputs
 4. **Compilation Tests**: Verify compile_commands.json parsing and fallback behavior
 5. **Cache Tests**: Verify cache creation, loading, and invalidation
 6. **Performance Tests**: Verify parallel processing and progress reporting
