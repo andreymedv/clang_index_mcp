@@ -92,10 +92,16 @@ class CppAnalyzer:
         self.last_index_time = 0
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
-        
+
+        # Initialize compile commands manager with config
+        compile_commands_config = self.config.get_compile_commands_config()
+        self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
+
         print(f"CppAnalyzer initialized for project: {self.project_root}", file=sys.stderr)
-        if self.config.config_path.exists():
-            print(f"Using project configuration from: {self.config.config_path}", file=sys.stderr)
+        if self.config.config_path and self.config.config_path.exists():
+            print(f"Using configuration from: {self.config.config_path}", file=sys.stderr)
+        if self.compile_commands_manager.enabled:
+            print("Compile commands support enabled", file=sys.stderr)
     
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
