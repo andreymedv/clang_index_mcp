@@ -15,6 +15,12 @@ import time
 import threading
 from collections import defaultdict
 
+# Handle both package and script imports
+try:
+    from . import diagnostics
+except ImportError:
+    import diagnostics
+
 
 class CompileCommandsManager:
     """Manages compilation commands from compile_commands.json files."""
@@ -90,49 +96,50 @@ class CompileCommandsManager:
 
         if not compile_commands_file.exists():
             if self.fallback_to_hardcoded:
-                print(f"compile_commands.json not found at: {compile_commands_file} - using fallback compilation arguments", file=sys.stderr)
+                diagnostics.info(f"compile_commands.json not found at: {compile_commands_file} - using fallback compilation arguments")
             else:
-                print(f"compile_commands.json not found at: {compile_commands_file} - fallback disabled", file=sys.stderr)
+                diagnostics.warning(f"compile_commands.json not found at: {compile_commands_file} - fallback disabled")
             return False
         
         try:
             with open(compile_commands_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
+
             if not isinstance(data, list):
-                print("Error: compile_commands.json must contain a list of commands", file=sys.stderr)
+                diagnostics.error("compile_commands.json must contain a list of commands")
                 return False
-            
+
             # Parse and cache the commands
             self._parse_compile_commands(data)
 
             # Update last modified time
             self.last_modified = compile_commands_file.stat().st_mtime
 
-            print(f"Successfully loaded {len(self.compile_commands)} compile commands from: {compile_commands_file}", file=sys.stderr)
-            print(f"Compile commands will be used for accurate C++ parsing", file=sys.stderr)
+            diagnostics.info(f"Successfully loaded {len(self.compile_commands)} compile commands from: {compile_commands_file}")
+            diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
             return True
-            
+
         except json.JSONDecodeError as e:
-            print(f"Error parsing compile_commands.json: {e}", file=sys.stderr)
+            diagnostics.error(f"Error parsing compile_commands.json: {e}")
             return False
         except Exception as e:
-            print(f"Error loading compile_commands.json: {e}", file=sys.stderr)
+            diagnostics.error(f"Error loading compile_commands.json: {e}")
             return False
     
     def _parse_compile_commands(self, commands: List[Dict[str, Any]]) -> None:
         """Parse compile commands and build file-to-command mapping."""
         self.compile_commands.clear()
         self.file_to_command_map.clear()
-        
+
+
         for i, cmd in enumerate(commands):
             if not isinstance(cmd, dict):
-                print(f"Warning: Skipping invalid command at index {i}", file=sys.stderr)
+                diagnostics.warning(f"Skipping invalid command at index {i}")
                 continue
-            
+
             # Extract required fields
             if 'file' not in cmd:
-                print(f"Warning: Skipping command without 'file' field at index {i}", file=sys.stderr)
+                diagnostics.warning(f"Skipping command without 'file' field at index {i}")
                 continue
             
             file_path = cmd['file']
@@ -181,11 +188,11 @@ class CompileCommandsManager:
         try:
             # Handle quoted arguments properly
             args = shlex.split(command)
-            
+
             # Filter out empty strings and ensure proper formatting
             return [arg for arg in args if arg.strip()]
         except Exception as e:
-            print(f"Warning: Failed to parse command string '{command}': {e}", file=sys.stderr)
+            diagnostics.warning(f"Failed to parse command string '{command}': {e}")
             return []
     
     def get_compile_args(self, file_path: Path) -> Optional[List[str]]:
@@ -253,8 +260,8 @@ class CompileCommandsManager:
         # Reload the commands
         success = self._load_compile_commands()
         if success:
-            print("Refreshed compile_commands.json cache", file=sys.stderr)
-        
+            diagnostics.info("Refreshed compile_commands.json cache")
+
         return success
     
     def get_stats(self) -> Dict[str, Any]:

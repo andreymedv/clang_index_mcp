@@ -12,10 +12,16 @@ import sys
 import os
 from typing import Any, Dict, List
 
+# Import diagnostics early
+try:
+    from mcp_server import diagnostics
+except ImportError:
+    from . import diagnostics
+
 try:
     from clang.cindex import Config
 except ImportError:
-    print("Error: clang package not found. Install with: pip install libclang", file=sys.stderr)
+    diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
 
 from mcp.server import Server
@@ -54,11 +60,11 @@ def find_and_configure_libclang():
     # Try bundled libraries first
     for path in bundled_paths:
         if os.path.exists(path):
-            print(f"Using bundled libclang at: {path}", file=sys.stderr)
+            diagnostics.info(f"Using bundled libclang at: {path}")
             Config.set_library_file(path)
             return True
-    
-    print("No bundled libclang found, searching system...", file=sys.stderr)
+
+    diagnostics.info("No bundled libclang found, searching system...")
     
     # Fallback to system-installed libraries
     if system == "Windows":
@@ -114,19 +120,19 @@ def find_and_configure_libclang():
             path = path_pattern
         
         if os.path.exists(path):
-            print(f"Found system libclang at: {path}", file=sys.stderr)
+            diagnostics.info(f"Found system libclang at: {path}")
             Config.set_library_file(path)
             return True
-    
+
     return False
 
 # Try to find and configure libclang
 if not find_and_configure_libclang():
-    print("Error: Could not find libclang library.", file=sys.stderr)
-    print("Please install LLVM/Clang:", file=sys.stderr)
-    print("  Windows: Download from https://releases.llvm.org/", file=sys.stderr)
-    print("  macOS: brew install llvm", file=sys.stderr)
-    print("  Linux: sudo apt install libclang-dev", file=sys.stderr)
+    diagnostics.fatal("Could not find libclang library.")
+    diagnostics.fatal("Please install LLVM/Clang:")
+    diagnostics.fatal("  Windows: Download from https://releases.llvm.org/")
+    diagnostics.fatal("  macOS: brew install llvm")
+    diagnostics.fatal("  Linux: sudo apt install libclang-dev")
     sys.exit(1)
 
 # Import the Python analyzer and compile commands manager
