@@ -1,0 +1,144 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clang-index-mcp"
+version = "0.1.0"
+description = "MCP server providing semantic analysis of C++ codebases using libclang"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Andrey Medvedev"}
+]
+keywords = ["mcp", "clang", "c++", "code-analysis", "libclang", "semantic-search"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Code Generators",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "libclang>=16.0.0",
+]
+
+[project.scripts]
+clang-index-mcp = "mcp_server.cpp_mcp_server:main"
+
+[tool.setuptools]
+packages = ["mcp_server"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+mcp_server = ["py.typed"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
+    "black>=24.0",
+    "flake8>=7.0",
+    "mypy>=1.8",
+    "pre-commit>=3.0",
+    "isort>=5.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/andreymedv/clang_index_mcp"
+Documentation = "https://github.com/andreymedv/clang_index_mcp/blob/main/README.md"
+Repository = "https://github.com/andreymedv/clang_index_mcp"
+Issues = "https://github.com/andreymedv/clang_index_mcp/issues"
+
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | mcp_env
+  | _build
+  | buck-out
+  | build
+  | dist
+  | lib
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+skip = ["mcp_env", "lib", ".mcp_cache"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = [
+    "mcp_env/",
+    "lib/",
+    "build/",
+    "dist/",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.coverage.run]
+source = ["mcp_server"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/mcp_env/*",
+    "*/venv/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+    "if TYPE_CHECKING:",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "mcp_env", "lib", ".mcp_cache"]
+skips = ["B101", "B601"]
+
+[tool.pydocstyle]
+convention = "google"
+add_ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+match_dir = "^(?!mcp_env|lib|tests|build|dist).*"

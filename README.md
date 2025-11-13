@@ -56,74 +56,40 @@ python scripts\test_installation.py
 
 This will verify that all components are properly installed and working. The test script lives at `scripts/test_installation.py`.
 
-## Configuring Claude Code
+## Client Configuration
 
-To use this MCP server with Claude Code, you need to add it to your Claude configuration file.
+This MCP server can be used with various AI coding assistants and IDEs. See **[CLIENT_SETUP.md](CLIENT_SETUP.md)** for detailed configuration instructions for:
 
-1. Find and open your Claude configuration file. Common locations include:
-   ```
-   C:\Users\<YourUsername>\.claude.json
-   C:\Users\<YourUsername>\AppData\Roaming\Claude\.claude.json
-   %APPDATA%\Claude\.claude.json
-   ```
-   
-   The exact location may vary depending on your Claude installation.
-   
-2. Add the C++ MCP server to the `mcpServers` section:
-   ```json
-   {
-     "mcpServers": {
-       "cpp-analyzer": {
-         "command": "python",
-         "args": [
-           "-m",
-           "mcp_server.cpp_mcp_server"
-         ],
-         "cwd": "YOUR_INSTALLATION_PATH_HERE",
-         "env": {
-           "PYTHONPATH": "YOUR_INSTALLATION_PATH_HERE"
-         }
-       }
-     }
-   }
-   ```
+- **Claude Desktop** - Anthropic's desktop application
+- **Claude Code** - VS Code extension by Anthropic
+- **Cursor** - AI-first IDE
+- **Cline** - VS Code extension (formerly Claude Dev)
+- **Windsurf** - AI-native IDE
+- **Continue** - Open-source VS Code extension
+- **Other MCP clients** - Generic configuration guide
 
-   **IMPORTANT:** Replace `YOUR_INSTALLATION_PATH_HERE` with the actual path where you cloned this repository.
+### Quick Start (Claude Desktop)
 
-3. Restart Claude Desktop for the changes to take effect.
+For Claude Desktop, add to your config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
-## Configuring Codex CLI
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "command": "python",
+      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "cwd": "/absolute/path/to/clang_index_mcp",
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/clang_index_mcp"
+      }
+    }
+  }
+}
+```
 
-To use this MCP server inside the OpenAI Codex CLI:
+Replace `/absolute/path/to/clang_index_mcp` with your actual installation path, then restart Claude Desktop.
 
-1. Make sure the virtual environment is created (see setup above).
-2. Create a `.mcp.json` file in the project you open with Codex. The CLI reads this file to discover MCP servers.
-3. Add an entry that points to the Python module inside the virtual environment. Replace `YOUR_REPO_PATH` with the absolute path to this repository.
-
-   ```json
-   {
-     "mcpServers": {
-       "cpp-analyzer": {
-         "type": "stdio",
-         "command": "YOUR_REPO_PATH/mcp_env/bin/python",
-         "args": [
-           "-m",
-           "mcp_server.cpp_mcp_server"
-         ],
-         "env": {
-           "PYTHONPATH": "YOUR_REPO_PATH"
-         }
-       }
-     }
-   }
-   ```
-
-   On Windows change `command` to `YOUR_REPO_PATH\\mcp_env\\Scripts\\python.exe`.
-
-4. Restart the Codex CLI (or run `codex reload`) so it picks up the new server definition.
-5. Inside Codex, use the MCP palette or prompt instructions (for example, "use the cpp-analyzer tool to set the project directory to ...") to start indexing your C++ project.
-
-If you keep the `.mcp.json` file inside this repository you can also add a `"cwd": "YOUR_REPO_PATH"` entry so Codex launches the server from the correct directory.
+**For complete setup instructions for your specific client, see [CLIENT_SETUP.md](CLIENT_SETUP.md)**
 
 ## Usage with Claude
 
@@ -166,15 +132,38 @@ The server behavior can be configured via `cpp-analyzer-config.json`:
   "exclude_patterns": ["*.generated.h", "*.generated.cpp", "*_test.cpp"],
   "dependency_directories": ["vcpkg_installed", "third_party", "external"],
   "include_dependencies": true,
-  "max_file_size_mb": 10
+  "max_file_size_mb": 10,
+  "compile_commands": {
+    "enabled": true,
+    "path": "compile_commands.json",
+    "cache_enabled": true,
+    "fallback_to_hardcoded": true,
+    "cache_expiry_seconds": 300
+  }
 }
 ```
+
+### General Options
 
 - **exclude_directories**: Directories to skip during project scanning
 - **exclude_patterns**: File patterns to exclude from analysis
 - **dependency_directories**: Directories containing third-party dependencies
 - **include_dependencies**: Whether to analyze files in dependency directories
 - **max_file_size_mb**: Maximum file size to analyze (larger files are skipped)
+
+### Compile Commands Integration
+
+The server supports using `compile_commands.json` to provide accurate compilation arguments:
+
+- **compile_commands.enabled**: Enable/disable compile commands support (default: `true`)
+- **compile_commands.path**: Path to compile_commands.json file (default: `"compile_commands.json"`)
+  - Can be relative to project root or absolute path
+  - Examples: `"build/compile_commands.json"`, `"../compile_commands.json"`
+- **compile_commands.cache_enabled**: Enable caching of compile commands (default: `true`)
+- **compile_commands.fallback_to_hardcoded**: Fall back to default args if compile_commands.json not found (default: `true`)
+- **compile_commands.cache_expiry_seconds**: Cache expiry time in seconds (default: `300`)
+
+**For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)**
 
 ## Troubleshooting
 

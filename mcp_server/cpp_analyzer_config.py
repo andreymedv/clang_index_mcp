@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 
 class CppAnalyzerConfig:
@@ -45,34 +45,34 @@ class CppAnalyzerConfig:
         self.config_path = None  # Will be set by _find_config_file
         self.config = self._load_config()
 
-    def _find_config_file(self) -> Optional[Path]:
+    def _find_config_file(self) -> Optional[Tuple[Path, str]]:
         """Find config file by checking multiple locations in priority order.
 
         Priority order:
         1. Environment variable CPP_ANALYZER_CONFIG
         2. Project root (.cpp-analyzer-config.json)
 
-        Returns the first config file found, or None if not found.
+        Returns tuple of (config_path, source_description) or (None, None) if not found.
         """
         # 1. Check environment variable
         env_config = os.environ.get('CPP_ANALYZER_CONFIG')
         if env_config:
             env_path = Path(env_config)
             if env_path.exists():
-                return env_path
+                return (env_path, "environment variable CPP_ANALYZER_CONFIG")
             else:
                 print(f"Warning: CPP_ANALYZER_CONFIG points to non-existent file: {env_path}", file=os.sys.stderr)
 
         # 2. Check project root
         project_config = self.project_root / self.CONFIG_FILENAME
         if project_config.exists():
-            return project_config
+            return (project_config, "project root directory")
 
-        return None
+        return (None, None)
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file or use defaults."""
-        config_file = self._find_config_file()
+        config_file, config_source = self._find_config_file()
 
         if config_file:
             self.config_path = config_file
@@ -82,7 +82,7 @@ class CppAnalyzerConfig:
                 # Merge with defaults (user config takes precedence)
                 config = self.DEFAULT_CONFIG.copy()
                 config.update(user_config)
-                print(f"Loaded config from: {config_file}", file=os.sys.stderr)
+                print(f"Configuration loaded from {config_source}: {config_file}", file=os.sys.stderr)
                 return config
             except Exception as e:
                 print(f"Error loading config from {config_file}: {e}", file=os.sys.stderr)
