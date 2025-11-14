@@ -28,12 +28,14 @@ class TestAtomicCacheWrites:
 
     def test_atomic_cache_writes(self, temp_project_dir):
         """Test that cache writes use temp file + rename pattern - Task 1.4.1"""
+        from pathlib import Path
+
         (temp_project_dir / "src" / "test.cpp").write_text("class Test {};")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        cache_file = temp_project_dir / ".cache" / "index_cache.json"
+        cache_file = Path(analyzer.cache_dir) / "cache_info.json"
         assert cache_file.exists(), "Cache file should exist"
 
         # Cache file should be complete (not partial)
@@ -43,6 +45,8 @@ class TestAtomicCacheWrites:
 
     def test_cache_consistency_after_interrupt(self, temp_project_dir):
         """Test cache remains consistent after indexing interruption - Task 1.4.2"""
+        from pathlib import Path
+
         for i in range(5):
             (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"class Class{i} {{}};")
 
@@ -50,7 +54,7 @@ class TestAtomicCacheWrites:
         analyzer.index_project()
 
         # Verify cache is consistent
-        cache_file = temp_project_dir / ".cache" / "index_cache.json"
+        cache_file = Path(analyzer.cache_dir) / "cache_info.json"
         assert cache_file.exists(), "Cache should exist"
 
         # Load cache again - should work

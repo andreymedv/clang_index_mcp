@@ -100,11 +100,12 @@ public:
         analyzer1 = CppAnalyzer(str(temp_project_dir))
         analyzer1.index_project()
 
-        # Verify cache was created
-        cache_dir = temp_project_dir / ".cache"
+        # Verify cache was created (use actual cache location)
+        from pathlib import Path
+        cache_dir = Path(analyzer1.cache_dir)
         assert cache_dir.exists(), "Cache directory should exist"
 
-        cache_file = cache_dir / "index_cache.json"
+        cache_file = cache_dir / "cache_info.json"
         assert cache_file.exists(), "Cache file should exist"
 
         # Test Case 1: Truncated cache JSON
