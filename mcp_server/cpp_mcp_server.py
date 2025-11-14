@@ -204,7 +204,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class: member variables with types, methods with signatures (all access levels), base classes, file location, access specifiers. **Use this when**: user wants to see class structure, members, methods, or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\nReturns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
+            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location. **Note**: Does NOT include member variables/fields (not currently indexed). **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line), is_project. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -327,7 +327,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_derived_classes",
-            description="⚠️ IMPORTANT: This returns ONLY DIRECT children (one level), NOT all descendants. If user asks for 'all classes that inherit from X' or 'all subclasses', use get_class_hierarchy instead for complete transitive closure.\n\nGet a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only). Returns classes where the specified class appears in their direct base_classes list. Example: if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. Returns list with class name, kind, file location, line number, and base_classes for each direct child. Supports filtering by project_only.",
+            description="⚠️ IMPORTANT: This returns ONLY DIRECT children (one level), NOT all descendants. If user asks for 'all classes that inherit from X' or 'all subclasses', use get_class_hierarchy instead for complete transitive closure.\n\nGet a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only). Returns classes where the specified class appears in their direct base_classes list. Example: if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. Returns list with: name, kind, file, line, column, is_project, base_classes. Supports filtering by project_only.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -346,7 +346,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callers",
-            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns a list of caller functions with their metadata including: name, kind, file, signature, parent_class, and is_project. \n\nIMPORTANT - Line Number Limitation: The 'line' field indicates where each CALLER FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: 1) Use this tool to get caller function names/files, 2) Then read those files or use text search to find the specific lines where the target function is invoked.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), or call graph visualization.",
+            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns list with: name, kind, file, line, column, signature, parent_class, is_project.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLER FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: 1) Use this tool to get caller function names/files, 2) Then read those files or use text search to find the specific lines where the target function is invoked.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), or call graph visualization.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -365,7 +365,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callees",
-            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns a list of called functions with their metadata including: name, kind, file, signature, parent_class, and is_project.\n\nIMPORTANT - Line Number Limitation: The 'line' field indicates where each CALLEE FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: read the source function's file to see where these callees are invoked.\n\nUse this for: understanding dependencies (what does this function depend on), analyzing code flow, or mapping execution paths.",
+            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns list with: name, kind, file, line, column, signature, parent_class, is_project.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLEE FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: read the source function's file to see where these callees are invoked.\n\nUse this for: understanding dependencies (what does this function depend on), analyzing code flow, or mapping execution paths.",
             inputSchema={
                 "type": "object",
                 "properties": {
