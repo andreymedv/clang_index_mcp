@@ -162,7 +162,7 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\nReturns a list of matching classes where each entry contains: name, kind (CLASS_DECL or STRUCT_DECL), file (path), line (number), is_project (boolean indicating if from project vs dependency), and base_classes (array of direct parent class names). Supports regex patterns for flexible matching. Use this when you need to find where a class is defined, locate classes matching a naming pattern, or quickly check inheritance relationships.",
+            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\nReturns list with: name, kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes. Supports regex patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -181,7 +181,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_functions",
-            description="Search for C++ functions and methods by name pattern. Returns a list of matching functions/methods where each entry contains: name, kind (e.g., FUNCTION_DECL, CXX_METHOD, CONSTRUCTOR, DESTRUCTOR), file (path), line (number), signature (parameter list with types), parent_class (class name for methods, null for standalone functions), and is_project (boolean). Searches both standalone functions and class methods. Supports regex patterns. Use this when you need to find function definitions, locate all implementations, or get detailed function metadata including precise locations and signatures.",
+            description="Search for C++ functions and methods by name pattern. Returns list with: name, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project. Searches both standalone functions and class methods. Supports regex patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -204,7 +204,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class including: all member variables (fields) with their types, all methods (public/private/protected) with signatures, base classes, file location, and access specifiers. **Use this when**: user wants to see class structure, members, methods, or API. **Requires exact class name** - if you don't know exact name, use search_classes first to find it.\n\nUse this when you need to understand the complete structure and API of a class. If the class is not found, returns a plain text error message 'Class <name> not found' instead of structured data. When multiple classes have the same name, returns information for the first match found.",
+            description="Get comprehensive information about a specific class: member variables with types, methods with signatures (all access levels), base classes, file location, access specifiers. **Use this when**: user wants to see class structure, members, methods, or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\nReturns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -263,7 +263,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_in_file",
-            description="Search for C++ symbols (classes, functions, methods) within a specific source file. Returns only symbols defined in the specified file, with their locations and basic information. Use this when you know which file you want to examine and need to find specific symbols within it. More efficient than searching the entire project when the file location is known.",
+            description="Search for C++ symbols (classes, functions, methods) within a specific source file. Returns only symbols defined in that file, with locations and basic information.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -281,7 +281,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="set_project_directory",
-            description="**REQUIRED FIRST STEP**: Initialize the analyzer with your C++ project directory. This must be called before any other analysis tools. It will index all C++ source and header files (common extensions: .cpp, .cc, .cxx, .c++, .C, .h, .hpp, .hxx, .h++, and others) in the project directory and its subdirectories. The indexing process parses files using libclang to build a searchable database of classes, functions, and their relationships. WARNING: Indexing large projects may take significant time. Can be called multiple times to switch between different projects - each call reinitializes the analyzer. Returns the count of indexed files upon completion.",
+            description="**REQUIRED FIRST STEP**: Initialize the analyzer with your C++ project directory. Must be called before any other tools. Indexes all C++ source/header files (.cpp, .h, .hpp, etc.) in the directory and subdirectories, parsing with libclang to build searchable database of classes, functions, and relationships.\n\nWARNING: Indexing large projects takes time. Can be called multiple times to switch projects (reinitializes each time). Returns count of indexed files.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -304,7 +304,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_server_status",
-            description="Get diagnostic information about the MCP server state and index statistics. Returns a JSON object with these exact fields: analyzer_type (string), call_graph_enabled (boolean), usr_tracking_enabled (boolean), compile_commands_enabled (boolean), compile_commands_path (string or null), compile_commands_cache_enabled (boolean), parsed_files (integer), indexed_classes (integer), indexed_functions (integer), project_files (integer). Use this to verify the server is working correctly, check if indexing is complete, inspect compile_commands.json integration status, or debug analyzer configuration issues.",
+            description="Get diagnostic information about the MCP server state and index statistics. Returns JSON with: analyzer type, enabled features (call_graph, usr_tracking, compile_commands), file counts (parsed, indexed classes/functions). Use to verify server is working, check if indexing is complete, or debug configuration issues.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -313,7 +313,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_hierarchy",
-            description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants to see both ancestors AND descendants. **Do NOT use** get_derived_classes which only returns immediate children.\n\nReturns a comprehensive structure showing: 1) base_hierarchy - all ancestor classes (what this class inherits FROM, recursively up to the root), 2) derived_hierarchy - all descendant classes (what inherits from this class, recursively down to leaves), 3) class_info - detailed information about the class itself, 4) direct base_classes and derived_classes lists. This provides a complete view of the class's position in the inheritance tree. If the class is not found, returns a dictionary with a single 'error' key containing the message (e.g., {'error': 'Class <name> not found'}), not an exception.",
+            description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants both ancestors AND descendants. **Do NOT use** get_derived_classes which only returns immediate children.\n\nReturns: base_hierarchy (all ancestors recursively to root), derived_hierarchy (all descendants recursively to leaves), class_info (detailed info), direct base_classes and derived_classes lists. If not found, returns {'error': 'Class <name> not found'}.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -384,7 +384,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_call_path",
-            description="Find execution paths through the call graph from a starting function to a target function using breadth-first search (BFS). A call path is a sequence of function calls that connects two functions (e.g., main -> init -> setup -> loadConfig). Returns ALL possible paths up to the specified depth limit, showing the chain of intermediate functions for each path. WARNING: In codebases with high connectivity/fan-out, this can return a very large number of paths (potentially hundreds or thousands). Use max_depth conservatively to limit search scope and result size. Use this for: understanding how execution flows between two points in code, debugging (how does execution reach a certain function), or analyzing coupling between components. Returns empty array if no path exists within max_depth.",
+            description="Find execution paths through the call graph from a starting function to a target function using BFS. A call path is a sequence of function calls connecting two functions (e.g., main -> init -> setup -> loadConfig). Returns ALL possible paths up to max_depth, showing intermediate function chains.\n\nWARNING: In highly connected codebases, can return hundreds/thousands of paths. Use max_depth conservatively. Returns empty array if no path exists within max_depth.",
             inputSchema={
                 "type": "object",
                 "properties": {
