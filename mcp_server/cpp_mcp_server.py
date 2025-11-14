@@ -162,7 +162,7 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\nReturns a list of matching classes where each entry contains: name, kind (CLASS_DECL or STRUCT_DECL), file (path), line (number), column, is_project (boolean indicating if from project vs dependency), and base_classes (array of direct parent class names). Supports regex patterns for flexible matching. Use this when you need to find where a class is defined, locate classes matching a naming pattern, or quickly check inheritance relationships.",
+            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\nReturns a list of matching classes where each entry contains: name, kind (CLASS_DECL or STRUCT_DECL), file (path), line (number), is_project (boolean indicating if from project vs dependency), and base_classes (array of direct parent class names). Supports regex patterns for flexible matching. Use this when you need to find where a class is defined, locate classes matching a naming pattern, or quickly check inheritance relationships.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -181,7 +181,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_functions",
-            description="Search for C++ functions and methods by name pattern. Returns a list of matching functions/methods where each entry contains: name, kind (e.g., FUNCTION_DECL, CXX_METHOD, CONSTRUCTOR, DESTRUCTOR), file (path), line (number), column, signature (parameter list with types), parent_class (class name for methods, null for standalone functions), and is_project (boolean). Searches both standalone functions and class methods. Supports regex patterns. Use this when you need to find function definitions, locate all implementations, or get detailed function metadata including precise locations and signatures.",
+            description="Search for C++ functions and methods by name pattern. Returns a list of matching functions/methods where each entry contains: name, kind (e.g., FUNCTION_DECL, CXX_METHOD, CONSTRUCTOR, DESTRUCTOR), file (path), line (number), signature (parameter list with types), parent_class (class name for methods, null for standalone functions), and is_project (boolean). Searches both standalone functions and class methods. Supports regex patterns. Use this when you need to find function definitions, locate all implementations, or get detailed function metadata including precise locations and signatures.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -295,7 +295,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="refresh_project",
-            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. Use this after external tools modify source files (e.g., git checkout, external editor changes, build system generated files) to ensure the index reflects the current state of the codebase. The analyzer automatically detects changes for files modified through this session, but external changes require manual refresh. Returns the count of files that were re-parsed.",
+            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. The analyzer does NOT automatically detect file changes - you must call this tool whenever source files are modified (whether by you, external editor, git checkout, build system, or any other means) to ensure the index reflects the current state of the codebase. Returns the count of files that were re-parsed.",
             inputSchema={
                 "type": "object",
                 "properties": {},
