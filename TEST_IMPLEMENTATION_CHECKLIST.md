@@ -283,33 +283,33 @@ git push
   - Status: ✅ Completed
   - Notes: Implemented in TestCallGraphAnalysis class. Tests finding callees of mainFunction().
 
-- [ ] **Task 1.1.9**: Write `test_cache_persistence_basic()`
+- [x] **Task 1.1.9**: Write `test_cache_persistence_basic()`
   - File: tests/base_functionality/test_cache.py
   - Test: Index project, verify cache created and loadable
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented TestCachePersistence class with 2 tests: cache persistence and invalidation on file change.
 
-- [ ] **Task 1.1.10**: Write `test_compile_commands_loading()`
+- [x] **Task 1.1.10**: Write `test_compile_commands_loading()`
   - File: tests/base_functionality/test_compile_commands.py
   - Test: Load valid compile_commands.json
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented TestCompileCommands class with 2 tests: loading compile_commands.json and fallback behavior.
 
-- [ ] **Task 1.1.11**: Write `test_vcpkg_detection_basic()`
+- [x] **Task 1.1.11**: Write `test_vcpkg_detection_basic()`
   - File: tests/base_functionality/test_vcpkg.py
   - Test: Detect vcpkg installation and configuration
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented TestVcpkgSupport class with 2 tests: vcpkg detection and operation without vcpkg.
 
-- [ ] **Task 1.1.12**: Write `test_progress_tracking_basic()`
+- [x] **Task 1.1.12**: Write `test_progress_tracking_basic()`
   - File: tests/base_functionality/test_progress.py
   - Test: Track indexing progress through completion
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented TestProgressTracking class with 2 tests: basic progress tracking and progress with cache hits.
 
 ### 1.2 Error Handling Tests
 
