@@ -364,13 +364,32 @@ def test_large_project():
 
 ### Common Issues
 
-#### libclang not found
+#### libclang Issues ⚠️ IMPORTANT
 
-**Error**: `[FATAL] clang package not found`
+**Error**: `[FATAL] clang package not found` or `ImportError: No module named 'clang.cindex'`
 
-**Solution**:
+**🔧 Comprehensive Solution**: See **[CLANG_TROUBLESHOOTING.md](docs/CLANG_TROUBLESHOOTING.md)** for detailed diagnosis and fixes.
+
+**Quick Diagnosis**:
 ```bash
-pip install libclang
+# Run automated diagnostic
+python3 scripts/diagnose_clang.py
+
+# Attempt automatic fix
+python3 scripts/diagnose_clang.py --fix
+```
+
+**Quick Fixes**:
+```bash
+# Try 1: Reinstall
+pip install --force-reinstall libclang
+
+# Try 2: Specific version
+pip install libclang==18.1.1
+
+# Try 3: Use virtual environment (recommended)
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements-test.txt
 ```
 
 #### Tests fail with import errors
