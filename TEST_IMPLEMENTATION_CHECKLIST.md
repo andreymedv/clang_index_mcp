@@ -315,77 +315,77 @@ git push
 
 **Focus**: Graceful handling of invalid inputs, missing files, corrupted data
 
-- [ ] **Task 1.2.1**: Write `test_file_permission_errors()`
+- [x] **Task 1.2.1**: Write `test_file_permission_errors()`
   - File: tests/error_handling/test_file_errors.py
   - Test: chmod 0o000 on source files, verify graceful skip
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestFilePermissionErrors class. Tests file with 0o000 permissions, skipped on Windows.
 
-- [ ] **Task 1.2.2**: Write `test_missing_file_handling()`
+- [x] **Task 1.2.2**: Write `test_missing_file_handling()`
   - File: tests/error_handling/test_file_errors.py
   - Test: File in compile_commands doesn't exist
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestMissingFileHandling class. Tests compile_commands with non-existent file.
 
-- [ ] **Task 1.2.3**: Write `test_disk_full_during_cache_write()`
+- [x] **Task 1.2.3**: Write `test_disk_full_during_cache_write()`
   - File: tests/error_handling/test_resource_errors.py
   - Test: Mock OSError ENOSPC during cache write
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestDiskErrors class. Mocks disk full error during cache save.
 
-- [ ] **Task 1.2.4**: Write `test_corrupt_compile_commands_handling()`
+- [x] **Task 1.2.4**: Write `test_corrupt_compile_commands_handling()`
   - File: tests/error_handling/test_data_errors.py
   - Test Cases: Truncated JSON, invalid JSON, missing fields, wrong types
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestCorruptCompileCommands class. Tests 4 corruption scenarios.
 
-- [ ] **Task 1.2.5**: Write `test_malformed_json_cache_recovery()`
+- [x] **Task 1.2.5**: Write `test_malformed_json_cache_recovery()`
   - File: tests/error_handling/test_data_errors.py
   - Test Cases: Truncated, null bytes, invalid UTF-8, wrong format
   - Priority: P0
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestMalformedCacheRecovery class. Tests 4 cache corruption scenarios, marked critical.
 
-- [ ] **Task 1.2.6**: Write `test_empty_and_whitespace_files()`
+- [x] **Task 1.2.6**: Write `test_empty_and_whitespace_files()`
   - File: tests/error_handling/test_file_errors.py
   - Test: 0-byte and whitespace-only source files
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestMalformedFiles class. Tests empty and whitespace-only files.
 
-- [ ] **Task 1.2.7**: Write `test_null_bytes_in_source()`
+- [x] **Task 1.2.7**: Write `test_null_bytes_in_source()`
   - File: tests/error_handling/test_file_errors.py
   - Test: Embedded \x00 characters in source
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestMalformedFiles class. Tests files with embedded null bytes.
 
-- [ ] **Task 1.2.8**: Write `test_syntax_errors_in_source()`
+- [x] **Task 1.2.8**: Write `test_syntax_errors_in_source()`
   - File: tests/error_handling/test_file_errors.py
   - Test: C++ files with syntax errors
   - Priority: P1
   - Marker: @pytest.mark.error_handling
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestMalformedFiles class. Tests files with invalid C++ syntax.
 
-- [ ] **Task 1.2.9**: Write `test_out_of_memory_graceful_degradation()`
+- [x] **Task 1.2.9**: Write `test_out_of_memory_graceful_degradation()`
   - File: tests/error_handling/test_resource_errors.py
   - Test: Simulate memory pressure during indexing
   - Priority: P2
   - Marker: @pytest.mark.error_handling @pytest.mark.slow
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestMemoryErrors class. Tests memory pressure with 100 large files, marked slow and skipped.
 
 ### 1.3 Security Tests
 
