@@ -162,7 +162,7 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. Returns a list of matching classes where each entry contains: name, kind (CLASS_DECL or STRUCT_DECL), file (path), line (number), column, is_project (boolean indicating if from project vs dependency), and base_classes (array of direct parent class names). Supports regex patterns for flexible matching. Use this when you need to find where a class is defined, locate classes matching a naming pattern, or quickly check inheritance relationships.",
+            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\nReturns a list of matching classes where each entry contains: name, kind (CLASS_DECL or STRUCT_DECL), file (path), line (number), column, is_project (boolean indicating if from project vs dependency), and base_classes (array of direct parent class names). Supports regex patterns for flexible matching. Use this when you need to find where a class is defined, locate classes matching a naming pattern, or quickly check inheritance relationships.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -172,7 +172,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "project_only": {
                         "type": "boolean",
-                        "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). Set to false to search all indexed files including dependencies.",
+                        "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
                         "default": True
                     }
                 },
@@ -191,12 +191,12 @@ async def list_tools() -> List[Tool]:
                     },
                     "project_only": {
                         "type": "boolean",
-                        "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). Set to false to search all indexed files including dependencies.",
+                        "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
                         "default": True
                     },
                     "class_name": {
                         "type": "string",
-                        "description": "If specified, limits the search to only methods belonging to this specific class. Leave empty to search all functions and methods across the codebase."
+                        "description": "Optional: Only populate if user specifically mentions a class (e.g., 'find save method in Database class'). Limits search to only methods belonging to this specific class. **Leave empty** (which is typical) to search all functions and methods across the codebase."
                     }
                 },
                 "required": ["pattern"]
@@ -204,7 +204,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class including: all member variables (fields) with their types, all methods (public/private/protected) with signatures, base classes, file location, and access specifiers. Use this when you need to understand the complete structure and API of a class. If the class is not found, returns a plain text error message 'Class <name> not found' instead of structured data. When multiple classes have the same name, returns information for the first match found.",
+            description="Get comprehensive information about a specific class including: all member variables (fields) with their types, all methods (public/private/protected) with signatures, base classes, file location, and access specifiers. **Use this when**: user wants to see class structure, members, methods, or API. **Requires exact class name** - if you don't know exact name, use search_classes first to find it.\n\nUse this when you need to understand the complete structure and API of a class. If the class is not found, returns a plain text error message 'Class <name> not found' instead of structured data. When multiple classes have the same name, returns information for the first match found.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -313,7 +313,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_hierarchy",
-            description="Get the complete bidirectional inheritance hierarchy for a C++ class. Returns a comprehensive structure showing: 1) base_hierarchy - all ancestor classes (what this class inherits FROM, recursively up to the root), 2) derived_hierarchy - all descendant classes (what inherits from this class, recursively down to leaves), 3) class_info - detailed information about the class itself, 4) direct base_classes and derived_classes lists. This provides a complete view of the class's position in the inheritance tree. Use this to understand both what a class inherits from and what inherits from it. If the class is not found, returns a dictionary with a single 'error' key containing the message (e.g., {'error': 'Class <name> not found'}), not an exception.",
+            description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants to see both ancestors AND descendants. **Do NOT use** get_derived_classes which only returns immediate children.\n\nReturns a comprehensive structure showing: 1) base_hierarchy - all ancestor classes (what this class inherits FROM, recursively up to the root), 2) derived_hierarchy - all descendant classes (what inherits from this class, recursively down to leaves), 3) class_info - detailed information about the class itself, 4) direct base_classes and derived_classes lists. This provides a complete view of the class's position in the inheritance tree. If the class is not found, returns a dictionary with a single 'error' key containing the message (e.g., {'error': 'Class <name> not found'}), not an exception.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -327,7 +327,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_derived_classes",
-            description="Get a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only, not transitive descendants). Returns classes where the specified class appears in their direct base_classes list. For example, if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. For the complete inheritance tree including indirect descendants, use get_class_hierarchy instead which provides recursive derived_hierarchy. Returns list with class name, kind, file location, line number, and base_classes for each direct child. Supports filtering by project_only.",
+            description="⚠️ IMPORTANT: This returns ONLY DIRECT children (one level), NOT all descendants. If user asks for 'all classes that inherit from X' or 'all subclasses', use get_class_hierarchy instead for complete transitive closure.\n\nGet a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only). Returns classes where the specified class appears in their direct base_classes list. Example: if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. Returns list with class name, kind, file location, line number, and base_classes for each direct child. Supports filtering by project_only.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -346,7 +346,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callers",
-            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns a list of caller functions with their metadata including: name, kind, file, signature, parent_class, and is_project. IMPORTANT: The 'line' field indicates where each CALLER FUNCTION IS DEFINED, not where the actual call site occurs within that function's body. Use this for impact analysis (identifying which functions depend on the target) or understanding call relationships. For precise call site locations, you may need to search within the returned caller functions.",
+            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns a list of caller functions with their metadata including: name, kind, file, signature, parent_class, and is_project. \n\nIMPORTANT - Line Number Limitation: The 'line' field indicates where each CALLER FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: 1) Use this tool to get caller function names/files, 2) Then read those files or use text search to find the specific lines where the target function is invoked.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), or call graph visualization.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -365,7 +365,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callees",
-            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns a list of called functions with their metadata including: name, kind, file, signature, parent_class, and is_project. IMPORTANT: The 'line' field indicates where each CALLEE FUNCTION IS DEFINED, not the call site location within the source function. Use this for understanding function dependencies, analyzing code flow, or mapping execution paths.",
+            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns a list of called functions with their metadata including: name, kind, file, signature, parent_class, and is_project.\n\nIMPORTANT - Line Number Limitation: The 'line' field indicates where each CALLEE FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: read the source function's file to see where these callees are invoked.\n\nUse this for: understanding dependencies (what does this function depend on), analyzing code flow, or mapping execution paths.",
             inputSchema={
                 "type": "object",
                 "properties": {
