@@ -3,7 +3,7 @@
 ## Document Overview
 
 **Purpose**: Systematic implementation and execution of the comprehensive test plan
-**Status**: Draft - Awaiting Approval
+**Strategy**: Write all tests → Run all tests → Collect issues → Fix issues iteratively
 **Created**: 2025-11-14
 **Last Updated**: 2025-11-14
 
@@ -13,16 +13,12 @@
 
 | Phase | Total Tasks | Completed | In Progress | Blocked | Not Started |
 |-------|-------------|-----------|-------------|---------|-------------|
-| Phase 0: Setup | 8 | 0 | 0 | 0 | 8 |
-| Phase 1: P0 Critical Security Tests | 9 | 0 | 0 | 0 | 9 |
-| Phase 2: P0 Critical Data Integrity Tests | 4 | 0 | 0 | 0 | 4 |
-| Phase 3: P1 High Priority Error Handling | 6 | 0 | 0 | 0 | 6 |
-| Phase 4: P1 High Priority Edge Cases | 4 | 0 | 0 | 0 | 4 |
-| Phase 5: P1 High Priority Platform Tests | 3 | 0 | 0 | 0 | 3 |
-| Phase 6: Existing Test Validation | 5 | 0 | 0 | 0 | 5 |
-| Phase 7: Integration and Regression | 6 | 0 | 0 | 0 | 6 |
-| Phase 8: Documentation and Reporting | 5 | 0 | 0 | 0 | 5 |
-| **TOTAL** | **50** | **0** | **0** | **0** | **50** |
+| Phase 0: Test Infrastructure Setup | 8 | 0 | 0 | 0 | 8 |
+| Phase 1: Write All Tests | 28 | 0 | 0 | 0 | 28 |
+| Phase 2: Execute Tests & Collect Issues | 6 | 0 | 0 | 0 | 6 |
+| Phase 3: Fix Issues Iteratively | 3 | 0 | 0 | 0 | 3 |
+| Phase 4: Final Validation & Documentation | 7 | 0 | 0 | 0 | 7 |
+| **TOTAL** | **52** | **0** | **0** | **0** | **52** |
 
 ---
 
@@ -39,15 +35,16 @@
 - **P0**: Critical - Must pass before production
 - **P1**: High - Should pass before release
 - **P2**: Medium - Can be addressed post-release
-- **P3**: Low - Nice to have
 
 ### Instructions
-1. Work through phases sequentially (Phase 0 → Phase 8)
-2. Within each phase, complete tasks in order
-3. Mark status with appropriate indicator
-4. Document blockers and issues in the "Issues Log" section
-5. Update "Last Updated" timestamp when making changes
-6. Commit this file after each work session for resumability
+1. Work through phases sequentially (Phase 0 → Phase 4)
+2. Within Phase 1, write ALL tests before moving to Phase 2
+3. In Phase 2, run ALL tests and collect ALL issues before moving to Phase 3
+4. In Phase 3, fix issues one by one, re-running tests after each fix
+5. Mark status with appropriate indicator
+6. Document all issues in the "Issues Log" section
+7. Update "Last Updated" timestamp when making changes
+8. Commit this file after each work session for resumability
 
 ---
 
@@ -73,9 +70,10 @@
   - Notes:
 
 - [ ] **Task 0.1.3**: Create test directory structure
+  - Create: `tests/base_functionality/`, `tests/error_handling/`
   - Create: `tests/security/`, `tests/robustness/`, `tests/edge_cases/`, `tests/platform/`
   - Create: `tests/fixtures/`, `tests/utils/`
-  - Command: `mkdir -p tests/{security,robustness,edge_cases,platform,fixtures,utils}`
+  - Command: `mkdir -p tests/{base_functionality,error_handling,security,robustness,edge_cases,platform,fixtures,utils}`
   - Acceptance: All directories created
   - Status: Not Started
   - Notes:
@@ -116,7 +114,7 @@
 
 - [ ] **Task 0.3.2**: Configure pytest.ini
   - Settings: test paths, markers, coverage options, timeout defaults
-  - Markers: security, robustness, edge_case, platform, slow
+  - Markers: base_functionality, error_handling, security, robustness, edge_case, platform, slow
   - Acceptance: `pytest --markers` shows all custom markers
   - Status: Not Started
   - File: pytest.ini
@@ -124,722 +122,567 @@
 
 ---
 
-## Phase 1: P0 Critical Security Tests
+## Phase 1: Write All Tests
 
-**Goal**: Implement and pass all critical security tests
-**Priority**: P0 - Must Pass
-**Estimated Time**: 8-12 hours
+**Goal**: Implement ALL test functions before running any
+**Strategy**: Base Functionality → Error Handling → Security → Robustness → Edge Cases → Platform
+**Priority**: P0/P1 - Complete Implementation
+**Estimated Time**: 20-28 hours
 **Dependencies**: Phase 0 complete
 
-### 1.1 Path Traversal Prevention (REQ-SEC-1)
-- [ ] **Task 1.1.1**: Implement `test_comprehensive_path_traversal_attacks()`
+### 1.1 Base Functionality Tests
+
+**Focus**: Core MCP server features working correctly in normal conditions
+
+- [ ] **Task 1.1.1**: Write `test_basic_class_indexing()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Index simple class, verify it's found
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.2**: Write `test_basic_function_indexing()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Index simple function, verify it's found
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.3**: Write `test_search_classes_basic()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Search for classes by pattern
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.4**: Write `test_search_functions_basic()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Search for functions by pattern
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.5**: Write `test_find_in_file_basic()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Find symbols in specific file
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.6**: Write `test_get_class_hierarchy_basic()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Get inheritance hierarchy for a class
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.7**: Write `test_find_callers_basic()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Find callers of a function
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.8**: Write `test_find_callees_basic()`
+  - File: tests/base_functionality/test_core_features.py
+  - Test: Find callees of a function
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.9**: Write `test_cache_persistence_basic()`
+  - File: tests/base_functionality/test_cache.py
+  - Test: Index project, verify cache created and loadable
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.10**: Write `test_compile_commands_loading()`
+  - File: tests/base_functionality/test_compile_commands.py
+  - Test: Load valid compile_commands.json
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.11**: Write `test_vcpkg_detection_basic()`
+  - File: tests/base_functionality/test_vcpkg.py
+  - Test: Detect vcpkg installation and configuration
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.1.12**: Write `test_progress_tracking_basic()`
+  - File: tests/base_functionality/test_progress.py
+  - Test: Track indexing progress through completion
+  - Marker: @pytest.mark.base_functionality
+  - Status: Not Started
+  - Notes:
+
+### 1.2 Error Handling Tests
+
+**Focus**: Graceful handling of invalid inputs, missing files, corrupted data
+
+- [ ] **Task 1.2.1**: Write `test_file_permission_errors()`
+  - File: tests/error_handling/test_file_errors.py
+  - Test: chmod 0o000 on source files, verify graceful skip
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.2**: Write `test_missing_file_handling()`
+  - File: tests/error_handling/test_file_errors.py
+  - Test: File in compile_commands doesn't exist
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.3**: Write `test_disk_full_during_cache_write()`
+  - File: tests/error_handling/test_resource_errors.py
+  - Test: Mock OSError ENOSPC during cache write
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.4**: Write `test_corrupt_compile_commands_handling()`
+  - File: tests/error_handling/test_data_errors.py
+  - Test Cases: Truncated JSON, invalid JSON, missing fields, wrong types
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.5**: Write `test_malformed_json_cache_recovery()`
+  - File: tests/error_handling/test_data_errors.py
+  - Test Cases: Truncated, null bytes, invalid UTF-8, wrong format
+  - Priority: P0
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.6**: Write `test_empty_and_whitespace_files()`
+  - File: tests/error_handling/test_file_errors.py
+  - Test: 0-byte and whitespace-only source files
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.7**: Write `test_null_bytes_in_source()`
+  - File: tests/error_handling/test_file_errors.py
+  - Test: Embedded \x00 characters in source
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.8**: Write `test_syntax_errors_in_source()`
+  - File: tests/error_handling/test_file_errors.py
+  - Test: C++ files with syntax errors
+  - Priority: P1
+  - Marker: @pytest.mark.error_handling
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 1.2.9**: Write `test_out_of_memory_graceful_degradation()`
+  - File: tests/error_handling/test_resource_errors.py
+  - Test: Simulate memory pressure during indexing
+  - Priority: P2
+  - Marker: @pytest.mark.error_handling @pytest.mark.slow
+  - Status: Not Started
+  - Notes:
+
+### 1.3 Security Tests
+
+**Focus**: Protection against malicious inputs and attacks
+
+- [ ] **Task 1.3.1**: Write `test_comprehensive_path_traversal_attacks()`
   - File: tests/security/test_path_security.py
   - Test Cases: 9 attack vectors (../, absolute paths, URL-encoded, UNC, file://)
-  - Acceptance Criteria:
-    - [ ] All 9 attack vectors tested
-    - [ ] No access to /etc/, C:\Windows\System32\
-    - [ ] Returns empty or raises appropriate exception
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.security @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 1.1.2**: Run path traversal tests
-  - Command: `pytest tests/security/test_path_security.py::test_comprehensive_path_traversal_attacks -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 1.1.3**: Analyze failures (if any)
-  - Document which attack vectors succeeded
-  - Identify code locations needing fixes
-  - Create fix plan with estimated effort
-  - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
-
-- [ ] **Task 1.1.4**: Implement fixes for path traversal vulnerabilities
-  - Apply path normalization and validation
-  - Add boundary checks
-  - Re-run tests to verify
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 1.2 Regex DoS Prevention (REQ-SEC-1)
-- [ ] **Task 1.2.1**: Implement `test_regex_dos_prevention()`
-  - File: tests/security/test_path_security.py
+- [ ] **Task 1.3.2**: Write `test_regex_dos_prevention()`
+  - File: tests/security/test_regex_security.py
   - Test Cases: 5 catastrophic backtracking patterns
-  - Acceptance Criteria:
-    - [ ] All patterns complete within 2 seconds
-    - [ ] No hanging or excessive CPU usage
-    - [ ] Either completes or times out gracefully
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.security @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 1.2.2**: Run ReDoS tests
-  - Command: `pytest tests/security/test_path_security.py::test_regex_dos_prevention -v --timeout=5`
-  - Expected: PASSED (all patterns handled safely)
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 1.2.3**: Analyze failures (if any)
-  - Document which patterns caused timeouts
-  - Measure execution times for each pattern
-  - Identify need for regex validation or timeouts
-  - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
-
-- [ ] **Task 1.2.4**: Implement ReDoS protection
-  - Add regex timeout mechanism
-  - Implement pattern complexity validation
-  - Add early exit for expensive patterns
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 1.3 Command Injection Prevention (REQ-SEC-1)
-- [ ] **Task 1.3.1**: Implement `test_command_injection_prevention()`
-  - File: tests/security/test_path_security.py
+- [ ] **Task 1.3.3**: Write `test_command_injection_prevention()`
+  - File: tests/security/test_command_security.py
   - Test Cases: 5 shell injection attempts in compile_commands.json
-  - Acceptance Criteria:
-    - [ ] No shell metacharacters in parsed arguments
-    - [ ] Commands never executed
-    - [ ] Safe parsing of all malicious inputs
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.security @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 1.3.2**: Run command injection tests
-  - Command: `pytest tests/security/test_path_security.py::test_command_injection_prevention -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 1.3.3**: Analyze failures (if any)
-  - Document which injection attempts succeeded
-  - Check if any commands were executed
-  - Verify argument parsing sanitization
-  - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
-
-- [ ] **Task 1.3.4**: Implement command injection protection
-  - Use shlex.split() safely
-  - Remove shell metacharacters
-  - Validate parsed arguments
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 1.4 Symlink Attack Prevention (REQ-SEC-1)
-- [ ] **Task 1.4.1**: Implement `test_symlink_attack_prevention()`
+- [ ] **Task 1.3.4**: Write `test_symlink_attack_prevention()`
   - File: tests/security/test_path_security.py
-  - Test Cases: Symlinks to /etc/passwd and sensitive files
-  - Acceptance Criteria:
-    - [ ] Symlinks detected
-    - [ ] No content from outside project indexed
-    - [ ] Project boundaries enforced
+  - Test: Symlinks to /etc/passwd and sensitive files
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.security @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 1.4.2**: Run symlink attack tests
-  - Command: `pytest tests/security/test_path_security.py::test_symlink_attack_prevention -v`
-  - Expected: PASSED or SKIPPED (if symlinks not supported)
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 1.4.3**: Analyze failures (if any)
-  - Check if symlinks were followed
-  - Verify no external content indexed
-  - Document symlink handling approach
-  - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
-
-- [ ] **Task 1.4.4**: Implement symlink protection
-  - Add symlink detection (os.path.islink)
-  - Verify target within project boundary
-  - Skip or handle symlinks safely
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 1.5 Malicious Config Validation (REQ-SEC-1)
-- [ ] **Task 1.5.1**: Implement `test_malicious_config_values()`
-  - File: tests/security/test_path_security.py
+- [ ] **Task 1.3.5**: Write `test_malicious_config_values()`
+  - File: tests/security/test_config_security.py
   - Test Cases: Integer overflow, negative values, path traversal, injection
-  - Acceptance Criteria:
-    - [ ] All malicious values rejected or sanitized
-    - [ ] Safe defaults applied
-    - [ ] No crashes or exceptions
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.security @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 1.5.2**: Run config validation tests
-  - Command: `pytest tests/security/test_path_security.py::test_malicious_config_values -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
+### 1.4 Robustness & Data Integrity Tests
 
-- [ ] **Task 1.5.3**: Analyze failures (if any)
-  - Document which values were accepted
-  - Identify missing validation
-  - Check for reasonable bounds
-  - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
+**Focus**: Data consistency, atomic operations, concurrent access
 
-- [ ] **Task 1.5.4**: Implement config value validation
-  - Add bounds checking (0-1000 for file size)
-  - Reject negative values
-  - Validate path values
-  - Sanitize strings
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
----
-
-## Phase 2: P0 Critical Data Integrity Tests
-
-**Goal**: Ensure data integrity and atomic operations
-**Priority**: P0 - Must Pass
-**Estimated Time**: 6-8 hours
-**Dependencies**: Phase 0 complete
-
-### 2.1 Atomic Cache Writes (REQ-ROB-1)
-- [ ] **Task 2.1.1**: Implement `test_atomic_cache_writes()`
+- [ ] **Task 1.4.1**: Write `test_atomic_cache_writes()`
   - File: tests/robustness/test_data_integrity.py
-  - Test: Verify temp file + rename pattern
-  - Acceptance Criteria:
-    - [ ] No .tmp files after successful write
-    - [ ] Cache files appear atomically
-    - [ ] No partial writes on crash simulation
+  - Test: Verify temp file + rename pattern (no partial writes)
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.robustness @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 2.1.2**: Run atomic write tests
-  - Command: `pytest tests/robustness/test_data_integrity.py::test_atomic_cache_writes -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 2.1.3**: Implement atomic write mechanism (if needed)
-  - Write to temporary file
-  - Use os.rename() for atomic move
-  - Clean up temp files on error
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 2.2 Malformed JSON Recovery (REQ-ROB-1)
-- [ ] **Task 2.2.1**: Implement `test_malformed_json_cache_recovery()`
-  - File: tests/robustness/test_data_integrity.py
-  - Test Cases: 4 corruption types (truncated, null bytes, invalid UTF-8, wrong format)
-  - Acceptance Criteria:
-    - [ ] All corruption types handled gracefully
-    - [ ] Cache rebuilt on corruption detection
-    - [ ] No crashes or data loss
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 2.2.2**: Run JSON recovery tests
-  - Command: `pytest tests/robustness/test_data_integrity.py::test_malformed_json_cache_recovery -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 2.2.3**: Implement robust JSON parsing (if needed)
-  - Try-except around JSON loads
-  - Validate structure after loading
-  - Fall back to cache rebuild on error
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 2.3 Cache Consistency After Interruption (REQ-ROB-1)
-- [ ] **Task 2.3.1**: Implement `test_cache_consistency_after_interrupt()`
+- [ ] **Task 1.4.2**: Write `test_cache_consistency_after_interrupt()`
   - File: tests/robustness/test_data_integrity.py
   - Test: Interrupted indexing detection and recovery
-  - Acceptance Criteria:
-    - [ ] Interrupted status detected
-    - [ ] Clean restart possible
-    - [ ] No corrupted state
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.robustness @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 2.3.2**: Run interruption tests
-  - Command: `pytest tests/robustness/test_data_integrity.py::test_cache_consistency_after_interrupt -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 2.3.3**: Implement interruption handling (if needed)
-  - Save progress with "interrupted" status
-  - Detect interrupted state on startup
-  - Allow clean restart
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
-### 2.4 Concurrent Cache Write Protection (REQ-ROB-1)
-- [ ] **Task 2.4.1**: Implement `test_concurrent_cache_write_protection()`
+- [ ] **Task 1.4.3**: Write `test_concurrent_cache_write_protection()`
   - File: tests/robustness/test_data_integrity.py
   - Test: Two processes writing cache simultaneously
-  - Acceptance Criteria:
-    - [ ] No cache corruption
-    - [ ] File locking prevents conflicts
-    - [ ] At most one process fails gracefully
+  - Priority: P0 - CRITICAL
+  - Marker: @pytest.mark.robustness @pytest.mark.critical
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 2.4.2**: Run concurrent write tests
-  - Command: `pytest tests/robustness/test_data_integrity.py::test_concurrent_cache_write_protection -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-  - Notes:
-
-- [ ] **Task 2.4.3**: Implement file locking (if needed)
-  - Use fcntl (Unix) or msvcrt (Windows) for locking
-  - Acquire exclusive lock before cache write
-  - Handle lock acquisition failure gracefully
-  - Status: Not Started
-  - Changes Made:
-  - Files Modified:
-
----
-
-## Phase 3: P1 High Priority Error Handling Tests
-
-**Goal**: Comprehensive error handling and resilience
-**Priority**: P1 - Should Pass
-**Estimated Time**: 6-8 hours
-**Dependencies**: Phase 0 complete, Phase 1 & 2 recommended
-
-### 3.1 File Permission Errors (REQ-ERR-1)
-- [ ] **Task 3.1.1**: Implement `test_file_permission_errors()`
-  - File: tests/robustness/test_error_handling.py
-  - Test: chmod 0o000 on source files
-  - Acceptance: Continue with other files, log warning
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 3.1.2**: Run permission error tests
-  - Command: `pytest tests/robustness/test_error_handling.py::test_file_permission_errors -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 3.2 Disk Full Scenarios (REQ-ERR-1)
-- [ ] **Task 3.2.1**: Implement `test_disk_full_during_cache_write()`
-  - File: tests/robustness/test_error_handling.py
-  - Test: Mock OSError ENOSPC during cache write
-  - Acceptance: Graceful failure, continue in-memory
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 3.2.2**: Run disk full tests
-  - Command: `pytest tests/robustness/test_error_handling.py::test_disk_full_during_cache_write -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 3.3 Corrupt Compile Commands (REQ-ERR-1)
-- [ ] **Task 3.3.1**: Implement `test_corrupt_compile_commands_handling()`
-  - File: tests/robustness/test_error_handling.py
-  - Test: 5 JSON corruption types
-  - Acceptance: Fall back to hardcoded args, continue indexing
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 3.3.2**: Run corrupt compile_commands tests
-  - Command: `pytest tests/robustness/test_error_handling.py::test_corrupt_compile_commands_handling -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 3.4 Empty and Whitespace Files (REQ-ERR-1)
-- [ ] **Task 3.4.1**: Implement `test_empty_and_whitespace_files()`
-  - File: tests/robustness/test_error_handling.py
-  - Test: 0-byte and whitespace-only files
-  - Acceptance: No errors, no symbols extracted
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 3.4.2**: Run empty file tests
-  - Command: `pytest tests/robustness/test_error_handling.py::test_empty_and_whitespace_files -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 3.5 Null Bytes in Source (REQ-ERR-1)
-- [ ] **Task 3.5.1**: Implement `test_null_bytes_in_source()`
-  - File: tests/robustness/test_error_handling.py
-  - Test: Embedded \x00 characters
-  - Acceptance: Graceful handling or skip
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 3.5.2**: Run null byte tests
-  - Command: `pytest tests/robustness/test_error_handling.py::test_null_bytes_in_source -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 3.6 Extremely Long Symbols (REQ-ERR-1)
-- [ ] **Task 3.6.1**: Implement `test_extremely_long_symbol_names()`
-  - File: tests/robustness/test_error_handling.py
+- [ ] **Task 1.4.4**: Write `test_extremely_long_symbol_names()`
+  - File: tests/robustness/test_symbol_handling.py
   - Test: 5000+ character identifiers
-  - Acceptance: No truncation, no error
+  - Priority: P1
+  - Marker: @pytest.mark.robustness
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 3.6.2**: Run long symbol tests
-  - Command: `pytest tests/robustness/test_error_handling.py::test_extremely_long_symbol_names -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
+### 1.5 Edge Case Tests
 
----
+**Focus**: Boundary conditions, extreme inputs, unusual scenarios
 
-## Phase 4: P1 High Priority Edge Case Tests
-
-**Goal**: Handle boundary conditions correctly
-**Priority**: P1 - Should Pass
-**Estimated Time**: 4-6 hours
-**Dependencies**: Phase 0 complete
-
-### 4.1 File Size Boundaries (REQ-EDGE-1)
-- [ ] **Task 4.1.1**: Implement `test_file_size_boundary_conditions()`
+- [ ] **Task 1.5.1**: Write `test_file_size_boundary_conditions()`
   - File: tests/edge_cases/test_boundaries.py
-  - Test: Files at 9.99MB, 10MB, 10.01MB
-  - Acceptance: Consistent boundary behavior
+  - Test: Files at 9.99MB, 10MB, 10.01MB (max_file_size boundary)
+  - Priority: P1
+  - Marker: @pytest.mark.edge_case
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 4.1.2**: Run file size boundary tests
-  - Command: `pytest tests/edge_cases/test_boundaries.py::test_file_size_boundary_conditions -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 4.2 Maximum Inheritance Depth (REQ-EDGE-1)
-- [ ] **Task 4.2.1**: Implement `test_maximum_inheritance_depth()`
+- [ ] **Task 1.5.2**: Write `test_maximum_inheritance_depth()`
   - File: tests/edge_cases/test_boundaries.py
-  - Test: 100-level deep hierarchy
-  - Acceptance: No stack overflow, queries work
+  - Test: 100-level deep class hierarchy
+  - Priority: P1
+  - Marker: @pytest.mark.edge_case
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 4.2.2**: Run inheritance depth tests
-  - Command: `pytest tests/edge_cases/test_boundaries.py::test_maximum_inheritance_depth -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 4.3 Many Function Overloads (REQ-EDGE-1)
-- [ ] **Task 4.3.1**: Implement `test_many_function_overloads()`
+- [ ] **Task 1.5.3**: Write `test_many_function_overloads()`
   - File: tests/edge_cases/test_boundaries.py
-  - Test: 50+ overloads per function
-  - Acceptance: All indexed with unique signatures
+  - Test: 50+ overloads per function name
+  - Priority: P1
+  - Marker: @pytest.mark.edge_case
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 4.3.2**: Run overload tests
-  - Command: `pytest tests/edge_cases/test_boundaries.py::test_many_function_overloads -v`
-  - Expected: PASSED
-  - Status: Not Started
-  - Test Output:
-
-### 4.4 Concurrent File Modification (REQ-EDGE-1)
-- [ ] **Task 4.4.1**: Implement `test_concurrent_file_modification()`
-  - File: tests/edge_cases/test_boundaries.py
+- [ ] **Task 1.5.4**: Write `test_concurrent_file_modification()`
+  - File: tests/edge_cases/test_race_conditions.py
   - Test: Modify file during parsing
-  - Acceptance: Complete without crash
+  - Priority: P1
+  - Marker: @pytest.mark.edge_case
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 4.4.2**: Run concurrent modification tests
-  - Command: `pytest tests/edge_cases/test_boundaries.py::test_concurrent_file_modification -v`
-  - Expected: PASSED
+- [ ] **Task 1.5.5**: Write `test_unicode_in_symbols()`
+  - File: tests/edge_cases/test_unicode.py
+  - Test: Unicode identifiers, emoji in comments
+  - Priority: P2
+  - Marker: @pytest.mark.edge_case
   - Status: Not Started
-  - Test Output:
+  - Notes:
 
----
+- [ ] **Task 1.5.6**: Write `test_extremely_large_project()`
+  - File: tests/edge_cases/test_scale.py
+  - Test: 10,000+ files indexing
+  - Priority: P2
+  - Marker: @pytest.mark.edge_case @pytest.mark.slow
+  - Status: Not Started
+  - Notes:
 
-## Phase 5: P1 High Priority Platform-Specific Tests
+### 1.6 Platform-Specific Tests
 
-**Goal**: Ensure cross-platform compatibility
-**Priority**: P1 - Should Pass
-**Estimated Time**: 4-6 hours
-**Dependencies**: Phase 0 complete
+**Focus**: Cross-platform compatibility
 
-### 5.1 Unix File Permissions (REQ-PLAT-1)
-- [ ] **Task 5.1.1**: Implement `test_unix_file_permissions()`
-  - File: tests/platform/test_platform_specific.py
+- [ ] **Task 1.6.1**: Write `test_unix_file_permissions()`
+  - File: tests/platform/test_unix_platform.py
   - Test: chmod restrictions on Unix
-  - Acceptance: Skip inaccessible files gracefully
+  - Priority: P1
+  - Marker: @pytest.mark.platform @pytest.mark.skipif(sys.platform == "win32")
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 5.1.2**: Run Unix permission tests
-  - Command: `pytest tests/platform/test_platform_specific.py::test_unix_file_permissions -v -m "not win32"`
-  - Expected: PASSED or SKIPPED (on Windows)
-  - Status: Not Started
-  - Test Output:
-
-### 5.2 Windows Path Separators (REQ-PLAT-1)
-- [ ] **Task 5.2.1**: Implement `test_windows_path_separators()`
-  - File: tests/platform/test_platform_specific.py
-  - Test: Mixed / and \ in paths
-  - Acceptance: Paths normalized correctly
+- [ ] **Task 1.6.2**: Write `test_windows_path_separators()`
+  - File: tests/platform/test_windows_platform.py
+  - Test: Mixed / and \ in paths on Windows
+  - Priority: P1
+  - Marker: @pytest.mark.platform @pytest.mark.skipif(sys.platform != "win32")
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 5.2.2**: Run Windows path tests
-  - Command: `pytest tests/platform/test_platform_specific.py::test_windows_path_separators -v -m "win32"`
-  - Expected: PASSED or SKIPPED (on Unix)
-  - Status: Not Started
-  - Test Output:
-
-### 5.3 Windows MAX_PATH Limit (REQ-PLAT-1)
-- [ ] **Task 5.3.1**: Implement `test_windows_max_path_length()`
-  - File: tests/platform/test_platform_specific.py
-  - Test: Paths > 260 characters
-  - Acceptance: Use long path API or graceful error
+- [ ] **Task 1.6.3**: Write `test_windows_max_path_length()`
+  - File: tests/platform/test_windows_platform.py
+  - Test: Paths > 260 characters on Windows
+  - Priority: P1
+  - Marker: @pytest.mark.platform @pytest.mark.skipif(sys.platform != "win32")
   - Status: Not Started
   - Notes:
-
-- [ ] **Task 5.3.2**: Run Windows MAX_PATH tests
-  - Command: `pytest tests/platform/test_platform_specific.py::test_windows_max_path_length -v -m "win32"`
-  - Expected: PASSED or SKIPPED (on Unix)
-  - Status: Not Started
-  - Test Output:
 
 ---
 
-## Phase 6: Existing Test Validation
+## Phase 2: Execute Tests & Collect Issues
 
-**Goal**: Ensure all existing tests still pass
-**Priority**: P1 - Regression Prevention
-**Estimated Time**: 2-4 hours
-**Dependencies**: Phases 1-5 complete
+**Goal**: Run ALL tests and document ALL failures/issues
+**Strategy**: Run complete suite, collect detailed failure information
+**Priority**: P0 - Data Collection
+**Estimated Time**: 4-6 hours
+**Dependencies**: Phase 1 complete (all tests written)
 
-### 6.1 Run All Existing Unit Tests
-- [ ] **Task 6.1.1**: Execute existing unit test suite
-  - Command: `pytest tests/unit/ -v --cov=mcp_server --cov-report=html`
-  - Expected: All tests pass, coverage report generated
+### 2.1 Run Complete Test Suite
+- [ ] **Task 2.1.1**: Execute all tests with detailed output
+  - Command: `pytest tests/ -v --tb=long --maxfail=999 --continue-on-collection-errors`
+  - Options: Don't stop on first failure, collect all failures
+  - Expected: Many tests may fail - this is expected
   - Status: Not Started
-  - Test Output:
-  - Coverage: __%
+  - Test Output File: test_run_output.txt
+  - Command: `pytest tests/ -v --tb=long --maxfail=999 > test_run_output.txt 2>&1`
   - Notes:
 
-- [ ] **Task 6.1.2**: Analyze any failures
-  - Document failing tests
-  - Determine if failures due to new security measures
-  - Create fix plan
+### 2.2 Generate Test Report
+- [ ] **Task 2.2.1**: Generate HTML test report
+  - Command: `pytest tests/ -v --html=test_report_initial.html --self-contained-html --maxfail=999`
+  - Output: test_report_initial.html
   - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
-
-### 6.2 Run All Existing Integration Tests
-- [ ] **Task 6.2.1**: Execute existing integration test suite
-  - Command: `pytest tests/integration/ -v`
-  - Expected: All tests pass
-  - Status: Not Started
-  - Test Output:
   - Notes:
 
-- [ ] **Task 6.2.2**: Analyze any failures
-  - Document failing tests
-  - Check for integration issues with new code
-  - Create fix plan
+- [ ] **Task 2.2.2**: Generate JUnit XML report
+  - Command: `pytest tests/ --junitxml=test_results_initial.xml --maxfail=999`
+  - Output: test_results_initial.xml
   - Status: Not Started
-  - Issues Found:
-  - Fix Plan:
+  - Notes:
 
-### 6.3 Run Complete Test Suite
-- [ ] **Task 6.3.1**: Execute all tests together
-  - Command: `pytest tests/ -v --cov=mcp_server --cov-report=html --cov-report=term`
-  - Expected: All tests pass
+### 2.3 Collect and Categorize Issues
+- [ ] **Task 2.3.1**: Document all test failures
+  - Review test_run_output.txt and test_report_initial.html
+  - For each failure, record:
+    - Test name
+    - Failure type (assertion, exception, timeout, etc.)
+    - Error message
+    - Affected component/module
+    - Priority (based on test priority)
+  - Status: Not Started
+  - Issues File: ISSUES_COLLECTED.md
+  - Notes:
+
+- [ ] **Task 2.3.2**: Categorize issues by component
+  - Group by: Security, Data Integrity, Error Handling, Core Functionality, etc.
+  - Prioritize: P0 Critical → P1 High → P2 Medium
+  - Status: Not Started
+  - Notes:
+
+- [ ] **Task 2.3.3**: Identify root causes
+  - For similar failures, identify common root cause
+  - Document patterns (e.g., all path validation failures)
+  - Create fix clusters (fixing one may fix many tests)
+  - Status: Not Started
+  - Notes:
+
+### 2.4 Generate Initial Metrics
+- [ ] **Task 2.4.1**: Count test results
+  - Total tests:
+  - Passed:
+  - Failed:
+  - Skipped:
+  - Errors:
+  - Pass rate: ___%
+  - Status: Not Started
+  - Notes:
+
+---
+
+## Phase 3: Fix Issues Iteratively
+
+**Goal**: Fix issues one by one, re-running tests after each fix
+**Strategy**: P0 Critical → P1 High → P2 Medium, one fix at a time
+**Priority**: P0 - Resolution
+**Estimated Time**: 12-20 hours (depends on issue count)
+**Dependencies**: Phase 2 complete (all issues collected)
+
+### 3.1 Fix P0 Critical Issues
+
+**Instructions**:
+1. Pick the FIRST P0 issue from ISSUES_COLLECTED.md
+2. Implement fix
+3. Re-run ONLY the affected test(s)
+4. If test passes, mark issue as RESOLVED and move to next P0 issue
+5. If test still fails, revise fix and try again
+6. Repeat until ALL P0 issues are resolved
+
+- [ ] **Task 3.1.1**: Fix P0 issues iteratively
+  - **Issue ID**: _______ (from ISSUES_COLLECTED.md)
+  - **Description**:
+  - **Component**:
+  - **Fix Applied**:
+  - **Files Modified**:
+  - **Test Command**: `pytest tests/______::test_______ -v`
+  - **Result**: PASS / FAIL
+  - **Status**: Not Started
+  - Notes:
+
+  **Repeat for each P0 issue - use Issues Log below to track**
+
+- [ ] **Task 3.1.2**: Verify all P0 tests pass
+  - Command: `pytest tests/ -v -m critical`
+  - Expected: 100% pass rate for P0 tests
+  - Status: Not Started
+  - Pass Rate: ___%
+  - Notes:
+
+### 3.2 Fix P1 High Priority Issues
+
+**Instructions**: Same as 3.1, but for P1 issues
+
+- [ ] **Task 3.2.1**: Fix P1 issues iteratively
+  - **Issue ID**: _______ (from ISSUES_COLLECTED.md)
+  - **Description**:
+  - **Component**:
+  - **Fix Applied**:
+  - **Files Modified**:
+  - **Test Command**: `pytest tests/______::test_______ -v`
+  - **Result**: PASS / FAIL
+  - **Status**: Not Started
+  - Notes:
+
+  **Repeat for each P1 issue - use Issues Log below to track**
+
+- [ ] **Task 3.2.2**: Verify all P1 tests pass
+  - Command: `pytest tests/ -v -m "critical or error_handling or edge_case or platform"`
+  - Expected: 100% pass rate for P0+P1 tests
+  - Status: Not Started
+  - Pass Rate: ___%
+  - Notes:
+
+### 3.3 Fix P2 Medium Priority Issues (Optional)
+
+- [ ] **Task 3.3.1**: Fix P2 issues (time permitting)
+  - Follow same iterative process as 3.1 and 3.2
+  - Status: Not Started
+  - Notes:
+
+---
+
+## Phase 4: Final Validation & Documentation
+
+**Goal**: Verify all tests pass, measure coverage, document results
+**Priority**: P0 - Release Readiness
+**Estimated Time**: 4-6 hours
+**Dependencies**: Phase 3 complete (all critical issues fixed)
+
+### 4.1 Final Test Execution
+- [ ] **Task 4.1.1**: Run complete test suite (final)
+  - Command: `pytest tests/ -v --tb=short`
+  - Expected: All P0 and P1 tests pass
   - Status: Not Started
   - Total Tests:
   - Passed:
   - Failed:
   - Skipped:
-  - Coverage: __%
+  - Pass Rate: ___%
   - Notes:
 
-### 6.4 Review Coverage Report
-- [ ] **Task 6.4.1**: Analyze coverage report
+- [ ] **Task 4.1.2**: Generate final HTML report
+  - Command: `pytest tests/ -v --html=test_report_final.html --self-contained-html`
+  - Output: test_report_final.html
+  - Status: Not Started
+  - Notes:
+
+### 4.2 Coverage Analysis
+- [ ] **Task 4.2.1**: Generate coverage report
+  - Command: `pytest tests/ -v --cov=mcp_server --cov-report=html --cov-report=term`
+  - Output: htmlcov/ directory
+  - Status: Not Started
+  - Overall Coverage: ___%
+  - Notes:
+
+- [ ] **Task 4.2.2**: Review coverage gaps
   - Open: htmlcov/index.html
+  - Identify: Uncovered critical paths
   - Target: 80%+ overall coverage
-  - Identify uncovered critical paths
   - Status: Not Started
-  - Coverage Analysis:
-  - Gaps Identified:
-
-### 6.5 Address Coverage Gaps
-- [ ] **Task 6.5.1**: Write additional tests for uncovered code
-  - Focus on critical security paths
-  - Ensure error handling is tested
-  - Target 85%+ coverage
-  - Status: Not Started
-  - New Tests Added:
-  - Final Coverage: __%
-
----
-
-## Phase 7: Integration and Regression Testing
-
-**Goal**: Validate system-wide behavior
-**Priority**: P1 - Release Blocker
-**Estimated Time**: 4-6 hours
-**Dependencies**: Phases 1-6 complete
-
-### 7.1 End-to-End Integration Tests
-- [ ] **Task 7.1.1**: Test complete indexing workflow
-  - Real project: Index, search, query hierarchy, call graph
-  - Acceptance: All operations complete successfully
-  - Status: Not Started
+  - Critical Gaps Found:
   - Notes:
 
-- [ ] **Task 7.1.2**: Test cache persistence workflow
-  - Index project, restart, verify cache loaded
-  - Acceptance: Cache loads correctly, same results
+- [ ] **Task 4.2.3**: Write additional tests for coverage gaps (if needed)
+  - Focus on critical security/data integrity paths
   - Status: Not Started
+  - Tests Added:
+  - Final Coverage: ___%
   - Notes:
 
-- [ ] **Task 7.1.3**: Test refresh workflow
-  - Index, modify files, refresh, verify updates
-  - Acceptance: Only modified files re-indexed
-  - Status: Not Started
-  - Notes:
-
-### 7.2 Performance Regression Testing
-- [ ] **Task 7.2.1**: Benchmark indexing performance
+### 4.3 Performance Validation
+- [ ] **Task 4.3.1**: Benchmark indexing performance
   - Test project: 1000 files
-  - Measure: Time, memory usage, cache hit rate
-  - Baseline: Record current performance
+  - Measure: Time, memory usage
+  - Baseline: Record performance
   - Status: Not Started
-  - Results:
+  - Indexing Time: _____ seconds
+  - Memory Usage: _____ MB
   - Notes:
 
-- [ ] **Task 7.2.2**: Compare with baseline
-  - Ensure no significant regression
-  - Target: < 10% slower than baseline
-  - Status: Not Started
-  - Comparison:
-  - Notes:
-
-### 7.3 Stress Testing
-- [ ] **Task 7.3.1**: Test with very large project (10k+ files)
-  - Generate or use real large codebase
-  - Acceptance: Completes without crash, reasonable time
-  - Status: Not Started
-  - Results:
-  - Notes:
-
-- [ ] **Task 7.3.2**: Test with complex files
-  - Deep inheritance, many templates, large functions
-  - Acceptance: All parsed correctly
-  - Status: Not Started
-  - Results:
-  - Notes:
-
-### 7.4 Multi-Platform Validation
-- [ ] **Task 7.4.1**: Run full test suite on Linux
-  - Platform: Linux
-  - Command: `pytest tests/ -v --tb=short`
-  - Expected: All platform tests pass
-  - Status: Not Started
-  - Results:
-
-- [ ] **Task 7.4.2**: Run full test suite on Windows (if available)
-  - Platform: Windows
-  - Command: `pytest tests/ -v --tb=short`
-  - Expected: All platform tests pass
-  - Status: Not Started
-  - Results:
-
-- [ ] **Task 7.4.3**: Run full test suite on macOS (if available)
-  - Platform: macOS
-  - Command: `pytest tests/ -v --tb=short`
-  - Expected: All platform tests pass
-  - Status: Not Started
-  - Results:
-
----
-
-## Phase 8: Documentation and Reporting
-
-**Goal**: Document results and create release artifacts
-**Priority**: P1 - Required for Release
-**Estimated Time**: 3-4 hours
-**Dependencies**: Phases 1-7 complete
-
-### 8.1 Test Results Documentation
-- [ ] **Task 8.1.1**: Generate comprehensive test report
-  - Command: `pytest tests/ -v --html=test_report.html --self-contained-html`
-  - Output: test_report.html
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 8.1.2**: Create test summary document
+### 4.4 Documentation
+- [ ] **Task 4.4.1**: Create test results summary
   - File: TEST_RESULTS_SUMMARY.md
-  - Include: Total tests, pass/fail counts, coverage, issues
+  - Include: Total tests, pass/fail, coverage, issues resolved
   - Status: Not Started
   - Notes:
 
-### 8.2 Issue Tracking
-- [ ] **Task 8.2.1**: Document all issues found
-  - Create: ISSUES_FOUND.md
-  - Format: Issue ID, severity, description, status, fix
-  - Status: Not Started
-  - Notes:
-
-- [ ] **Task 8.2.2**: Create GitHub issues for unresolved items
-  - Critical issues: Create immediately
-  - Non-critical: Document for future release
-  - Status: Not Started
-  - Issues Created:
-
-### 8.3 Coverage Documentation
-- [ ] **Task 8.3.1**: Archive coverage report
-  - Command: `mv htmlcov coverage_report_$(date +%Y%m%d)`
-  - Commit coverage report to repository
-  - Status: Not Started
-  - Notes:
-
-### 8.4 Update Documentation
-- [ ] **Task 8.4.1**: Update TEST_PLAN.md with actual results
-  - Mark completed tests
+- [ ] **Task 4.4.2**: Update TEST_PLAN.md with results
+  - Mark completed test sections
   - Note any deviations from plan
   - Document lessons learned
   - Status: Not Started
   - Notes:
 
-- [ ] **Task 8.4.2**: Update README.md with test instructions
+- [ ] **Task 4.4.3**: Update README.md with test instructions
   - Add "Running Tests" section
   - Document test markers and categories
   - Provide examples
   - Status: Not Started
   - Notes:
 
-### 8.5 Release Preparation
-- [ ] **Task 8.5.1**: Create release checklist
-  - Verify all P0 tests pass
-  - Verify all P1 tests pass or documented
-  - Coverage >= 80%
-  - All critical issues resolved
+### 4.5 Release Readiness
+- [ ] **Task 4.5.1**: Verify release criteria
+  - [ ] All P0 tests pass (100%)
+  - [ ] All P1 tests pass or documented exceptions
+  - [ ] Code coverage >= 80%
+  - [ ] All critical issues resolved
+  - [ ] Documentation complete
   - Status: Not Started
   - Release Ready: Yes / No
   - Notes:
@@ -848,56 +691,138 @@
 
 ## Issues Log
 
-### Critical Issues (P0)
-| ID | Date | Phase | Description | Status | Assigned To | Resolution |
-|----|------|-------|-------------|--------|-------------|------------|
-| - | - | - | - | - | - | - |
+### Instructions for Issue Tracking
+1. Each issue gets a unique ID: P0-001, P1-001, P2-001, etc.
+2. Record issue when discovered in Phase 2
+3. Update status as you fix in Phase 3
+4. Link to test name and file for traceability
 
-### High Priority Issues (P1)
-| ID | Date | Phase | Description | Status | Assigned To | Resolution |
-|----|------|-------|-------------|--------|-------------|------------|
-| - | - | - | - | - | - | - |
+### P0 Critical Issues
+| ID | Test Name | Component | Description | Status | Fix PR/Commit | Resolution Notes |
+|----|-----------|-----------|-------------|--------|---------------|------------------|
+| P0-001 | | | | Not Started | | |
+| P0-002 | | | | Not Started | | |
+| P0-003 | | | | Not Started | | |
 
-### Medium Priority Issues (P2)
-| ID | Date | Phase | Description | Status | Assigned To | Resolution |
-|----|------|-------|-------------|--------|-------------|------------|
-| - | - | - | - | - | - | - |
+### P1 High Priority Issues
+| ID | Test Name | Component | Description | Status | Fix PR/Commit | Resolution Notes |
+|----|-----------|-----------|-------------|--------|---------------|------------------|
+| P1-001 | | | | Not Started | | |
+| P1-002 | | | | Not Started | | |
+| P1-003 | | | | Not Started | | |
+
+### P2 Medium Priority Issues
+| ID | Test Name | Component | Description | Status | Fix PR/Commit | Resolution Notes |
+|----|-----------|-----------|-------------|--------|---------------|------------------|
+| P2-001 | | | | Not Started | | |
+| P2-002 | | | | Not Started | | |
 
 ---
 
-## Notes and Observations
+## Session Log
 
-### Session Log
-| Date | Time Spent | Phase | Tasks Completed | Notes |
-|------|------------|-------|-----------------|-------|
-| - | - | - | - | - |
-
-### Lessons Learned
-- (To be filled in during implementation)
-
-### Recommendations for Future Testing
-- (To be filled in during implementation)
+| Date | Time Spent | Phase | Tasks Completed | Issues Fixed | Notes |
+|------|------------|-------|-----------------|--------------|-------|
+| | | | | | |
 
 ---
 
 ## Metrics Tracking
 
 ### Test Execution Metrics
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| Total Tests | 100+ | 0 | ⏳ Not Started |
-| P0 Tests Passing | 100% | 0% | ⏳ Not Started |
-| P1 Tests Passing | 100% | 0% | ⏳ Not Started |
-| Code Coverage | 80%+ | 0% | ⏳ Not Started |
-| Critical Issues | 0 | 0 | ⏳ Not Started |
-| High Priority Issues | < 5 | 0 | ⏳ Not Started |
+| Metric | Target | Initial (Phase 2) | After Fixes (Phase 3) | Final (Phase 4) | Status |
+|--------|--------|-------------------|----------------------|-----------------|--------|
+| Total Tests | 60+ | | | | ⏳ Not Started |
+| P0 Tests Passing | 100% | | | | ⏳ Not Started |
+| P1 Tests Passing | 100% | | | | ⏳ Not Started |
+| Overall Pass Rate | 95%+ | | | | ⏳ Not Started |
+| Code Coverage | 80%+ | | | | ⏳ Not Started |
+| Critical Issues | 0 | | | | ⏳ Not Started |
 
 ### Performance Metrics
-| Metric | Baseline | Current | Change |
-|--------|----------|---------|--------|
-| Indexing Time (1000 files) | - | - | - |
-| Memory Usage (MB) | - | - | - |
-| Cache Hit Rate (%) | - | - | - |
+| Metric | Baseline | After Fixes | Change | Status |
+|--------|----------|-------------|--------|--------|
+| Indexing Time (1000 files) | - | - | - | ⏳ |
+| Memory Usage (MB) | - | - | - | ⏳ |
+| Cache Hit Rate (%) | - | - | - | ⏳ |
+
+---
+
+## Quick Reference Commands
+
+### Phase 1: Writing Tests
+```bash
+# Run smoke test to verify infrastructure
+pytest tests/test_infrastructure.py -v
+
+# Check test collection (without running)
+pytest --collect-only tests/
+
+# Verify markers are configured
+pytest --markers
+```
+
+### Phase 2: Running All Tests
+```bash
+# Run all tests, don't stop on first failure
+pytest tests/ -v --tb=long --maxfail=999
+
+# Generate HTML report
+pytest tests/ -v --html=test_report_initial.html --self-contained-html --maxfail=999
+
+# Generate JUnit XML (for CI systems)
+pytest tests/ --junitxml=test_results_initial.xml --maxfail=999
+
+# Save output to file for analysis
+pytest tests/ -v --tb=long --maxfail=999 > test_run_output.txt 2>&1
+```
+
+### Phase 3: Fixing Issues Iteratively
+```bash
+# Run specific test after fix
+pytest tests/security/test_path_security.py::test_comprehensive_path_traversal_attacks -v
+
+# Run all tests in a category
+pytest tests/security/ -v
+pytest -m security -v
+pytest -m critical -v
+
+# Run last failed tests only
+pytest --lf -v
+
+# Run tests matching pattern
+pytest -k "path_traversal" -v
+```
+
+### Phase 4: Final Validation
+```bash
+# Run all tests with coverage
+pytest tests/ -v --cov=mcp_server --cov-report=html --cov-report=term
+
+# Run all tests, generate final report
+pytest tests/ -v --html=test_report_final.html --self-contained-html
+
+# Run only P0 critical tests
+pytest -m critical -v
+
+# Parallel execution (faster, use after tests are stable)
+pytest tests/ -v -n auto
+
+# With timeout protection
+pytest tests/ -v --timeout=30
+```
+
+### Debugging Commands
+```bash
+# Run with full output (no capture)
+pytest tests/security/test_path_security.py::test_comprehensive_path_traversal_attacks -vv -s
+
+# Run with Python debugger on failure
+pytest tests/security/test_path_security.py::test_comprehensive_path_traversal_attacks -v --pdb
+
+# Show local variables on failure
+pytest tests/security/test_path_security.py::test_comprehensive_path_traversal_attacks -v -l
+```
 
 ---
 
@@ -906,69 +831,20 @@
 ### Phase Completion Sign-Off
 | Phase | Completed By | Date | Sign-Off |
 |-------|--------------|------|----------|
-| Phase 0: Setup | | | |
-| Phase 1: P0 Security | | | |
-| Phase 2: P0 Data Integrity | | | |
-| Phase 3: P1 Error Handling | | | |
-| Phase 4: P1 Edge Cases | | | |
-| Phase 5: P1 Platform Tests | | | |
-| Phase 6: Existing Tests | | | |
-| Phase 7: Integration | | | |
-| Phase 8: Documentation | | | |
+| Phase 0: Infrastructure Setup | | | |
+| Phase 1: Write All Tests | | | |
+| Phase 2: Execute & Collect Issues | | | |
+| Phase 3: Fix Issues Iteratively | | | |
+| Phase 4: Final Validation | | | |
 
 ### Final Release Sign-Off
-- [ ] All P0 tests passing
+- [ ] All P0 tests passing (100%)
 - [ ] All P1 tests passing or documented exceptions
 - [ ] Code coverage >= 80%
 - [ ] No critical issues outstanding
 - [ ] Documentation complete
+- [ ] Performance validated (no significant regression)
 - [ ] Release approved by: _____________ Date: _______
-
----
-
-## Quick Reference Commands
-
-### Running Tests by Priority
-```bash
-# P0 Critical Security Tests
-pytest tests/security/ -v -m security
-
-# P0 Critical Data Integrity Tests
-pytest tests/robustness/test_data_integrity.py -v
-
-# P1 High Priority Tests
-pytest tests/robustness/test_error_handling.py tests/edge_cases/ tests/platform/ -v
-
-# All New Tests (Section 10)
-pytest tests/security/ tests/robustness/ tests/edge_cases/ tests/platform/ -v
-
-# With Coverage
-pytest tests/ -v --cov=mcp_server --cov-report=html --cov-report=term
-
-# Parallel Execution (faster)
-pytest tests/ -v -n auto
-
-# With Timeout Protection
-pytest tests/ -v --timeout=30
-```
-
-### Useful Debugging Commands
-```bash
-# Run specific test with verbose output
-pytest tests/security/test_path_security.py::test_comprehensive_path_traversal_attacks -vv -s
-
-# Run last failed tests only
-pytest --lf -v
-
-# Run tests matching pattern
-pytest -k "path_traversal" -v
-
-# Show test collection without running
-pytest --collect-only
-
-# Generate JUnit XML report (for CI)
-pytest tests/ --junitxml=test_results.xml
-```
 
 ---
 
