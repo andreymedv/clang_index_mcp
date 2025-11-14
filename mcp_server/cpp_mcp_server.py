@@ -218,17 +218,17 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_function_signature",
-            description="Get detailed signature information for function(s) with the exact name specified. Returns all overloads/implementations if multiple exist, including: full function signature with parameter types, return type, file location, line number, and parent class (for methods). Use this to understand function parameters, return types, and find all overloaded versions of a function.",
+            description="Get formatted signature strings for function(s) with the exact name specified. Returns a list of signature strings showing the complete function declaration including parameter types and parent class namespace (e.g., 'ClassName::functionName(int x, std::string y)' or 'functionName(double z)'). If multiple overloads exist, returns all of them. Use this to quickly see function signatures and parameter types. Note: Returns formatted strings only, not detailed metadata - use search_functions if you need file locations and line numbers.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Exact name of the function/method to analyze (case-sensitive). Will return all overloads if multiple exist."
+                        "description": "Exact name of the function/method to look up (case-sensitive). Will return signature strings for all overloads if multiple exist."
                     },
                     "class_name": {
                         "type": "string",
-                        "description": "If specified, only returns method signatures from this specific class, ignoring standalone functions and methods from other classes. Leave empty to search all functions across the codebase."
+                        "description": "If specified, only returns method signatures from this specific class, ignoring standalone functions and methods from other classes. Leave empty to get signatures for all matching functions across the codebase."
                     }
                 },
                 "required": ["function_name"]
@@ -313,13 +313,13 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_hierarchy",
-            description="Get the complete inheritance chain (ancestors) for a C++ class, showing all base classes from immediate parent up to the root. Returns a hierarchical structure showing the full inheritance tree including all intermediate base classes, their access specifiers (public/protected/private), and locations. Use this to understand what a class inherits from and trace the complete inheritance lineage. Returns null if the class is not found.",
+            description="Get the complete bidirectional inheritance hierarchy for a C++ class. Returns a comprehensive structure showing: 1) base_hierarchy - all ancestor classes (what this class inherits FROM, recursively up to the root), 2) derived_hierarchy - all descendant classes (what inherits from this class, recursively down to leaves), 3) class_info - detailed information about the class itself, 4) direct base_classes and derived_classes lists. This provides a complete view of the class's position in the inheritance tree. Use this to understand both what a class inherits from and what inherits from it. Returns error if the class is not found.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "class_name": {
                         "type": "string",
-                        "description": "Name of the class to analyze. The result will show this class and all its base classes (ancestors) in the inheritance hierarchy."
+                        "description": "Name of the class to analyze. The result will show this class's complete inheritance hierarchy in both directions (ancestors and descendants)."
                     }
                 },
                 "required": ["class_name"]
@@ -327,7 +327,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_derived_classes",
-            description="Get all classes that directly or indirectly inherit from a specified base class (descendants/children in the inheritance tree). This is the inverse of get_class_hierarchy - while get_class_hierarchy shows ancestors (what a class inherits FROM), this shows descendants (what inherits from a class). Returns a list of all derived classes with their locations. Useful for finding all implementations/specializations of a base class or interface.",
+            description="Get a flat list of all classes that directly or indirectly inherit from a specified base class (descendants/children in the inheritance tree). Unlike get_class_hierarchy which returns a complete hierarchical tree structure in both directions, this returns a simple list of derived classes with their locations and basic information. Useful for quickly finding all implementations/specializations of a base class or interface without the full hierarchical nesting. Supports filtering by project_only to exclude external dependencies.",
             inputSchema={
                 "type": "object",
                 "properties": {
