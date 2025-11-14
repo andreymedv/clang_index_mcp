@@ -4,6 +4,30 @@
 
 This document maps each requirement from REQUIREMENTS.md to specific test cases, organized by category. Each test case specifies what should be tested, expected outcomes, and test data needed.
 
+### Recent Enhancements
+
+The following test coverage has been added to ensure comprehensive validation of all MCP server functionality:
+
+**Section 4 - MCP Tool Tests:**
+- Added edge case tests for search_classes (empty patterns, Unicode, long patterns, special regex chars)
+- Added path validation tests for find_in_file (path traversal, special characters)
+
+**Section 5 - Compilation Configuration Tests:**
+- REQ-5.1: Added command string parsing test (shlex with quotes and spaces)
+- REQ-5.2: Added vcpkg auto-detection test (REQ-5.2.5)
+
+**Section 6 - Caching and Performance Tests:**
+- REQ-6.2: Added cache version mismatch invalidation test (REQ-6.2.5)
+- REQ-6.4: Added indexing progress file persistence test (REQ-6.4.6)
+- REQ-6.4: Added terminal detection for adaptive progress reporting (REQ-6.4.7)
+
+**Section 7 - Project Management Tests:**
+- REQ-7.3: Added platform-specific libclang path tests (macOS, Linux, Windows)
+- REQ-7.5: Added environment variable test for diagnostic level (CPP_ANALYZER_DIAGNOSTIC_LEVEL)
+
+**Section 8 - Test Fixtures:**
+- Enhanced test utilities with additional helper functions (env_var implementation, temp_dir, etc.)
+
 ## Table of Contents
 
 1. [Core Functional Requirements Tests (REQ-1.x)](#1-core-functional-requirements-tests)
@@ -755,6 +779,27 @@ def test_search_classes_invalid_regex():
     results = analyzer.search_classes("[invalid(")
     assert isinstance(results, list)
     assert len(results) == 0  # Should return empty, not crash
+
+def test_search_classes_edge_cases():
+    """Test edge cases for pattern matching"""
+    analyzer = setup_test_analyzer()
+
+    # Empty pattern
+    results = analyzer.search_classes("")
+    assert isinstance(results, list)
+
+    # Unicode characters
+    results = analyzer.search_classes(".*класс.*")
+    assert isinstance(results, list)
+
+    # Very long pattern
+    long_pattern = "A" * 1000
+    results = analyzer.search_classes(long_pattern)
+    assert isinstance(results, list)
+
+    # Special regex characters
+    results = analyzer.search_classes(".*\\[.*\\].*")
+    assert isinstance(results, list)
 ```
 
 ### REQ-4.2: search_functions
@@ -908,6 +953,18 @@ def test_find_in_file_absolute_path():
     results = analyzer.find_in_file(abs_path, ".*")
 
     assert len(results) > 0
+
+def test_find_in_file_path_validation():
+    """Test path traversal prevention and validation"""
+    analyzer = setup_test_analyzer()
+
+    # Path traversal attempts should be handled safely
+    results = analyzer.find_in_file("../../../etc/passwd", ".*")
+    assert isinstance(results, list)
+
+    # Special characters in filename
+    results = analyzer.find_in_file("file name with spaces.cpp", ".*")
+    assert isinstance(results, list)
 ```
 
 ### REQ-4.7: set_project_directory
@@ -1246,6 +1303,24 @@ def test_file_to_args_mapping():
         assert "-std=c++17" in args
         assert "-DTEST" in args
 
+def test_command_string_parsing():
+    """Test REQ-5.1.2: Parse command strings with shlex (quotes, spaces)"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": 'clang++ -I"/path with spaces" -DSTR="hello world" test.cpp'
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        args = manager.get_compile_args(Path("/project/test.cpp"))
+
+        assert args is not None
+        # Should correctly parse quoted arguments with spaces
+        assert any('path with spaces' in arg for arg in args)
+        assert any('hello world' in arg for arg in args)
+
 def test_configurable_path():
     """Test REQ-5.1.6: Configurable compile_commands.json path"""
     with temp_dir() as project:
@@ -1302,6 +1377,19 @@ def test_disable_fallback():
     args = manager.get_compile_args_with_fallback(Path("nonexistent.cpp"))
 
     assert len(args) == 0  # No fallback
+
+def test_vcpkg_auto_detection():
+    """Test REQ-5.2.5: Automatic vcpkg include path detection"""
+    with temp_project() as project:
+        # Create vcpkg directory structure
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        manager = CompileCommandsManager(project, {})
+        args = manager.fallback_args
+
+        # Should automatically include vcpkg path
+        assert any("vcpkg_installed" in arg for arg in args)
 ```
 
 ### REQ-5.3: Compile Commands Caching
@@ -1516,6 +1604,30 @@ def test_invalidate_on_dependencies_change():
         analyzer2 = CppAnalyzer(project)
         # Try to load cache with include_dependencies=False
         # Should invalidate
+
+def test_invalidate_on_cache_version_mismatch():
+    """Test REQ-6.2.5: Cache version mismatch invalidation"""
+    with temp_project() as project:
+        analyzer1 = CppAnalyzer(project)
+        analyzer1.index_project()
+
+        # Manually change cache version to simulate old cache
+        cache_file = analyzer1.cache_manager.cache_dir / "cache_info.json"
+        with open(cache_file, 'r+') as f:
+            data = json.load(f)
+            data['version'] = '1.0'  # Old version
+            f.seek(0)
+            json.dump(data, f)
+            f.truncate()
+
+        # Should invalidate cache due to version mismatch
+        analyzer2 = CppAnalyzer(project)
+        cache_loaded = analyzer2._load_cache()
+
+        assert cache_loaded == False
+        # Should successfully re-index
+        count = analyzer2.index_project()
+        assert count > 0
 ```
 
 ### REQ-6.3: Cache Loading
@@ -1626,6 +1738,45 @@ def test_progress_reporting(capsys):
         # Should see progress info
         assert "files/sec" in captured.err
         assert "Progress:" in captured.err or "Indexing complete" in captured.err
+
+def test_progress_file_persistence():
+    """Test REQ-6.4.6: Indexing progress file creation and tracking"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Find progress file in cache directory
+        cache_dir = project / ".mcp_cache"
+        progress_files = list(cache_dir.glob("*/indexing_progress.json"))
+
+        assert len(progress_files) >= 1
+        progress_file = progress_files[0]
+
+        # Verify file contains expected fields
+        with open(progress_file) as f:
+            progress = json.load(f)
+
+        assert "total_files" in progress
+        assert "indexed_files" in progress
+        assert "failed_files" in progress
+        assert "cache_hits" in progress
+        assert "status" in progress
+        assert progress["total_files"] > 0
+
+def test_terminal_detection_for_progress():
+    """Test REQ-6.4.7: Adaptive progress reporting based on terminal detection"""
+    with temp_project(num_files=10) as project:
+        # Mock terminal detection (isatty = True)
+        with mock.patch('sys.stderr.isatty', return_value=True):
+            analyzer = CppAnalyzer(project)
+            # Should report more frequently for terminal
+            # (Implementation detail: check reporting frequency)
+
+        # Mock MCP session (non-terminal)
+        with env_var("MCP_SESSION_ID", "test_session_123"):
+            analyzer2 = CppAnalyzer(project)
+            # Should report less frequently for non-terminal
+            # (Implementation detail: check reporting frequency)
 ```
 
 ---
@@ -1800,6 +1951,44 @@ def test_platform_library_names():
         # Should look for .so
         pass
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific")
+def test_macos_libclang_paths():
+    """Test REQ-7.3.2: macOS-specific libclang search paths"""
+    from mcp_server.cpp_mcp_server import find_and_configure_libclang
+
+    # Should check in order:
+    # 1. Bundled lib/macos/
+    # 2. /usr/local/lib
+    # 3. /opt/homebrew/lib
+    # 4. Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib
+    # 5. llvm-config paths
+    # Verify search logic covers these paths
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-specific")
+def test_linux_libclang_paths():
+    """Test REQ-7.3.2: Linux-specific libclang search paths"""
+    from mcp_server.cpp_mcp_server import find_and_configure_libclang
+
+    # Should check in order:
+    # 1. Bundled lib/linux/
+    # 2. /usr/lib/llvm-*
+    # 3. /usr/lib/x86_64-linux-gnu/
+    # 4. llvm-config paths
+    # Verify search logic covers these paths
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific")
+def test_windows_libclang_paths():
+    """Test REQ-7.3.2: Windows-specific libclang search paths"""
+    from mcp_server.cpp_mcp_server import find_and_configure_libclang
+
+    # Should check in order:
+    # 1. Bundled lib/windows/
+    # 2. Program Files LLVM
+    # 3. vcpkg installed
+    # 4. Anaconda/conda environments
+    # 5. llvm-config paths
+    # Verify search logic covers these paths
+
 def test_library_reporting():
     """Test REQ-7.3.3: Report which library used"""
     # Verify diagnostic message is output
@@ -1899,13 +2088,21 @@ def test_diagnostics_to_stderr():
     assert diagnostics.logger.output_stream == sys.stderr
 
 def test_configurable_level():
-    """Test REQ-7.5.3: Configurable level"""
+    """Test REQ-7.5.3: Configurable level via config file"""
     with temp_project() as project:
         config_file = project / ".cpp-analyzer-config.json"
         config_file.write_text('{"diagnostics": {"level": "error"}}')
 
         config = CppAnalyzerConfig(project)
         # Verify level is set
+        # (Implementation-dependent)
+
+def test_diagnostic_level_from_env():
+    """Test REQ-7.5.3: Configurable level via environment variable"""
+    with env_var("CPP_ANALYZER_DIAGNOSTIC_LEVEL", "ERROR"):
+        from mcp_server import diagnostics
+        # Verify diagnostic level is set to ERROR
+        # Environment variable should override default settings
         # (Implementation-dependent)
 
 def test_enable_disable():
@@ -2019,6 +2216,9 @@ tests/fixtures/projects/
 
 ```python
 # tests/test_utils.py
+import json
+from unittest import mock
+from contextlib import contextmanager
 
 def create_temp_project(num_files=5):
     """Create temporary project with N files"""
@@ -2036,8 +2236,38 @@ def temp_compile_commands(data):
     """Create temporary compile_commands.json"""
     pass
 
+@contextmanager
 def env_var(name, value):
     """Context manager for environment variables"""
+    import os
+    old_value = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old_value is None:
+            del os.environ[name]
+        else:
+            os.environ[name] = old_value
+
+def temp_dir():
+    """Context manager for temporary directory"""
+    pass
+
+def temp_config_file(content):
+    """Create temporary config file with content"""
+    pass
+
+def temp_project_with_cc():
+    """Create temporary project with compile_commands.json"""
+    pass
+
+def modify_compile_commands(cc_path):
+    """Modify compile_commands.json for testing"""
+    pass
+
+def temp_project_structure():
+    """Create temp project with subdirectories"""
     pass
 ```
 
@@ -2072,6 +2302,8 @@ def env_var(name, value):
 - **Line Coverage**: 80%+ overall
 - **Branch Coverage**: 70%+ for critical paths
 - **Requirement Coverage**: 100% (every REQ-X.X tested)
+- **Edge Case Coverage**: Input validation, error conditions, platform-specific behavior
+- **Integration Coverage**: Cross-component interactions (caching + refresh, compile_commands + parsing, etc.)
 
 ---
 
