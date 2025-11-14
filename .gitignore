@@ -19,3 +19,4 @@ dist/
 # Downloaded libclang binaries
 lib/**/libclang*
 .aider*
+tests/pytest.log
