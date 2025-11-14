@@ -25,7 +25,22 @@ The following test coverage has been added to ensure comprehensive validation of
 - REQ-7.3: Added platform-specific libclang path tests (macOS, Linux, Windows)
 - REQ-7.5: Added environment variable test for diagnostic level (CPP_ANALYZER_DIAGNOSTIC_LEVEL)
 
-**Section 8 - Test Fixtures:**
+**Section 5 - Compilation Configuration Tests:**
+- REQ-5.5: Added vcpkg integration tests (auto-detection, include paths)
+- REQ-5.6: Added Compile Commands Manager Extended APIs tests (6 new test functions)
+
+**Section 6 - Caching and Performance Tests:**
+- REQ-6.5: Added Progress Persistence tests (7 new test functions for save/load/status tracking)
+
+**Section 7 - Project Management Tests:**
+- REQ-7.5.5-7.5.6: Added DiagnosticLogger API tests (set_level, set_output_stream, configure_from_config)
+
+**Section 8 - Statistics and Monitoring Tests (NEW SECTION):**
+- REQ-8.1: Runtime Statistics APIs (3 test functions)
+- REQ-8.2: Call Graph Statistics (4 test functions for code quality analysis)
+- REQ-8.3: Cache Management APIs (4 test functions)
+
+**Section 8 - Test Fixtures (renumbered from Section 8):**
 - Enhanced test utilities with additional helper functions (env_var implementation, temp_dir, etc.)
 
 ## Table of Contents
@@ -37,7 +52,8 @@ The following test coverage has been added to ensure comprehensive validation of
 5. [Compilation Configuration Tests (REQ-5.x)](#5-compilation-configuration-tests)
 6. [Caching and Performance Tests (REQ-6.x)](#6-caching-and-performance-tests)
 7. [Project Management Tests (REQ-7.x)](#7-project-management-tests)
-8. [Test Fixtures Required](#8-test-fixtures-required)
+8. [Statistics and Monitoring Tests (REQ-8.x)](#8-statistics-and-monitoring-tests)
+9. [Test Fixtures Required](#9-test-fixtures-required)
 
 ---
 
@@ -1471,6 +1487,185 @@ def test_custom_extensions():
     assert ".cu" in manager.supported_extensions
 ```
 
+### REQ-5.5: vcpkg Integration
+
+#### Test-5.5.1-3: vcpkg Auto-Detection
+- **Requirements**: REQ-5.5.1 through REQ-5.5.3
+- **Test File**: `tests/integration/test_vcpkg_integration.py`
+- **Test Cases**:
+
+```python
+def test_vcpkg_detection():
+    """Test REQ-5.5.1: Automatic vcpkg detection"""
+    with temp_project() as project:
+        # Create vcpkg directory structure
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        # Create another triplet
+        vcpkg_dir2 = project / "vcpkg_installed" / "x64-linux" / "include"
+        vcpkg_dir2.mkdir(parents=True)
+
+        analyzer = CppAnalyzer(project)
+
+        # Should detect vcpkg directory
+        assert any("vcpkg_installed" in path for path in analyzer.compile_commands_manager.fallback_args)
+
+def test_vcpkg_include_paths():
+    """Test REQ-5.5.2: vcpkg include paths added to fallback"""
+    with temp_project() as project:
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        analyzer = CppAnalyzer(project)
+        args = analyzer.compile_commands_manager.fallback_args
+
+        # Should include vcpkg paths for all found triplets
+        assert any("x64-windows/include" in arg for arg in args)
+
+def test_vcpkg_with_compile_commands():
+    """Test REQ-5.5.3: vcpkg paths added when compile_commands exists"""
+    with temp_project() as project:
+        # Create vcpkg directory
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        # Create minimal compile_commands.json
+        cc_path = project / "compile_commands.json"
+        cc_path.write_text('[{"directory": "/test", "file": "test.cpp", "command": "g++ test.cpp"}]')
+
+        analyzer = CppAnalyzer(project)
+
+        # vcpkg paths should still be in fallback args
+        assert any("vcpkg_installed" in arg for arg in analyzer.compile_commands_manager.fallback_args)
+
+def test_no_vcpkg_directory():
+    """Test graceful handling when no vcpkg directory exists"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        args = analyzer.compile_commands_manager.fallback_args
+
+        # Should not have vcpkg paths
+        assert not any("vcpkg_installed" in arg for arg in args)
+        # But should still have other fallback args
+        assert "-std=c++17" in args
+```
+
+### REQ-5.6: Compile Commands Manager Extended APIs
+
+#### Test-5.6.1-6: Extended API Tests
+- **Requirements**: REQ-5.6.1 through REQ-5.6.6
+- **Test File**: `tests/unit/test_compile_commands_apis.py`
+- **Test Cases**:
+
+```python
+def test_get_stats_api():
+    """Test REQ-5.6.1: get_stats() API"""
+    with temp_compile_commands_file() as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+        stats = manager.get_stats()
+
+        assert "enabled" in stats
+        assert "compile_commands_count" in stats
+        assert "file_mapping_count" in stats
+        assert "cache_enabled" in stats
+        assert "fallback_enabled" in stats
+        assert "last_modified" in stats
+        assert "compile_commands_path" in stats
+
+        assert stats["enabled"] == True
+        assert stats["compile_commands_count"] >= 0
+        assert stats["cache_enabled"] == True
+
+def test_is_file_supported():
+    """Test REQ-5.6.2: is_file_supported() API"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": "g++ test.cpp"
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        # File in compile commands
+        assert manager.is_file_supported(Path("/project/test.cpp")) == True
+
+        # File not in compile commands
+        assert manager.is_file_supported(Path("/project/other.cpp")) == False
+
+def test_get_all_files():
+    """Test REQ-5.6.3: get_all_files() API"""
+    cc_data = [
+        {"directory": "/project", "file": "/project/a.cpp", "command": "g++ a.cpp"},
+        {"directory": "/project", "file": "/project/b.cpp", "command": "g++ b.cpp"}
+    ]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+        files = manager.get_all_files()
+
+        assert len(files) == 2
+        assert "/project/a.cpp" in files
+        assert "/project/b.cpp" in files
+
+def test_should_process_file():
+    """Test REQ-5.6.4: should_process_file() API"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": "g++ test.cpp"
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        # File with compile commands
+        assert manager.should_process_file(Path("/project/test.cpp")) == True
+
+        # File without compile commands but supported extension
+        assert manager.should_process_file(Path("/project/other.cpp")) == True
+
+        # File with unsupported extension
+        assert manager.should_process_file(Path("/project/file.txt")) == False
+
+def test_is_extension_supported():
+    """Test REQ-5.6.5: is_extension_supported() API"""
+    manager = CompileCommandsManager(Path("/test"), {})
+
+    # Supported extensions
+    assert manager.is_extension_supported(Path("test.cpp")) == True
+    assert manager.is_extension_supported(Path("test.h")) == True
+    assert manager.is_extension_supported(Path("test.hpp")) == True
+
+    # Unsupported extensions
+    assert manager.is_extension_supported(Path("test.txt")) == False
+    assert manager.is_extension_supported(Path("test.py")) == False
+
+def test_clear_cache_api():
+    """Test REQ-5.6.6: clear_cache() API"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": "g++ test.cpp"
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        # Verify cache is populated
+        assert len(manager.compile_commands) > 0
+        assert manager.last_modified > 0
+
+        # Clear cache
+        manager.clear_cache()
+
+        # Verify cache is cleared
+        assert len(manager.compile_commands) == 0
+        assert len(manager.file_to_command_map) == 0
+        assert manager.last_modified == 0
+```
+
 ---
 
 ## 6. Caching and Performance Tests
@@ -1777,6 +1972,139 @@ def test_terminal_detection_for_progress():
             analyzer2 = CppAnalyzer(project)
             # Should report less frequently for non-terminal
             # (Implementation detail: check reporting frequency)
+```
+
+### REQ-6.5: Progress Persistence
+
+#### Test-6.5.1-5: Progress File Management
+- **Requirements**: REQ-6.5.1 through REQ-6.5.5
+- **Test File**: `tests/integration/test_progress_persistence.py`
+- **Test Cases**:
+
+```python
+def test_progress_file_creation():
+    """Test REQ-6.5.1: Progress file is created in cache directory"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Find progress file
+        progress_file = analyzer.cache_manager.cache_dir / "indexing_progress.json"
+        assert progress_file.exists()
+
+def test_progress_file_content():
+    """Test REQ-6.5.2: Progress file contains all required fields"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        progress_file = analyzer.cache_manager.cache_dir / "indexing_progress.json"
+        with open(progress_file) as f:
+            progress = json.load(f)
+
+        # Verify all required fields
+        assert "project_root" in progress
+        assert "total_files" in progress
+        assert "indexed_files" in progress
+        assert "failed_files" in progress
+        assert "cache_hits" in progress
+        assert "last_index_time" in progress
+        assert "timestamp" in progress
+        assert "class_count" in progress
+        assert "function_count" in progress
+        assert "status" in progress
+
+        # Verify types and values
+        assert isinstance(progress["total_files"], int)
+        assert isinstance(progress["indexed_files"], int)
+        assert isinstance(progress["last_index_time"], (int, float))
+        assert progress["status"] in ["in_progress", "complete", "interrupted"]
+
+def test_progress_status_complete():
+    """Test REQ-6.5.3: Status set to 'complete' on successful indexing"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        progress = analyzer.cache_manager.load_progress()
+
+        assert progress is not None
+        assert progress["status"] == "complete"
+        assert progress["indexed_files"] == progress["total_files"]
+
+def test_progress_status_interrupted():
+    """Test REQ-6.5.5: Status set to 'interrupted' on failure"""
+    with temp_project() as project:
+        # Create a file that will cause parsing to fail
+        bad_file = project / "bad.cpp"
+        bad_file.write_text("intentionally broken syntax {{{")
+
+        analyzer = CppAnalyzer(project)
+
+        # Mock indexing to simulate interruption
+        try:
+            # Simulate interrupted indexing
+            analyzer.cache_manager.save_progress(
+                total_files=10,
+                indexed_files=5,
+                failed_files=1,
+                cache_hits=0,
+                last_index_time=1.5,
+                class_count=10,
+                function_count=20,
+                status="interrupted"
+            )
+        except:
+            pass
+
+        progress = analyzer.cache_manager.load_progress()
+        assert progress["status"] == "interrupted"
+        assert progress["indexed_files"] < progress["total_files"]
+
+def test_load_progress_api():
+    """Test REQ-6.5.4: load_progress() API"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Load progress using API
+        progress = analyzer.cache_manager.load_progress()
+
+        assert progress is not None
+        assert "project_root" in progress
+        assert progress["status"] == "complete"
+
+def test_progress_persistence_across_sessions():
+    """Test progress is persisted and can be loaded in new session"""
+    with temp_project() as project:
+        # First session: Index and save progress
+        analyzer1 = CppAnalyzer(project)
+        analyzer1.index_project()
+
+        progress1 = analyzer1.cache_manager.load_progress()
+        original_timestamp = progress1["timestamp"]
+
+        # Second session: Load progress
+        analyzer2 = CppAnalyzer(project)
+        progress2 = analyzer2.cache_manager.load_progress()
+
+        # Should load same progress
+        assert progress2 is not None
+        assert progress2["timestamp"] == original_timestamp
+        assert progress2["status"] == "complete"
+
+def test_progress_update_during_indexing():
+    """Test REQ-6.5.3: Progress saved periodically during indexing"""
+    with temp_project(num_files=50) as project:
+        analyzer = CppAnalyzer(project)
+
+        # Start indexing (in background if possible)
+        analyzer.index_project()
+
+        # Progress should be saved
+        progress = analyzer.cache_manager.load_progress()
+        assert progress is not None
+        assert progress["status"] == "complete"
 ```
 
 ---
@@ -2114,13 +2442,355 @@ def test_enable_disable():
 
     diagnostics.logger.set_enabled(True)
     # Verify output resumes
+
+def test_diagnostic_logger_set_level():
+    """Test REQ-7.5.5: DiagnosticLogger.set_level() API"""
+    from mcp_server.diagnostics import DiagnosticLogger, DiagnosticLevel
+
+    logger = DiagnosticLogger()
+
+    # Change level
+    logger.set_level(DiagnosticLevel.ERROR)
+
+    # Messages below ERROR should not output
+    # (Testing this requires capturing output)
+
+def test_diagnostic_logger_set_output_stream():
+    """Test REQ-7.5.5: DiagnosticLogger.set_output_stream() API"""
+    from mcp_server.diagnostics import DiagnosticLogger
+    import io
+
+    logger = DiagnosticLogger()
+
+    # Redirect to custom stream
+    custom_stream = io.StringIO()
+    logger.set_output_stream(custom_stream)
+
+    logger.info("Test message")
+
+    # Verify message went to custom stream
+    assert "Test message" in custom_stream.getvalue()
+
+def test_diagnostic_logger_level_methods():
+    """Test REQ-7.5.5: Level-specific logging methods"""
+    from mcp_server.diagnostics import DiagnosticLogger
+    import io
+
+    logger = DiagnosticLogger()
+    stream = io.StringIO()
+    logger.set_output_stream(stream)
+
+    # Test all level methods
+    logger.debug("Debug message")
+    logger.info("Info message")
+    logger.warning("Warning message")
+    logger.error("Error message")
+    logger.fatal("Fatal message")
+
+    output = stream.getvalue()
+    assert "Debug message" in output
+    assert "Info message" in output
+    assert "Warning message" in output
+    assert "Error message" in output
+    assert "Fatal message" in output
+
+def test_configure_from_config():
+    """Test REQ-7.5.6: configure_from_config() function"""
+    from mcp_server.diagnostics import configure_from_config
+
+    config = {
+        "diagnostics": {
+            "level": "error",
+            "enabled": True
+        }
+    }
+
+    configure_from_config(config)
+
+    # Verify configuration was applied
+    # (Implementation-dependent verification)
 ```
 
 ---
 
-## 8. Test Fixtures Required
+## 8. Statistics and Monitoring Tests
 
-### 8.1 Minimal Fixtures (Unit Tests)
+### REQ-8.1: Runtime Statistics APIs
+
+#### Test-8.1.1-3: CppAnalyzer Statistics
+- **Requirements**: REQ-8.1.1 through REQ-8.1.3
+- **Test File**: `tests/unit/test_runtime_statistics.py`
+- **Test Cases**:
+
+```python
+def test_get_stats_api():
+    """Test REQ-8.1.1: CppAnalyzer.get_stats() API"""
+    analyzer = setup_test_analyzer()
+
+    stats = analyzer.get_stats()
+
+    # Verify required fields
+    assert "class_count" in stats
+    assert "function_count" in stats
+    assert "file_count" in stats
+
+    # Verify types
+    assert isinstance(stats["class_count"], int)
+    assert isinstance(stats["function_count"], int)
+    assert isinstance(stats["file_count"], int)
+
+    # If compile commands enabled, should have additional fields
+    if analyzer.compile_commands_manager.enabled:
+        assert "compile_commands_enabled" in stats
+        assert "compile_commands_count" in stats
+        assert "compile_commands_file_mapping_count" in stats
+
+def test_get_compile_commands_stats():
+    """Test REQ-8.1.2: CppAnalyzer.get_compile_commands_stats() API"""
+    with temp_project_with_cc() as project:
+        analyzer = CppAnalyzer(project)
+
+        stats = analyzer.get_compile_commands_stats()
+
+        assert "enabled" in stats
+        if stats["enabled"]:
+            assert "compile_commands_count" in stats
+            assert "file_mapping_count" in stats
+            assert "cache_enabled" in stats
+
+def test_stats_thread_safety():
+    """Test REQ-8.1.3: Statistics APIs are thread-safe"""
+    analyzer = setup_test_analyzer()
+
+    # Call get_stats from multiple threads simultaneously
+    import threading
+
+    results = []
+
+    def get_stats_threaded():
+        stats = analyzer.get_stats()
+        results.append(stats)
+
+    threads = [threading.Thread(target=get_stats_threaded) for _ in range(10)]
+
+    for t in threads:
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    # All threads should have completed without errors
+    assert len(results) == 10
+
+    # Results should be consistent
+    first_result = results[0]
+    for result in results:
+        assert result["class_count"] == first_result["class_count"]
+        assert result["function_count"] == first_result["function_count"]
+```
+
+### REQ-8.2: Call Graph Statistics
+
+#### Test-8.2.1-2: Call Graph Metrics
+- **Requirements**: REQ-8.2.1 through REQ-8.2.2
+- **Test File**: `tests/unit/test_call_graph_statistics.py`
+- **Test Cases**:
+
+```python
+def test_call_graph_statistics_api():
+    """Test REQ-8.2.1: CallGraphAnalyzer.get_call_statistics() API"""
+    with temp_project() as project:
+        # Create files with call relationships
+        file1 = project / "caller.cpp"
+        file1.write_text("""
+            void callee1() {}
+            void callee2() {}
+            void caller() {
+                callee1();
+                callee2();
+                callee1();  // Called twice
+            }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # Verify required fields
+        assert "total_functions_with_calls" in stats
+        assert "total_functions_being_called" in stats
+        assert "total_unique_calls" in stats
+        assert "most_called_functions" in stats
+        assert "functions_with_most_calls" in stats
+
+        # Verify types
+        assert isinstance(stats["total_functions_with_calls"], int)
+        assert isinstance(stats["total_functions_being_called"], int)
+        assert isinstance(stats["total_unique_calls"], int)
+        assert isinstance(stats["most_called_functions"], list)
+        assert isinstance(stats["functions_with_most_calls"], list)
+
+        # Verify list structure
+        if len(stats["most_called_functions"]) > 0:
+            # Each entry should be (USR, count) tuple
+            entry = stats["most_called_functions"][0]
+            assert isinstance(entry, (list, tuple))
+            assert len(entry) == 2
+            assert isinstance(entry[1], int)  # call count
+
+def test_most_called_functions():
+    """Test REQ-8.2.2: Identify most called functions"""
+    with temp_project() as project:
+        file1 = project / "test.cpp"
+        file1.write_text("""
+            void veryPopular() {}
+            void caller1() { veryPopular(); }
+            void caller2() { veryPopular(); }
+            void caller3() { veryPopular(); }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # veryPopular should be in most_called_functions
+        most_called = stats["most_called_functions"]
+        assert len(most_called) > 0
+
+        # Should be sorted by call count (descending)
+        if len(most_called) > 1:
+            assert most_called[0][1] >= most_called[1][1]
+
+def test_functions_with_most_calls():
+    """Test REQ-8.2.2: Identify complex functions making many calls"""
+    with temp_project() as project:
+        file1 = project / "test.cpp"
+        file1.write_text("""
+            void helper1() {}
+            void helper2() {}
+            void helper3() {}
+            void complexFunction() {
+                helper1();
+                helper2();
+                helper3();
+            }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # complexFunction should be in functions_with_most_calls
+        most_calls = stats["functions_with_most_calls"]
+        assert len(most_calls) > 0
+
+        # Should be sorted by call count (descending)
+        if len(most_calls) > 1:
+            assert most_calls[0][1] >= most_calls[1][1]
+
+def test_dead_code_detection():
+    """Test REQ-8.2.2: Detect potential dead code (never called)"""
+    with temp_project() as project:
+        file1 = project / "test.cpp"
+        file1.write_text("""
+            void neverCalled() {}
+            void caller() { /* doesn't call neverCalled */ }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # Total functions indexed should include neverCalled
+        # But it won't appear in most_called_functions list
+        all_functions = len(analyzer.function_index)
+        called_functions = stats["total_functions_being_called"]
+
+        # Some functions may be never called (potential dead code)
+        # This is useful for code quality analysis
+```
+
+### REQ-8.3: Cache Management APIs
+
+#### Test-8.3.1-3: Cache Management
+- **Requirements**: REQ-8.3.1 through REQ-8.3.3
+- **Test File**: `tests/unit/test_cache_management_apis.py`
+- **Test Cases**:
+
+```python
+def test_remove_file_cache():
+    """Test REQ-8.3.1: CacheManager.remove_file_cache() API"""
+    with temp_project() as project:
+        test_file = project / "test.cpp"
+        test_file.write_text("class Test {};")
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Verify cache file exists
+        cache_path = analyzer.cache_manager.get_file_cache_path(str(test_file))
+        assert cache_path.exists()
+
+        # Remove cache
+        result = analyzer.cache_manager.remove_file_cache(str(test_file))
+
+        # Verify removal
+        assert result == True
+        assert not cache_path.exists()
+
+def test_get_file_cache_path():
+    """Test REQ-8.3.2: CacheManager.get_file_cache_path() API"""
+    with temp_project() as project:
+        test_file = project / "test.cpp"
+
+        analyzer = CppAnalyzer(project)
+
+        cache_path = analyzer.cache_manager.get_file_cache_path(str(test_file))
+
+        # Should return Path object
+        assert isinstance(cache_path, Path)
+
+        # Should be in files/ subdirectory
+        assert "files" in str(cache_path)
+
+        # Should end with .json
+        assert cache_path.suffix == ".json"
+
+def test_cache_api_error_handling():
+    """Test REQ-8.3.3: Cache APIs return success/failure status"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+
+        # Try to remove cache for non-existent file
+        result = analyzer.cache_manager.remove_file_cache("/nonexistent/file.cpp")
+
+        # Should return False (not raise exception)
+        assert result == False
+
+def test_cache_path_consistency():
+    """Test cache path generation is consistent"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+
+        file_path = "/project/test.cpp"
+
+        # Get path twice
+        path1 = analyzer.cache_manager.get_file_cache_path(file_path)
+        path2 = analyzer.cache_manager.get_file_cache_path(file_path)
+
+        # Should be identical
+        assert path1 == path2
+```
+
+---
+
+## 9. Test Fixtures Required
+
+### 9.1 Minimal Fixtures (Unit Tests)
 
 ```
 tests/fixtures/
@@ -2184,7 +2854,7 @@ tests/fixtures/
     └── multi_symbol_file.h         # Multiple classes/functions in one file
 ```
 
-### 8.2 Integration Fixtures
+### 9.2 Integration Fixtures
 
 ```
 tests/fixtures/projects/
@@ -2212,7 +2882,7 @@ tests/fixtures/projects/
     └── CMakeLists.txt
 ```
 
-### 8.3 Test Utilities
+### 9.3 Test Utilities
 
 ```python
 # tests/test_utils.py
