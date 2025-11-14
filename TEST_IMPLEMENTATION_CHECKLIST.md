@@ -227,61 +227,61 @@ git push
 
 **Focus**: Core MCP server features working correctly in normal conditions
 
-- [ ] **Task 1.1.1**: Write `test_basic_class_indexing()`
+- [x] **Task 1.1.1**: Write `test_basic_class_indexing()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Index simple class, verify it's found
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestBasicIndexing class. Tests indexing of SimpleClass with method and field.
 
-- [ ] **Task 1.1.2**: Write `test_basic_function_indexing()`
+- [x] **Task 1.1.2**: Write `test_basic_function_indexing()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Index simple function, verify it's found
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestBasicIndexing class. Tests indexing of add() and printHello() functions.
 
-- [ ] **Task 1.1.3**: Write `test_search_classes_basic()`
+- [x] **Task 1.1.3**: Write `test_search_classes_basic()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Search for classes by pattern
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestSearchOperations class. Tests regex pattern matching with "Test.*" pattern.
 
-- [ ] **Task 1.1.4**: Write `test_search_functions_basic()`
+- [x] **Task 1.1.4**: Write `test_search_functions_basic()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Search for functions by pattern
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestSearchOperations class. Tests regex pattern matching with "process.*" pattern.
 
-- [ ] **Task 1.1.5**: Write `test_find_in_file_basic()`
+- [x] **Task 1.1.5**: Write `test_find_in_file_basic()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Find symbols in specific file
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestSearchOperations class. Tests file-specific symbol search across multiple files.
 
-- [ ] **Task 1.1.6**: Write `test_get_class_hierarchy_basic()`
+- [x] **Task 1.1.6**: Write `test_get_class_hierarchy_basic()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Get inheritance hierarchy for a class
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestHierarchyAnalysis class. Tests 3-level inheritance hierarchy.
 
-- [ ] **Task 1.1.7**: Write `test_find_callers_basic()`
+- [x] **Task 1.1.7**: Write `test_find_callers_basic()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Find callers of a function
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestCallGraphAnalysis class. Tests finding multiple callers of helperFunction().
 
-- [ ] **Task 1.1.8**: Write `test_find_callees_basic()`
+- [x] **Task 1.1.8**: Write `test_find_callees_basic()`
   - File: tests/base_functionality/test_core_features.py
   - Test: Find callees of a function
   - Marker: @pytest.mark.base_functionality
-  - Status: Not Started
-  - Notes:
+  - Status: ✅ Completed
+  - Notes: Implemented in TestCallGraphAnalysis class. Tests finding callees of mainFunction().
 
 - [ ] **Task 1.1.9**: Write `test_cache_persistence_basic()`
   - File: tests/base_functionality/test_cache.py
