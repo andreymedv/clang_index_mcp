@@ -48,6 +48,68 @@
 
 ---
 
+## Workflow Per Checklist Item
+
+**⚠️ IMPORTANT**: For each checklist item, follow this 4-step workflow:
+
+```
+1. Implement → 2. Commit Implementation → 3. Update Checklist → 4. Commit Checklist → 5. Push
+```
+
+### Step-by-Step Process
+
+#### 1. Implement the Task
+- Write the test file or implementation
+- Follow project conventions and style
+- Add appropriate pytest markers
+- Include docstrings and comments
+
+#### 2. Commit the Implementation
+```bash
+git add <test-file-path>
+git commit -m "Implement <component> - REQ-X.X"
+```
+
+#### 3. Update This Checklist
+- Change `[ ]` to `[x]` for completed item
+- Add notes about what was implemented
+- Update timestamps if needed
+
+#### 4. Commit the Checklist Update
+```bash
+git add TEST_IMPLEMENTATION_CHECKLIST.md
+git commit -m "Mark task X.X.X complete in checklist"
+```
+
+#### 5. Push to Remote
+```bash
+git push
+```
+
+### Quick Example
+
+```bash
+# Step 1: Write the test
+vim tests/base_functionality/test_project_indexing.py
+
+# Step 2: Commit implementation
+git add tests/base_functionality/test_project_indexing.py
+git commit -m "Implement test_project_indexing.py - REQ-1.1"
+
+# Step 3: Update checklist (edit this file to mark task complete)
+
+# Step 4: Commit checklist update
+git add TEST_IMPLEMENTATION_CHECKLIST.md
+git commit -m "Mark task 1.1.1 complete in checklist"
+
+# Step 5: Push both commits
+git push
+```
+
+**📚 For detailed workflow documentation, see [WORKFLOW.md](./WORKFLOW.md)**
+
+---
+
 ## Phase 0: Test Infrastructure Setup
 
 **Goal**: Establish test environment, fixtures, and utilities
