@@ -113,6 +113,87 @@ The `compile_commands.json` file should follow the standard format:
 - `output`: Output file path (if specified)
 - `language`: Source language (if not inferred from file extension)
 
+## Command Processing
+
+### Important: Argument Filtering
+
+When the analyzer processes compile_commands.json, it **filters out arguments that libclang doesn't need**. This is critical for correct parsing.
+
+#### Arguments That Are Stripped
+
+The following arguments are automatically removed before passing to libclang:
+
+1. **Compiler Executable Path**
+   - Example: `/usr/bin/gcc`, `/Library/Developer/CommandLineTools/usr/bin/cc`
+   - Recognized patterns: gcc, g++, clang, clang++, cc, c++, cl, cl.exe
+   - Reason: libclang only needs compilation flags, not the compiler path
+
+2. **Output File Specification**
+   - Example: `-o output.o`, `-o /path/to/output.o`
+   - Reason: libclang doesn't compile files, only parses them
+
+3. **Compile-Only Flag**
+   - Example: `-c`
+   - Reason: Not needed for parsing
+
+4. **Source File Paths**
+   - Example: `src/main.cpp`, `/path/to/file.c`
+   - Detected by file extensions: .c, .cc, .cpp, .cxx, .c++, .m, .mm
+   - Reason: libclang receives the source file separately
+
+5. **Linker Flags**
+   - Example: `-l...`, `-L...`, `-Wl,...`
+   - Reason: Linking is not part of parsing
+
+#### Arguments That Are Kept
+
+The analyzer passes these arguments to libclang:
+
+- Preprocessor defines: `-DNDEBUG`, `-DWIN32`, `-D_XOPEN_SOURCE=600`
+- Include paths: `-I/path/to/includes`, `-isystem /usr/include`
+- Language standard: `-std=c++17`, `-std=gnu11`
+- Warning flags: `-Wall`, `-Wextra`, `-Werror`
+- System root: `-isysroot /path/to/sdk`
+- Target flags: `-target x86_64-apple-darwin`, `-march=native`
+- Compiler features: `-fPIC`, `-fno-exceptions`
+
+### Example Command Processing
+
+**Input (from compile_commands.json):**
+```json
+{
+  "file": "src/main.cpp",
+  "directory": "/project",
+  "command": "/usr/bin/c++ -std=c++17 -DNDEBUG -I/project/include -o build/main.o -c src/main.cpp"
+}
+```
+
+**Processing Steps:**
+1. Parse with shlex.split()
+2. Strip compiler path: `/usr/bin/c++` ❌
+3. Keep: `-std=c++17` ✅
+4. Keep: `-DNDEBUG` ✅
+5. Keep: `-I/project/include` ✅
+6. Strip output: `-o build/main.o` ❌
+7. Strip compile flag: `-c` ❌
+8. Strip source file: `src/main.cpp` ❌
+
+**Result passed to libclang:**
+```python
+["-std=c++17", "-DNDEBUG", "-I/project/include"]
+```
+
+### File Scoping
+
+**Important:** When `compile_commands.json` is present and contains entries, the analyzer will **ONLY** analyze files explicitly listed in it.
+
+This means:
+- ✅ Files in compile_commands.json are analyzed with their specific flags
+- ❌ Header files NOT in compile_commands.json are NOT analyzed
+- ❌ Source files NOT in compile_commands.json are NOT analyzed
+
+This ensures the analyzer respects your build configuration and doesn't index files that aren't part of the build.
+
 ## Integration Details
 
 ### CppAnalyzer Integration

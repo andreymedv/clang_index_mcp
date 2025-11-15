@@ -212,9 +212,11 @@ class CompileCommandsManager:
             compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
 
             # Get the basename to check if it's a compiler
-            basename = os.path.basename(first_arg).lower()
-            # Remove .exe extension if present
-            basename = basename.replace('.exe', '')
+            # Handle both Unix and Windows path separators
+            basename = first_arg.split('/')[-1].split('\\')[-1].lower()
+            # Remove .exe extension if present (case-insensitive)
+            if basename.endswith('.exe'):
+                basename = basename[:-4]
 
             # If the first argument is a compiler, strip it
             if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
