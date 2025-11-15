@@ -92,8 +92,8 @@ async def test_mcp_server(project_path: str):
         if signatures:
             print(f"✓ Found {len(signatures)} function(s) with this name:")
             for sig in signatures[:3]:
-                print(f"   - {sig['signature']}")
-                print(f"     at {sig['file']}:{sig['line']}")
+                # get_function_signature returns a list of signature strings
+                print(f"   - {sig}")
 
     # 8. Get class hierarchy (if classes exist)
     if classes:
