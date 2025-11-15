@@ -105,10 +105,65 @@ python3 -c "import clang.cindex; print(clang.cindex.conf.lib.clang_getClangVersi
 **Fix**: Some GCC-specific flags might not be supported by libclang
 **Action**: Filter out unsupported flags or use `-Wno-unknown-warning-option`
 
+### Issue 5: macOS SDK Header Not Found (stdbool.h, stdio.h, etc.)
+**Symptom**: Errors like `'stdbool.h' file not found` on macOS
+**Root Cause**: libclang version doesn't match the macOS SDK version
+**Diagnosis**: Run `python scripts/diagnose_libclang.py` to check compatibility
+**Fixes**:
+
+#### Option 1: Use System libclang (Recommended)
+```bash
+# Find system libclang
+find /Library/Developer -name "libclang.dylib" 2>/dev/null
+
+# Set environment variable before running
+export LIBCLANG_PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib
+```
+
+#### Option 2: Install Matching libclang Version
+```bash
+# Check your system clang version
+clang --version
+# Example output: Apple clang version 14.0.0
+
+# Install matching libclang
+pip install libclang==14.0.0
+```
+
+#### Option 3: Add Resource Directory
+```bash
+# Find resource directory
+clang -print-resource-dir
+# Example: /Library/Developer/CommandLineTools/usr/lib/clang/14.0.0
+
+# Add to .cpp-analyzer-config.json
+{
+  "compile_commands": {
+    "fallback_args": [
+      "-resource-dir", "/Library/Developer/CommandLineTools/usr/lib/clang/14.0.0",
+      "-nostdinc++",
+      "-isystem", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1",
+      "-isystem", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include"
+    ]
+  }
+}
+```
+
+#### Option 4: Update Command Line Tools
+```bash
+# Update to latest version
+softwareupdate --install --all
+
+# Or reinstall
+sudo rm -rf /Library/Developer/CommandLineTools
+xcode-select --install
+```
+
 ## Getting Help
 
 If none of the above helps, please provide:
 1. Output from `scripts/diagnose_compile_commands.py`
-2. Output from `scripts/view_parse_errors.py -l 1 -v`
-3. First 10 compilation arguments being passed to libclang
-4. Your libclang version
+2. Output from `scripts/diagnose_libclang.py` (for macOS header issues)
+3. Output from `scripts/view_parse_errors.py -l 1 -v`
+4. First 10 compilation arguments being passed to libclang
+5. Your libclang version and system compiler version
