@@ -157,54 +157,84 @@ class CacheManager:
         cache_filename = hashlib.md5(file_path.encode()).hexdigest() + ".json"
         return files_dir / cache_filename
     
-    def save_file_cache(self, file_path: str, symbols: List[SymbolInfo], 
-                       file_hash: str) -> bool:
-        """Save parsed symbols for a single file"""
+    def save_file_cache(self, file_path: str, symbols: List[SymbolInfo],
+                       file_hash: str, compile_args_hash: Optional[str] = None) -> bool:
+        """Save parsed symbols for a single file with compilation arguments hash
+
+        Args:
+            file_path: Path to the source file
+            symbols: List of symbols found in the file
+            file_hash: Hash of the file content
+            compile_args_hash: Hash of the compilation arguments used to parse this file
+        """
         try:
             # Create files subdirectory
             files_dir = self.cache_dir / "files"
             files_dir.mkdir(exist_ok=True)
-            
+
             # Use hash of file path as cache filename
             cache_file = self.get_file_cache_path(file_path)
-            
+
             # Prepare cache data
             cache_data = {
+                "version": "1.1",  # Bump version to include compile_args_hash
                 "file_path": file_path,
                 "file_hash": file_hash,
+                "compile_args_hash": compile_args_hash,
                 "timestamp": time.time(),
                 "symbols": [s.to_dict() for s in symbols]
             }
-            
+
             # Save to file
             with open(cache_file, 'w') as f:
                 json.dump(cache_data, f, indent=2)
-            
+
             return True
         except Exception as e:
             # Silently fail for individual file caches
             return False
     
-    def load_file_cache(self, file_path: str, current_hash: str) -> Optional[List[SymbolInfo]]:
-        """Load cached symbols for a file if hash matches"""
+    def load_file_cache(self, file_path: str, current_hash: str,
+                       compile_args_hash: Optional[str] = None) -> Optional[List[SymbolInfo]]:
+        """Load cached symbols for a file if hash matches
+
+        Args:
+            file_path: Path to the source file
+            current_hash: Current hash of the file content
+            compile_args_hash: Current hash of the compilation arguments
+
+        Returns:
+            List of cached symbols if valid, None otherwise
+        """
         try:
             cache_file = self.get_file_cache_path(file_path)
-            
+
             if not cache_file.exists():
                 return None
-            
+
             with open(cache_file, 'r') as f:
                 cache_data = json.load(f)
-            
+
+            # Check cache version - invalidate old caches that don't have compile_args_hash
+            cache_version = cache_data.get("version", "1.0")
+            if cache_version != "1.1":
+                return None
+
             # Check if file hash matches
             if cache_data.get("file_hash") != current_hash:
                 return None
-            
+
+            # Check if compilation arguments hash matches
+            cached_args_hash = cache_data.get("compile_args_hash")
+            if cached_args_hash != compile_args_hash:
+                # Compilation arguments changed - invalidate cache
+                return None
+
             # Reconstruct SymbolInfo objects
             symbols = []
             for s in cache_data.get("symbols", []):
                 symbols.append(SymbolInfo(**s))
-            
+
             return symbols
         except:
             return None
