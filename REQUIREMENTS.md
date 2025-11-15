@@ -12,7 +12,9 @@ This document captures the functional requirements for the Clang Index MCP Serve
 4. [MCP Tool Requirements](#4-mcp-tool-requirements)
 5. [Compilation Configuration Requirements](#5-compilation-configuration-requirements)
 6. [Caching and Performance Requirements](#6-caching-and-performance-requirements)
+   - 6.6 [Failure Tracking and Retry Logic](#66-failure-tracking-and-retry-logic)
 7. [Project Management Requirements](#7-project-management-requirements)
+   - 7.6 [Centralized Error Logging (Developer-Only)](#76-centralized-error-logging-developer-only)
 8. [Statistics and Monitoring Requirements](#8-statistics-and-monitoring-requirements)
 9. [Security and Robustness Requirements](#9-security-and-robustness-requirements)
 
@@ -588,6 +590,14 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-6.2.5**: The system SHALL invalidate cache when cache version number changes (prevents loading incompatible cache formats).
 
+**REQ-6.2.6**: The system SHALL compute and validate compilation arguments hash for per-file caches.
+
+**REQ-6.2.7**: The system SHALL invalidate per-file cache when compilation arguments change (different -I flags, defines, standard version, etc.).
+
+**REQ-6.2.8**: The system SHALL use MD5 hash of sorted compilation arguments for consistency (order-independent comparison).
+
+**REQ-6.2.9**: Per-file cache version SHALL be bumped from 1.1 to 1.2 when compilation arguments tracking is added.
+
 ### 6.3 Cache Loading
 
 **REQ-6.3.1**: The system SHALL attempt to load from cache before re-parsing files.
@@ -661,6 +671,39 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-6.5.5**: The system SHALL set status to "interrupted" if indexing fails or is cancelled.
 
+### 6.6 Failure Tracking and Retry Logic
+
+**REQ-6.6.1**: The system SHALL track parsing failures in per-file cache with metadata:
+- `success`: Boolean indicating if parse succeeded
+- `error_message`: Error description (truncated to 200 chars for cache)
+- `retry_count`: Number of times parsing has been attempted
+
+**REQ-6.6.2**: The system SHALL save failure information to cache when files fail to parse.
+
+**REQ-6.6.3**: The system SHALL support configurable maximum retry count via `max_parse_retries` configuration (default: 2).
+
+**REQ-6.6.4**: The system SHALL implement intelligent retry logic:
+- If `retry_count < max_parse_retries`: Retry parsing the file
+- If `retry_count >= max_parse_retries`: Skip file with debug log message
+
+**REQ-6.6.5**: The system SHALL log retry attempts with:
+- Attempt number (e.g., "attempt 1/3")
+- Last error message
+- File path
+
+**REQ-6.6.6**: The system SHALL reset retry count to 0 when a previously failed file is successfully parsed.
+
+**REQ-6.6.7**: The system SHALL invalidate failure cache when:
+- File content changes
+- Compilation arguments change
+- User forces re-indexing
+
+**REQ-6.6.8**: Cache version SHALL be bumped from 1.1 to 1.2 to include failure tracking fields.
+
+**REQ-6.6.9**: The system SHALL maintain backward compatibility with v1.1 caches (default `success=True`, `retry_count=0`).
+
+**REQ-6.6.10**: **Purpose**: Prevent wasting time re-parsing files that consistently fail (missing dependencies, syntax errors) while still allowing retries in case issues are fixed.
+
 ---
 
 ## 7. Project Management Requirements
@@ -679,12 +722,31 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 - `exclude_patterns`: List of file patterns to exclude (e.g., "*.generated.h")
 - `include_dependencies`: Boolean flag to include dependency code (default: true)
 - `max_file_size_mb`: Maximum file size in MB (default: 10)
+- `max_parse_retries`: Maximum retry attempts for failed files (default: 2)
 - `compile_commands`: Compilation configuration (see REQ-5.1.6)
 - `diagnostics`: Diagnostic logging configuration
 
 **REQ-7.1.4**: The system SHALL merge user configuration with default configuration (user takes precedence).
 
 **REQ-7.1.5**: The system SHALL use default configuration if no config file is found.
+
+**REQ-7.1.6**: The system SHALL validate configuration file format:
+- Configuration file MUST be a JSON object (dict), not a JSON array
+- If JSON array is detected, log clear error message indicating likely mistake
+- Suggest possible causes (e.g., using compile_commands.json instead of .cpp-analyzer-config.json)
+- Fall back to default configuration on validation failure
+
+**REQ-7.1.7**: The system SHALL provide actionable error messages when config validation fails:
+- "Invalid config file format at <path>"
+- "Expected a JSON object (dict), but got <type>"
+- "Note: If you see 'compile_commands.json' here, you may have:"
+  - "Set CPP_ANALYZER_CONFIG environment variable to wrong file"
+  - "Named .cpp-analyzer-config.json incorrectly"
+
+**REQ-7.1.8**: The system SHALL add debug logging for config file discovery:
+- Log when loading from CPP_ANALYZER_CONFIG environment variable
+- Log when loading from project root
+- Log when no config file is found
 
 ### 7.2 File Discovery
 
@@ -765,6 +827,84 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 - `debug(message)`, `info(message)`, `warning(message)`, `error(message)`, `fatal(message)`: Log at specific levels
 
 **REQ-7.5.6**: The system SHALL provide `configure_from_config(config_dict)` function to configure diagnostics from configuration dictionary.
+
+### 7.6 Centralized Error Logging (Developer-Only)
+
+**REQ-7.6.1**: The system SHALL maintain a centralized error log for all parsing failures at `.mcp_cache/{project}/parse_errors.jsonl`.
+
+**REQ-7.6.2**: The error log SHALL use JSONL format (JSON Lines - one JSON object per line) for:
+- Easy streaming and appending
+- Partial file reading capabilities
+- Line-by-line processing without loading entire file
+
+**REQ-7.6.3**: Each error log entry SHALL include:
+- `timestamp`: Unix timestamp (float)
+- `timestamp_readable`: Human-readable timestamp (YYYY-MM-DD HH:MM:SS)
+- `file_path`: Absolute path to file that failed
+- `error_type`: Exception class name (e.g., ValueError, RuntimeError)
+- `error_message`: Full error message (not truncated)
+- `stack_trace`: Complete Python stack trace for debugging
+- `file_hash`: MD5 hash of file content
+- `compile_args_hash`: MD5 hash of compilation arguments
+- `retry_count`: Current retry attempt number
+
+**REQ-7.6.4**: The system SHALL automatically log errors when `CppAnalyzer.index_file()` catches exceptions during parsing.
+
+**REQ-7.6.5**: Error logging SHALL NOT expose errors to LLM via MCP tools - it is strictly for developer analysis.
+
+**REQ-7.6.6**: The system SHALL provide `CacheManager.log_parse_error()` API for logging errors with parameters:
+- `file_path`: str
+- `error`: Exception object
+- `file_hash`: str
+- `compile_args_hash`: Optional[str]
+- `retry_count`: int
+
+**REQ-7.6.7**: The system SHALL provide `CacheManager.get_parse_errors()` API with parameters:
+- `limit`: Optional[int] - Maximum errors to return (most recent first)
+- `file_path_filter`: Optional[str] - Substring filter for file paths
+- Returns: List[Dict[str, Any]] sorted by timestamp descending
+
+**REQ-7.6.8**: The system SHALL provide `CacheManager.get_error_summary()` API returning:
+- `total_errors`: Total number of logged errors
+- `unique_files`: Count of unique files with errors
+- `error_types`: Dict[str, int] - Count of each error type
+- `recent_errors`: List of 10 most recent errors
+- `error_log_path`: Absolute path to error log file
+
+**REQ-7.6.9**: The system SHALL provide `CacheManager.clear_error_log()` API with parameters:
+- `older_than_days`: Optional[int] - If specified, only clear errors older than N days
+- Returns: int - Number of errors cleared
+
+**REQ-7.6.10**: The system SHALL provide `CppAnalyzer` wrapper methods delegating to CacheManager:
+- `get_parse_errors(limit, file_path_filter)`
+- `get_error_summary()`
+- `clear_error_log(older_than_days)`
+
+**REQ-7.6.11**: The system SHALL provide developer utility script `scripts/view_parse_errors.py` with features:
+- View recent errors: `view_parse_errors.py <project_root>`
+- Show summary: `--summary` flag
+- Filter by file: `--filter "filename"` option
+- Limit results: `--limit N` option
+- Show stack traces: `--verbose` flag
+- Clear old errors: `--clear-old DAYS` option
+- Clear all errors: `--clear-all` flag
+
+**REQ-7.6.12**: Error logging SHALL be resilient and never break main indexing flow:
+- Wrap logging in try/except
+- Print error to stderr if logging fails
+- Return boolean success status
+
+**REQ-7.6.13**: Error log operations SHALL handle missing/corrupted files gracefully:
+- Return empty list if log file doesn't exist
+- Skip malformed JSON lines (catch JSONDecodeError)
+- Continue processing valid lines even if some are corrupt
+
+**REQ-7.6.14**: **Purpose**: Enable developers to:
+- Analyze patterns in parsing failures across the codebase
+- Debug specific parsing errors with full stack traces
+- Track error frequency and identify problematic files
+- Monitor parsing health over time
+- Identify missing dependencies or configuration issues
 
 ---
 
@@ -1013,10 +1153,31 @@ These requirements imply the following testing needs:
 
 ## Document Version
 
-- **Version**: 3.0
-- **Date**: 2025-11-14
-- **Status**: Production-ready with comprehensive security and robustness requirements
-- **Changes from v2.0**:
+- **Version**: 3.1
+- **Date**: 2025-11-15
+- **Status**: Production-ready with manual testing issue fixes and error logging
+- **Changes from v3.0**:
+  - Added REQ-6.2.6-6.2.9: Compilation Arguments Hash Validation (4 requirements)
+    - Cache invalidation when compilation arguments change
+    - MD5 hash of sorted arguments for consistency
+    - Per-file cache version 1.1 → 1.2
+  - Added Section 6.6: Failure Tracking and Retry Logic (10 requirements)
+    - Track parsing failures in cache
+    - Configurable retry limits (max_parse_retries)
+    - Intelligent retry with skip after max attempts
+    - Backward compatibility with v1.1 caches
+  - Updated REQ-7.1.3: Added `max_parse_retries` configuration option
+  - Added REQ-7.1.6-7.1.8: Configuration File Validation (3 requirements)
+    - Validate JSON object vs array format
+    - Actionable error messages for common mistakes
+    - Debug logging for config discovery
+  - Added Section 7.6: Centralized Error Logging (14 requirements)
+    - JSONL error log at `.mcp_cache/{project}/parse_errors.jsonl`
+    - Full error messages and stack traces
+    - Developer-only access (not exposed to LLM)
+    - Error querying, filtering, and management APIs
+    - Utility script `scripts/view_parse_errors.py`
+- **Changes from v2.0** (previous major update):
   - Added Section 9: Security and Robustness Requirements (42 new requirements)
     - REQ-9.1: Input Validation and Sanitization (6 requirements)
     - REQ-9.2: Symlink and File System Security (4 requirements)
@@ -1026,18 +1187,5 @@ These requirements imply the following testing needs:
     - REQ-9.6: Platform-Specific Security (4 requirements)
     - REQ-9.7: Concurrent Access Protection (4 requirements)
     - REQ-9.8: Boundary Conditions (5 requirements)
-- **Changes from v1.0** (previous update):
-  - Fixed REQ-6.2.1: SHA-256 → MD5 (matches implementation)
-  - Updated REQ-6.1.2: Clarified cache location (MCP server directory, not project)
-  - Updated REQ-6.1.3: Added MD5-based per-file cache naming
-  - Added REQ-6.2.5: Cache version mismatch detection
-  - Added REQ-6.4.6-6.4.7: Environment-aware progress reporting
-  - Added Section 6.5: Progress Persistence (5 requirements)
-  - Added Section 5.5: vcpkg Integration (3 requirements)
-  - Added Section 5.6: Compile Commands Manager Extended APIs (6 requirements)
-  - Updated REQ-7.4.2: Comprehensive deleted file cleanup
-  - Updated REQ-7.5.3-7.5.4: Environment variable and programmatic API configuration
-  - Added REQ-7.5.5-7.5.6: DiagnosticLogger class APIs
-  - Added Section 8: Statistics and Monitoring Requirements (8 requirements)
-- **Total Requirements**: 200+ requirements across 9 major sections
-- **Coverage**: 100% of implemented functionality + security hardening
+- **Total Requirements**: 230+ requirements across 9 major sections
+- **Coverage**: 100% of implemented functionality including manual testing fixes
