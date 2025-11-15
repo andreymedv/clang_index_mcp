@@ -31,7 +31,7 @@ pip install -r "$PROJECT_ROOT/requirements.txt"
 log "Ensuring bundled libclang is available"
 python "$PROJECT_ROOT/scripts/download_libclang.py"
 
-cat <<'MSG'
+cat <<MSG
 ========================================
 Setup Complete!
 ========================================
