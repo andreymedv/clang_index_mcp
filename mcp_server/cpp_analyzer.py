@@ -136,6 +136,59 @@ class CppAnalyzer:
         args_str = " ".join(sorted(args))
         return hashlib.md5(args_str.encode()).hexdigest()
 
+    def _extract_diagnostics(self, tu) -> tuple[List, List]:
+        """Extract error and warning diagnostics from translation unit.
+
+        Returns:
+            (error_diagnostics, warning_diagnostics) - Lists of diagnostic objects
+        """
+        error_diagnostics = []
+        warning_diagnostics = []
+
+        if tu and hasattr(tu, 'diagnostics'):
+            for diag in tu.diagnostics:
+                severity = diag.severity
+                # Severity levels: Ignored=0, Note=1, Warning=2, Error=3, Fatal=4
+                if severity >= 3:  # Error or Fatal
+                    error_diagnostics.append(diag)
+                elif severity == 2:  # Warning
+                    warning_diagnostics.append(diag)
+
+        return error_diagnostics, warning_diagnostics
+
+    def _format_diagnostics(self, diagnostics_list, max_count: int = 5) -> str:
+        """Format libclang diagnostics into a readable string.
+
+        Args:
+            diagnostics_list: List of libclang diagnostic objects
+            max_count: Maximum number of diagnostics to include
+
+        Returns:
+            Formatted string with diagnostic messages
+        """
+        if not diagnostics_list:
+            return ""
+
+        messages = []
+        for diag in diagnostics_list[:max_count]:
+            # Format location
+            if diag.location.file:
+                location = f"{diag.location.file}:{diag.location.line}:{diag.location.column}"
+            else:
+                location = "unknown location"
+
+            # Get severity name
+            severity_names = {0: "ignored", 1: "note", 2: "warning", 3: "error", 4: "fatal"}
+            severity_name = severity_names.get(diag.severity, "unknown")
+
+            messages.append(f"[{severity_name}] {location}: {diag.spelling}")
+
+        total = len(diagnostics_list)
+        if total > max_count:
+            messages.append(f"... and {total - max_count} more")
+
+        return "\n".join(messages)
+
     def _save_file_cache(self, file_path: str, symbols: List[SymbolInfo], file_hash: str,
                         compile_args_hash: Optional[str] = None, success: bool = True,
                         error_message: Optional[str] = None, retry_count: int = 0):
@@ -383,7 +436,7 @@ class CppAnalyzer:
             # Note: We no longer skip function bodies to enable call graph analysis
             index = self._get_thread_index()
             tu = index.parse(
-                file_path, 
+                file_path,
                 args=args,
                 options=TranslationUnit.PARSE_INCOMPLETE |
                        TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
@@ -391,12 +444,54 @@ class CppAnalyzer:
 
 
             if not tu:
-                diagnostics.error(f"Failed to parse {file_path}")
-                return False
-            
-            # Don't print diagnostics - too noisy for universal analyzer
-            # Just continue processing what we can parse
-            
+                error_msg = "Failed to create translation unit (libclang returned None)"
+                diagnostics.error(f"Failed to parse {file_path}: {error_msg}")
+
+                # Log to centralized error log
+                parse_error = Exception(error_msg)
+                self.cache_manager.log_parse_error(
+                    file_path, parse_error, current_hash, compile_args_hash, retry_count
+                )
+
+                # Save failure to cache
+                self._save_file_cache(
+                    file_path, [], current_hash, compile_args_hash,
+                    success=False, error_message=error_msg[:200], retry_count=retry_count
+                )
+                return (False, False)
+
+            # Extract and check libclang diagnostics for errors
+            error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
+
+            # If there are fatal errors, consider this a parse failure
+            if error_diagnostics:
+                # Format error messages from libclang diagnostics
+                formatted_errors = self._format_diagnostics(error_diagnostics, max_count=5)
+                full_error_msg = f"libclang parsing errors ({len(error_diagnostics)} total):\n{formatted_errors}"
+
+                # Truncate for cache
+                cache_error_msg = full_error_msg[:200]
+
+                # Log to centralized error log with full message
+                parse_error = Exception(full_error_msg)
+                self.cache_manager.log_parse_error(
+                    file_path, parse_error, current_hash, compile_args_hash, retry_count
+                )
+
+                # Save failure to cache
+                self._save_file_cache(
+                    file_path, [], current_hash, compile_args_hash,
+                    success=False, error_message=cache_error_msg, retry_count=retry_count
+                )
+
+                diagnostics.debug(f"Failed to parse {file_path}: {cache_error_msg}")
+                return (False, False)
+
+            # Log warnings at debug level but continue processing
+            if warning_diagnostics:
+                formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
+                diagnostics.debug(f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}")
+
             # Clear old entries for this file
             with self.index_lock:
                 if file_path in self.file_index:
