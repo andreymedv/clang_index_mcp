@@ -69,6 +69,7 @@ class CppAnalyzerConfig:
         if env_config:
             env_path = Path(env_config)
             if env_path.exists():
+                diagnostics.debug(f"Using config from CPP_ANALYZER_CONFIG: {env_path}")
                 return (env_path, "environment variable CPP_ANALYZER_CONFIG")
             else:
                 diagnostics.warning(f"CPP_ANALYZER_CONFIG points to non-existent file: {env_path}")
@@ -76,8 +77,10 @@ class CppAnalyzerConfig:
         # 2. Check project root
         project_config = self.project_root / self.CONFIG_FILENAME
         if project_config.exists():
+            diagnostics.debug(f"Using config from project root: {project_config}")
             return (project_config, "project root directory")
 
+        diagnostics.debug(f"No config file found. Checked: {project_config}, env var: {'set' if env_config else 'not set'}")
         return (None, None)
 
     def _load_config(self) -> Dict[str, Any]:
@@ -91,6 +94,17 @@ class CppAnalyzerConfig:
             try:
                 with open(config_file, 'r') as f:
                     user_config = json.load(f)
+
+                # Validate that the config file contains a JSON object, not an array
+                if not isinstance(user_config, dict):
+                    diagnostics.error(f"Invalid config file format at {config_file}")
+                    diagnostics.error(f"Expected a JSON object (dict), but got {type(user_config).__name__}")
+                    diagnostics.error(f"Note: If you see 'compile_commands.json' here, you may have:")
+                    diagnostics.error(f"  1. Set CPP_ANALYZER_CONFIG environment variable to wrong file")
+                    diagnostics.error(f"  2. Named .cpp-analyzer-config.json incorrectly")
+                    diagnostics.warning("Using default configuration")
+                    return config
+
                 # Merge with defaults (user config takes precedence)
                 config.update(user_config)
 
