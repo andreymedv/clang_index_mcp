@@ -1,0 +1,114 @@
+# Troubleshooting compile_commands.json Issues
+
+## All Files Failing to Parse
+
+If all files are failing with "Error parsing translation unit", follow these steps:
+
+### Step 1: Pull Latest Changes
+```bash
+cd /Users/andrey/repos/clang_index_mcp
+git pull origin claude/mcp-compile-commands-support-01G3N5zhaQbrphNoYJ4aQBBh
+```
+
+### Step 2: Run Diagnostic Script
+```bash
+python scripts/diagnose_compile_commands.py /Users/andrey/repos/llama.cpp
+```
+
+Check the output:
+- **"Extracted N arguments"** - Should show arguments WITHOUT the compiler path
+- **First argument** - Should start with `-` (like `-DGGML_BUILD`), NOT `/` (like `/usr/bin/cc`)
+
+### Step 3: Check libclang Diagnostics
+
+If arguments look correct but parsing still fails, get detailed libclang error messages:
+
+```bash
+python scripts/view_parse_errors.py /Users/andrey/repos/llama.cpp --summary
+```
+
+Look for actual error messages from libclang (not just "Error parsing translation unit").
+
+### Step 4: Enable Detailed Diagnostics
+
+Create a test script to see libclang's actual diagnostics:
+
+```python
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+sys.path.insert(0, '/Users/andrey/repos/clang_index_mcp')
+
+from mcp_server.cpp_analyzer import CppAnalyzer
+import clang.cindex
+
+# Create analyzer
+analyzer = CppAnalyzer('/Users/andrey/repos/llama.cpp')
+
+# Get first file from compile_commands
+files = analyzer.compile_commands_manager.get_all_files()
+test_file = files[0]
+
+print(f"Testing: {test_file}")
+
+# Get compile args
+args = analyzer.compile_commands_manager.get_compile_args_with_fallback(Path(test_file))
+print(f"\nFirst 5 args:")
+for i, arg in enumerate(args[:5]):
+    print(f"  [{i}] {arg}")
+
+# Try to parse
+index = clang.cindex.Index.create()
+tu = index.parse(
+    test_file,
+    args=args,
+    options=clang.cindex.TranslationUnit.PARSE_INCOMPLETE |
+           clang.cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+)
+
+if tu:
+    print(f"\n✅ Parsed successfully!")
+    print(f"Diagnostics: {len(list(tu.diagnostics))}")
+
+    # Show diagnostics
+    for i, diag in enumerate(tu.diagnostics[:5]):
+        print(f"\n[{i+1}] {diag.severity}: {diag.spelling}")
+        if diag.location.file:
+            print(f"    {diag.location.file}:{diag.location.line}:{diag.location.column}")
+else:
+    print("❌ Failed to parse!")
+```
+
+Save this as `test_libclang.py` and run it to see what libclang is actually reporting.
+
+## Common Issues
+
+### Issue 1: Compiler Path Not Stripped
+**Symptom**: First argument is `/usr/bin/cc` or similar
+**Fix**: Already fixed in latest commit `d93d66e`
+**Action**: Pull latest changes
+
+### Issue 2: libclang Version Mismatch
+**Symptom**: Parse errors even with correct arguments
+**Fix**: Check libclang version
+```bash
+python3 -c "import clang.cindex; print(clang.cindex.conf.lib.clang_getClangVersion())"
+```
+
+### Issue 3: Missing System Headers
+**Symptom**: Errors about missing standard library headers
+**Fix**: libclang might not find system headers automatically on macOS
+**Action**: Add explicit include paths for system headers
+
+### Issue 4: Unsupported Compiler Flags
+**Symptom**: Specific files fail with certain flags
+**Fix**: Some GCC-specific flags might not be supported by libclang
+**Action**: Filter out unsupported flags or use `-Wno-unknown-warning-option`
+
+## Getting Help
+
+If none of the above helps, please provide:
+1. Output from `scripts/diagnose_compile_commands.py`
+2. Output from `scripts/view_parse_errors.py -l 1 -v`
+3. First 10 compilation arguments being passed to libclang
+4. Your libclang version
