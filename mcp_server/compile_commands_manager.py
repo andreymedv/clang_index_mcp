@@ -182,15 +182,45 @@ class CompileCommandsManager:
         return str(Path(file_path).resolve())
     
     def _parse_command_string(self, command: str) -> List[str]:
-        """Parse command string into arguments list."""
+        """Parse command string into arguments list.
+
+        The command string typically starts with the compiler executable path,
+        which should be stripped out since libclang only needs the compilation flags.
+        """
         import shlex
-        
+        import os
+
         try:
             # Handle quoted arguments properly
             args = shlex.split(command)
 
-            # Filter out empty strings and ensure proper formatting
-            return [arg for arg in args if arg.strip()]
+            # Filter out empty strings
+            args = [arg for arg in args if arg.strip()]
+
+            if not args:
+                return []
+
+            # Strip the first argument if it looks like a compiler executable
+            # This is necessary because libclang expects only compilation flags,
+            # not the compiler path itself
+            first_arg = args[0]
+
+            # Check if first argument is a compiler executable path or name
+            # Common patterns: gcc, g++, clang, clang++, cc, c++, or paths to them
+            compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
+
+            # Get the basename to check if it's a compiler
+            basename = os.path.basename(first_arg).lower()
+            # Remove .exe extension if present
+            basename = basename.replace('.exe', '')
+
+            # If the first argument is a compiler, strip it
+            if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
+                # This looks like a compiler path, remove it
+                args = args[1:]
+
+            return args
+
         except Exception as e:
             diagnostics.warning(f"Failed to parse command string '{command}': {e}")
             return []
