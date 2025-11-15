@@ -129,13 +129,21 @@ class CppAnalyzer:
             self._thread_local.index = index
         return index
 
-    def _save_file_cache(self, file_path: str, symbols: List[SymbolInfo], file_hash: str):
+    def _compute_compile_args_hash(self, args: List[str]) -> str:
+        """Compute hash of compilation arguments for cache validation"""
+        # Sort and join args to create a consistent hash
+        args_str = " ".join(sorted(args))
+        return hashlib.md5(args_str.encode()).hexdigest()
+
+    def _save_file_cache(self, file_path: str, symbols: List[SymbolInfo], file_hash: str,
+                        compile_args_hash: Optional[str] = None):
         """Save parsed symbols for a single file to cache"""
-        self.cache_manager.save_file_cache(file_path, symbols, file_hash)
-    
-    def _load_file_cache(self, file_path: str, current_hash: str) -> Optional[List[SymbolInfo]]:
+        self.cache_manager.save_file_cache(file_path, symbols, file_hash, compile_args_hash)
+
+    def _load_file_cache(self, file_path: str, current_hash: str,
+                        compile_args_hash: Optional[str] = None) -> Optional[List[SymbolInfo]]:
         """Load cached symbols for a file if still valid"""
-        return self.cache_manager.load_file_cache(file_path, current_hash)
+        return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
     
     def _is_project_file(self, file_path: str) -> bool:
         """Check if file is part of the project (not a dependency)"""
@@ -261,17 +269,41 @@ class CppAnalyzer:
     
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
-        
+
         Returns:
             (success, was_cached) - success indicates if indexing succeeded,
                                    was_cached indicates if it was loaded from cache
         """
         file_path = os.path.abspath(file_path)
         current_hash = self._get_file_hash(file_path)
-        
+
+        # Get compilation arguments to compute hash (needed for cache validation)
+        file_path_obj = Path(file_path)
+        args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+
+        # If compile commands are not available and we're using fallback, add vcpkg includes
+        if not self.compile_commands_manager.is_file_supported(file_path_obj):
+            # Add vcpkg includes if available
+            vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+            if vcpkg_include.exists():
+                args.append(f'-I{vcpkg_include}')
+
+            # Add common vcpkg paths
+            vcpkg_paths = [
+                "C:/vcpkg/installed/x64-windows/include",
+                "C:/dev/vcpkg/installed/x64-windows/include"
+            ]
+            for path in vcpkg_paths:
+                if Path(path).exists():
+                    args.append(f'-I{path}')
+                    break
+
+        # Compute hash of compilation arguments for cache validation
+        compile_args_hash = self._compute_compile_args_hash(args)
+
         # Try to load from per-file cache first
         if not force:
-            cached_symbols = self._load_file_cache(file_path, current_hash)
+            cached_symbols = self._load_file_cache(file_path, current_hash, compile_args_hash)
             if cached_symbols is not None:
                 # Apply cached symbols to indexes
                 with self.index_lock:
@@ -310,27 +342,6 @@ class CppAnalyzer:
                 return (True, True)  # Successfully loaded from cache
 
         try:
-            # Use compile commands if available, otherwise fall back to hardcoded args
-            file_path_obj = Path(file_path)
-            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
-            
-            # If compile commands are not available and we're using fallback, add vcpkg includes
-            if not self.compile_commands_manager.is_file_supported(file_path_obj):
-                # Add vcpkg includes if available
-                vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-                if vcpkg_include.exists():
-                    args.append(f'-I{vcpkg_include}')
-                
-                # Add common vcpkg paths
-                vcpkg_paths = [
-                    "C:/vcpkg/installed/x64-windows/include",
-                    "C:/dev/vcpkg/installed/x64-windows/include"
-                ]
-                for path in vcpkg_paths:
-                    if Path(path).exists():
-                        args.append(f'-I{path}')
-                        break
-            
             # Create translation unit with detailed diagnostics
             # Note: We no longer skip function bodies to enable call graph analysis
             index = self._get_thread_index()
@@ -390,7 +401,7 @@ class CppAnalyzer:
                                 symbol.called_by = list(callers)
             
             # Save to per-file cache (even if empty - to mark as successfully parsed)
-            self._save_file_cache(file_path, collected_symbols, current_hash)
+            self._save_file_cache(file_path, collected_symbols, current_hash, compile_args_hash)
             
             # Update tracking
             with self.index_lock:
