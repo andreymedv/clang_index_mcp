@@ -188,3 +188,60 @@ public:
             # Verify AnotherClass from extra.cpp was NOT indexed
             another_classes = analyzer.search_classes("AnotherClass", project_only=False)
             assert len(another_classes) == 0, "AnotherClass from extra.cpp should NOT be indexed"
+
+    def test_command_string_strips_compiler_path(self, temp_project_dir):
+        """Test that compiler path is stripped from command strings
+
+        Requirement: When compile_commands.json uses 'command' field (string format)
+        instead of 'arguments' field (array format), the compiler executable path
+        must be stripped out before passing to libclang.
+        """
+        # Create a simple source file
+        src_file = temp_project_dir / "src" / "test.cpp"
+        src_file.write_text("""
+class TestClass {
+public:
+    void testMethod();
+};
+""")
+
+        # Create compile_commands.json with COMMAND STRING (not arguments array)
+        # This simulates the real-world format from CMake/make
+        compile_commands = [
+            {
+                "directory": str(temp_project_dir),
+                "command": f"/usr/bin/c++ -std=c++17 -I{temp_project_dir}/include -DTEST_DEFINE -c {src_file}",
+                "file": str(src_file)
+            }
+        ]
+
+        cc_file = temp_project_dir / "compile_commands.json"
+        cc_file.write_text(json.dumps(compile_commands, indent=2))
+
+        # Create analyzer
+        analyzer = CppAnalyzer(str(temp_project_dir))
+
+        # Verify compile commands are loaded
+        stats = analyzer.get_compile_commands_stats()
+        assert stats.get('enabled', False), "Compile commands should be enabled"
+        assert stats.get('compile_commands_count', 0) == 1, "Should have exactly 1 compile command"
+
+        # Get the parsed arguments for the file
+        args = analyzer.compile_commands_manager.get_compile_args(src_file)
+
+        # Verify the compiler path was stripped
+        assert args is not None, "Should have extracted arguments"
+        assert len(args) > 0, "Should have some arguments"
+
+        # The first argument should NOT be the compiler path
+        # It should be a compilation flag like -std=c++17
+        first_arg = args[0]
+        assert not first_arg.startswith('/usr/bin/'), \
+            f"First argument should not be compiler path, got: {first_arg}"
+        assert first_arg.startswith('-'), \
+            f"First argument should be a flag, got: {first_arg}"
+
+        # Verify expected flags are present
+        assert '-std=c++17' in args, "Should have -std=c++17 flag"
+        assert '-DTEST_DEFINE' in args, "Should have -DTEST_DEFINE flag"
+        assert f'-I{temp_project_dir}/include' in args, "Should have include path"
