@@ -207,10 +207,13 @@ public:
 
         # Create compile_commands.json with COMMAND STRING (not arguments array)
         # This simulates the real-world format from CMake/make
+        # Include typical compiler arguments that should be filtered out:
+        # - Compiler path, -o (output file), -c (compile flag), source file
+        output_file = temp_project_dir / "build" / "test.o"
         compile_commands = [
             {
                 "directory": str(temp_project_dir),
-                "command": f"/usr/bin/c++ -std=c++17 -I{temp_project_dir}/include -DTEST_DEFINE -c {src_file}",
+                "command": f"/usr/bin/c++ -std=c++17 -I{temp_project_dir}/include -DTEST_DEFINE -o {output_file} -c {src_file}",
                 "file": str(src_file)
             }
         ]
@@ -245,3 +248,9 @@ public:
         assert '-std=c++17' in args, "Should have -std=c++17 flag"
         assert '-DTEST_DEFINE' in args, "Should have -DTEST_DEFINE flag"
         assert f'-I{temp_project_dir}/include' in args, "Should have include path"
+
+        # Verify unwanted arguments were filtered out
+        assert '-c' not in args, "Should NOT have -c flag (compile-only)"
+        assert '-o' not in args, "Should NOT have -o flag (output file)"
+        assert str(output_file) not in args, "Should NOT have output file path"
+        assert str(src_file) not in args, "Should NOT have source file path"
