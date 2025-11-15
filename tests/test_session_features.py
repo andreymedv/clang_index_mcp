@@ -361,6 +361,77 @@ def test_backward_compatibility(results):
             results.record_fail("Missing version correctly rejected", str(e))
 
 
+def test_error_logging(results):
+    """Test centralized error logging (Feature 4)"""
+    print("\n" + "=" * 70)
+    print("Feature 4: Centralized Error Logging")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        cache_mgr = CacheManager(tmpdir_path)
+
+        # Test 4.1: Log error
+        try:
+            try:
+                raise ValueError("Test error")
+            except Exception as e:
+                success = cache_mgr.log_parse_error(
+                    "/tmp/test.cpp", e, "hash1", "args1", 0
+                )
+            assert success, "Error logging should succeed"
+            results.record_pass("Log parse error")
+        except Exception as e:
+            results.record_fail("Log parse error", str(e))
+
+        # Test 4.2: Retrieve errors
+        try:
+            errors = cache_mgr.get_parse_errors()
+            assert len(errors) == 1, "Should have 1 error"
+            assert errors[0]['error_type'] == 'ValueError', "Error type should match"
+            assert errors[0]['file_path'] == '/tmp/test.cpp', "File path should match"
+            results.record_pass("Retrieve parse errors")
+        except Exception as e:
+            results.record_fail("Retrieve parse errors", str(e))
+
+        # Test 4.3: Error summary
+        try:
+            summary = cache_mgr.get_error_summary()
+            assert summary['total_errors'] == 1, "Should have 1 total error"
+            assert summary['unique_files'] == 1, "Should have 1 unique file"
+            assert 'ValueError' in summary['error_types'], "Should have ValueError"
+            results.record_pass("Error summary generation")
+        except Exception as e:
+            results.record_fail("Error summary generation", str(e))
+
+        # Test 4.4: Filter errors
+        try:
+            # Add more errors
+            for i in range(3):
+                try:
+                    raise RuntimeError(f"Error {i}")
+                except Exception as e:
+                    cache_mgr.log_parse_error(f"/tmp/file{i}.cpp", e, f"hash{i}", "args", i)
+
+            filtered = cache_mgr.get_parse_errors(file_path_filter="file1")
+            assert len(filtered) == 1, "Should filter to 1 error"
+            assert "file1.cpp" in filtered[0]['file_path'], "Should match file1"
+            results.record_pass("Filter errors by file path")
+        except Exception as e:
+            results.record_fail("Filter errors by file path", str(e))
+
+        # Test 4.5: Clear errors
+        try:
+            cleared = cache_mgr.clear_error_log()
+            assert cleared == 4, "Should clear 4 errors"
+
+            remaining = cache_mgr.get_parse_errors()
+            assert len(remaining) == 0, "Should have no errors after clear"
+            results.record_pass("Clear error log")
+        except Exception as e:
+            results.record_fail("Clear error log", str(e))
+
+
 def test_integration(results):
     """Integration tests combining multiple features"""
     print("\n" + "=" * 70)
@@ -447,6 +518,7 @@ def main():
     test_config_validation(results)
     test_cache_args_invalidation(results)
     test_failure_tracking(results)
+    test_error_logging(results)
     test_backward_compatibility(results)
     test_integration(results)
 
