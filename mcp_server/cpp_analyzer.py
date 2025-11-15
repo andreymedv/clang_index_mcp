@@ -99,7 +99,8 @@ class CppAnalyzer:
         self.last_index_time = 0
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
-        
+        self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
+
         # Initialize compile commands manager with config
         compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
@@ -136,13 +137,21 @@ class CppAnalyzer:
         return hashlib.md5(args_str.encode()).hexdigest()
 
     def _save_file_cache(self, file_path: str, symbols: List[SymbolInfo], file_hash: str,
-                        compile_args_hash: Optional[str] = None):
+                        compile_args_hash: Optional[str] = None, success: bool = True,
+                        error_message: Optional[str] = None, retry_count: int = 0):
         """Save parsed symbols for a single file to cache"""
-        self.cache_manager.save_file_cache(file_path, symbols, file_hash, compile_args_hash)
+        self.cache_manager.save_file_cache(
+            file_path, symbols, file_hash, compile_args_hash,
+            success, error_message, retry_count
+        )
 
     def _load_file_cache(self, file_path: str, current_hash: str,
-                        compile_args_hash: Optional[str] = None) -> Optional[List[SymbolInfo]]:
-        """Load cached symbols for a file if still valid"""
+                        compile_args_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Load cached data for a file if still valid
+
+        Returns:
+            Dict with 'symbols', 'success', 'error_message', 'retry_count' or None
+        """
         return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
     
     def _is_project_file(self, file_path: str) -> bool:
@@ -303,43 +312,71 @@ class CppAnalyzer:
 
         # Try to load from per-file cache first
         if not force:
-            cached_symbols = self._load_file_cache(file_path, current_hash, compile_args_hash)
-            if cached_symbols is not None:
-                # Apply cached symbols to indexes
-                with self.index_lock:
-                    # Clear old entries for this file
-                    if file_path in self.file_index:
-                        for info in self.file_index[file_path]:
-                            if info.kind in ("class", "struct"):
-                                self.class_index[info.name] = [
-                                    i for i in self.class_index[info.name] if i.file != file_path
-                                ]
+            cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
+            if cache_data is not None:
+                # Check if this file previously failed and if we should retry
+                if not cache_data['success']:
+                    retry_count = cache_data['retry_count']
+                    if retry_count >= self.max_parse_retries:
+                        # File has failed too many times, skip it
+                        diagnostics.debug(
+                            f"Skipping {file_path} - failed {retry_count} times "
+                            f"(last error: {cache_data['error_message']})"
+                        )
+                        return (False, True)  # Failed, but from cache (skip retry)
+                    else:
+                        # Retry the file
+                        diagnostics.info(
+                            f"Retrying {file_path} (attempt {retry_count + 1}/{self.max_parse_retries + 1}, "
+                            f"last error: {cache_data['error_message']})"
+                        )
+                        # Continue to parsing below (will increment retry_count on failure)
+                else:
+                    # Successfully cached - load symbols
+                    cached_symbols = cache_data['symbols']
+
+                    # Apply cached symbols to indexes
+                    with self.index_lock:
+                        # Clear old entries for this file
+                        if file_path in self.file_index:
+                            for info in self.file_index[file_path]:
+                                if info.kind in ("class", "struct"):
+                                    self.class_index[info.name] = [
+                                        i for i in self.class_index[info.name] if i.file != file_path
+                                    ]
+                                else:
+                                    self.function_index[info.name] = [
+                                        i for i in self.function_index[info.name] if i.file != file_path
+                                    ]
+
+                        # Add cached symbols
+                        self.file_index[file_path] = cached_symbols
+                        for symbol in cached_symbols:
+                            if symbol.kind in ("class", "struct"):
+                                self.class_index[symbol.name].append(symbol)
                             else:
-                                self.function_index[info.name] = [
-                                    i for i in self.function_index[info.name] if i.file != file_path
-                                ]
-                    
-                    # Add cached symbols
-                    self.file_index[file_path] = cached_symbols
-                    for symbol in cached_symbols:
-                        if symbol.kind in ("class", "struct"):
-                            self.class_index[symbol.name].append(symbol)
-                        else:
-                            self.function_index[symbol.name].append(symbol)
-                        
-                        # Also update USR index
-                        if symbol.usr:
-                            self.usr_index[symbol.usr] = symbol
-                        
-                        # Restore call graph relationships
-                        if symbol.calls:
-                            for called_usr in symbol.calls:
-                                self.call_graph_analyzer.add_call(symbol.usr, called_usr)
-                        if symbol.called_by:
-                            for caller_usr in symbol.called_by:
-                                self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
-                    self.file_hashes[file_path] = current_hash
-                return (True, True)  # Successfully loaded from cache
+                                self.function_index[symbol.name].append(symbol)
+
+                            # Also update USR index
+                            if symbol.usr:
+                                self.usr_index[symbol.usr] = symbol
+
+                            # Restore call graph relationships
+                            if symbol.calls:
+                                for called_usr in symbol.calls:
+                                    self.call_graph_analyzer.add_call(symbol.usr, called_usr)
+                            if symbol.called_by:
+                                for caller_usr in symbol.called_by:
+                                    self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+                        self.file_hashes[file_path] = current_hash
+                    return (True, True)  # Successfully loaded from cache
+
+        # Determine retry count for this attempt
+        retry_count = 0
+        if not force:
+            cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
+            if cache_data is not None and not cache_data['success']:
+                retry_count = cache_data['retry_count'] + 1  # Increment for this retry
 
         try:
             # Create translation unit with detailed diagnostics
@@ -400,9 +437,12 @@ class CppAnalyzer:
                             if callers:
                                 symbol.called_by = list(callers)
             
-            # Save to per-file cache (even if empty - to mark as successfully parsed)
-            self._save_file_cache(file_path, collected_symbols, current_hash, compile_args_hash)
-            
+            # Save to per-file cache (mark as successfully parsed)
+            self._save_file_cache(
+                file_path, collected_symbols, current_hash, compile_args_hash,
+                success=True, error_message=None, retry_count=0
+            )
+
             # Update tracking
             with self.index_lock:
                 self.translation_units[file_path] = tu
@@ -411,8 +451,16 @@ class CppAnalyzer:
             return (True, False)  # Success, not from cache
 
         except Exception as e:
-            # Don't print full error for each file - too noisy
-            # Just return False to indicate failure
+            # Save failure information to cache
+            error_msg = str(e)[:200]  # Limit error message length
+
+            # Save failure to cache so we don't keep retrying indefinitely
+            self._save_file_cache(
+                file_path, [], current_hash, compile_args_hash,
+                success=False, error_message=error_msg, retry_count=retry_count
+            )
+
+            diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
             return (False, False)  # Failed, not from cache
 
     def index_project(self, force: bool = False, include_dependencies: bool = True) -> int:

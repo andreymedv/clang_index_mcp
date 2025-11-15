@@ -158,14 +158,19 @@ class CacheManager:
         return files_dir / cache_filename
     
     def save_file_cache(self, file_path: str, symbols: List[SymbolInfo],
-                       file_hash: str, compile_args_hash: Optional[str] = None) -> bool:
+                       file_hash: str, compile_args_hash: Optional[str] = None,
+                       success: bool = True, error_message: Optional[str] = None,
+                       retry_count: int = 0) -> bool:
         """Save parsed symbols for a single file with compilation arguments hash
 
         Args:
             file_path: Path to the source file
-            symbols: List of symbols found in the file
+            symbols: List of symbols found in the file (empty if failed)
             file_hash: Hash of the file content
             compile_args_hash: Hash of the compilation arguments used to parse this file
+            success: Whether parsing succeeded
+            error_message: Error message if parsing failed
+            retry_count: Number of times parsing has been attempted
         """
         try:
             # Create files subdirectory
@@ -177,11 +182,14 @@ class CacheManager:
 
             # Prepare cache data
             cache_data = {
-                "version": "1.1",  # Bump version to include compile_args_hash
+                "version": "1.2",  # Bump version to include failure tracking
                 "file_path": file_path,
                 "file_hash": file_hash,
                 "compile_args_hash": compile_args_hash,
                 "timestamp": time.time(),
+                "success": success,
+                "error_message": error_message,
+                "retry_count": retry_count,
                 "symbols": [s.to_dict() for s in symbols]
             }
 
@@ -195,8 +203,8 @@ class CacheManager:
             return False
     
     def load_file_cache(self, file_path: str, current_hash: str,
-                       compile_args_hash: Optional[str] = None) -> Optional[List[SymbolInfo]]:
-        """Load cached symbols for a file if hash matches
+                       compile_args_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Load cached data for a file if hash matches
 
         Args:
             file_path: Path to the source file
@@ -204,7 +212,12 @@ class CacheManager:
             compile_args_hash: Current hash of the compilation arguments
 
         Returns:
-            List of cached symbols if valid, None otherwise
+            Dict with keys:
+            - 'symbols': List of SymbolInfo objects (may be empty if failed)
+            - 'success': bool indicating if previous parse succeeded
+            - 'error_message': str with error message if failed
+            - 'retry_count': int number of previous retry attempts
+            Returns None if cache is invalid or doesn't exist
         """
         try:
             cache_file = self.get_file_cache_path(file_path)
@@ -215,9 +228,13 @@ class CacheManager:
             with open(cache_file, 'r') as f:
                 cache_data = json.load(f)
 
-            # Check cache version - invalidate old caches that don't have compile_args_hash
+            # Check cache version
             cache_version = cache_data.get("version", "1.0")
-            if cache_version != "1.1":
+
+            # Version 1.2 includes failure tracking
+            # Version 1.1 has compile_args_hash but no failure tracking
+            # Version 1.0 has neither
+            if cache_version not in ["1.1", "1.2"]:
                 return None
 
             # Check if file hash matches
@@ -235,7 +252,13 @@ class CacheManager:
             for s in cache_data.get("symbols", []):
                 symbols.append(SymbolInfo(**s))
 
-            return symbols
+            # Return cache data with failure tracking info
+            return {
+                'symbols': symbols,
+                'success': cache_data.get("success", True),  # Default True for v1.1 compatibility
+                'error_message': cache_data.get("error_message"),
+                'retry_count': cache_data.get("retry_count", 0)
+            }
         except:
             return None
     

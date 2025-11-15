@@ -44,6 +44,7 @@ class CppAnalyzerConfig:
         "exclude_patterns": [],
         "include_dependencies": True,
         "max_file_size_mb": 10,
+        "max_parse_retries": 2,  # Maximum number of times to retry parsing a failed file
         "diagnostics": {
             "level": "info",  # debug, info, warning, error, fatal
             "enabled": True
