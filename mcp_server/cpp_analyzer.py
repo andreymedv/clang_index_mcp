@@ -451,8 +451,13 @@ class CppAnalyzer:
             return (True, False)  # Success, not from cache
 
         except Exception as e:
-            # Save failure information to cache
-            error_msg = str(e)[:200]  # Limit error message length
+            # Log full error details to centralized error log for developer analysis
+            self.cache_manager.log_parse_error(
+                file_path, e, current_hash, compile_args_hash, retry_count
+            )
+
+            # Save failure information to cache (with truncated error message)
+            error_msg = str(e)[:200]  # Limit error message length for cache
 
             # Save failure to cache so we don't keep retrying indefinitely
             self._save_file_cache(
@@ -1135,8 +1140,40 @@ class CppAnalyzer:
             item_file = str(Path(item['file']).resolve()) if item['file'] else ""
             if item_file == abs_file_path or item['file'].endswith(file_path):
                 results.append(item)
-        
+
         return results
+
+    def get_parse_errors(self, limit: Optional[int] = None,
+                        file_path_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get parse errors from the error log (for developer analysis).
+
+        Args:
+            limit: Maximum number of errors to return (most recent first)
+            file_path_filter: Only return errors for files matching this path
+
+        Returns:
+            List of error entries
+        """
+        return self.cache_manager.get_parse_errors(limit, file_path_filter)
+
+    def get_error_summary(self) -> Dict[str, Any]:
+        """Get a summary of parse errors for developer analysis.
+
+        Returns:
+            Dict with error statistics and recent errors
+        """
+        return self.cache_manager.get_error_summary()
+
+    def clear_error_log(self, older_than_days: Optional[int] = None) -> int:
+        """Clear the error log, optionally keeping recent errors.
+
+        Args:
+            older_than_days: If specified, only clear errors older than this many days
+
+        Returns:
+            Number of errors cleared
+        """
+        return self.cache_manager.clear_error_log(older_than_days)
 
 
 # Create factory function for compatibility
