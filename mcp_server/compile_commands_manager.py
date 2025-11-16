@@ -263,6 +263,29 @@ class CompileCommandsManager:
                 i += 1
                 continue
 
+            # Handle -isystem with separate argument
+            if arg == '-isystem' and i + 1 < len(arguments):
+                include_path = arguments[i + 1]
+                # Make relative paths absolute based on directory
+                if not os.path.isabs(include_path):
+                    include_path = os.path.abspath(os.path.join(directory, include_path))
+                normalized.append(arg)
+                normalized.append(include_path)
+                i += 2
+                continue
+
+            # Handle -isystem<path> (combined form, rare but possible)
+            if arg.startswith('-isystem'):
+                # Check if there's a path after -isystem
+                if len(arg) > 8:  # More than just "-isystem"
+                    include_path = arg[8:]  # Remove -isystem prefix
+                    if not os.path.isabs(include_path):
+                        include_path = os.path.abspath(os.path.join(directory, include_path))
+                        arg = f'-isystem{include_path}'
+                normalized.append(arg)
+                i += 1
+                continue
+
             # Keep other arguments as-is
             normalized.append(arg)
             i += 1
