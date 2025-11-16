@@ -27,7 +27,7 @@ class TestCompileCommandsManager(unittest.TestCase):
         """Set up test fixtures."""
         self.test_dir = tempfile.mkdtemp()
         self.project_root = Path(self.test_dir)
-        
+
         # Create a test compile_commands.json file
         self.compile_commands_data = [
             {
@@ -58,7 +58,22 @@ class TestCompileCommandsManager(unittest.TestCase):
         """Clean up test fixtures."""
         import shutil
         shutil.rmtree(self.test_dir)
-    
+
+    def assertHasIncludePath(self, args, path_suffix):
+        """Helper to check if args contain an include path ending with path_suffix."""
+        for i, arg in enumerate(args):
+            # Handle -I<path> combined form
+            if arg.startswith('-I'):
+                include_path = arg[2:]  # Remove -I prefix
+                if include_path.endswith(path_suffix) or include_path == path_suffix:
+                    return
+            # Handle -I <path> separated form
+            if arg == '-I' and i + 1 < len(args):
+                include_path = args[i + 1]
+                if include_path.endswith(path_suffix) or include_path == path_suffix:
+                    return
+        self.fail(f"No include path ending with '{path_suffix}' found in args: {args}")
+
     def test_init_with_default_config(self):
         """Test initialization with default configuration."""
         manager = CompileCommandsManager(self.project_root)
@@ -109,7 +124,8 @@ class TestCompileCommandsManager(unittest.TestCase):
         # Check that arguments are properly stored
         args = manager.file_to_command_map[main_cpp_file][0]['arguments']
         self.assertIn('-std=c++17', args)
-        self.assertIn('-Iinclude', args)
+        # Note: include paths are normalized to absolute paths
+        self.assertHasIncludePath(args, 'include')
     
     def test_load_compile_commands_file_not_found(self):
         """Test behavior when compile_commands.json file is not found."""
@@ -301,13 +317,13 @@ class TestCompileCommandsManager(unittest.TestCase):
         """Test successful retrieval of compile arguments."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
-        
+
         file_path = self.project_root / "src" / "main.cpp"
         args = manager.get_compile_args(file_path)
-        
+
         self.assertIsNotNone(args)
         self.assertIn('-std=c++17', args)
-        self.assertIn('-Iinclude', args)
+        self.assertHasIncludePath(args, 'include')
     
     def test_get_compile_args_file_not_found(self):
         """Test retrieval of compile arguments for non-existent file."""
@@ -323,13 +339,13 @@ class TestCompileCommandsManager(unittest.TestCase):
         """Test get_compile_args_with_fallback when compile commands are available."""
         config = {'compile_commands_enabled': True, 'fallback_to_hardcoded': True}
         manager = CompileCommandsManager(self.project_root, config)
-        
+
         file_path = self.project_root / "src" / "main.cpp"
         args = manager.get_compile_args_with_fallback(file_path)
-        
+
         # Should return compile commands, not fallback args
         self.assertIn('-std=c++17', args)
-        self.assertIn('-Iinclude', args)
+        self.assertHasIncludePath(args, 'include')
         # Should not contain fallback-specific args
         self.assertNotIn('-DNOMINMAX', args)
     
@@ -618,7 +634,22 @@ int main() {
         """Clean up test fixtures."""
         import shutil
         shutil.rmtree(self.test_dir)
-    
+
+    def assertHasIncludePath(self, args, path_suffix):
+        """Helper to check if args contain an include path ending with path_suffix."""
+        for i, arg in enumerate(args):
+            # Handle -I<path> combined form
+            if arg.startswith('-I'):
+                include_path = arg[2:]  # Remove -I prefix
+                if include_path.endswith(path_suffix) or include_path == path_suffix:
+                    return
+            # Handle -I <path> separated form
+            if arg == '-I' and i + 1 < len(args):
+                include_path = args[i + 1]
+                if include_path.endswith(path_suffix) or include_path == path_suffix:
+                    return
+        self.fail(f"No include path ending with '{path_suffix}' found in args: {args}")
+
     def test_realistic_project_setup(self):
         """Test with a realistic project structure and compile_commands.json."""
         # Create a realistic compile_commands.json
@@ -690,8 +721,7 @@ int main() {
         
         # Verify specific arguments
         self.assertIn('-std=c++17', main_args)
-        self.assertIn('-I', main_args)
-        self.assertIn('include', main_args)
+        self.assertHasIncludePath(main_args, 'include')
         self.assertIn('-Wall', main_args)
         self.assertIn('-Wextra', main_args)
         
@@ -747,8 +777,7 @@ int main() {
         # Verify updated arguments
         args = manager.get_compile_args(self.project_root / "src" / "main.cpp")
         self.assertIn('-std=c++20', args)
-        self.assertIn('-I', args)
-        self.assertIn('new_include', args)
+        self.assertHasIncludePath(args, 'new_include')
         self.assertNotIn('-std=c++17', args)
 
     def test_custom_compile_commands_path_in_subdirectory(self):

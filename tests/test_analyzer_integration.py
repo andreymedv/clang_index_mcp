@@ -69,7 +69,22 @@ void helper_function();
         """Clean up test fixtures."""
         import shutil
         shutil.rmtree(self.test_dir)
-    
+
+    def assertHasIncludePath(self, args, path_suffix):
+        """Helper to check if args contain an include path ending with path_suffix."""
+        for i, arg in enumerate(args):
+            # Handle -I<path> combined form
+            if arg.startswith('-I'):
+                include_path = arg[2:]  # Remove -I prefix
+                if include_path.endswith(path_suffix) or include_path == path_suffix:
+                    return
+            # Handle -I <path> separated form
+            if arg == '-I' and i + 1 < len(args):
+                include_path = args[i + 1]
+                if include_path.endswith(path_suffix) or include_path == path_suffix:
+                    return
+        self.fail(f"No include path ending with '{path_suffix}' found in args: {args}")
+
     def test_realistic_project_setup(self):
         """Test with a realistic project structure and compile_commands.json."""
         # Create a realistic compile_commands.json
@@ -141,8 +156,7 @@ void helper_function();
         
         # Verify specific arguments
         self.assertIn('-std=c++17', main_args)
-        self.assertIn('-I', main_args)
-        self.assertIn('include', main_args)
+        self.assertHasIncludePath(main_args, 'include')
         self.assertIn('-Wall', main_args)
         self.assertIn('-Wextra', main_args)
         
@@ -198,8 +212,7 @@ void helper_function();
         # Verify updated arguments
         args = manager.get_compile_args(self.project_root / "src" / "main.cpp")
         self.assertIn('-std=c++20', args)
-        self.assertIn('-I', args)
-        self.assertIn('new_include', args)
+        self.assertHasIncludePath(args, 'new_include')
         self.assertNotIn('-std=c++17', args)
     
     def test_fallback_behavior(self):
@@ -456,10 +469,13 @@ void helper_function();
         self.assertIsNotNone(args)
         self.assertIn('-std=c++17', args)
         # Quotes are removed by shell parsing, but spaces are preserved within the token
-        self.assertIn('-Iinclude path', args)
+        # Path is normalized to absolute, so check for suffix
+        self.assertHasIncludePath(args, 'include path')
         self.assertIn('-DDEFINE=value', args)
-        self.assertIn('-c', args)
-        self.assertIn('main.cpp', args)
+        # Note: -c flag and source file are filtered out by _parse_command_string
+        # because libclang doesn't need them
+        self.assertNotIn('-c', args)
+        self.assertNotIn('main.cpp', args)
     
     def test_fallback_args_generation(self):
         """Test fallback arguments generation on different platforms."""
