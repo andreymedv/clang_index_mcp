@@ -146,14 +146,57 @@ class CompileCommandsManager:
             directory = cmd.get('directory', str(self.project_root))
             arguments = cmd.get('arguments', [])
             command = cmd.get('command', '')
-            
+
             # Normalize file path
             file_path = self._normalize_path(file_path, directory)
-            
+
             # Build arguments list from command string if needed
             if not arguments and command:
                 arguments = self._parse_command_string(command)
-            
+            elif arguments:
+                # If arguments were provided as a list, we still need to sanitize them
+                # First, filter out compiler executable, -o, -c, and source files
+                filtered_args = []
+                i_arg = 0
+
+                # Check if first argument is a compiler
+                if arguments:
+                    first_arg = arguments[0]
+                    compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
+                    basename = first_arg.split('/')[-1].split('\\')[-1].lower()
+                    if basename.endswith('.exe'):
+                        basename = basename[:-4]
+
+                    # Skip compiler executable if present
+                    if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
+                        i_arg = 1
+
+                # Filter out -o, -c, and source files
+                while i_arg < len(arguments):
+                    arg = arguments[i_arg]
+
+                    if arg == '-o':
+                        i_arg += 2  # Skip -o and output file
+                        continue
+
+                    if arg == '-c':
+                        i_arg += 1
+                        continue
+
+                    # Skip source files
+                    if not arg.startswith('-'):
+                        lower_arg = arg.lower()
+                        source_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.m', '.mm']
+                        if any(lower_arg.endswith(ext) for ext in source_extensions):
+                            i_arg += 1
+                            continue
+
+                    filtered_args.append(arg)
+                    i_arg += 1
+
+                # Sanitize for libclang
+                arguments = self._sanitize_args_for_libclang(filtered_args)
+
             # Store the command
             self.compile_commands[file_path] = {
                 'arguments': arguments,
@@ -180,7 +223,124 @@ class CompileCommandsManager:
         
         # Convert to absolute path and normalize
         return str(Path(file_path).resolve())
-    
+
+    def _sanitize_args_for_libclang(self, args: List[str]) -> List[str]:
+        """Sanitize compiler arguments for use with libclang.
+
+        Removes arguments that can cause libclang parsing failures:
+        - Precompiled header options (-include-pch, -Xclang -include-pch, etc.)
+        - Compiler-specific options that don't affect parsing
+        - Color/diagnostic formatting options
+
+        Args:
+            args: List of compiler arguments
+
+        Returns:
+            Sanitized list of arguments safe for libclang
+        """
+        sanitized = []
+        i = 0
+
+        while i < len(args):
+            arg = args[i]
+
+            # Handle -Xclang options (they come in pairs: -Xclang <option>)
+            if arg == '-Xclang':
+                # Check if the next argument is problematic
+                if i + 1 < len(args):
+                    next_arg = args[i + 1]
+
+                    # Skip precompiled header includes
+                    if next_arg == '-include-pch':
+                        # Skip both -Xclang and -include-pch
+                        # Also skip the next pair if it's -Xclang <pch-file>
+                        i += 2
+                        if i < len(args) and args[i] == '-Xclang':
+                            i += 2  # Skip -Xclang <pch-file>
+                        continue
+
+                    # Skip -include when followed by a PCH file path
+                    elif next_arg == '-include':
+                        # Check if the file being included is a PCH file
+                        if i + 3 < len(args) and args[i + 2] == '-Xclang':
+                            pch_file = args[i + 3]
+                            # If it contains 'pch' or 'cmake_pch', it's likely a PCH file
+                            if 'pch' in pch_file.lower() or 'cmake_pch' in pch_file.lower():
+                                # Skip all four: -Xclang -include -Xclang <pch-file>
+                                i += 4
+                                continue
+
+                    # Skip other potentially problematic -Xclang options
+                    elif next_arg in ['-emit-pch', '-include-pch-header', '-fmodules-cache-path']:
+                        i += 2
+                        if i < len(args) and not args[i].startswith('-'):
+                            i += 1  # Skip the argument's value if present
+                        continue
+
+            # Skip standalone precompiled header options
+            elif arg == '-include-pch':
+                i += 1
+                # Also skip the PCH file path if it follows
+                if i < len(args) and not args[i].startswith('-'):
+                    i += 1
+                continue
+
+            # Skip PCH-related warning options
+            elif arg in ['-Winvalid-pch', '-Wno-invalid-pch']:
+                i += 1
+                continue
+
+            # Skip color/diagnostic formatting options (cosmetic, not needed for parsing)
+            elif arg in ['-fcolor-diagnostics', '-fno-color-diagnostics',
+                        '-fdiagnostics-color', '-fno-diagnostics-color',
+                        '-fansi-escape-codes']:
+                i += 1
+                continue
+
+            # Skip options that can cause version compatibility issues
+            elif arg.startswith('-fconstexpr-steps=') or arg.startswith('-fconstexpr-depth='):
+                # These can cause issues if libclang has different limits
+                i += 1
+                continue
+
+            # Skip template depth options that might differ between compilers
+            elif arg.startswith('-ftemplate-depth='):
+                # Might cause issues with different libclang versions
+                i += 1
+                continue
+
+            # Skip debug info options that don't affect parsing
+            elif arg in ['-fno-limit-debug-info', '-g', '-ggdb', '-g0', '-g1', '-g2', '-g3']:
+                i += 1
+                continue
+
+            # Skip optimization levels (don't affect parsing)
+            elif arg in ['-O0', '-O1', '-O2', '-O3', '-Os', '-Ofast', '-Og']:
+                i += 1
+                continue
+
+            # Skip architecture-specific options (libclang handles this differently)
+            elif arg in ['-m64', '-m32', '-msse2', '-mfpmath=sse']:
+                i += 1
+                continue
+
+            # Skip visibility options (don't affect parsing for indexing purposes)
+            elif arg in ['-fvisibility-inlines-hidden', '-fvisibility=hidden',
+                        '-fvisibility=default']:
+                i += 1
+                continue
+
+            # Skip position independent code options
+            elif arg in ['-fPIC', '-fPIE', '-fpic', '-fpie']:
+                i += 1
+                continue
+
+            # If we get here, keep the argument
+            sanitized.append(arg)
+            i += 1
+
+        return sanitized
+
     def _parse_command_string(self, command: str) -> List[str]:
         """Parse command string into arguments list.
 
@@ -257,6 +417,9 @@ class CompileCommandsManager:
                 # Keep this argument
                 filtered_args.append(arg)
                 i += 1
+
+            # Sanitize the arguments for libclang
+            filtered_args = self._sanitize_args_for_libclang(filtered_args)
 
             return filtered_args
 
