@@ -207,6 +207,51 @@ class CppAnalyzer:
             # On error, start fresh
             self.header_tracker.clear_all()
 
+    def _save_header_tracking(self):
+        """
+        Save header tracking state to disk cache.
+
+        Persists the current state of the header tracker including:
+        - compile_commands.json hash
+        - Processed headers with their file hashes
+        - Timestamp
+
+        Cache file location: {cache_dir}/header_tracker.json
+
+        Implements:
+            REQ-10.5.1: Persist header processing state to disk
+            REQ-10.5.2: Include version, hash, processed headers, timestamp
+            REQ-10.5.4: Save after each source file analysis
+            REQ-10.5.5: Store in project-specific cache directory
+        """
+        tracker_cache_path = self.cache_dir / "header_tracker.json"
+
+        try:
+            # Get current processed headers from tracker
+            processed_headers = self.header_tracker.get_processed_headers()
+
+            # Build cache data
+            cache_data = {
+                "version": "1.0",
+                "compile_commands_hash": self.compile_commands_hash,
+                "processed_headers": processed_headers,
+                "timestamp": time.time()
+            }
+
+            # Ensure cache directory exists
+            tracker_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write to file (atomic write via temp file)
+            temp_path = tracker_cache_path.with_suffix('.tmp')
+            with open(temp_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            # Atomic rename
+            temp_path.replace(tracker_cache_path)
+
+        except Exception as e:
+            diagnostics.warning(f"Failed to save header tracking cache: {e}")
+
     def _get_thread_index(self) -> Index:
         """Return a thread-local libclang Index instance."""
         index = getattr(self._thread_local, "index", None)
