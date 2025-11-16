@@ -19,8 +19,10 @@ from collections import defaultdict
 # Handle both package and script imports
 try:
     from . import diagnostics
+    from .argument_sanitizer import ArgumentSanitizer
 except ImportError:
     import diagnostics
+    from argument_sanitizer import ArgumentSanitizer
 
 
 class CompileCommandsManager:
@@ -45,7 +47,17 @@ class CompileCommandsManager:
         self.file_to_command_map = {}
         self.last_modified = 0
         self.cache_lock = threading.Lock()
-        
+
+        # Initialize argument sanitizer with optional custom rules
+        custom_rules_file = self.config.get('sanitization_rules_file')
+        custom_rules_path = None
+        if custom_rules_file:
+            custom_rules_path = Path(custom_rules_file)
+            if not custom_rules_path.is_absolute():
+                custom_rules_path = self.project_root / custom_rules_path
+
+        self.argument_sanitizer = ArgumentSanitizer(custom_rules_file=custom_rules_path)
+
         # Detect clang resource directory for builtin headers (stddef.h, etc.)
         # Do this before building fallback args so we can include it
         self.clang_resource_dir = self._detect_clang_resource_dir()
@@ -369,121 +381,32 @@ class CompileCommandsManager:
         return normalized
 
     def _sanitize_args_for_libclang(self, args: List[str]) -> List[str]:
-        """Sanitize compiler arguments for use with libclang.
+        """Sanitize compiler arguments for use with libclang using rule-based system.
 
-        Removes arguments that can cause libclang parsing failures:
+        Uses the ArgumentSanitizer with loaded rules to remove arguments that can
+        cause libclang parsing failures:
         - Precompiled header options (-include-pch, -Xclang -include-pch, etc.)
         - Compiler-specific options that don't affect parsing
         - Color/diagnostic formatting options
+        - Version-specific compiler options
+        - Optimization and debug flags
+        - Architecture-specific options
+        - Code generation options
+
+        The rules are loaded from sanitization_rules.json and can be extended with
+        custom rules via the 'sanitization_rules_file' config option.
 
         Args:
             args: List of compiler arguments
 
         Returns:
             Sanitized list of arguments safe for libclang
+
+        See Also:
+            - mcp_server/sanitization_rules.json for default rules
+            - ArgumentSanitizer class for rule engine implementation
         """
-        sanitized = []
-        i = 0
-
-        while i < len(args):
-            arg = args[i]
-
-            # Handle -Xclang options (they come in pairs: -Xclang <option>)
-            if arg == '-Xclang':
-                # Check if the next argument is problematic
-                if i + 1 < len(args):
-                    next_arg = args[i + 1]
-
-                    # Skip precompiled header includes
-                    if next_arg == '-include-pch':
-                        # Skip both -Xclang and -include-pch
-                        # Also skip the next pair if it's -Xclang <pch-file>
-                        i += 2
-                        if i < len(args) and args[i] == '-Xclang':
-                            i += 2  # Skip -Xclang <pch-file>
-                        continue
-
-                    # Skip -include when followed by a PCH file path
-                    elif next_arg == '-include':
-                        # Check if the file being included is a PCH file
-                        if i + 3 < len(args) and args[i + 2] == '-Xclang':
-                            pch_file = args[i + 3]
-                            # If it contains 'pch' or 'cmake_pch', it's likely a PCH file
-                            if 'pch' in pch_file.lower() or 'cmake_pch' in pch_file.lower():
-                                # Skip all four: -Xclang -include -Xclang <pch-file>
-                                i += 4
-                                continue
-
-                    # Skip other potentially problematic -Xclang options
-                    elif next_arg in ['-emit-pch', '-include-pch-header', '-fmodules-cache-path']:
-                        i += 2
-                        if i < len(args) and not args[i].startswith('-'):
-                            i += 1  # Skip the argument's value if present
-                        continue
-
-            # Skip standalone precompiled header options
-            elif arg == '-include-pch':
-                i += 1
-                # Also skip the PCH file path if it follows
-                if i < len(args) and not args[i].startswith('-'):
-                    i += 1
-                continue
-
-            # Skip PCH-related warning options
-            elif arg in ['-Winvalid-pch', '-Wno-invalid-pch']:
-                i += 1
-                continue
-
-            # Skip color/diagnostic formatting options (cosmetic, not needed for parsing)
-            elif arg in ['-fcolor-diagnostics', '-fno-color-diagnostics',
-                        '-fdiagnostics-color', '-fno-diagnostics-color',
-                        '-fansi-escape-codes']:
-                i += 1
-                continue
-
-            # Skip options that can cause version compatibility issues
-            elif arg.startswith('-fconstexpr-steps=') or arg.startswith('-fconstexpr-depth='):
-                # These can cause issues if libclang has different limits
-                i += 1
-                continue
-
-            # Skip template depth options that might differ between compilers
-            elif arg.startswith('-ftemplate-depth='):
-                # Might cause issues with different libclang versions
-                i += 1
-                continue
-
-            # Skip debug info options that don't affect parsing
-            elif arg in ['-fno-limit-debug-info', '-g', '-ggdb', '-g0', '-g1', '-g2', '-g3']:
-                i += 1
-                continue
-
-            # Skip optimization levels (don't affect parsing)
-            elif arg in ['-O0', '-O1', '-O2', '-O3', '-Os', '-Ofast', '-Og']:
-                i += 1
-                continue
-
-            # Skip architecture-specific options (libclang handles this differently)
-            elif arg in ['-m64', '-m32', '-msse2', '-mfpmath=sse']:
-                i += 1
-                continue
-
-            # Skip visibility options (don't affect parsing for indexing purposes)
-            elif arg in ['-fvisibility-inlines-hidden', '-fvisibility=hidden',
-                        '-fvisibility=default']:
-                i += 1
-                continue
-
-            # Skip position independent code options
-            elif arg in ['-fPIC', '-fPIE', '-fpic', '-fpie']:
-                i += 1
-                continue
-
-            # If we get here, keep the argument
-            sanitized.append(arg)
-            i += 1
-
-        return sanitized
+        return self.argument_sanitizer.sanitize(args)
 
     def _parse_command_string(self, command: str) -> List[str]:
         """Parse command string into arguments list.
