@@ -4,6 +4,124 @@ This document provides a detailed, step-by-step implementation plan for the head
 
 ## Implementation Phases
 
+### Phase 0: Requirements Documentation Update
+
+**Objective:** Update all requirements and specification documents to reflect the header extraction feature and architectural decisions.
+
+#### Task 0.1: Update REQUIREMENTS.md
+- [ ] Add new section: "Header Extraction from compile_commands.json"
+- [ ] Document feature requirements:
+  - [ ] FR-HE-01: Extract C++ symbols from project headers included by source files
+  - [ ] FR-HE-02: Use first-win strategy to avoid redundant header processing
+  - [ ] FR-HE-03: Track compile_commands.json version and reset on changes
+  - [ ] FR-HE-04: Support nested includes (headers including headers)
+  - [ ] FR-HE-05: Filter out system headers and external dependencies
+  - [ ] FR-HE-06: Persist header tracking state across analyzer restarts
+  - [ ] FR-HE-07: Invalidate and re-process headers when file content changes
+  - [ ] FR-HE-08: Thread-safe header processing for concurrent source analysis
+
+- [ ] Document non-functional requirements:
+  - [ ] NFR-HE-01: Performance improvement of 5-10× for projects with shared headers
+  - [ ] NFR-HE-02: Thread-safe concurrent processing
+  - [ ] NFR-HE-03: Cache persistence across restarts
+  - [ ] NFR-HE-04: Backward compatibility with existing caches
+
+- [ ] Document assumptions:
+  - [ ] ASSUMPTION-HE-01: Headers produce consistent symbols across different sources with same compile_commands.json
+  - [ ] ASSUMPTION-HE-02: compile_commands.json changes require full header re-analysis
+  - [ ] ASSUMPTION-HE-03: Header path is sufficient identifier (no per-compile-args tracking)
+
+- [ ] Document constraints and limitations:
+  - [ ] CONSTRAINT-HE-01: Headers with macro-dependent behavior may not be fully captured
+  - [ ] CONSTRAINT-HE-02: No cross-source validation of header consistency
+  - [ ] CONSTRAINT-HE-03: No runtime monitoring of compile_commands.json changes
+
+**Dependencies:** None
+
+**Testing:** None (documentation only)
+
+---
+
+#### Task 0.2: Update COMPILE_COMMANDS_INTEGRATION.md
+- [ ] Add section: "Header File Analysis"
+- [ ] Document how headers are discovered:
+  - [ ] libclang automatically parses all included headers in translation unit
+  - [ ] AST traversal extracts symbols from both source and project headers
+  - [ ] System headers and external dependencies are filtered out
+
+- [ ] Document first-win strategy:
+  - [ ] First source file to include a header extracts its symbols
+  - [ ] Subsequent sources skip extraction for that header
+  - [ ] Deduplication based on header file path
+  - [ ] Performance benefits for shared headers
+
+- [ ] Document compile_commands.json versioning:
+  - [ ] Hash of compile_commands.json tracked in cache
+  - [ ] Changes to compilation database trigger full header re-analysis
+  - [ ] User action required: restart analyzer after modifying compile_commands.json
+
+- [ ] Document header change detection:
+  - [ ] File hash tracking for each processed header
+  - [ ] Automatic re-processing when header content changes
+  - [ ] Invalidation on next source file analysis
+
+- [ ] Add usage examples:
+  - [ ] Example 1: Project with shared headers (Common.h included by multiple sources)
+  - [ ] Example 2: Nested includes (Header A includes Header B)
+  - [ ] Example 3: Header modification workflow
+
+**Dependencies:** Task 0.1 (for consistency)
+
+**Testing:** None (documentation only)
+
+---
+
+#### Task 0.3: Update DEVELOPMENT.md
+- [ ] Add section: "Header Extraction Architecture"
+- [ ] Document key architectural decisions:
+  - [ ] Decision: Use first-win strategy instead of re-extraction
+  - [ ] Decision: Track by header path only, not by compile args
+  - [ ] Decision: No cross-source validation (document rationale)
+  - [ ] Decision: No runtime monitoring of compile_commands.json
+  - [ ] Decision: Reset all tracking on compile_commands.json change
+
+- [ ] Document design patterns used:
+  - [ ] Thread-safe tracker with Lock-based coordination
+  - [ ] Closure-based filtering (should_extract_from_file callback)
+  - [ ] USR-based symbol deduplication
+  - [ ] Hash-based change detection (both files and config)
+
+- [ ] Document future enhancement opportunities:
+  - [ ] Optional: Cross-source validation mode
+  - [ ] Optional: Header dependency graph tracking
+  - [ ] Optional: Runtime compile_commands.json monitoring
+  - [ ] Optional: Per-compile-args header tracking (for edge cases)
+
+- [ ] Add reference to `HEADER_EXTRACTION_ARCHITECTURE.md` for full details
+
+**Dependencies:** Task 0.1, Task 0.2 (for consistency)
+
+**Testing:** None (documentation only)
+
+---
+
+#### Task 0.4: Update README.md (User-Facing Summary)
+- [ ] Add brief mention of header extraction feature in main features list
+- [ ] Add note in compile_commands.json section:
+  - [ ] "Automatically analyzes headers included by source files"
+  - [ ] "Optimized to process each header only once, even if included by multiple sources"
+  - [ ] "Restart analyzer after modifying compile_commands.json for best results"
+
+- [ ] Add FAQ entry (if FAQ section exists):
+  - [ ] Q: "Are header files analyzed?"
+  - [ ] A: "Yes, project headers are automatically analyzed when included by source files..."
+
+**Dependencies:** Task 0.1, Task 0.2 (for consistency)
+
+**Testing:** None (documentation only)
+
+---
+
 ### Phase 1: Core Infrastructure Setup
 
 **Objective:** Implement the foundational components for header tracking and compile_commands.json versioning.
@@ -521,13 +639,16 @@ This document provides a detailed, step-by-step implementation plan for the head
 
 ## Implementation Order and Dependencies
 
-### Phase 1 → Phase 2 → Phase 3 → Phase 4
-**Critical path:** Each phase depends on the previous one.
+### Phase 0 (Requirements Documentation)
+**Must be done first:** Update all requirement docs before implementation starts.
+
+### Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4
+**Critical path:** Each code phase depends on the previous one.
 
 ### Phase 5 (Testing)
 **Can start during Phase 2:** Write unit tests as you implement each component.
 
-### Phase 6 (Documentation)
+### Phase 6 (Code Documentation)
 **Can be done in parallel with later phases:** Start documenting as you implement.
 
 ### Phase 7 (Final Testing)
@@ -537,14 +658,15 @@ This document provides a detailed, step-by-step implementation plan for the head
 
 | Phase | Estimated Time | Complexity |
 |-------|----------------|------------|
+| Phase 0: Requirements Docs | 2-3 hours | Low |
 | Phase 1: Core Infrastructure | 4-6 hours | Medium |
 | Phase 2: AST Traversal | 6-8 hours | High |
 | Phase 3: Deduplication | 2-3 hours | Low |
 | Phase 4: Cache Updates | 3-4 hours | Medium |
 | Phase 5: Testing | 8-10 hours | High |
-| Phase 6: Documentation | 3-4 hours | Low |
+| Phase 6: Code Documentation | 3-4 hours | Low |
 | Phase 7: Final Testing | 4-6 hours | Medium |
-| **Total** | **30-41 hours** | **Medium-High** |
+| **Total** | **32-44 hours** | **Medium-High** |
 
 ## Risk Assessment
 
