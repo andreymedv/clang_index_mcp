@@ -133,6 +133,35 @@ class CppAnalyzer:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
 
+    def _is_project_file(self, file_path: str) -> bool:
+        """
+        Check if a file is a project file (not system header or external dependency).
+
+        Uses FileScanner.is_project_file() to determine if the file is:
+        - Under the project root
+        - NOT in excluded directories (e.g., build/, .git/)
+        - NOT in dependency directories (e.g., vcpkg_installed/, third_party/)
+
+        Args:
+            file_path: Absolute or relative path to check
+
+        Returns:
+            True if file is a project file, False otherwise
+
+        Implements:
+            REQ-10.1.3: Distinguish between project headers, system headers, and external
+            REQ-10.1.4: Extract symbols only from project headers
+        """
+        if not file_path:
+            return False
+
+        # Convert to absolute path
+        if not os.path.isabs(file_path):
+            file_path = os.path.abspath(file_path)
+
+        # Use FileScanner's logic to check if it's a project file
+        return self.file_scanner.is_project_file(file_path)
+
     def _calculate_compile_commands_hash(self):
         """
         Calculate and store MD5 hash of compile_commands.json file.
