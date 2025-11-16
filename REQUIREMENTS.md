@@ -17,6 +17,7 @@ This document captures the functional requirements for the Clang Index MCP Serve
    - 7.6 [Centralized Error Logging (Developer-Only)](#76-centralized-error-logging-developer-only)
 8. [Statistics and Monitoring Requirements](#8-statistics-and-monitoring-requirements)
 9. [Security and Robustness Requirements](#9-security-and-robustness-requirements)
+10. [Header Extraction Requirements](#10-header-extraction-requirements)
 
 ---
 
@@ -1134,6 +1135,141 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 ---
 
+## 10. Header Extraction Requirements
+
+### 10.1 Header File Discovery and Analysis
+
+**REQ-10.1.1**: When analyzing a source file with `compile_commands.json`, the system SHALL extract C++ symbols from project headers included by that source file.
+
+**REQ-10.1.2**: The system SHALL leverage libclang's translation unit to access already-parsed header ASTs, avoiding redundant file parsing.
+
+**REQ-10.1.3**: The system SHALL distinguish between:
+- Project headers (files under the project root, not in excluded/dependency directories)
+- System headers (standard library headers like `<iostream>`)
+- External dependency headers (third-party libraries)
+
+**REQ-10.1.4**: The system SHALL extract symbols only from project headers, ignoring system and external headers.
+
+**REQ-10.1.5**: The system SHALL support nested includes (headers including other headers) recursively to any depth.
+
+**REQ-10.1.6**: For each cursor in the AST, the system SHALL use `cursor.location.file` to determine which file (source or header) the symbol belongs to.
+
+### 10.2 First-Win Processing Strategy
+
+**REQ-10.2.1**: The system SHALL use a "first-win" strategy where the first source file to include a header extracts its symbols.
+
+**REQ-10.2.2**: Subsequent source files that include the same header SHALL skip symbol extraction for that header.
+
+**REQ-10.2.3**: Header identity for deduplication SHALL be based solely on the header's file path (absolute path).
+
+**REQ-10.2.4**: The system SHALL maintain a thread-safe tracker of processed headers to coordinate first-win logic across concurrent source file analyses.
+
+**REQ-10.2.5**: The header tracker SHALL prevent race conditions when multiple threads attempt to claim the same header simultaneously.
+
+**Rationale**: First-win strategy provides significant performance improvement (5-10×) for projects with headers included by multiple source files, while maintaining correctness through USR-based symbol deduplication.
+
+### 10.3 Header Change Detection
+
+**REQ-10.3.1**: For each processed header, the system SHALL calculate and store a file hash (MD5) to detect content changes.
+
+**REQ-10.3.2**: When a header file's hash changes, the system SHALL automatically invalidate the previous extraction and re-process the header on the next source file analysis.
+
+**REQ-10.3.3**: The header tracker SHALL compare the current file hash with the stored hash during claim attempts to detect changes.
+
+**REQ-10.3.4**: If a hash mismatch is detected, the header SHALL be re-claimed for extraction even if previously processed.
+
+### 10.4 compile_commands.json Versioning
+
+**REQ-10.4.1**: The system SHALL calculate and store a hash (MD5) of the entire `compile_commands.json` file.
+
+**REQ-10.4.2**: On analyzer startup, the system SHALL compare the current `compile_commands.json` hash with the cached hash.
+
+**REQ-10.4.3**: If the `compile_commands.json` hash has changed, the system SHALL clear all header processing tracking and trigger full re-analysis of all headers.
+
+**REQ-10.4.4**: The system SHALL persist the `compile_commands.json` hash in the header tracker cache for version comparison across restarts.
+
+**Rationale**: Changes to compilation flags, include paths, or defines in `compile_commands.json` may affect header parsing results, requiring full re-analysis.
+
+### 10.5 Header Tracking Persistence
+
+**REQ-10.5.1**: The system SHALL persist header processing state to disk in a cache file (`header_tracker.json`).
+
+**REQ-10.5.2**: The header tracker cache SHALL include:
+- Cache version identifier
+- `compile_commands.json` hash
+- Map of processed header paths to file hashes
+- Timestamp of last update
+
+**REQ-10.5.3**: On analyzer startup, the system SHALL restore header tracking state from cache if the `compile_commands.json` hash matches.
+
+**REQ-10.5.4**: The system SHALL save header tracking state after each source file analysis to ensure persistence.
+
+**REQ-10.5.5**: The header tracker cache SHALL be stored in the project-specific cache directory (`.mcp_cache/{project}/header_tracker.json`).
+
+### 10.6 Thread Safety
+
+**REQ-10.6.1**: The header processing tracker SHALL use a threading Lock to protect all access to internal state (`_processed`, `_in_progress`).
+
+**REQ-10.6.2**: The `try_claim_header()` operation SHALL be atomic: checking processed state, checking in-progress state, and claiming the header must occur within a single lock acquisition.
+
+**REQ-10.6.3**: Multiple threads analyzing different source files simultaneously SHALL correctly coordinate header extraction without race conditions.
+
+**REQ-10.6.4**: The system SHALL ensure that each header is extracted exactly once, even under high concurrency (e.g., 16 parallel workers).
+
+### 10.7 Symbol Deduplication
+
+**REQ-10.7.1**: The system SHALL continue to use USR-based deduplication for all symbols, regardless of whether they originate from source files or headers.
+
+**REQ-10.7.2**: When a symbol with an existing USR is encountered during header extraction, the system SHALL skip adding it to the indexes (already present).
+
+**REQ-10.7.3**: USR deduplication SHALL serve as a safety mechanism to ensure no duplicate symbols exist, even if header tracking logic has bugs.
+
+**REQ-10.7.4**: Optionally, the system MAY track which files define each symbol (for debugging and diagnostics), but this is not required for correctness.
+
+### 10.8 Cache Structure Extensions
+
+**REQ-10.8.1**: Per-file caches MAY optionally include metadata about header extraction:
+- `headers_extracted`: Map of header paths to file hashes for headers extracted during this source's analysis
+- `headers_skipped`: List of header paths that were already processed by other sources
+
+**REQ-10.8.2**: Header extraction metadata in per-file caches SHALL be for informational/diagnostic purposes only and SHALL NOT affect correctness.
+
+**REQ-10.8.3**: The system SHALL maintain backward compatibility: old caches without header metadata SHALL load successfully.
+
+### 10.9 Performance Requirements
+
+**REQ-10.9.1**: For projects where headers are included by multiple source files, header extraction SHALL provide a performance improvement of 5-10× compared to re-extracting from each source.
+
+**REQ-10.9.2**: The overhead of header tracking (claim checks, hash calculations, cache persistence) SHALL be negligible compared to the time saved by avoiding redundant extractions.
+
+**REQ-10.9.3**: Header tracker cache operations (save/restore) SHALL complete in under 100ms for typical projects (up to 1000 unique headers).
+
+---
+
+## 10.10 Assumptions and Constraints
+
+### Assumptions
+
+**ASSUMPTION-10.1**: For a given version of `compile_commands.json`, analyzing a header file will produce identical symbol results regardless of which source file includes it.
+
+**Why Safe**: In well-structured C++ projects, headers provide consistent declarations. The same compilation flags from `compile_commands.json` ensure consistent preprocessing. This assumption is sufficient for code analysis use cases.
+
+**Edge Cases**: Headers with macro-dependent behavior (different symbols based on which source includes them) may not be fully captured. This is considered poor C++ practice and acceptable to miss.
+
+**ASSUMPTION-10.2**: When `compile_commands.json` changes, all header tracking can be safely reset and headers re-analyzed from scratch.
+
+**ASSUMPTION-10.3**: Header file path is a sufficient unique identifier for deduplication within a single `compile_commands.json` version.
+
+### Constraints
+
+**CONSTRAINT-10.1**: Headers with macro-dependent behavior (e.g., different symbols when included from different sources due to preprocessor state) may not be fully captured.
+
+**CONSTRAINT-10.2**: The system does NOT perform cross-source validation of header consistency (i.e., does not check if the same header produces different symbols when included from different sources).
+
+**CONSTRAINT-10.3**: The system does NOT monitor `compile_commands.json` for changes at runtime. Users must restart the analyzer or manually trigger rebuild after modifying the compilation database.
+
+---
+
 ## Testing Implications
 
 These requirements imply the following testing needs:
@@ -1148,14 +1284,29 @@ These requirements imply the following testing needs:
 8. **Platform Tests**: Verify Windows/Linux/macOS specific behavior
 9. **Configuration Tests**: Verify configuration loading and merging
 10. **Integration Tests**: Verify end-to-end workflows with real C++ projects
+11. **Header Extraction Tests**: Verify header discovery, first-win strategy, change detection, thread safety, and performance improvements
 
 ---
 
 ## Document Version
 
-- **Version**: 3.1
-- **Date**: 2025-11-15
-- **Status**: Production-ready with manual testing issue fixes and error logging
+- **Version**: 3.2
+- **Date**: 2025-11-16
+- **Status**: Production-ready with header extraction feature requirements
+- **Changes from v3.1**:
+  - Added Section 10: Header Extraction Requirements (43 new requirements)
+    - REQ-10.1: Header File Discovery and Analysis (6 requirements)
+    - REQ-10.2: First-Win Processing Strategy (5 requirements)
+    - REQ-10.3: Header Change Detection (4 requirements)
+    - REQ-10.4: compile_commands.json Versioning (4 requirements)
+    - REQ-10.5: Header Tracking Persistence (5 requirements)
+    - REQ-10.6: Thread Safety (4 requirements)
+    - REQ-10.7: Symbol Deduplication (4 requirements)
+    - REQ-10.8: Cache Structure Extensions (3 requirements)
+    - REQ-10.9: Performance Requirements (3 requirements)
+    - REQ-10.10: Assumptions and Constraints (5 documented items)
+  - Updated Testing Implications: Added header extraction tests
+  - Total Requirements: 270+ requirements across 10 major sections
 - **Changes from v3.0**:
   - Added REQ-6.2.6-6.2.9: Compilation Arguments Hash Validation (4 requirements)
     - Cache invalidation when compilation arguments change
@@ -1187,5 +1338,5 @@ These requirements imply the following testing needs:
     - REQ-9.6: Platform-Specific Security (4 requirements)
     - REQ-9.7: Concurrent Access Protection (4 requirements)
     - REQ-9.8: Boundary Conditions (5 requirements)
-- **Total Requirements**: 230+ requirements across 9 major sections
-- **Coverage**: 100% of implemented functionality including manual testing fixes
+- **Total Requirements**: 270+ requirements across 10 major sections
+- **Coverage**: 100% of implemented functionality including header extraction planning
