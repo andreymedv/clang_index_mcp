@@ -454,14 +454,21 @@ class CppAnalyzer:
                 )
 
                 with self.index_lock:
-                    self.class_index[info.name].append(info)
-                    if info.usr:
-                        self.usr_index[info.usr] = info
-                    if info.file:
-                        # Ensure file_index list exists
-                        if info.file not in self.file_index:
-                            self.file_index[info.file] = []
-                        self.file_index[info.file].append(info)
+                    # USR-based deduplication: check if symbol already exists
+                    if info.usr and info.usr in self.usr_index:
+                        # Symbol already exists (from another file, likely a header)
+                        # Skip adding to avoid duplicates
+                        pass
+                    else:
+                        # New symbol - add to all indexes
+                        self.class_index[info.name].append(info)
+                        if info.usr:
+                            self.usr_index[info.usr] = info
+                        if info.file:
+                            # Ensure file_index list exists
+                            if info.file not in self.file_index:
+                                self.file_index[info.file] = []
+                            self.file_index[info.file].append(info)
 
             # Always process children (even if we didn't extract this symbol)
             # Children might be in different files
@@ -492,14 +499,21 @@ class CppAnalyzer:
                 )
 
                 with self.index_lock:
-                    self.function_index[info.name].append(info)
-                    if info.usr:
-                        self.usr_index[info.usr] = info
-                    if info.file:
-                        # Ensure file_index list exists
-                        if info.file not in self.file_index:
-                            self.file_index[info.file] = []
-                        self.file_index[info.file].append(info)
+                    # USR-based deduplication: check if symbol already exists
+                    if info.usr and info.usr in self.usr_index:
+                        # Symbol already exists (from another file, likely a header)
+                        # Skip adding to avoid duplicates
+                        pass
+                    else:
+                        # New symbol - add to all indexes
+                        self.function_index[info.name].append(info)
+                        if info.usr:
+                            self.usr_index[info.usr] = info
+                        if info.file:
+                            # Ensure file_index list exists
+                            if info.file not in self.file_index:
+                                self.file_index[info.file] = []
+                            self.file_index[info.file].append(info)
 
             # Always process children (for call tracking and nested symbols)
             # Use function_usr only if we extracted this function
