@@ -182,15 +182,84 @@ class CompileCommandsManager:
         return str(Path(file_path).resolve())
     
     def _parse_command_string(self, command: str) -> List[str]:
-        """Parse command string into arguments list."""
+        """Parse command string into arguments list.
+
+        The command string typically starts with the compiler executable path,
+        which should be stripped out since libclang only needs the compilation flags.
+        Also strips output file arguments (-o <file>), compile-only flag (-c),
+        and the source file argument.
+        """
         import shlex
-        
+        import os
+
         try:
             # Handle quoted arguments properly
             args = shlex.split(command)
 
-            # Filter out empty strings and ensure proper formatting
-            return [arg for arg in args if arg.strip()]
+            # Filter out empty strings
+            args = [arg for arg in args if arg.strip()]
+
+            if not args:
+                return []
+
+            # Strip the first argument if it looks like a compiler executable
+            # This is necessary because libclang expects only compilation flags,
+            # not the compiler path itself
+            first_arg = args[0]
+
+            # Check if first argument is a compiler executable path or name
+            # Common patterns: gcc, g++, clang, clang++, cc, c++, or paths to them
+            compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
+
+            # Get the basename to check if it's a compiler
+            # Handle both Unix and Windows path separators
+            basename = first_arg.split('/')[-1].split('\\')[-1].lower()
+            # Remove .exe extension if present (case-insensitive)
+            if basename.endswith('.exe'):
+                basename = basename[:-4]
+
+            # If the first argument is a compiler, strip it
+            if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
+                # This looks like a compiler path, remove it
+                args = args[1:]
+
+            # Filter out arguments that libclang doesn't need:
+            # - Output file: -o <file>
+            # - Compile-only flag: -c
+            # - Source files (arguments that look like file paths, typically at the end)
+            filtered_args = []
+            i = 0
+            while i < len(args):
+                arg = args[i]
+
+                # Skip -o and its argument (output file)
+                if arg == '-o':
+                    # Skip both -o and the next argument (the output file path)
+                    i += 2
+                    continue
+
+                # Skip -c (compile-only flag)
+                if arg == '-c':
+                    i += 1
+                    continue
+
+                # Skip arguments that look like source files
+                # These are typically file paths with C/C++ extensions, not starting with -
+                if not arg.startswith('-'):
+                    # Check if it looks like a source file
+                    lower_arg = arg.lower()
+                    source_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.m', '.mm']
+                    if any(lower_arg.endswith(ext) for ext in source_extensions):
+                        # This is likely the source file being compiled, skip it
+                        i += 1
+                        continue
+
+                # Keep this argument
+                filtered_args.append(arg)
+                i += 1
+
+            return filtered_args
+
         except Exception as e:
             diagnostics.warning(f"Failed to parse command string '{command}': {e}")
             return []
