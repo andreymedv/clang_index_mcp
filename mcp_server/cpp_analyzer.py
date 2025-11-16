@@ -407,21 +407,40 @@ class CppAnalyzer:
                 base_classes.append(base_type)
         return base_classes
     
-    def _process_cursor(self, cursor, file_filter: Optional[str] = None, parent_class: str = "", parent_function_usr: str = ""):
-        """Process a cursor and its children"""
-        # Skip if in different file than we're indexing
-        if cursor.location.file and file_filter:
-            if cursor.location.file.name != file_filter:
-                return
-        
+    def _process_cursor(self, cursor, should_extract_from_file=None, parent_class: str = "", parent_function_usr: str = ""):
+        """
+        Process a cursor and its children, extracting symbols based on file filter.
+
+        Args:
+            cursor: libclang cursor to process
+            should_extract_from_file: Optional callback function(file_path) -> bool
+                                     If provided, only extract symbols from files where this returns True
+                                     If None, extract from all files (backward compatibility)
+            parent_class: Name of parent class for nested symbols
+            parent_function_usr: USR of parent function for call tracking
+
+        Design:
+            - Always traverse entire AST (to discover all files)
+            - Only extract symbols when should_extract_from_file returns True
+            - This enables multi-file extraction (source + headers) in single pass
+
+        Implements:
+            REQ-10.1.6: Use cursor.location.file to determine which file symbol belongs to
+        """
+        # Determine if we should extract from this cursor's file
+        should_extract = True
+        if cursor.location.file and should_extract_from_file is not None:
+            file_path = str(cursor.location.file.name)
+            should_extract = should_extract_from_file(file_path)
+
         kind = cursor.kind
-        
-        # Process classes and structs
+
+        # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
-            if cursor.spelling:
+            if cursor.spelling and should_extract:
                 # Get base classes
                 base_classes = self._get_base_classes(cursor)
-                
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
@@ -433,7 +452,7 @@ class CppAnalyzer:
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else ""
                 )
-                
+
                 with self.index_lock:
                     self.class_index[info.name].append(info)
                     if info.usr:
@@ -443,22 +462,23 @@ class CppAnalyzer:
                         if info.file not in self.file_index:
                             self.file_index[info.file] = []
                         self.file_index[info.file].append(info)
-                
-                # Process children of this class with the class as parent
-                for child in cursor.get_children():
-                    self._process_cursor(child, file_filter, cursor.spelling)
-                return  # Don't process children again below
-        
-        # Process functions and methods
+
+            # Always process children (even if we didn't extract this symbol)
+            # Children might be in different files
+            for child in cursor.get_children():
+                self._process_cursor(child, should_extract_from_file, cursor.spelling if should_extract else parent_class, parent_function_usr)
+            return  # Don't process children again below
+
+        # Process functions and methods (only if should extract)
         elif kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
-            if cursor.spelling:
+            if cursor.spelling and should_extract:
                 # Get function signature
                 signature = ""
                 if cursor.type:
                     signature = cursor.type.spelling
-                
+
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
-                
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
@@ -470,7 +490,7 @@ class CppAnalyzer:
                     parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
                     usr=function_usr
                 )
-                
+
                 with self.index_lock:
                     self.function_index[info.name].append(info)
                     if info.usr:
@@ -480,12 +500,14 @@ class CppAnalyzer:
                         if info.file not in self.file_index:
                             self.file_index[info.file] = []
                         self.file_index[info.file].append(info)
-                
-                # Process function body to find calls
-                for child in cursor.get_children():
-                    self._process_cursor(child, file_filter, parent_class, function_usr)
-                return  # Don't process children again below
-        
+
+            # Always process children (for call tracking and nested symbols)
+            # Use function_usr only if we extracted this function
+            current_function_usr = cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+            for child in cursor.get_children():
+                self._process_cursor(child, should_extract_from_file, parent_class, current_function_usr)
+            return  # Don't process children again below
+
         # Process function calls within function bodies
         elif kind == CursorKind.CALL_EXPR and parent_function_usr:
             # This is a function call inside a function
@@ -495,10 +517,10 @@ class CppAnalyzer:
                 # Track the call relationship
                 with self.index_lock:
                     self.call_graph_analyzer.add_call(parent_function_usr, called_usr)
-        
-        # Recurse into children (with current parent_class and parent_function context)
+
+        # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
-            self._process_cursor(child, file_filter, parent_class, parent_function_usr)
+            self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
     
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
