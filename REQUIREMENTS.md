@@ -699,6 +699,132 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-5.7.4.2**: Each processing step SHALL preserve argument list integrity (no corruption or loss of valid arguments).
 
+### 5.8 Rule-Based Argument Sanitization
+
+**REQ-5.8**: The system SHALL use a flexible, rule-based system for argument sanitization that allows customization and extension.
+
+#### 5.8.1 Rule Loading and Configuration
+
+**REQ-5.8.1**: The system SHALL load sanitization rules from JSON configuration files.
+
+**REQ-5.8.1.1**: The system SHALL provide default sanitization rules in `mcp_server/sanitization_rules.json` containing:
+- Rule version
+- Rule descriptions
+- Rule definitions for all standard problematic compiler flags
+
+**REQ-5.8.1.2**: The system SHALL support custom sanitization rules via the `sanitization_rules_file` configuration option:
+- Custom rules file path (absolute or relative to project root)
+- Custom rules are appended to default rules (not replaced)
+- Custom rules can define additional sanitization patterns
+
+**REQ-5.8.1.3**: The system SHALL gracefully handle missing or invalid rule files:
+- Log warning if custom rules file doesn't exist
+- Continue operation with default rules
+- Log error if rule file has invalid JSON format
+
+**REQ-5.8.1.4**: Rule files SHALL use JSON format with structure:
+```json
+{
+  "version": "1.0",
+  "description": "...",
+  "rules": [
+    {
+      "id": "unique-id",
+      "type": "rule_type",
+      "patterns": [...],
+      "description": "..."
+    }
+  ]
+}
+```
+
+#### 5.8.2 Rule Application
+
+**REQ-5.8.2**: The system SHALL apply sanitization rules sequentially to argument list.
+
+**REQ-5.8.2.1**: The system SHALL process arguments from left to right:
+- For each argument, try all rules in order
+- When a rule matches, skip the specified number of arguments
+- When no rule matches, preserve the argument
+
+**REQ-5.8.2.2**: Arguments that match no rules SHALL be preserved unchanged.
+
+**REQ-5.8.2.3**: When multiple rules could match an argument, the first matching rule SHALL be applied.
+
+**REQ-5.8.2.4**: Each rule SHALL specify how many arguments to skip:
+- 0: keep argument (no match)
+- 1: remove single argument
+- 2+: remove argument and following arguments (e.g., flag with value)
+
+#### 5.8.3 Custom Rules Support
+
+**REQ-5.8.3**: The system SHALL allow projects to define custom sanitization rules.
+
+**REQ-5.8.3.1**: Custom rules SHALL be specified in project-specific JSON files.
+
+**REQ-5.8.3.2**: Custom rules SHALL extend (not replace) default rules.
+
+**REQ-5.8.3.3**: Custom rules SHALL support all rule types available to default rules.
+
+**REQ-5.8.3.4**: Custom rules example in `cpp-analyzer-config.json`:
+```json
+{
+  "compile_commands": {
+    "sanitization_rules_file": "my_custom_rules.json"
+  }
+}
+```
+
+#### 5.8.4 Rule Types
+
+**REQ-5.8.4**: The system SHALL support multiple rule types for different sanitization patterns.
+
+**REQ-5.8.4.1**: `exact_match` type SHALL remove arguments that exactly match patterns:
+- Matches if argument equals any pattern in patterns list
+- Removes matched argument only
+- Example: `{type: "exact_match", patterns: ["-g", "-O0"]}`
+
+**REQ-5.8.4.2**: `prefix_match` type SHALL remove arguments starting with patterns:
+- Matches if argument starts with any pattern
+- Removes matched argument only
+- Example: `{type: "prefix_match", patterns: ["-fconstexpr-steps="]}`
+
+**REQ-5.8.4.3**: `flag_with_optional_value` type SHALL remove flag and optional value:
+- Matches if argument equals pattern
+- Removes flag and next argument if next argument is not a flag
+- Removes only flag if next argument is a flag or doesn't exist
+- Example: `{type: "flag_with_optional_value", pattern: "-include-pch"}`
+
+**REQ-5.8.4.4**: `xclang_sequence` type SHALL remove `-Xclang` option sequences:
+- Matches if sequence pattern is found
+- Supports `<arg>` placeholder for any argument
+- Removes all matched arguments in sequence
+- Example: `{type: "xclang_sequence", sequence: ["-Xclang", "-include-pch", "-Xclang", "<arg>"]}`
+
+**REQ-5.8.4.5**: `xclang_conditional_sequence` type SHALL remove `-Xclang` sequences conditionally:
+- Matches sequence pattern like `xclang_sequence`
+- Applies condition to matched `<arg>` placeholders
+- Only removes if condition is met
+- Condition checks if argument contains specified substrings
+- Example: `{type: "xclang_conditional_sequence", sequence: [...], condition: {arg_index: 0, contains: ["pch"]}}`
+
+**REQ-5.8.4.6**: `xclang_option_with_value` type SHALL remove `-Xclang <option> [value]`:
+- Matches if `-Xclang` is followed by option in patterns list
+- Removes `-Xclang`, option, and value if next argument is not a flag
+- Removes only `-Xclang` and option if no value follows
+- Example: `{type: "xclang_option_with_value", patterns: ["-emit-pch"]}`
+
+#### 5.8.5 Rule Management
+
+**REQ-5.8.5**: The system SHALL provide introspection of loaded rules.
+
+**REQ-5.8.5.1**: The system SHALL provide `get_rules_info()` method returning:
+- Rule version
+- Total rule count
+- List of rule IDs, types, and descriptions
+
+**REQ-5.8.5.2**: Rule information SHALL be available for debugging and validation.
+
 ---
 
 ## 6. Caching and Performance Requirements
