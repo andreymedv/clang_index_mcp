@@ -9,6 +9,7 @@ project-specific build configurations.
 import json
 import os
 import sys
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import time
@@ -45,9 +46,13 @@ class CompileCommandsManager:
         self.last_modified = 0
         self.cache_lock = threading.Lock()
         
+        # Detect clang resource directory for builtin headers (stddef.h, etc.)
+        # Do this before building fallback args so we can include it
+        self.clang_resource_dir = self._detect_clang_resource_dir()
+
         # Default fallback arguments (current hardcoded approach)
         self.fallback_args = self._build_fallback_args()
-        
+
         # Load compile commands if enabled
         if self.enabled:
             self._load_compile_commands()
@@ -56,6 +61,13 @@ class CompileCommandsManager:
         """Build the fallback compilation arguments (current hardcoded approach)."""
         args = [
             '-std=c++17',
+        ]
+
+        # Add clang builtin includes first (highest priority for system headers)
+        if self.clang_resource_dir:
+            args.extend(['-isystem', self.clang_resource_dir])
+
+        args.extend([
             '-I.',
             f'-I{self.project_root}',
             f'-I{self.project_root}/src',
@@ -70,8 +82,8 @@ class CompileCommandsManager:
             '-Wno-deprecated-declarations',
             # Parse as C++
             '-x', 'c++',
-        ]
-        
+        ])
+
         # Add Windows SDK includes if on Windows
         if sys.platform.startswith('win'):
             import glob
@@ -84,9 +96,73 @@ class CompileCommandsManager:
                 matches = glob.glob(pattern)
                 if matches:
                     args.append(f'-I{matches[-1]}')  # Use latest version
-        
+
         return args
-    
+
+    def _detect_clang_resource_dir(self) -> Optional[str]:
+        """
+        Detect the clang resource directory containing builtin headers.
+
+        The resource directory contains compiler builtin headers like:
+        - stddef.h
+        - stdarg.h
+        - stdint.h
+        etc.
+
+        These are required for libclang to parse code correctly but are not
+        automatically included when using libclang programmatically.
+
+        Returns:
+            Path to the resource directory's include folder, or None if not found
+        """
+        try:
+            # Try to get resource directory from clang itself
+            result = subprocess.run(
+                ['clang', '-print-resource-dir'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                resource_dir = result.stdout.strip()
+                include_dir = os.path.join(resource_dir, 'include')
+
+                # Verify the directory exists and contains stddef.h
+                if os.path.isdir(include_dir):
+                    stddef_path = os.path.join(include_dir, 'stddef.h')
+                    if os.path.isfile(stddef_path):
+                        diagnostics.debug(f"Found clang resource directory: {include_dir}")
+                        return include_dir
+
+            # Fallback: try common locations
+            # Format: /usr/lib/clang/<version>/include
+            clang_lib_dir = '/usr/lib/clang'
+            if os.path.isdir(clang_lib_dir):
+                # Find the highest version directory
+                versions = []
+                for entry in os.listdir(clang_lib_dir):
+                    version_dir = os.path.join(clang_lib_dir, entry)
+                    include_dir = os.path.join(version_dir, 'include')
+                    stddef_path = os.path.join(include_dir, 'stddef.h')
+
+                    if os.path.isfile(stddef_path):
+                        versions.append((entry, include_dir))
+
+                if versions:
+                    # Sort by version (simple string sort works for most cases)
+                    versions.sort(reverse=True)
+                    include_dir = versions[0][1]
+                    diagnostics.debug(f"Found clang resource directory (fallback): {include_dir}")
+                    return include_dir
+
+            diagnostics.warning("Could not detect clang resource directory - builtin headers may not be found")
+            return None
+
+        except Exception as e:
+            diagnostics.warning(f"Error detecting clang resource directory: {e}")
+            return None
+
     def _load_compile_commands(self) -> bool:
         """Load compile commands from compile_commands.json file."""
         if not self.enabled:
@@ -495,6 +571,50 @@ class CompileCommandsManager:
             diagnostics.warning(f"Failed to parse command string '{command}': {e}")
             return []
     
+    def _add_builtin_includes(self, arguments: List[str]) -> List[str]:
+        """
+        Add clang builtin include directory to arguments if not already present.
+
+        This is necessary for libclang to find compiler builtin headers like:
+        - stddef.h
+        - stdarg.h
+        - stdint.h
+
+        These headers are not automatically available when using libclang
+        programmatically, unlike when using the clang compiler directly.
+
+        Args:
+            arguments: List of compilation arguments
+
+        Returns:
+            Arguments with builtin include directory added if needed
+        """
+        if not self.clang_resource_dir:
+            # No resource directory detected, return arguments as-is
+            return arguments
+
+        # Check if the resource directory is already in the include paths
+        for arg in arguments:
+            if self.clang_resource_dir in arg:
+                # Already present
+                return arguments
+
+        # Add the resource directory as a system include (-isystem)
+        # Use -isystem instead of -I to avoid warnings from system headers
+        result = arguments.copy()
+        # Insert near the beginning but after language standard flags
+        # This ensures it has lower priority than project includes
+        insert_pos = 0
+        for i, arg in enumerate(result):
+            if arg.startswith('-std='):
+                insert_pos = i + 1
+                break
+
+        result.insert(insert_pos, '-isystem')
+        result.insert(insert_pos + 1, self.clang_resource_dir)
+
+        return result
+
     def get_compile_args(self, file_path: Path) -> Optional[List[str]]:
         """Get compilation arguments for a specific file."""
         if not self.enabled:
@@ -522,7 +642,9 @@ class CompileCommandsManager:
                     arguments = cmd['arguments'].copy()
                     directory = cmd['directory']
                     # Normalize relative include paths to absolute paths
-                    return self._normalize_arguments(arguments, directory)
+                    normalized_args = self._normalize_arguments(arguments, directory)
+                    # Add clang builtin includes if needed
+                    return self._add_builtin_includes(normalized_args)
 
         return None
     
