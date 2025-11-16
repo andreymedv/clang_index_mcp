@@ -83,7 +83,9 @@ class CppAnalyzer:
         self.index_lock = threading.Lock()
         self._thread_local = threading.local()
         cpu_count = os.cpu_count() or 1
-        self.max_workers = max(1, min(16, cpu_count * 2))
+        # Use cpu_count directly for CPU-bound parsing work
+        # Using cpu_count * 2 causes excessive lock contention
+        self.max_workers = cpu_count
         
         # Initialize cache manager and file scanner with config
         self.cache_manager = CacheManager(self.project_root)
