@@ -204,7 +204,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location. **Note**: Does NOT include member variables/fields (not currently indexed). **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line), is_project. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
+            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location. **Note**: Member variables/fields (members) are not currently indexed and will be an empty list. **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line), members (currently empty), is_project. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
             inputSchema={
                 "type": "object",
                 "properties": {

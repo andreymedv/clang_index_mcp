@@ -113,6 +113,7 @@ class SearchEngine:
             "line": info.line,
             "base_classes": info.base_classes,
             "methods": sorted(methods, key=lambda x: x["line"]),
+            "members": [],  # TODO: Implement member variable indexing
             "is_project": info.is_project
         }
     
