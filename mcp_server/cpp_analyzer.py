@@ -218,7 +218,19 @@ class CppAnalyzer:
         return self.file_scanner.should_skip_file(file_path)
     
     def _find_cpp_files(self, include_dependencies: bool = False) -> List[str]:
-        """Find all C++ files in the project"""
+        """Find all C++ files in the project
+
+        When compile_commands.json is loaded and has entries, returns ONLY the files
+        listed in it. Otherwise, scans for all C++ files based on extensions.
+        """
+        # If compile_commands.json is loaded and has entries, use only those files
+        if self.compile_commands_manager.enabled:
+            compile_commands_files = self.compile_commands_manager.get_all_files()
+            if compile_commands_files:
+                diagnostics.info(f"Using {len(compile_commands_files)} files from compile_commands.json")
+                return compile_commands_files
+
+        # Fall back to scanning all C++ files
         # Update file scanner with dependencies setting
         self.file_scanner.include_dependencies = include_dependencies
         return self.file_scanner.find_cpp_files()
