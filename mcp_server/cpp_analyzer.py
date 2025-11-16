@@ -808,10 +808,20 @@ class CppAnalyzer:
             
             # Collect symbols for this file
             collected_symbols = []
-            
-            # Process the translation unit (modifies indexes)
-            self._process_cursor(tu.cursor, file_path)
-            
+
+            # Process the translation unit with header extraction (modifies indexes)
+            extraction_result = self._index_translation_unit(tu, file_path)
+
+            # Log header extraction results
+            processed_count = len(extraction_result['processed'])
+            skipped_count = len(extraction_result['skipped'])
+            if processed_count > 1:  # More than just the source file
+                header_count = processed_count - 1
+                diagnostics.debug(
+                    f"{file_path}: processed {processed_count} files "
+                    f"({header_count} headers extracted, {skipped_count} headers skipped)"
+                )
+
             # Get the symbols we just added for this file
             with self.index_lock:
                 if file_path in self.file_index:
