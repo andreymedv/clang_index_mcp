@@ -224,6 +224,51 @@ class CompileCommandsManager:
         # Convert to absolute path and normalize
         return str(Path(file_path).resolve())
 
+    def _normalize_arguments(self, arguments: List[str], directory: str) -> List[str]:
+        """
+        Normalize relative include paths in arguments to absolute paths.
+
+        Args:
+            arguments: List of compilation arguments
+            directory: Base directory from compile_commands.json entry
+
+        Returns:
+            List of arguments with normalized include paths
+        """
+        import os
+        normalized = []
+        i = 0
+
+        while i < len(arguments):
+            arg = arguments[i]
+
+            # Handle -I with separate argument
+            if arg == '-I' and i + 1 < len(arguments):
+                include_path = arguments[i + 1]
+                # Make relative paths absolute based on directory
+                if not os.path.isabs(include_path):
+                    include_path = os.path.abspath(os.path.join(directory, include_path))
+                normalized.append(arg)
+                normalized.append(include_path)
+                i += 2
+                continue
+
+            # Handle -I<path> (combined form)
+            if arg.startswith('-I'):
+                include_path = arg[2:]  # Remove -I prefix
+                if include_path and not os.path.isabs(include_path):
+                    include_path = os.path.abspath(os.path.join(directory, include_path))
+                    arg = f'-I{include_path}'
+                normalized.append(arg)
+                i += 1
+                continue
+
+            # Keep other arguments as-is
+            normalized.append(arg)
+            i += 1
+
+        return normalized
+
     def _sanitize_args_for_libclang(self, args: List[str]) -> List[str]:
         """Sanitize compiler arguments for use with libclang.
 
@@ -450,7 +495,11 @@ class CompileCommandsManager:
                 # Get the most recent command for this file
                 commands = self.file_to_command_map[file_path_str]
                 if commands:
-                    return commands[-1]['arguments'].copy()
+                    cmd = commands[-1]
+                    arguments = cmd['arguments'].copy()
+                    directory = cmd['directory']
+                    # Normalize relative include paths to absolute paths
+                    return self._normalize_arguments(arguments, directory)
 
         return None
     

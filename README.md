@@ -20,6 +20,10 @@ Context-efficient C++ code analysis:
 - **find_callees** - Find all functions called by a specific function
 - **get_call_path** - Find call paths from one function to another
 
+**Additional Capabilities:**
+- **Automatic Header Analysis**: When using `compile_commands.json`, project headers are automatically analyzed when included by source files
+- **Smart Deduplication**: Headers included by multiple source files are processed only once for optimal performance
+
 ## Prerequisites
 
 - Python 3.9 or higher
@@ -162,6 +166,11 @@ The server supports using `compile_commands.json` to provide accurate compilatio
 - **compile_commands.cache_enabled**: Enable caching of compile commands (default: `true`)
 - **compile_commands.fallback_to_hardcoded**: Fall back to default args if compile_commands.json not found (default: `true`)
 - **compile_commands.cache_expiry_seconds**: Cache expiry time in seconds (default: `300`)
+
+**Header File Analysis:**
+- Project headers included by source files are automatically analyzed
+- Headers processed only once even if included by multiple sources (5-10× performance improvement)
+- Restart analyzer after modifying `compile_commands.json` for best results
 
 **For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)**
 

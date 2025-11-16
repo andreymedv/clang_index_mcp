@@ -24,6 +24,7 @@ from .call_graph import CallGraphAnalyzer
 from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
+from .header_tracker import HeaderProcessingTracker
 
 # Handle both package and script imports
 try:
@@ -105,6 +106,16 @@ class CppAnalyzer:
         compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
 
+        # Initialize header processing tracker for first-win strategy
+        self.header_tracker = HeaderProcessingTracker()
+
+        # Track compile_commands.json version for header tracking invalidation
+        self.compile_commands_hash = ""
+        self._calculate_compile_commands_hash()
+
+        # Restore or reset header tracking based on compile_commands.json version
+        self._restore_or_reset_header_tracking()
+
         diagnostics.info(f"CppAnalyzer initialized for project: {self.project_root}")
 
         # Print compile commands configuration status
@@ -121,6 +132,154 @@ class CppAnalyzer:
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
+
+    def _is_project_file(self, file_path: str) -> bool:
+        """
+        Check if a file is a project file (not system header or external dependency).
+
+        Uses FileScanner.is_project_file() to determine if the file is:
+        - Under the project root
+        - NOT in excluded directories (e.g., build/, .git/)
+        - NOT in dependency directories (e.g., vcpkg_installed/, third_party/)
+
+        Args:
+            file_path: Absolute or relative path to check
+
+        Returns:
+            True if file is a project file, False otherwise
+
+        Implements:
+            REQ-10.1.3: Distinguish between project headers, system headers, and external
+            REQ-10.1.4: Extract symbols only from project headers
+        """
+        if not file_path:
+            return False
+
+        # Convert to absolute path
+        if not os.path.isabs(file_path):
+            file_path = os.path.abspath(file_path)
+
+        # Use FileScanner's logic to check if it's a project file
+        return self.file_scanner.is_project_file(file_path)
+
+    def _calculate_compile_commands_hash(self):
+        """
+        Calculate and store MD5 hash of compile_commands.json file.
+
+        This hash is used to detect when the compilation database changes,
+        which requires invalidating all header tracking and re-analyzing headers
+        with the new compilation flags.
+
+        Sets:
+            self.compile_commands_hash: MD5 hash string, or empty if file doesn't exist
+
+        Implements:
+            REQ-10.4.1: Calculate and store hash of compile_commands.json
+        """
+        if not self.compile_commands_manager.enabled:
+            self.compile_commands_hash = ""
+            return
+
+        # Get compile_commands.json path from configuration
+        compile_commands_config = self.config.get_compile_commands_config()
+        cc_path = self.project_root / compile_commands_config['compile_commands_path']
+
+        if not cc_path.exists():
+            self.compile_commands_hash = ""
+            return
+
+        try:
+            with open(cc_path, 'rb') as f:
+                self.compile_commands_hash = hashlib.md5(f.read()).hexdigest()
+        except Exception as e:
+            diagnostics.warning(f"Failed to calculate compile_commands.json hash: {e}")
+            self.compile_commands_hash = ""
+
+    def _restore_or_reset_header_tracking(self):
+        """
+        Restore header tracking from cache or reset if compile_commands.json changed.
+
+        Checks if cached compile_commands.json hash matches current hash:
+        - If match: Restore processed headers from cache
+        - If mismatch: Clear all header tracking (full re-analysis needed)
+        - If no cache: Start fresh
+
+        Implements:
+            REQ-10.4.2: Compare current hash with cached hash
+            REQ-10.4.3: Clear tracking if hash changed
+            REQ-10.5.3: Restore state if hash matches
+        """
+        tracker_cache_path = self.cache_dir / "header_tracker.json"
+
+        if not tracker_cache_path.exists():
+            # No cache file - start fresh
+            return
+
+        try:
+            with open(tracker_cache_path, 'r') as f:
+                cache_data = json.load(f)
+
+            cached_cc_hash = cache_data.get("compile_commands_hash", "")
+
+            if cached_cc_hash == self.compile_commands_hash:
+                # Hash matches - restore header tracking state
+                processed_headers = cache_data.get("processed_headers", {})
+                self.header_tracker.restore_processed_headers(processed_headers)
+                diagnostics.info(f"Restored {len(processed_headers)} processed headers from cache")
+            else:
+                # Hash mismatch - compile_commands.json changed
+                diagnostics.info("compile_commands.json changed - resetting header tracking")
+                self.header_tracker.clear_all()
+
+        except Exception as e:
+            diagnostics.warning(f"Failed to restore header tracking from cache: {e}")
+            # On error, start fresh
+            self.header_tracker.clear_all()
+
+    def _save_header_tracking(self):
+        """
+        Save header tracking state to disk cache.
+
+        Persists the current state of the header tracker including:
+        - compile_commands.json hash
+        - Processed headers with their file hashes
+        - Timestamp
+
+        Cache file location: {cache_dir}/header_tracker.json
+
+        Implements:
+            REQ-10.5.1: Persist header processing state to disk
+            REQ-10.5.2: Include version, hash, processed headers, timestamp
+            REQ-10.5.4: Save after each source file analysis
+            REQ-10.5.5: Store in project-specific cache directory
+        """
+        tracker_cache_path = self.cache_dir / "header_tracker.json"
+
+        try:
+            # Get current processed headers from tracker
+            processed_headers = self.header_tracker.get_processed_headers()
+
+            # Build cache data
+            cache_data = {
+                "version": "1.0",
+                "compile_commands_hash": self.compile_commands_hash,
+                "processed_headers": processed_headers,
+                "timestamp": time.time()
+            }
+
+            # Ensure cache directory exists
+            tracker_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write to file (atomic write via temp file)
+            temp_path = tracker_cache_path.with_suffix('.tmp')
+            with open(temp_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            # Atomic rename
+            temp_path.replace(tracker_cache_path)
+
+        except Exception as e:
+            diagnostics.warning(f"Failed to save header tracking cache: {e}")
 
     def _get_thread_index(self) -> Index:
         """Return a thread-local libclang Index instance."""
@@ -248,21 +407,40 @@ class CppAnalyzer:
                 base_classes.append(base_type)
         return base_classes
     
-    def _process_cursor(self, cursor, file_filter: Optional[str] = None, parent_class: str = "", parent_function_usr: str = ""):
-        """Process a cursor and its children"""
-        # Skip if in different file than we're indexing
-        if cursor.location.file and file_filter:
-            if cursor.location.file.name != file_filter:
-                return
-        
+    def _process_cursor(self, cursor, should_extract_from_file=None, parent_class: str = "", parent_function_usr: str = ""):
+        """
+        Process a cursor and its children, extracting symbols based on file filter.
+
+        Args:
+            cursor: libclang cursor to process
+            should_extract_from_file: Optional callback function(file_path) -> bool
+                                     If provided, only extract symbols from files where this returns True
+                                     If None, extract from all files (backward compatibility)
+            parent_class: Name of parent class for nested symbols
+            parent_function_usr: USR of parent function for call tracking
+
+        Design:
+            - Always traverse entire AST (to discover all files)
+            - Only extract symbols when should_extract_from_file returns True
+            - This enables multi-file extraction (source + headers) in single pass
+
+        Implements:
+            REQ-10.1.6: Use cursor.location.file to determine which file symbol belongs to
+        """
+        # Determine if we should extract from this cursor's file
+        should_extract = True
+        if cursor.location.file and should_extract_from_file is not None:
+            file_path = str(cursor.location.file.name)
+            should_extract = should_extract_from_file(file_path)
+
         kind = cursor.kind
-        
-        # Process classes and structs
+
+        # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
-            if cursor.spelling:
+            if cursor.spelling and should_extract:
                 # Get base classes
                 base_classes = self._get_base_classes(cursor)
-                
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
@@ -274,32 +452,40 @@ class CppAnalyzer:
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else ""
                 )
-                
+
                 with self.index_lock:
-                    self.class_index[info.name].append(info)
-                    if info.usr:
-                        self.usr_index[info.usr] = info
-                    if info.file:
-                        # Ensure file_index list exists
-                        if info.file not in self.file_index:
-                            self.file_index[info.file] = []
-                        self.file_index[info.file].append(info)
-                
-                # Process children of this class with the class as parent
-                for child in cursor.get_children():
-                    self._process_cursor(child, file_filter, cursor.spelling)
-                return  # Don't process children again below
-        
-        # Process functions and methods
+                    # USR-based deduplication: check if symbol already exists
+                    if info.usr and info.usr in self.usr_index:
+                        # Symbol already exists (from another file, likely a header)
+                        # Skip adding to avoid duplicates
+                        pass
+                    else:
+                        # New symbol - add to all indexes
+                        self.class_index[info.name].append(info)
+                        if info.usr:
+                            self.usr_index[info.usr] = info
+                        if info.file:
+                            # Ensure file_index list exists
+                            if info.file not in self.file_index:
+                                self.file_index[info.file] = []
+                            self.file_index[info.file].append(info)
+
+            # Always process children (even if we didn't extract this symbol)
+            # Children might be in different files
+            for child in cursor.get_children():
+                self._process_cursor(child, should_extract_from_file, cursor.spelling if should_extract else parent_class, parent_function_usr)
+            return  # Don't process children again below
+
+        # Process functions and methods (only if should extract)
         elif kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
-            if cursor.spelling:
+            if cursor.spelling and should_extract:
                 # Get function signature
                 signature = ""
                 if cursor.type:
                     signature = cursor.type.spelling
-                
+
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
-                
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
@@ -311,22 +497,31 @@ class CppAnalyzer:
                     parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
                     usr=function_usr
                 )
-                
+
                 with self.index_lock:
-                    self.function_index[info.name].append(info)
-                    if info.usr:
-                        self.usr_index[info.usr] = info
-                    if info.file:
-                        # Ensure file_index list exists
-                        if info.file not in self.file_index:
-                            self.file_index[info.file] = []
-                        self.file_index[info.file].append(info)
-                
-                # Process function body to find calls
-                for child in cursor.get_children():
-                    self._process_cursor(child, file_filter, parent_class, function_usr)
-                return  # Don't process children again below
-        
+                    # USR-based deduplication: check if symbol already exists
+                    if info.usr and info.usr in self.usr_index:
+                        # Symbol already exists (from another file, likely a header)
+                        # Skip adding to avoid duplicates
+                        pass
+                    else:
+                        # New symbol - add to all indexes
+                        self.function_index[info.name].append(info)
+                        if info.usr:
+                            self.usr_index[info.usr] = info
+                        if info.file:
+                            # Ensure file_index list exists
+                            if info.file not in self.file_index:
+                                self.file_index[info.file] = []
+                            self.file_index[info.file].append(info)
+
+            # Always process children (for call tracking and nested symbols)
+            # Use function_usr only if we extracted this function
+            current_function_usr = cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+            for child in cursor.get_children():
+                self._process_cursor(child, should_extract_from_file, parent_class, current_function_usr)
+            return  # Don't process children again below
+
         # Process function calls within function bodies
         elif kind == CursorKind.CALL_EXPR and parent_function_usr:
             # This is a function call inside a function
@@ -336,11 +531,116 @@ class CppAnalyzer:
                 # Track the call relationship
                 with self.index_lock:
                     self.call_graph_analyzer.add_call(parent_function_usr, called_usr)
-        
-        # Recurse into children (with current parent_class and parent_function context)
+
+        # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
-            self._process_cursor(child, file_filter, parent_class, parent_function_usr)
-    
+            self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
+
+    def _index_translation_unit(self, tu, source_file: str) -> Dict[str, Any]:
+        """
+        Process translation unit, extracting symbols from source and project headers.
+
+        Uses first-win strategy: headers are extracted only if not already processed.
+        This method is the core of header extraction functionality.
+
+        Args:
+            tu: libclang TranslationUnit (contains AST for source + all includes)
+            source_file: Path to the source file being analyzed
+
+        Returns:
+            Dictionary with:
+                - processed: List of files we extracted symbols from
+                - skipped: List of headers already processed by other sources
+
+        Algorithm:
+            1. Define should_extract_from_file(file_path) closure that:
+               - Always returns True for source file
+               - For headers: tries to claim via header_tracker
+               - Uses _is_project_file() to filter non-project files
+            2. Traverse TU.cursor with should_extract_from_file callback
+            3. Mark claimed headers as completed
+            4. Save header tracker state to disk
+
+        Implements:
+            REQ-10.1.1: Extract symbols from project headers included by source
+            REQ-10.1.2: Leverage libclang's TU to access already-parsed headers
+            REQ-10.1.4: Extract only from project headers
+            REQ-10.1.5: Support nested includes
+            REQ-10.2.1: First-win strategy
+            REQ-10.2.2: Skip headers already processed
+            REQ-10.5.4: Save tracker after analysis
+        """
+        processed_files = set()
+        skipped_headers = set()
+        headers_to_extract = set()
+
+        def should_extract_from_file(file_path: str) -> bool:
+            """
+            Decide if we should extract symbols from this file.
+
+            Returns True if:
+            - file_path is the source file (always extract)
+            - file_path is a project header and we won the claim (first-win)
+
+            Returns False if:
+            - file_path is not a project file (system header, external dep)
+            - file_path is a header already processed by another source
+            """
+            # Always extract from source file
+            if file_path == source_file:
+                processed_files.add(file_path)
+                return True
+
+            # Check if already decided in this TU
+            if file_path in headers_to_extract:
+                return True
+            if file_path in skipped_headers:
+                return False
+
+            # Check if it's a project file
+            if not self._is_project_file(file_path):
+                # Not a project file (system header or external dependency)
+                skipped_headers.add(file_path)
+                return False
+
+            # It's a project header - try to claim it (first-win)
+            try:
+                file_hash = self._get_file_hash(file_path)
+                if self.header_tracker.try_claim_header(file_path, file_hash):
+                    # We won! Extract from this header
+                    headers_to_extract.add(file_path)
+                    processed_files.add(file_path)
+                    return True
+                else:
+                    # Another source already processed/processing this header
+                    skipped_headers.add(file_path)
+                    return False
+            except Exception as e:
+                # On error, skip this header
+                diagnostics.warning(f"Error checking header {file_path}: {e}")
+                skipped_headers.add(file_path)
+                return False
+
+        # Traverse entire TU AST with our extraction filter
+        self._process_cursor(tu.cursor, should_extract_from_file)
+
+        # Mark newly processed headers as completed
+        for header in headers_to_extract:
+            try:
+                file_hash = self._get_file_hash(header)
+                self.header_tracker.mark_completed(header, file_hash)
+            except Exception as e:
+                diagnostics.warning(f"Error marking header {header} as completed: {e}")
+
+        # Save header tracker state to disk (implements REQ-10.5.4)
+        self._save_header_tracking()
+
+        return {
+            "source_file": source_file,
+            "processed": list(processed_files),
+            "skipped": list(skipped_headers)
+        }
+
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
 
@@ -522,10 +822,20 @@ class CppAnalyzer:
             
             # Collect symbols for this file
             collected_symbols = []
-            
-            # Process the translation unit (modifies indexes)
-            self._process_cursor(tu.cursor, file_path)
-            
+
+            # Process the translation unit with header extraction (modifies indexes)
+            extraction_result = self._index_translation_unit(tu, file_path)
+
+            # Log header extraction results
+            processed_count = len(extraction_result['processed'])
+            skipped_count = len(extraction_result['skipped'])
+            if processed_count > 1:  # More than just the source file
+                header_count = processed_count - 1
+                diagnostics.debug(
+                    f"{file_path}: processed {processed_count} files "
+                    f"({header_count} headers extracted, {skipped_count} headers skipped)"
+                )
+
             # Get the symbols we just added for this file
             with self.index_lock:
                 if file_path in self.file_index:
