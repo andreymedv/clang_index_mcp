@@ -1325,16 +1325,18 @@ class CppAnalyzer:
     def get_class_hierarchy(self, class_name: str) -> Dict[str, Any]:
         """
         Get the complete inheritance hierarchy for a class.
-        
+
         Args:
             class_name: Name of the class to analyze
-        
+
         Returns:
             Dictionary containing:
+            - name: The class name
             - class_info: Information about the class itself
             - base_classes: Direct base classes
             - derived_classes: Direct derived classes
-            - full_hierarchy: Complete hierarchy tree (recursive)
+            - base_hierarchy: Complete base class hierarchy tree (recursive)
+            - derived_hierarchy: Complete derived class hierarchy tree (recursive)
         """
         # Get the class info
         class_info = self.get_class_info(class_name)
@@ -1355,13 +1357,14 @@ class CppAnalyzer:
         
         # Build the hierarchy
         hierarchy = {
+            "name": class_name,
             "class_info": class_info,
             "base_classes": base_classes,
             "derived_classes": derived_classes,
             "base_hierarchy": self._get_base_hierarchy(class_name),
             "derived_hierarchy": self._get_derived_hierarchy(class_name)
         }
-        
+
         return hierarchy
     
     def _get_base_hierarchy(self, class_name: str, visited: Optional[Set[str]] = None) -> Dict[str, Any]:
