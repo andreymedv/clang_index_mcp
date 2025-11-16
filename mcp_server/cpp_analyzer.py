@@ -24,6 +24,7 @@ from .call_graph import CallGraphAnalyzer
 from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
+from .header_tracker import HeaderProcessingTracker
 
 # Handle both package and script imports
 try:
@@ -105,6 +106,16 @@ class CppAnalyzer:
         compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
 
+        # Initialize header processing tracker for first-win strategy
+        self.header_tracker = HeaderProcessingTracker()
+
+        # Track compile_commands.json version for header tracking invalidation
+        self.compile_commands_hash = ""
+        self._calculate_compile_commands_hash()
+
+        # Restore or reset header tracking based on compile_commands.json version
+        self._restore_or_reset_header_tracking()
+
         diagnostics.info(f"CppAnalyzer initialized for project: {self.project_root}")
 
         # Print compile commands configuration status
@@ -121,6 +132,80 @@ class CppAnalyzer:
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
+
+    def _calculate_compile_commands_hash(self):
+        """
+        Calculate and store MD5 hash of compile_commands.json file.
+
+        This hash is used to detect when the compilation database changes,
+        which requires invalidating all header tracking and re-analyzing headers
+        with the new compilation flags.
+
+        Sets:
+            self.compile_commands_hash: MD5 hash string, or empty if file doesn't exist
+
+        Implements:
+            REQ-10.4.1: Calculate and store hash of compile_commands.json
+        """
+        if not self.compile_commands_manager.enabled:
+            self.compile_commands_hash = ""
+            return
+
+        # Get compile_commands.json path from configuration
+        compile_commands_config = self.config.get_compile_commands_config()
+        cc_path = self.project_root / compile_commands_config['compile_commands_path']
+
+        if not cc_path.exists():
+            self.compile_commands_hash = ""
+            return
+
+        try:
+            with open(cc_path, 'rb') as f:
+                self.compile_commands_hash = hashlib.md5(f.read()).hexdigest()
+        except Exception as e:
+            diagnostics.warning(f"Failed to calculate compile_commands.json hash: {e}")
+            self.compile_commands_hash = ""
+
+    def _restore_or_reset_header_tracking(self):
+        """
+        Restore header tracking from cache or reset if compile_commands.json changed.
+
+        Checks if cached compile_commands.json hash matches current hash:
+        - If match: Restore processed headers from cache
+        - If mismatch: Clear all header tracking (full re-analysis needed)
+        - If no cache: Start fresh
+
+        Implements:
+            REQ-10.4.2: Compare current hash with cached hash
+            REQ-10.4.3: Clear tracking if hash changed
+            REQ-10.5.3: Restore state if hash matches
+        """
+        tracker_cache_path = self.cache_dir / "header_tracker.json"
+
+        if not tracker_cache_path.exists():
+            # No cache file - start fresh
+            return
+
+        try:
+            with open(tracker_cache_path, 'r') as f:
+                cache_data = json.load(f)
+
+            cached_cc_hash = cache_data.get("compile_commands_hash", "")
+
+            if cached_cc_hash == self.compile_commands_hash:
+                # Hash matches - restore header tracking state
+                processed_headers = cache_data.get("processed_headers", {})
+                self.header_tracker.restore_processed_headers(processed_headers)
+                diagnostics.info(f"Restored {len(processed_headers)} processed headers from cache")
+            else:
+                # Hash mismatch - compile_commands.json changed
+                diagnostics.info("compile_commands.json changed - resetting header tracking")
+                self.header_tracker.clear_all()
+
+        except Exception as e:
+            diagnostics.warning(f"Failed to restore header tracking from cache: {e}")
+            # On error, start fresh
+            self.header_tracker.clear_all()
 
     def _get_thread_index(self) -> Index:
         """Return a thread-local libclang Index instance."""
