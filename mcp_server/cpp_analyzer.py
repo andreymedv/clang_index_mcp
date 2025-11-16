@@ -291,6 +291,70 @@ class CppAnalyzer:
             self._thread_local.index = index
         return index
 
+    def _init_thread_local_buffers(self):
+        """Initialize thread-local buffers for collecting symbols during parsing."""
+        self._thread_local.collected_symbols = []
+        self._thread_local.collected_calls = []
+
+    def _get_thread_local_buffers(self):
+        """Get thread-local buffers, initializing if needed."""
+        if not hasattr(self._thread_local, 'collected_symbols'):
+            self._init_thread_local_buffers()
+        return self._thread_local.collected_symbols, self._thread_local.collected_calls
+
+    def _bulk_write_symbols(self):
+        """
+        Bulk write collected symbols to shared indexes with a single lock acquisition.
+
+        This method takes all symbols collected in thread-local buffers during parsing
+        and adds them to the shared indexes in one atomic operation, dramatically
+        reducing lock contention compared to per-symbol locking.
+
+        Returns:
+            Number of symbols actually added (after deduplication)
+        """
+        symbols_buffer, calls_buffer = self._get_thread_local_buffers()
+
+        if not symbols_buffer and not calls_buffer:
+            return 0
+
+        added_count = 0
+
+        # Single lock acquisition for all symbols
+        with self.index_lock:
+            # Add all collected symbols
+            for info in symbols_buffer:
+                # USR-based deduplication: check if symbol already exists
+                if info.usr and info.usr in self.usr_index:
+                    # Symbol already exists (from another file/thread)
+                    continue
+
+                # New symbol - add to all indexes
+                if info.kind in ("class", "struct"):
+                    self.class_index[info.name].append(info)
+                else:
+                    self.function_index[info.name].append(info)
+
+                if info.usr:
+                    self.usr_index[info.usr] = info
+
+                if info.file:
+                    if info.file not in self.file_index:
+                        self.file_index[info.file] = []
+                    self.file_index[info.file].append(info)
+
+                added_count += 1
+
+            # Add all collected call relationships
+            for caller_usr, called_usr in calls_buffer:
+                self.call_graph_analyzer.add_call(caller_usr, called_usr)
+
+        # Clear buffers for next use
+        symbols_buffer.clear()
+        calls_buffer.clear()
+
+        return added_count
+
     def _compute_compile_args_hash(self, args: List[str]) -> str:
         """Compute hash of compilation arguments for cache validation"""
         # Sort and join args to create a consistent hash
@@ -425,10 +489,14 @@ class CppAnalyzer:
             - Always traverse entire AST (to discover all files)
             - Only extract symbols when should_extract_from_file returns True
             - This enables multi-file extraction (source + headers) in single pass
+            - Collects symbols in thread-local buffers to avoid lock contention
 
         Implements:
             REQ-10.1.6: Use cursor.location.file to determine which file symbol belongs to
         """
+        # Get thread-local buffers for lock-free collection
+        symbols_buffer, calls_buffer = self._get_thread_local_buffers()
+
         # Determine if we should extract from this cursor's file
         should_extract = True
         if cursor.location.file and should_extract_from_file is not None:
@@ -455,22 +523,8 @@ class CppAnalyzer:
                     usr=cursor.get_usr() if cursor.get_usr() else ""
                 )
 
-                with self.index_lock:
-                    # USR-based deduplication: check if symbol already exists
-                    if info.usr and info.usr in self.usr_index:
-                        # Symbol already exists (from another file, likely a header)
-                        # Skip adding to avoid duplicates
-                        pass
-                    else:
-                        # New symbol - add to all indexes
-                        self.class_index[info.name].append(info)
-                        if info.usr:
-                            self.usr_index[info.usr] = info
-                        if info.file:
-                            # Ensure file_index list exists
-                            if info.file not in self.file_index:
-                                self.file_index[info.file] = []
-                            self.file_index[info.file].append(info)
+                # Collect symbol in thread-local buffer (no lock needed)
+                symbols_buffer.append(info)
 
             # Always process children (even if we didn't extract this symbol)
             # Children might be in different files
@@ -500,22 +554,8 @@ class CppAnalyzer:
                     usr=function_usr
                 )
 
-                with self.index_lock:
-                    # USR-based deduplication: check if symbol already exists
-                    if info.usr and info.usr in self.usr_index:
-                        # Symbol already exists (from another file, likely a header)
-                        # Skip adding to avoid duplicates
-                        pass
-                    else:
-                        # New symbol - add to all indexes
-                        self.function_index[info.name].append(info)
-                        if info.usr:
-                            self.usr_index[info.usr] = info
-                        if info.file:
-                            # Ensure file_index list exists
-                            if info.file not in self.file_index:
-                                self.file_index[info.file] = []
-                            self.file_index[info.file].append(info)
+                # Collect symbol in thread-local buffer (no lock needed)
+                symbols_buffer.append(info)
 
             # Always process children (for call tracking and nested symbols)
             # Use function_usr only if we extracted this function
@@ -530,9 +570,8 @@ class CppAnalyzer:
             referenced = cursor.referenced
             if referenced and referenced.get_usr():
                 called_usr = referenced.get_usr()
-                # Track the call relationship
-                with self.index_lock:
-                    self.call_graph_analyzer.add_call(parent_function_usr, called_usr)
+                # Collect call relationship in thread-local buffer (no lock needed)
+                calls_buffer.append((parent_function_usr, called_usr))
 
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
@@ -623,8 +662,14 @@ class CppAnalyzer:
                 skipped_headers.add(file_path)
                 return False
 
+        # Initialize thread-local buffers for collecting symbols
+        self._init_thread_local_buffers()
+
         # Traverse entire TU AST with our extraction filter
         self._process_cursor(tu.cursor, should_extract_from_file)
+
+        # Bulk write all collected symbols to shared indexes (single lock acquisition)
+        self._bulk_write_symbols()
 
         # Mark newly processed headers as completed
         for header in headers_to_extract:
