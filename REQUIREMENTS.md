@@ -589,6 +589,116 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-5.6.6**: The system SHALL provide `clear_cache()` API to manually invalidate and clear compile commands cache.
 
+### 5.7 LibClang Compatibility Processing
+
+**REQ-5.7**: The system SHALL process all compilation arguments for compatibility with libclang's programmatic interface before passing them to the parser.
+
+#### 5.7.1 Argument Sanitization
+
+**REQ-5.7.1**: The system SHALL sanitize compilation arguments to remove flags that cause libclang parsing failures or are incompatible with programmatic use.
+
+**REQ-5.7.1.1**: The system SHALL remove precompiled header (PCH) related options:
+- `-Xclang -include-pch` pairs
+- `-Xclang -include -Xclang <pch-file>` sequences (when file contains 'pch' or 'cmake_pch')
+- Standalone `-include-pch` flags
+- `-Winvalid-pch` and `-Wno-invalid-pch` warnings
+
+**REQ-5.7.1.2**: The system SHALL remove cosmetic and formatting options that don't affect parsing:
+- Color/diagnostic formatting: `-fcolor-diagnostics`, `-fno-color-diagnostics`, `-fdiagnostics-color`, `-fno-diagnostics-color`, `-fansi-escape-codes`
+
+**REQ-5.7.1.3**: The system SHALL remove version-specific compiler options that may cause compatibility issues:
+- Constexpr limits: `-fconstexpr-steps=<N>`, `-fconstexpr-depth=<N>`
+- Template depth limits: `-ftemplate-depth=<N>`
+
+**REQ-5.7.1.4**: The system SHALL remove optimization and debug options that don't affect AST structure:
+- Debug information: `-g`, `-ggdb`, `-g0`, `-g1`, `-g2`, `-g3`, `-fno-limit-debug-info`
+- Optimization levels: `-O0`, `-O1`, `-O2`, `-O3`, `-Os`, `-Ofast`, `-Og`
+
+**REQ-5.7.1.5**: The system SHALL remove architecture-specific options:
+- Platform targets: `-m64`, `-m32`
+- CPU features: `-msse2`, `-mfpmath=sse`
+
+**REQ-5.7.1.6**: The system SHALL remove code generation options that don't affect parsing:
+- Visibility: `-fvisibility-inlines-hidden`, `-fvisibility=hidden`, `-fvisibility=default`
+- Position independent code: `-fPIC`, `-fPIE`, `-fpic`, `-fpie`
+
+**REQ-5.7.1.7**: The system SHALL preserve essential compilation flags:
+- Language standard: `-std=c++17`, etc.
+- Preprocessor defines: `-D...`
+- Include paths: `-I...`, `-isystem...`
+- Warning flags: `-Wall`, `-Wextra`, `-Werror`, etc.
+- Regular include directives: `-include <file>` (when not a PCH file)
+
+#### 5.7.2 Builtin Headers Support
+
+**REQ-5.7.2**: The system SHALL automatically provide access to compiler builtin headers required for C/C++ parsing.
+
+**REQ-5.7.2.1**: The system SHALL detect the clang resource directory containing builtin headers by:
+1. Executing `clang -print-resource-dir` and verifying `<result>/include/stddef.h` exists
+2. Falling back to searching `/usr/lib/clang/<version>/include` for highest version with `stddef.h`
+3. Falling back to searching `/usr/lib/llvm-<version>/lib/clang/<version>/include` for highest version with `stddef.h`
+
+**REQ-5.7.2.2**: The system SHALL add the detected resource directory to compilation arguments using `-isystem <resource-dir>`.
+
+**REQ-5.7.2.3**: The resource directory SHALL be added:
+- After language standard flags (for proper ordering)
+- Before project include paths (lower priority than project headers)
+- Only once per argument list (deduplication)
+
+**REQ-5.7.2.4**: The system SHALL include builtin headers for:
+- Fallback compilation arguments (when no compile_commands.json)
+- All arguments retrieved from compile_commands.json
+- All file-specific compilation arguments
+
+**REQ-5.7.2.5**: If resource directory detection fails, the system SHALL log a warning but continue operation.
+
+**REQ-5.7.2.6**: The builtin headers directory SHALL contain at minimum:
+- `stddef.h` (size_t, ptrdiff_t, NULL, offsetof)
+- `stdarg.h` (va_list, va_start, va_end, va_arg)
+- `stdint.h` (int8_t, uint32_t, int64_t, etc.)
+- `stdbool.h` (_Bool, bool, true, false for C)
+- `float.h` (FLT_MAX, DBL_MIN, etc.)
+- `limits.h` (INT_MAX, LONG_MIN, etc.)
+- Other compiler intrinsic headers
+
+#### 5.7.3 Path Normalization
+
+**REQ-5.7.3**: The system SHALL normalize relative include paths to absolute paths based on the compilation directory.
+
+**REQ-5.7.3.1**: The system SHALL normalize `-I` include paths:
+- `-I <path>` form (separate arguments)
+- `-I<path>` form (combined argument)
+
+**REQ-5.7.3.2**: The system SHALL normalize `-isystem` include paths:
+- `-isystem <path>` form (separate arguments)
+- `-isystem<path>` form (combined argument, rare)
+
+**REQ-5.7.3.3**: For relative paths, the system SHALL:
+1. Use the `directory` field from compile_commands.json entry as base
+2. Convert to absolute path using `os.path.abspath(os.path.join(directory, path))`
+3. Preserve absolute paths unchanged
+
+**REQ-5.7.3.4**: Path normalization SHALL occur:
+- After initial parsing of compile_commands.json
+- Before argument sanitization
+- Before passing to libclang
+
+#### 5.7.4 Processing Pipeline
+
+**REQ-5.7.4**: The system SHALL apply compilation argument processing in the following order:
+1. Parse command string or arguments array (REQ-5.1.8, REQ-5.1.10)
+2. Normalize include paths (REQ-5.7.3)
+3. Sanitize problematic arguments (REQ-5.7.1)
+4. Add builtin headers (REQ-5.7.2)
+5. Pass resulting arguments to libclang
+
+**REQ-5.7.4.1**: The processing pipeline SHALL be applied consistently to:
+- Arguments from `command` field (string)
+- Arguments from `arguments` field (array)
+- Fallback arguments
+
+**REQ-5.7.4.2**: Each processing step SHALL preserve argument list integrity (no corruption or loss of valid arguments).
+
 ---
 
 ## 6. Caching and Performance Requirements
