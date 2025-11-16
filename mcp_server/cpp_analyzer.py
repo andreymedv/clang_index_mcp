@@ -521,7 +521,112 @@ class CppAnalyzer:
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
             self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
-    
+
+    def _index_translation_unit(self, tu, source_file: str) -> Dict[str, Any]:
+        """
+        Process translation unit, extracting symbols from source and project headers.
+
+        Uses first-win strategy: headers are extracted only if not already processed.
+        This method is the core of header extraction functionality.
+
+        Args:
+            tu: libclang TranslationUnit (contains AST for source + all includes)
+            source_file: Path to the source file being analyzed
+
+        Returns:
+            Dictionary with:
+                - processed: List of files we extracted symbols from
+                - skipped: List of headers already processed by other sources
+
+        Algorithm:
+            1. Define should_extract_from_file(file_path) closure that:
+               - Always returns True for source file
+               - For headers: tries to claim via header_tracker
+               - Uses _is_project_file() to filter non-project files
+            2. Traverse TU.cursor with should_extract_from_file callback
+            3. Mark claimed headers as completed
+            4. Save header tracker state to disk
+
+        Implements:
+            REQ-10.1.1: Extract symbols from project headers included by source
+            REQ-10.1.2: Leverage libclang's TU to access already-parsed headers
+            REQ-10.1.4: Extract only from project headers
+            REQ-10.1.5: Support nested includes
+            REQ-10.2.1: First-win strategy
+            REQ-10.2.2: Skip headers already processed
+            REQ-10.5.4: Save tracker after analysis
+        """
+        processed_files = set()
+        skipped_headers = set()
+        headers_to_extract = set()
+
+        def should_extract_from_file(file_path: str) -> bool:
+            """
+            Decide if we should extract symbols from this file.
+
+            Returns True if:
+            - file_path is the source file (always extract)
+            - file_path is a project header and we won the claim (first-win)
+
+            Returns False if:
+            - file_path is not a project file (system header, external dep)
+            - file_path is a header already processed by another source
+            """
+            # Always extract from source file
+            if file_path == source_file:
+                processed_files.add(file_path)
+                return True
+
+            # Check if already decided in this TU
+            if file_path in headers_to_extract:
+                return True
+            if file_path in skipped_headers:
+                return False
+
+            # Check if it's a project file
+            if not self._is_project_file(file_path):
+                # Not a project file (system header or external dependency)
+                skipped_headers.add(file_path)
+                return False
+
+            # It's a project header - try to claim it (first-win)
+            try:
+                file_hash = self._get_file_hash(file_path)
+                if self.header_tracker.try_claim_header(file_path, file_hash):
+                    # We won! Extract from this header
+                    headers_to_extract.add(file_path)
+                    processed_files.add(file_path)
+                    return True
+                else:
+                    # Another source already processed/processing this header
+                    skipped_headers.add(file_path)
+                    return False
+            except Exception as e:
+                # On error, skip this header
+                diagnostics.warning(f"Error checking header {file_path}: {e}")
+                skipped_headers.add(file_path)
+                return False
+
+        # Traverse entire TU AST with our extraction filter
+        self._process_cursor(tu.cursor, should_extract_from_file)
+
+        # Mark newly processed headers as completed
+        for header in headers_to_extract:
+            try:
+                file_hash = self._get_file_hash(header)
+                self.header_tracker.mark_completed(header, file_hash)
+            except Exception as e:
+                diagnostics.warning(f"Error marking header {header} as completed: {e}")
+
+        # Save header tracker state to disk (implements REQ-10.5.4)
+        self._save_header_tracking()
+
+        return {
+            "source_file": source_file,
+            "processed": list(processed_files),
+            "skipped": list(skipped_headers)
+        }
+
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
 
