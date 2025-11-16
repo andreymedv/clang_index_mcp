@@ -484,6 +484,42 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-5.1.6**: The system SHALL support configurable compile_commands.json path (default: "compile_commands.json" in project root).
 
+**REQ-5.1.7**: When compile_commands.json is present and has entries, the system SHALL analyze ONLY the files explicitly listed in it, not additional files discovered by file scanning.
+
+**REQ-5.1.8**: The system SHALL parse the `command` field (string format) from compile_commands.json by:
+- Using shlex.split() for proper quoted argument handling
+- Stripping the compiler executable path (first argument if it matches compiler patterns)
+- Filtering out output file arguments (`-o` and the following path)
+- Filtering out the compile-only flag (`-c`)
+- Filtering out source file arguments (paths ending with .c, .cpp, .cxx, .cc, .c++, .m, .mm)
+- Passing only compilation flags (defines, includes, warnings, etc.) to libclang
+
+**REQ-5.1.9**: The system SHALL recognize common compiler executable patterns when stripping:
+- Compiler names: gcc, g++, clang, clang++, cc, c++, cl, cl.exe (case-insensitive)
+- Absolute paths (starting with `/` or `\`)
+- Paths containing directory separators
+
+**REQ-5.1.10**: When processing `arguments` field (array format) from compile_commands.json, the system SHALL apply the same filtering as for command strings (REQ-5.1.8).
+
+**REQ-5.1.11**: The system SHALL pass to libclang ONLY the following types of arguments:
+- Preprocessor defines (`-D...`)
+- Include paths (`-I...`, `-isystem`, `-iquote`)
+- Language standard (`-std=...`)
+- Warning flags (`-W...`)
+- System root (`-isysroot`)
+- Target specification (`-target`, `-march`, `-mtune`)
+- Compiler feature flags (`-f...`)
+- Other compilation flags that affect parsing but not linking or output
+
+**REQ-5.1.12**: The system SHALL NOT pass to libclang:
+- Compiler executable path
+- Output file specification (`-o <file>`)
+- Compile-only flag (`-c`)
+- Link-time flags (`-l...`, `-L...`)
+- Source file paths
+- Object file paths
+- Linker-specific flags (`-Wl,...`)
+
 ### 5.2 Compilation Argument Fallback
 
 **REQ-5.2.1**: The system SHALL provide fallback compilation arguments when compile_commands.json is not available.
