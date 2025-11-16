@@ -480,7 +480,7 @@ void helper_function();
     def test_fallback_args_generation(self):
         """Test fallback arguments generation on different platforms."""
         # Test Linux fallback args
-        with patch('mcp_server.compile_commands_manager.sys.platform', 'linux'):
+        with patch('sys.platform', 'linux'):
             config = {'compile_commands_enabled': False}
             manager = CompileCommandsManager(self.project_root, config)
 
@@ -495,7 +495,7 @@ void helper_function();
                 self.assertNotIn('C:/Program Files', arg)
 
         # Test Windows fallback args
-        with patch('mcp_server.compile_commands_manager.sys.platform', 'win32'):
+        with patch('sys.platform', 'win32'):
             with patch('glob.glob') as mock_glob:
                 # Mock glob to return Windows SDK paths
                 def glob_side_effect(pattern):
