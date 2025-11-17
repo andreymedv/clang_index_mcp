@@ -430,11 +430,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Re-initialize analyzer with new path
             global analyzer, analyzer_initialized
             analyzer = CppAnalyzer(project_path)
-            analyzer_initialized = True
-            
-            # Start indexing in the background
+
+            # IMPORTANT: Don't set analyzer_initialized yet - indexing must complete first
+            # to prevent race condition where tools execute on partially-indexed data.
+            # Note: This blocks the MCP server until indexing completes (synchronous behavior).
+            # For large projects, this may take several minutes. Future enhancement: async indexing.
             indexed_count = analyzer.index_project(force=False, include_dependencies=True)
-            
+
+            # Only now mark as initialized - indexing is complete, tools can safely execute
+            analyzer_initialized = True
+
             return [TextContent(type="text", text=f"Set project directory to: {project_path}\nIndexed {indexed_count} C++ files")]
         
         # Check if analyzer is initialized for all other commands
