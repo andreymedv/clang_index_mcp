@@ -110,6 +110,51 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 
 For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md).
 
+## Environment Variables
+
+The analyzer supports several environment variables for runtime configuration:
+
+### Performance Configuration
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `CPP_ANALYZER_USE_THREADS` | boolean | `false` | Use ThreadPoolExecutor instead of ProcessPoolExecutor (not recommended) |
+
+**CPP_ANALYZER_USE_THREADS**:
+- **Default**: `false` (uses ProcessPoolExecutor for GIL bypass)
+- **Set to `true`**: Uses ThreadPoolExecutor (legacy mode, slower)
+- **Recommendation**: Keep default for best performance on multi-core systems
+
+**Example**:
+```bash
+# Linux/macOS (not recommended - ProcessPool is faster)
+export CPP_ANALYZER_USE_THREADS=true
+
+# Windows (not recommended)
+set CPP_ANALYZER_USE_THREADS=true
+```
+
+**Performance Impact**:
+- ProcessPoolExecutor (default): 6-7x faster on 4+ core systems
+- ThreadPoolExecutor (when enabled): Limited by Python's GIL
+
+### Configuration File Path
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `CPP_ANALYZER_CONFIG` | string | (none) | Path to custom configuration file |
+
+**Example**:
+```bash
+# Linux/macOS
+export CPP_ANALYZER_CONFIG="/path/to/my-custom-config.json"
+
+# Windows
+set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
+```
+
+This is documented in detail in the "Configuration File Locations" section above.
+
 ## Creating a Configuration File
 
 ### Method 1: Manually Create
