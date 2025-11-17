@@ -142,7 +142,7 @@ try:
     from mcp_server.compile_commands_manager import CompileCommandsManager
     from mcp_server.state_manager import (
         AnalyzerStateManager, AnalyzerState, IndexingProgress,
-        BackgroundIndexer, EnhancedQueryResult
+        BackgroundIndexer, EnhancedQueryResult, QueryBehaviorPolicy
     )
 except ImportError:
     # Fall back to direct import (when run as script)
@@ -150,7 +150,7 @@ except ImportError:
     from compile_commands_manager import CompileCommandsManager
     from state_manager import (
         AnalyzerStateManager, AnalyzerState, IndexingProgress,
-        BackgroundIndexer, EnhancedQueryResult
+        BackgroundIndexer, EnhancedQueryResult, QueryBehaviorPolicy
     )
 
 # Initialize analyzer
@@ -446,6 +446,96 @@ async def list_tools() -> List[Tool]:
         )
     ]
 
+def check_query_policy(tool_name: str) -> tuple[bool, str]:
+    """
+    Check if query is allowed based on current indexing state and policy.
+
+    Args:
+        tool_name: Name of the tool being called
+
+    Returns:
+        Tuple of (allowed: bool, message: str)
+        - If allowed=True, query can proceed (message will be empty)
+        - If allowed=False, query should be blocked/rejected (message contains error/wait info)
+    """
+    # If fully indexed, always allow
+    if state_manager.is_fully_indexed():
+        return (True, "")
+
+    # If not indexing, allow
+    if not state_manager.is_ready_for_queries():
+        return (True, "")  # Let the normal flow handle uninitialized state
+
+    # Get policy from analyzer config
+    policy_str = analyzer.config.get_query_behavior_policy()
+
+    try:
+        policy = QueryBehaviorPolicy(policy_str)
+    except ValueError:
+        # Invalid policy, default to allow_partial
+        diagnostics.warning(f"Invalid query_behavior_policy: {policy_str}, defaulting to allow_partial")
+        policy = QueryBehaviorPolicy.ALLOW_PARTIAL
+
+    # Check policy
+    if policy == QueryBehaviorPolicy.ALLOW_PARTIAL:
+        # Allow query, results will include metadata warning
+        return (True, "")
+
+    elif policy == QueryBehaviorPolicy.BLOCK:
+        # Wait for indexing to complete
+        progress = state_manager.get_progress()
+        if progress:
+            completion = progress.completion_percentage
+            indexed = progress.indexed_files
+            total = progress.total_files
+            message = (
+                f"Query blocked: Indexing in progress ({completion:.1f}% complete, "
+                f"{indexed:,}/{total:,} files). Waiting for indexing to complete...\n\n"
+                f"Use 'wait_for_indexing' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial "
+                f"to allow queries during indexing."
+            )
+        else:
+            message = (
+                "Query blocked: Indexing in progress. Waiting for completion...\n\n"
+                "Use 'wait_for_indexing' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial."
+            )
+
+        # Wait for indexing with a reasonable timeout (30 seconds)
+        completed = state_manager.wait_for_indexed(timeout=30.0)
+
+        if completed:
+            # Indexing completed while waiting
+            return (True, "")
+        else:
+            # Timeout - still return block message
+            return (False, message + "\n\nTimeout waiting for indexing (30s). Try again later or use 'get_indexing_status'.")
+
+    elif policy == QueryBehaviorPolicy.REJECT:
+        # Reject query with error
+        progress = state_manager.get_progress()
+        if progress:
+            completion = progress.completion_percentage
+            indexed = progress.indexed_files
+            total = progress.total_files
+            message = (
+                f"ERROR: Query rejected - indexing in progress ({completion:.1f}% complete, "
+                f"{indexed:,}/{total:,} files).\n\n"
+                f"Queries are not allowed until indexing completes. Options:\n"
+                f"1. Use 'wait_for_indexing' tool to wait for completion\n"
+                f"2. Check progress with 'get_indexing_status'\n"
+                f"3. Set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial to allow partial results\n"
+                f"4. Set CPP_ANALYZER_QUERY_BEHAVIOR=block to auto-wait for completion"
+            )
+        else:
+            message = (
+                "ERROR: Query rejected - indexing in progress.\n\n"
+                "Use 'wait_for_indexing' or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial/block."
+            )
+        return (False, message)
+
+    # Default: allow
+    return (True, "")
+
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
@@ -502,7 +592,21 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         # Tools can execute in INDEXING, INDEXED, or REFRESHING states
         if analyzer is None or not state_manager.is_ready_for_queries():
             return [TextContent(type="text", text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.")]
-        
+
+        # Define tools that are subject to query behavior policy
+        query_tools = {
+            "search_classes", "search_functions", "get_class_info",
+            "get_function_signature", "search_symbols", "find_in_file",
+            "get_class_hierarchy", "get_derived_classes",
+            "find_callers", "find_callees", "get_call_path"
+        }
+
+        # Check query behavior policy for query tools (but not management tools)
+        if name in query_tools:
+            allowed, policy_message = check_query_policy(name)
+            if not allowed:
+                return [TextContent(type="text", text=policy_message)]
+
         if name == "search_classes":
             project_only = arguments.get("project_only", True)
             results = analyzer.search_classes(arguments["pattern"], project_only)
