@@ -261,3 +261,121 @@ class BackgroundIndexer:
         """
         if self._indexing_task:
             await asyncio.wait_for(self._indexing_task, timeout=timeout)
+
+
+class QueryCompletenessStatus(Enum):
+    """Status of query result completeness"""
+    COMPLETE = "complete"           # Query executed on fully indexed data
+    PARTIAL = "partial"             # Query executed during indexing (incomplete)
+    STALE = "stale"                 # Query executed on outdated data (needs refresh)
+
+
+class QueryMetadata:
+    """Metadata about query execution context"""
+
+    def __init__(
+        self,
+        status: QueryCompletenessStatus,
+        indexed_files: int,
+        total_files: int,
+        completion_percentage: float,
+        timestamp: str,
+        warning: Optional[str] = None
+    ):
+        self.status = status
+        self.indexed_files = indexed_files
+        self.total_files = total_files
+        self.completion_percentage = completion_percentage
+        self.timestamp = timestamp
+        self.warning = warning
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "status": self.status.value,
+            "indexed_files": self.indexed_files,
+            "total_files": self.total_files,
+            "completion_percentage": self.completion_percentage,
+            "timestamp": self.timestamp,
+            "warning": self.warning
+        }
+
+
+class EnhancedQueryResult:
+    """Wrapper for query results with metadata"""
+
+    def __init__(self, data: Any, metadata: QueryMetadata):
+        self.data = data
+        self.metadata = metadata
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "data": self.data,
+            "metadata": self.metadata.to_dict()
+        }
+
+    @staticmethod
+    def create_from_state(
+        data: Any,
+        state_manager: AnalyzerStateManager,
+        tool_name: str = "query"
+    ) -> 'EnhancedQueryResult':
+        """
+        Create result with current state metadata
+
+        Args:
+            data: Query result data
+            state_manager: State manager for current indexing state
+            tool_name: Name of tool being executed (for custom warnings)
+
+        Returns:
+            EnhancedQueryResult with appropriate metadata
+        """
+        progress = state_manager.get_progress()
+
+        # Determine status and warning
+        if state_manager.is_fully_indexed():
+            status = QueryCompletenessStatus.COMPLETE
+            warning = None
+        else:
+            status = QueryCompletenessStatus.PARTIAL
+
+            # Generate detailed warning message
+            if progress:
+                completion = progress.completion_percentage
+                indexed = progress.indexed_files
+                total = progress.total_files
+
+                # Customize warning based on tool type
+                incomplete_type = "symbols"
+                if "class" in tool_name.lower():
+                    incomplete_type = "classes"
+                elif "function" in tool_name.lower():
+                    incomplete_type = "functions"
+                elif "symbol" in tool_name.lower():
+                    incomplete_type = "symbols"
+
+                warning = (
+                    f"⚠️  INCOMPLETE RESULTS: Only {completion:.1f}% of files indexed "
+                    f"({indexed:,}/{total:,}). Results may be missing {incomplete_type}. "
+                    f"Use 'get_indexing_status' to check progress or 'wait_for_indexing' "
+                    f"to wait for completion."
+                )
+            else:
+                warning = (
+                    "⚠️  INCOMPLETE RESULTS: Indexing in progress. "
+                    "Results may be incomplete. Use 'wait_for_indexing' to wait for completion."
+                )
+
+        # Create metadata
+        metadata = QueryMetadata(
+            status=status,
+            indexed_files=progress.indexed_files if progress else 0,
+            total_files=progress.total_files if progress else 0,
+            completion_percentage=progress.completion_percentage if progress else 0.0,
+            timestamp=datetime.now().isoformat(),
+            warning=warning
+        )
+
+        return EnhancedQueryResult(data, metadata)
