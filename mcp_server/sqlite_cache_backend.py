@@ -67,8 +67,11 @@ class SqliteCacheBackend:
             # Enable row factory for dict-like access
             self.conn.row_factory = sqlite3.Row
 
-            # Set busy handler for lock retry with exponential backoff
-            self.conn.set_busy_handler(self._busy_handler)
+            # Set busy handler for lock retry with exponential backoff (if available)
+            if hasattr(self.conn, 'set_busy_handler'):
+                self.conn.set_busy_handler(self._busy_handler)
+            else:
+                diagnostics.debug("set_busy_handler not available, using timeout only")
 
             # Configure platform-specific settings
             self._configure_platform()
@@ -771,4 +774,267 @@ class SqliteCacheBackend:
 
         except Exception as e:
             diagnostics.error(f"Failed to check integrity: {e}")
+            return False
+
+    # =========================================================================
+    # CacheBackend Protocol Adapter Methods
+    # =========================================================================
+
+    def save_cache(self, class_index: Dict[str, List], function_index: Dict[str, List],
+                   file_hashes: Dict[str, str], indexed_file_count: int,
+                   include_dependencies: bool = False,
+                   config_file_path: Optional[Path] = None,
+                   config_file_mtime: Optional[float] = None,
+                   compile_commands_path: Optional[Path] = None,
+                   compile_commands_mtime: Optional[float] = None) -> bool:
+        """
+        Save indexes to SQLite cache (CacheBackend protocol method).
+
+        Adapts CacheManager's save_cache interface to SQLite backend.
+
+        Args:
+            class_index: Dict mapping class names to SymbolInfo lists
+            function_index: Dict mapping function names to SymbolInfo lists
+            file_hashes: Dict mapping file paths to content hashes
+            indexed_file_count: Number of files indexed
+            include_dependencies: Whether dependencies were included
+            config_file_path: Path to config file
+            config_file_mtime: Config file modification time
+            compile_commands_path: Path to compile_commands.json
+            compile_commands_mtime: compile_commands.json modification time
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._ensure_connected()
+
+            # Collect all symbols from both indexes
+            all_symbols = []
+            for symbols in class_index.values():
+                all_symbols.extend(symbols)
+            for symbols in function_index.values():
+                all_symbols.extend(symbols)
+
+            # Save symbols in batch
+            if all_symbols:
+                self.save_symbols_batch(all_symbols)
+
+            # Save file metadata
+            for file_path, file_hash in file_hashes.items():
+                # Count symbols for this file
+                symbol_count = sum(1 for s in all_symbols if s.file == file_path)
+                self.update_file_metadata(file_path, file_hash, None, symbol_count)
+
+            # Save cache metadata
+            self.update_cache_metadata("include_dependencies", str(include_dependencies))
+            self.update_cache_metadata("indexed_file_count", str(indexed_file_count))
+            if config_file_path:
+                self.update_cache_metadata("config_file_path", str(config_file_path))
+                self.update_cache_metadata("config_file_mtime", str(config_file_mtime))
+            if compile_commands_path:
+                self.update_cache_metadata("compile_commands_path", str(compile_commands_path))
+                self.update_cache_metadata("compile_commands_mtime", str(compile_commands_mtime))
+
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Failed to save cache: {e}")
+            return False
+
+    def load_cache(self, include_dependencies: bool = False,
+                   config_file_path: Optional[Path] = None,
+                   config_file_mtime: Optional[float] = None,
+                   compile_commands_path: Optional[Path] = None,
+                   compile_commands_mtime: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """
+        Load cache from SQLite if valid (CacheBackend protocol method).
+
+        Adapts CacheManager's load_cache interface to SQLite backend.
+
+        Args:
+            include_dependencies: Whether dependencies should be included
+            config_file_path: Path to config file
+            config_file_mtime: Config file modification time
+            compile_commands_path: Path to compile_commands.json
+            compile_commands_mtime: compile_commands.json modification time
+
+        Returns:
+            Dict with cache data, or None if cache invalid/missing
+        """
+        try:
+            self._ensure_connected()
+
+            # Check if database has any symbols
+            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols")
+            if cursor.fetchone()[0] == 0:
+                return None
+
+            # Check cache metadata for compatibility
+            cached_deps = self.get_cache_metadata("include_dependencies")
+            if cached_deps and cached_deps != str(include_dependencies):
+                diagnostics.info(f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}")
+                return None
+
+            # Check config file changes
+            if config_file_path:
+                cached_config = self.get_cache_metadata("config_file_path")
+                if cached_config != str(config_file_path):
+                    diagnostics.info("Configuration file path changed")
+                    return None
+                cached_mtime = self.get_cache_metadata("config_file_mtime")
+                if cached_mtime and cached_mtime != str(config_file_mtime):
+                    diagnostics.info("Configuration file modified")
+                    return None
+
+            # Check compile_commands.json changes
+            if compile_commands_path:
+                cached_cc = self.get_cache_metadata("compile_commands_path")
+                if cached_cc != str(compile_commands_path):
+                    diagnostics.info("compile_commands.json path changed")
+                    return None
+                cached_cc_mtime = self.get_cache_metadata("compile_commands_mtime")
+                if cached_cc_mtime and cached_cc_mtime != str(compile_commands_mtime):
+                    diagnostics.info("compile_commands.json modified")
+                    return None
+
+            # Load all symbols
+            cursor = self.conn.execute("SELECT * FROM symbols")
+            all_symbols = [self._row_to_symbol(row) for row in cursor.fetchall()]
+
+            # Build indexes by name
+            from collections import defaultdict
+            class_index = defaultdict(list)
+            function_index = defaultdict(list)
+
+            for symbol in all_symbols:
+                if symbol.kind in ('class', 'struct', 'union', 'enum'):
+                    class_index[symbol.name].append(symbol)
+                elif symbol.kind in ('function', 'method', 'constructor', 'destructor'):
+                    function_index[symbol.name].append(symbol)
+
+            # Load file hashes
+            file_hashes = self.load_all_file_hashes()
+
+            # Get indexed file count
+            indexed_count = self.get_cache_metadata("indexed_file_count")
+
+            return {
+                "version": "2.0",
+                "include_dependencies": include_dependencies,
+                "config_file_path": str(config_file_path) if config_file_path else None,
+                "config_file_mtime": config_file_mtime,
+                "compile_commands_path": str(compile_commands_path) if compile_commands_path else None,
+                "compile_commands_mtime": compile_commands_mtime,
+                "class_index": dict(class_index),
+                "function_index": dict(function_index),
+                "file_hashes": file_hashes,
+                "indexed_file_count": int(indexed_count) if indexed_count else 0,
+                "timestamp": time.time()
+            }
+
+        except Exception as e:
+            diagnostics.error(f"Failed to load cache: {e}")
+            return None
+
+    def save_file_cache(self, file_path: str, symbols: List,
+                       file_hash: str, compile_args_hash: Optional[str] = None,
+                       success: bool = True, error_message: Optional[str] = None,
+                       retry_count: int = 0) -> bool:
+        """
+        Save parsed symbols for a single file (CacheBackend protocol method).
+
+        Args:
+            file_path: Path to the source file
+            symbols: List of SymbolInfo objects (may be empty if failed)
+            file_hash: Hash of the file content
+            compile_args_hash: Hash of compilation arguments
+            success: Whether parsing succeeded
+            error_message: Error message if parsing failed
+            retry_count: Number of retry attempts
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Delete existing symbols for this file
+            self.delete_symbols_by_file(file_path)
+
+            # Save new symbols
+            if symbols:
+                self.save_symbols_batch(symbols)
+
+            # Update file metadata
+            self.update_file_metadata(file_path, file_hash, compile_args_hash, len(symbols))
+
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Failed to save file cache for {file_path}: {e}")
+            return False
+
+    def load_file_cache(self, file_path: str, current_hash: str,
+                       compile_args_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Load cached data for a file if hash matches (CacheBackend protocol method).
+
+        Args:
+            file_path: Path to the source file
+            current_hash: Current hash of the file content
+            compile_args_hash: Current hash of compilation arguments
+
+        Returns:
+            Dict with symbols and metadata, or None if cache invalid
+        """
+        try:
+            # Get file metadata
+            metadata = self.get_file_metadata(file_path)
+            if not metadata:
+                return None
+
+            # Check file hash
+            if metadata['file_hash'] != current_hash:
+                return None
+
+            # Check compile args hash
+            if compile_args_hash and metadata.get('compile_args_hash') != compile_args_hash:
+                return None
+
+            # Load symbols for this file
+            symbols = self.search_symbols_by_file(file_path)
+
+            return {
+                'symbols': symbols,
+                'success': True,  # SQLite cache doesn't track failures
+                'error_message': None,
+                'retry_count': 0
+            }
+
+        except Exception as e:
+            diagnostics.error(f"Failed to load file cache for {file_path}: {e}")
+            return None
+
+    def remove_file_cache(self, file_path: str) -> bool:
+        """
+        Remove cached data for a deleted file (CacheBackend protocol method).
+
+        Args:
+            file_path: Path to the file to remove
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Delete symbols
+            self.delete_symbols_by_file(file_path)
+
+            # Delete file metadata
+            self._ensure_connected()
+            with self.conn:
+                self.conn.execute("DELETE FROM file_metadata WHERE file_path = ?", (file_path,))
+
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Failed to remove file cache for {file_path}: {e}")
             return False
