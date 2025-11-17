@@ -4,17 +4,31 @@ Compile Commands Manager for handling compile_commands.json files.
 This module provides functionality to parse and cache compilation commands
 from compile_commands.json files, enabling accurate C++ parsing with
 project-specific build configurations.
+
+Performance optimizations for large files:
+- Supports orjson for faster JSON parsing (optional dependency)
+- Caches parsed commands to avoid re-parsing on every startup
+- Uses pickle for fast binary serialization of parsed data
 """
 
 import json
 import os
 import sys
 import subprocess
+import pickle
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import time
 import threading
 from collections import defaultdict
+
+# Try to import orjson for faster JSON parsing (optional)
+try:
+    import orjson
+    HAS_ORJSON = True
+except ImportError:
+    HAS_ORJSON = False
 
 # Handle both package and script imports
 try:
@@ -68,6 +82,91 @@ class CompileCommandsManager:
         # Load compile commands if enabled
         if self.enabled:
             self._load_compile_commands()
+
+    def _get_compile_commands_cache_path(self) -> Path:
+        """Get the cache file path for parsed compile commands."""
+        # Cache in .clang_index directory
+        cache_dir = self.project_root / ".clang_index"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / "compile_commands.cache"
+
+    def _get_file_hash(self, file_path: Path) -> str:
+        """Get MD5 hash of a file for cache validation."""
+        if not file_path.exists():
+            return ""
+
+        hash_md5 = hashlib.md5()
+        # For large files, read in chunks
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+
+    def _load_from_cache(self, compile_commands_file: Path) -> bool:
+        """Try to load parsed commands from cache.
+
+        Returns True if successfully loaded from cache, False otherwise.
+        """
+        cache_path = self._get_compile_commands_cache_path()
+
+        if not cache_path.exists():
+            return False
+
+        try:
+            # Calculate current file hash
+            current_hash = self._get_file_hash(compile_commands_file)
+            if not current_hash:
+                return False
+
+            # Load cache
+            with open(cache_path, 'rb') as f:
+                cache_data = pickle.load(f)
+
+            # Validate cache
+            if cache_data.get('file_hash') != current_hash:
+                diagnostics.debug("Compile commands cache invalid: file changed")
+                return False
+
+            if cache_data.get('version') != '1.0':
+                diagnostics.debug("Compile commands cache invalid: version mismatch")
+                return False
+
+            # Load cached data
+            self.compile_commands = cache_data.get('compile_commands', {})
+            self.file_to_command_map = cache_data.get('file_to_command_map', {})
+            self.last_modified = compile_commands_file.stat().st_mtime
+
+            diagnostics.info(f"Loaded {len(self.compile_commands)} compile commands from cache (fast path)")
+            return True
+
+        except Exception as e:
+            diagnostics.debug(f"Failed to load from cache: {e}")
+            return False
+
+    def _save_to_cache(self, compile_commands_file: Path) -> None:
+        """Save parsed commands to cache for faster loading next time."""
+        cache_path = self._get_compile_commands_cache_path()
+
+        try:
+            current_hash = self._get_file_hash(compile_commands_file)
+
+            cache_data = {
+                'version': '1.0',
+                'file_hash': current_hash,
+                'compile_commands': self.compile_commands,
+                'file_to_command_map': self.file_to_command_map
+            }
+
+            # Atomic write via temp file
+            temp_path = cache_path.with_suffix('.tmp')
+            with open(temp_path, 'wb') as f:
+                pickle.dump(cache_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+            temp_path.replace(cache_path)
+            diagnostics.debug(f"Saved compile commands cache to {cache_path}")
+
+        except Exception as e:
+            diagnostics.debug(f"Failed to save cache: {e}")
     
     def _build_fallback_args(self) -> List[str]:
         """Build the fallback compilation arguments (current hardcoded approach)."""
@@ -176,7 +275,14 @@ class CompileCommandsManager:
             return None
 
     def _load_compile_commands(self) -> bool:
-        """Load compile commands from compile_commands.json file."""
+        """Load compile commands from compile_commands.json file.
+
+        Optimized for large files:
+        1. Try loading from cache first (fastest - ~10-100x faster)
+        2. If cache miss, parse JSON file
+        3. Use orjson if available (3-5x faster than stdlib json)
+        4. Save to cache for next time
+        """
         if not self.enabled:
             return False
 
@@ -188,22 +294,50 @@ class CompileCommandsManager:
             else:
                 diagnostics.warning(f"compile_commands.json not found at: {compile_commands_file} - fallback disabled")
             return False
-        
+
+        # Try loading from cache first (fast path)
+        if self._load_from_cache(compile_commands_file):
+            diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
+            return True
+
+        # Cache miss - parse the file
+        file_size_mb = compile_commands_file.stat().st_size / 1024 / 1024
+        diagnostics.info(f"Parsing compile_commands.json ({file_size_mb:.1f} MB)...")
+        start_time = time.time()
+
         try:
-            with open(compile_commands_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            # Use orjson if available (much faster for large files)
+            if HAS_ORJSON:
+                with open(compile_commands_file, 'rb') as f:
+                    data = orjson.loads(f.read())
+                diagnostics.debug("Using orjson for fast JSON parsing")
+            else:
+                with open(compile_commands_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if file_size_mb > 5:
+                    diagnostics.info("Tip: Install orjson for 3-5x faster parsing of large compile_commands.json files")
+
+            parse_time = time.time() - start_time
+            diagnostics.debug(f"JSON parsing completed in {parse_time:.2f}s")
 
             if not isinstance(data, list):
                 diagnostics.error("compile_commands.json must contain a list of commands")
                 return False
 
-            # Parse and cache the commands
+            # Process and cache the commands
+            process_start = time.time()
             self._parse_compile_commands(data)
+            process_time = time.time() - process_start
+            diagnostics.debug(f"Command processing completed in {process_time:.2f}s")
 
             # Update last modified time
             self.last_modified = compile_commands_file.stat().st_mtime
 
-            diagnostics.info(f"Successfully loaded {len(self.compile_commands)} compile commands from: {compile_commands_file}")
+            # Save to cache for next time
+            self._save_to_cache(compile_commands_file)
+
+            total_time = time.time() - start_time
+            diagnostics.info(f"Successfully loaded {len(self.compile_commands)} compile commands in {total_time:.2f}s")
             diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
             return True
 
