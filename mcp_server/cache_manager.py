@@ -6,12 +6,14 @@ import time
 import os
 import sys
 import traceback
+import sqlite3
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from collections import defaultdict
 from .symbol_info import SymbolInfo
 from .cache_backend import CacheBackend
 from .json_cache_backend import JsonCacheBackend
+from .error_tracking import ErrorTracker, RecoveryManager
 
 # Handle both package and script imports
 try:
@@ -28,6 +30,19 @@ class CacheManager:
         self.cache_dir = self._get_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
+
+        # Initialize error tracking
+        self.error_tracker = ErrorTracker(
+            window_seconds=300.0,  # 5 minute window
+            fallback_threshold=0.05  # 5% error rate triggers fallback
+        )
+
+        # Initialize recovery manager
+        self.recovery_manager = RecoveryManager()
+
+        # Track initial backend type for fallback detection
+        self.initial_backend_type: Optional[str] = None
+        self.fallback_active = False
 
         # Initialize cache backend based on feature flag
         self.backend = self._create_backend()
@@ -132,6 +147,7 @@ class CacheManager:
                 migration_ok = self._maybe_migrate_from_json()
                 if not migration_ok:
                     diagnostics.warning("Migration failed, falling back to JSON backend")
+                    self.initial_backend_type = "json"
                     return JsonCacheBackend(self.cache_dir)
 
                 # Import SQLite backend dynamically to avoid startup errors if missing
@@ -140,15 +156,175 @@ class CacheManager:
                 db_path = self.cache_dir / "symbols.db"
                 backend = SqliteCacheBackend(db_path)
                 diagnostics.debug(f"Using SQLite cache backend: {db_path}")
+                self.initial_backend_type = "sqlite"
                 return backend
 
             except Exception as e:
                 diagnostics.warning(f"Failed to initialize SQLite backend: {e}")
                 diagnostics.warning("Falling back to JSON cache backend")
+                self.error_tracker.record_error(
+                    "InitializationError",
+                    str(e),
+                    "backend_init",
+                    recoverable=False
+                )
 
         # Fall back to JSON backend
         diagnostics.debug(f"Using JSON cache backend: {self.cache_dir}")
+        self.initial_backend_type = "json"
         return JsonCacheBackend(self.cache_dir)
+
+    def _handle_backend_error(self, error: Exception, operation: str) -> bool:
+        """
+        Handle backend errors with tracking and fallback logic.
+
+        Args:
+            error: Exception that occurred
+            operation: Operation that failed
+
+        Returns:
+            True if operation should be retried with fallback backend, False otherwise
+        """
+        # Classify error type
+        error_type = type(error).__name__
+        error_message = str(error)
+
+        # Determine if error is recoverable
+        recoverable = not isinstance(error, (
+            sqlite3.DatabaseError,  # Database corruption
+            PermissionError,        # Permission issues
+            OSError,               # Disk full, etc.
+        ))
+
+        # Record error
+        should_fallback = self.error_tracker.record_error(
+            error_type,
+            error_message,
+            operation,
+            recoverable=recoverable
+        )
+
+        # If error tracker triggers fallback, switch to JSON backend
+        if should_fallback and not self.fallback_active:
+            diagnostics.error(
+                f"Error rate threshold exceeded. Falling back to JSON backend."
+            )
+            self._fallback_to_json()
+            return True
+
+        # For critical errors (corruption, disk full), attempt recovery
+        if not recoverable and not self.fallback_active:
+            recovery_attempted = self._attempt_recovery(error, operation)
+            if not recovery_attempted:
+                # Recovery failed, fall back to JSON
+                self._fallback_to_json()
+                return True
+
+        return False
+
+    def _attempt_recovery(self, error: Exception, operation: str) -> bool:
+        """
+        Attempt to recover from critical error.
+
+        Args:
+            error: Exception that occurred
+            operation: Operation that failed
+
+        Returns:
+            True if recovery successful, False otherwise
+        """
+        diagnostics.warning(f"Attempting recovery from {type(error).__name__} in {operation}")
+
+        # For database corruption, try repair
+        if isinstance(error, sqlite3.DatabaseError) and "corrupt" in str(error).lower():
+            diagnostics.info("Database corruption detected, attempting repair...")
+
+            # Create backup first
+            db_path = self.cache_dir / "symbols.db"
+            backup_path = self.recovery_manager.backup_database(db_path)
+
+            if not backup_path:
+                diagnostics.error("Failed to create backup before repair")
+                return False
+
+            # Attempt repair
+            if self.recovery_manager.attempt_repair(db_path):
+                diagnostics.info("Database repair successful")
+                # Reconnect to repaired database
+                try:
+                    from .sqlite_cache_backend import SqliteCacheBackend
+                    self.backend = SqliteCacheBackend(db_path)
+                    return True
+                except Exception as e:
+                    diagnostics.error(f"Failed to reconnect after repair: {e}")
+                    return False
+            else:
+                diagnostics.error("Database repair failed")
+                return False
+
+        # For permission errors or disk full, clear cache as last resort
+        elif isinstance(error, (PermissionError, OSError)):
+            diagnostics.warning(f"Clearing cache due to {type(error).__name__}")
+            if self.recovery_manager.clear_cache(self.cache_dir):
+                diagnostics.info("Cache cleared successfully")
+                return True
+            else:
+                diagnostics.error("Failed to clear cache")
+                return False
+
+        return False
+
+    def _fallback_to_json(self):
+        """Fallback to JSON backend."""
+        if self.fallback_active:
+            return  # Already using fallback
+
+        diagnostics.warning("Switching to JSON backend")
+        self.fallback_active = True
+
+        try:
+            self.backend = JsonCacheBackend(self.cache_dir)
+            diagnostics.info("Successfully switched to JSON backend")
+        except Exception as e:
+            diagnostics.error(f"Failed to initialize JSON backend: {e}")
+            # This is a critical error - we can't continue
+            raise
+
+    def _safe_backend_call(self, operation: str, func, *args, **kwargs):
+        """
+        Safely call a backend method with error tracking.
+
+        Args:
+            operation: Operation name for tracking
+            func: Backend method to call
+            *args, **kwargs: Arguments to pass to method
+
+        Returns:
+            Result from backend method, or None on error
+        """
+        try:
+            self.error_tracker.record_operation(operation)
+            result = func(*args, **kwargs)
+            return result
+
+        except Exception as e:
+            diagnostics.error(f"Backend error in {operation}: {e}")
+
+            # Handle error with potential fallback
+            retry_with_fallback = self._handle_backend_error(e, operation)
+
+            if retry_with_fallback and self.fallback_active:
+                # Retry with JSON backend
+                try:
+                    diagnostics.info(f"Retrying {operation} with JSON backend")
+                    self.error_tracker.record_operation(f"{operation}_retry")
+                    result = func(*args, **kwargs)
+                    return result
+                except Exception as e2:
+                    diagnostics.error(f"Retry failed: {e2}")
+                    return None
+
+            return None
     
     def get_file_hash(self, file_path: str) -> str:
         """Calculate hash of a file"""
@@ -168,11 +344,14 @@ class CacheManager:
                    compile_commands_path: Optional[Path] = None,
                    compile_commands_mtime: Optional[float] = None) -> bool:
         """Save indexes to cache file with configuration metadata"""
-        return self.backend.save_cache(
+        result = self._safe_backend_call(
+            "save_cache",
+            self.backend.save_cache,
             class_index, function_index, file_hashes, indexed_file_count,
             include_dependencies, config_file_path, config_file_mtime,
             compile_commands_path, compile_commands_mtime
         )
+        return result if result is not None else False
     
     def load_cache(self, include_dependencies: bool = False,
                    config_file_path: Optional[Path] = None,
@@ -180,7 +359,9 @@ class CacheManager:
                    compile_commands_path: Optional[Path] = None,
                    compile_commands_mtime: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """Load cache if it exists and is valid, checking for configuration changes"""
-        return self.backend.load_cache(
+        return self._safe_backend_call(
+            "load_cache",
+            self.backend.load_cache,
             include_dependencies, config_file_path, config_file_mtime,
             compile_commands_path, compile_commands_mtime
         )
@@ -240,6 +421,22 @@ class CacheManager:
                 return json.load(f)
         except:
             return None
+
+    def get_error_summary(self) -> Dict[str, Any]:
+        """
+        Get summary of cache errors and health status.
+
+        Returns:
+            Dict with error statistics and backend status
+        """
+        summary = self.error_tracker.get_error_summary()
+        summary['backend_type'] = self.initial_backend_type
+        summary['fallback_active'] = self.fallback_active
+        return summary
+
+    def reset_error_tracking(self):
+        """Reset error tracking state (useful for testing)."""
+        self.error_tracker.reset()
 
     def log_parse_error(self, file_path: str, error: Exception,
                        file_hash: str, compile_args_hash: Optional[str],
