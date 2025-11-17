@@ -45,6 +45,7 @@ class CppAnalyzerConfig:
         "include_dependencies": True,
         "max_file_size_mb": 10,
         "max_parse_retries": 2,  # Maximum number of times to retry parsing a failed file
+        "query_behavior": "allow_partial",  # allow_partial, block, or reject
         "diagnostics": {
             "level": "info",  # debug, info, warning, error, fatal
             "enabled": True
@@ -148,6 +149,40 @@ class CppAnalyzerConfig:
         """Get maximum file size in MB."""
         return self.config.get("max_file_size_mb", self.DEFAULT_CONFIG["max_file_size_mb"])
 
+    def get_query_behavior_policy(self) -> str:
+        """Get query behavior policy during indexing.
+
+        Priority order:
+        1. Environment variable CPP_ANALYZER_QUERY_BEHAVIOR
+        2. Config file query_behavior setting
+        3. Default: allow_partial
+
+        Returns:
+            Policy string: "allow_partial", "block", or "reject"
+        """
+        # Check environment variable first (highest priority)
+        env_policy = os.environ.get('CPP_ANALYZER_QUERY_BEHAVIOR')
+        if env_policy:
+            policy = env_policy.lower()
+            if policy in ['allow_partial', 'block', 'reject']:
+                diagnostics.debug(f"Using query behavior policy from env: {policy}")
+                return policy
+            else:
+                diagnostics.warning(
+                    f"Invalid CPP_ANALYZER_QUERY_BEHAVIOR value: {env_policy}. "
+                    f"Using config/default value."
+                )
+
+        # Check config file
+        policy = self.config.get("query_behavior", self.DEFAULT_CONFIG["query_behavior"])
+        if policy not in ['allow_partial', 'block', 'reject']:
+            diagnostics.warning(
+                f"Invalid query_behavior in config: {policy}. Using default: allow_partial"
+            )
+            return "allow_partial"
+
+        return policy
+
     def get_compile_commands_config(self) -> Dict[str, Any]:
         """Get compile commands configuration.
 
@@ -202,6 +237,12 @@ class CppAnalyzerConfig:
             ],
             "include_dependencies": True,
             "max_file_size_mb": 10,
+            "query_behavior": "allow_partial",
+            "_query_behavior_options": [
+                "allow_partial - Allow queries during indexing (results may be incomplete)",
+                "block - Block queries until indexing completes (wait for completion)",
+                "reject - Reject queries during indexing with error"
+            ],
             "compile_commands": {
                 "enabled": True,
                 "path": "compile_commands.json",

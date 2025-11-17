@@ -140,10 +140,18 @@ try:
     # Try package import first (when run as module)
     from mcp_server.cpp_analyzer import CppAnalyzer
     from mcp_server.compile_commands_manager import CompileCommandsManager
+    from mcp_server.state_manager import (
+        AnalyzerStateManager, AnalyzerState, IndexingProgress,
+        BackgroundIndexer, EnhancedQueryResult, QueryBehaviorPolicy
+    )
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer
     from compile_commands_manager import CompileCommandsManager
+    from state_manager import (
+        AnalyzerStateManager, AnalyzerState, IndexingProgress,
+        BackgroundIndexer, EnhancedQueryResult, QueryBehaviorPolicy
+    )
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
@@ -151,7 +159,14 @@ PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
 # Initialize analyzer as None - will be set when project directory is specified
 analyzer = None
 
+# State management for analyzer lifecycle
+state_manager = AnalyzerStateManager()
+
+# Background indexer for async indexing
+background_indexer = None
+
 # Track if analyzer has been initialized with a valid project
+# TODO Phase 3: This boolean will be replaced by state_manager checks in async mode
 analyzer_initialized = False
 
 # MCP Server
@@ -162,7 +177,7 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\nReturns list with: name, kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes. Supports regex patterns.",
+            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes. Supports regex patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -181,7 +196,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_functions",
-            description="Search for C++ functions and methods by name pattern. Returns list with: name, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project. Searches both standalone functions and class methods. Supports regex patterns.",
+            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project. Searches both standalone functions and class methods. Supports regex patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -204,7 +219,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location. **Note**: Member variables/fields (members) are not currently indexed and will be an empty list. **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line), members (currently empty), is_project. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
+            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location. **Note**: Member variables/fields (members) are not currently indexed and will be an empty list. **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line), members (currently empty), is_project. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -218,7 +233,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_function_signature",
-            description="Get formatted signature strings for function(s) with the exact name specified. Returns a list of signature strings showing the function name with parameter types and class scope qualifier (e.g., 'ClassName::functionName(int x, std::string y)' or 'functionName(double z)'). Note: Does NOT include return types in the output, only function name, parameters, and class scope if applicable. If multiple overloads exist, returns all of them. Use this to quickly see function parameter types. Returns formatted strings only, not structured metadata - use search_functions if you need file locations, line numbers, or complete metadata.",
+            description="Get formatted signature strings for function(s) with the exact name specified. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a list of signature strings showing the function name with parameter types and class scope qualifier (e.g., 'ClassName::functionName(int x, std::string y)' or 'functionName(double z)'). Note: Does NOT include return types in the output, only function name, parameters, and class scope if applicable. If multiple overloads exist, returns all of them. Use this to quickly see function parameter types. Returns formatted strings only, not structured metadata - use search_functions if you need file locations, line numbers, or complete metadata.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -236,7 +251,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_symbols",
-            description="Unified search across multiple C++ symbol types (classes, structs, functions, methods) using a single pattern. Returns a dictionary with two keys: 'classes' (array of class/struct results) and 'functions' (array of function/method results). Each result includes name, kind, file location, line number, and other metadata. This is a convenient alternative to calling search_classes and search_functions separately. Use symbol_types to filter which categories are populated.",
+            description="Unified search across multiple C++ symbol types (classes, structs, functions, methods) using a single pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a dictionary with two keys: 'classes' (array of class/struct results) and 'functions' (array of function/method results). Each result includes name, kind, file location, line number, and other metadata. This is a convenient alternative to calling search_classes and search_functions separately. Use symbol_types to filter which categories are populated.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -263,7 +278,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_in_file",
-            description="Search for C++ symbols (classes, functions, methods) within a specific source file. Returns only symbols defined in that file, with locations and basic information.",
+            description="Search for C++ symbols (classes, functions, methods) within a specific source file. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns only symbols defined in that file, with locations and basic information.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -308,6 +323,30 @@ async def list_tools() -> List[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_indexing_status",
+            description="Get real-time status of project indexing. Returns state (uninitialized/initializing/indexing/indexed/refreshing/error), progress information (files indexed/total, completion percentage, current file, ETA), and whether tools will return complete or partial results. Use this to check if indexing is complete before running queries on large projects, or to monitor indexing progress.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="wait_for_indexing",
+            description="Block until indexing completes or timeout is reached. Use this when you need complete results and want to wait for indexing to finish. Returns success when indexing completes, or timeout error if it takes too long. Useful after set_project_directory on large projects to ensure queries return complete data.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "timeout": {
+                        "type": "number",
+                        "description": "Maximum time to wait in seconds (default: 60.0). Set higher for large projects.",
+                        "default": 60.0
+                    }
+                },
                 "required": []
             }
         ),
@@ -407,6 +446,96 @@ async def list_tools() -> List[Tool]:
         )
     ]
 
+def check_query_policy(tool_name: str) -> tuple[bool, str]:
+    """
+    Check if query is allowed based on current indexing state and policy.
+
+    Args:
+        tool_name: Name of the tool being called
+
+    Returns:
+        Tuple of (allowed: bool, message: str)
+        - If allowed=True, query can proceed (message will be empty)
+        - If allowed=False, query should be blocked/rejected (message contains error/wait info)
+    """
+    # If fully indexed, always allow
+    if state_manager.is_fully_indexed():
+        return (True, "")
+
+    # If not indexing, allow
+    if not state_manager.is_ready_for_queries():
+        return (True, "")  # Let the normal flow handle uninitialized state
+
+    # Get policy from analyzer config
+    policy_str = analyzer.config.get_query_behavior_policy()
+
+    try:
+        policy = QueryBehaviorPolicy(policy_str)
+    except ValueError:
+        # Invalid policy, default to allow_partial
+        diagnostics.warning(f"Invalid query_behavior_policy: {policy_str}, defaulting to allow_partial")
+        policy = QueryBehaviorPolicy.ALLOW_PARTIAL
+
+    # Check policy
+    if policy == QueryBehaviorPolicy.ALLOW_PARTIAL:
+        # Allow query, results will include metadata warning
+        return (True, "")
+
+    elif policy == QueryBehaviorPolicy.BLOCK:
+        # Wait for indexing to complete
+        progress = state_manager.get_progress()
+        if progress:
+            completion = progress.completion_percentage
+            indexed = progress.indexed_files
+            total = progress.total_files
+            message = (
+                f"Query blocked: Indexing in progress ({completion:.1f}% complete, "
+                f"{indexed:,}/{total:,} files). Waiting for indexing to complete...\n\n"
+                f"Use 'wait_for_indexing' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial "
+                f"to allow queries during indexing."
+            )
+        else:
+            message = (
+                "Query blocked: Indexing in progress. Waiting for completion...\n\n"
+                "Use 'wait_for_indexing' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial."
+            )
+
+        # Wait for indexing with a reasonable timeout (30 seconds)
+        completed = state_manager.wait_for_indexed(timeout=30.0)
+
+        if completed:
+            # Indexing completed while waiting
+            return (True, "")
+        else:
+            # Timeout - still return block message
+            return (False, message + "\n\nTimeout waiting for indexing (30s). Try again later or use 'get_indexing_status'.")
+
+    elif policy == QueryBehaviorPolicy.REJECT:
+        # Reject query with error
+        progress = state_manager.get_progress()
+        if progress:
+            completion = progress.completion_percentage
+            indexed = progress.indexed_files
+            total = progress.total_files
+            message = (
+                f"ERROR: Query rejected - indexing in progress ({completion:.1f}% complete, "
+                f"{indexed:,}/{total:,} files).\n\n"
+                f"Queries are not allowed until indexing completes. Options:\n"
+                f"1. Use 'wait_for_indexing' tool to wait for completion\n"
+                f"2. Check progress with 'get_indexing_status'\n"
+                f"3. Set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial to allow partial results\n"
+                f"4. Set CPP_ANALYZER_QUERY_BEHAVIOR=block to auto-wait for completion"
+            )
+        else:
+            message = (
+                "ERROR: Query rejected - indexing in progress.\n\n"
+                "Use 'wait_for_indexing' or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial/block."
+            )
+        return (False, message)
+
+    # Default: allow
+    return (True, "")
+
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
@@ -428,53 +557,103 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 return [TextContent(type="text", text=f"Error: Directory '{project_path}' does not exist")]
 
             # Re-initialize analyzer with new path
-            global analyzer, analyzer_initialized
+            global analyzer, analyzer_initialized, state_manager, background_indexer
+
+            # Transition to INITIALIZING state
+            state_manager.transition_to(AnalyzerState.INITIALIZING)
             analyzer = CppAnalyzer(project_path)
-            analyzer_initialized = True
-            
-            # Start indexing in the background
-            indexed_count = analyzer.index_project(force=False, include_dependencies=True)
-            
-            return [TextContent(type="text", text=f"Set project directory to: {project_path}\nIndexed {indexed_count} C++ files")]
+            background_indexer = BackgroundIndexer(analyzer, state_manager)
+
+            # Start indexing in background (truly asynchronous, non-blocking)
+            # The task will run independently while the MCP server continues to handle requests
+            async def run_background_indexing():
+                try:
+                    await background_indexer.start_indexing(force=False, include_dependencies=True)
+                    # Indexing complete - mark as initialized
+                    global analyzer_initialized
+                    analyzer_initialized = True
+                except Exception as e:
+                    # Error already logged and state transitioned by start_indexing
+                    pass
+
+            # Create background task (non-blocking)
+            asyncio.create_task(run_background_indexing())
+
+            # Return immediately - indexing continues in background
+            return [TextContent(
+                type="text",
+                text=f"Set project directory to: {project_path}\n"
+                     f"Indexing started in background. Use 'get_indexing_status' to check progress.\n"
+                     f"Tools are available but will return partial results until indexing completes."
+            )]
         
         # Check if analyzer is initialized for all other commands
-        if not analyzer_initialized or analyzer is None:
+        # Phase 3: Allow queries during indexing (partial results)
+        # Tools can execute in INDEXING, INDEXED, or REFRESHING states
+        if analyzer is None or not state_manager.is_ready_for_queries():
             return [TextContent(type="text", text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.")]
-        
+
+        # Define tools that are subject to query behavior policy
+        query_tools = {
+            "search_classes", "search_functions", "get_class_info",
+            "get_function_signature", "search_symbols", "find_in_file",
+            "get_class_hierarchy", "get_derived_classes",
+            "find_callers", "find_callees", "get_call_path"
+        }
+
+        # Check query behavior policy for query tools (but not management tools)
+        if name in query_tools:
+            allowed, policy_message = check_query_policy(name)
+            if not allowed:
+                return [TextContent(type="text", text=policy_message)]
+
         if name == "search_classes":
             project_only = arguments.get("project_only", True)
             results = analyzer.search_classes(arguments["pattern"], project_only)
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Wrap with metadata
+            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_classes")
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "search_functions":
             project_only = arguments.get("project_only", True)
             class_name = arguments.get("class_name", None)
             results = analyzer.search_functions(arguments["pattern"], project_only, class_name)
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Wrap with metadata
+            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_functions")
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "get_class_info":
             result = analyzer.get_class_info(arguments["class_name"])
+            # Wrap with metadata (even if not found)
+            enhanced_result = EnhancedQueryResult.create_from_state(result, state_manager, "get_class_info")
             if result:
-                return [TextContent(type="text", text=json.dumps(result, indent=2))]
+                return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
             else:
-                return [TextContent(type="text", text=f"Class '{arguments['class_name']}' not found")]
+                # Include metadata even for "not found" case
+                return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "get_function_signature":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", None)
             results = analyzer.get_function_signature(function_name, class_name)
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Wrap with metadata
+            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "get_function_signature")
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "search_symbols":
             pattern = arguments["pattern"]
             project_only = arguments.get("project_only", True)
             symbol_types = arguments.get("symbol_types", None)
             results = analyzer.search_symbols(pattern, project_only, symbol_types)
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Wrap with metadata
+            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_symbols")
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "find_in_file":
             results = analyzer.find_in_file(arguments["file_path"], arguments["pattern"])
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Wrap with metadata
+            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "find_in_file")
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "refresh_project":
             modified_count = analyzer.refresh_if_needed()
@@ -501,7 +680,36 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "project_files": len(analyzer.translation_units)  # Approximate count
             })
             return [TextContent(type="text", text=json.dumps(status, indent=2))]
-        
+
+        elif name == "get_indexing_status":
+            # Get current state and progress from state manager
+            status_dict = state_manager.get_status_dict()
+            return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
+
+        elif name == "wait_for_indexing":
+            # Wait for indexing to complete with timeout
+            timeout = arguments.get("timeout", 60.0)
+
+            if state_manager.is_fully_indexed():
+                return [TextContent(type="text", text="Indexing already complete.")]
+
+            # Wait for indexed event
+            completed = state_manager.wait_for_indexed(timeout)
+
+            if completed:
+                progress = state_manager.get_progress()
+                indexed_count = progress.indexed_files if progress else 0
+                failed_count = progress.failed_files if progress else 0
+                return [TextContent(
+                    type="text",
+                    text=f"Indexing complete! Indexed {indexed_count} files successfully ({failed_count} failed)."
+                )]
+            else:
+                return [TextContent(
+                    type="text",
+                    text=f"Timeout waiting for indexing (waited {timeout}s). Use 'get_indexing_status' to check progress."
+                )]
+
         elif name == "get_class_hierarchy":
             class_name = arguments["class_name"]
             hierarchy = analyzer.get_class_hierarchy(class_name)

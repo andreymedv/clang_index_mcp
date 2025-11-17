@@ -13,7 +13,7 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Set, Tuple
+from typing import Dict, List, Optional, Any, Set, Tuple, Callable
 from collections import defaultdict
 import hashlib
 import json
@@ -25,6 +25,7 @@ from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
 from .header_tracker import HeaderProcessingTracker
+from datetime import datetime, timedelta
 
 # Handle both package and script imports
 try:
@@ -971,8 +972,24 @@ class CppAnalyzer:
             diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
             return (False, False)  # Failed, not from cache
 
-    def index_project(self, force: bool = False, include_dependencies: bool = True) -> int:
-        """Index all C++ files in the project"""
+    def index_project(
+        self,
+        force: bool = False,
+        include_dependencies: bool = True,
+        progress_callback: Optional[Callable] = None
+    ) -> int:
+        """
+        Index all C++ files in the project
+
+        Args:
+            force: Force re-indexing even if cache exists
+            include_dependencies: Include dependency files in indexing
+            progress_callback: Optional callback for progress updates.
+                             Called with IndexingProgress object during indexing.
+
+        Returns:
+            Number of files indexed
+        """
         start_time = time.time()
 
         # Store the include_dependencies setting BEFORE loading cache
@@ -1132,6 +1149,31 @@ class CppAnalyzer:
                             file=sys.stderr,
                             flush=True,
                         )
+
+                    # Call progress callback if provided
+                    if progress_callback:
+                        try:
+                            # Import IndexingProgress here to avoid circular dependency
+                            from .state_manager import IndexingProgress
+
+                            estimated_completion = (
+                                datetime.now() + timedelta(seconds=eta) if eta > 0 else None
+                            )
+
+                            progress = IndexingProgress(
+                                total_files=len(files),
+                                indexed_files=indexed_count,
+                                failed_files=failed_count,
+                                cache_hits=cache_hits,
+                                current_file=file_path if processed < len(files) else None,
+                                start_time=datetime.fromtimestamp(start_time),
+                                estimated_completion=estimated_completion
+                            )
+
+                            progress_callback(progress)
+                        except Exception as e:
+                            # Don't fail indexing if progress callback fails
+                            diagnostics.debug(f"Progress callback failed: {e}")
 
                     last_report_time = current_time
         
