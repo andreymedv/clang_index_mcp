@@ -18,6 +18,8 @@ This directory contains the complete architectural design for migrating from JSO
 
 **The main document you should review.** This is the final, production-ready implementation plan that incorporates all improvements from the architectural review.
 
+**UPDATE (2025-11-17):** After rebasing to latest `origin/compile_commands-support`, all design remains valid. See [ADDENDUM-performance-optimizations.md](./ADDENDUM-performance-optimizations.md) for compatibility analysis with new ProcessPoolExecutor and bulk write optimizations.
+
 **Contents:**
 - Executive summary with updated metrics
 - 4-phase implementation plan (3.5 weeks)
@@ -74,6 +76,27 @@ This directory contains the complete architectural design for migrating from JSO
 - 🟡 Query performance monitoring missing → Added to final plan
 
 **Use this for:** Understanding the review process, seeing what was improved
+
+---
+
+### 4. [ADDENDUM-performance-optimizations.md](./ADDENDUM-performance-optimizations.md) 🆕
+
+**Compatibility analysis after rebase.** This document analyzes the impact of new performance optimizations (ProcessPoolExecutor, bulk writes) on the SQLite cache design.
+
+**Contents:**
+- Analysis of upstream changes (ProcessPoolExecutor, bulk writes, orjson)
+- Impact assessment on SQLite design
+- Compatibility verification
+- Performance comparison (JSON vs SQLite with ProcessPool)
+- Updated testing requirements
+
+**Key Finding:**
+- ✅ **All design remains valid** - no changes needed
+- ✅ **SQLite works better with ProcessPool** than JSON does
+- ✅ WAL mode eliminates read contention in multi-process mode
+- ✅ Design already includes all necessary multi-process support
+
+**Use this for:** Understanding why the design didn't change after rebase
 
 ---
 
