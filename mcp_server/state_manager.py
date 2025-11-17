@@ -221,10 +221,19 @@ class BackgroundIndexer:
         # Run synchronous index_project in executor to avoid blocking event loop
         loop = asyncio.get_event_loop()
 
+        # Create progress callback that updates state_manager
+        def progress_callback(progress: IndexingProgress):
+            """Callback to update progress in state manager"""
+            self.state_manager.update_progress(progress)
+
         try:
             indexed_count = await loop.run_in_executor(
                 None,  # Use default executor
-                lambda: self.analyzer.index_project(force, include_dependencies)
+                lambda: self.analyzer.index_project(
+                    force=force,
+                    include_dependencies=include_dependencies,
+                    progress_callback=progress_callback
+                )
             )
 
             self.state_manager.transition_to(AnalyzerState.INDEXED)
@@ -261,6 +270,13 @@ class BackgroundIndexer:
         """
         if self._indexing_task:
             await asyncio.wait_for(self._indexing_task, timeout=timeout)
+
+
+class QueryBehaviorPolicy(Enum):
+    """Policy for handling queries during indexing"""
+    ALLOW_PARTIAL = "allow_partial"  # Allow queries during indexing (default)
+    BLOCK = "block"                  # Block queries until indexing completes
+    REJECT = "reject"                # Reject queries during indexing with error
 
 
 class QueryCompletenessStatus(Enum):
