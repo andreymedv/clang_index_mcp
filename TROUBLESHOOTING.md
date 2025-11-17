@@ -1,6 +1,79 @@
-# Troubleshooting compile_commands.json Issues
+# Troubleshooting Guide
 
-## All Files Failing to Parse
+## Performance Issues
+
+### Slow Analysis on Multi-Core Systems
+
+**Symptom**: Analysis is slow despite having multiple CPU cores, low CPU utilization (e.g., 200% on an 8-core/16-thread system)
+
+**Diagnosis**:
+```bash
+# Check if GIL is the bottleneck
+python scripts/diagnose_gil.py /path/to/project
+```
+
+If ProcessPoolExecutor shows **1.5x+ speedup**, Python's GIL is limiting parallelism.
+
+**Solution**:
+- ProcessPoolExecutor is now **enabled by default** (bypasses GIL)
+- Verify it's enabled: Check startup logs for "Concurrency mode: ProcessPool (GIL bypass)"
+- If using ThreadPool, remove `CPP_ANALYZER_USE_THREADS=true` environment variable
+
+**Expected Results**:
+- CPU utilization should reach 80-100% on multi-core systems
+- 6-7x speedup compared to single-threaded on 4+ core systems
+
+### Slow compile_commands.json Loading
+
+**Symptom**: Server takes several seconds to start with large `compile_commands.json` files (40MB+, 1000+ entries)
+
+**Diagnosis**:
+```bash
+# Check loading time in startup logs
+# Look for: "Parsing compile_commands.json (X.X MB)..."
+```
+
+**Solutions**:
+
+1. **Install orjson for faster JSON parsing** (3-5x speedup):
+   ```bash
+   pip install orjson
+   ```
+
+2. **Use binary cache** (10-100x speedup on subsequent starts):
+   - Cache is automatic, stored in `.clang_index/compile_commands.cache`
+   - First load: parses JSON, saves cache
+   - Subsequent loads: loads from cache (~0.1s instead of seconds)
+   - Cache auto-invalidates when `compile_commands.json` changes
+
+**Expected Results**:
+- First load: 1-10s depending on file size and orjson
+- Subsequent loads: ~0.1s (cache hit)
+
+### Profile Analysis Performance
+
+**Tool**: `scripts/profile_analysis.py`
+
+**Usage**:
+```bash
+python scripts/profile_analysis.py /path/to/project
+```
+
+**Output**:
+- Time spent in libclang parsing
+- Time spent in AST traversal
+- Lock wait time
+- Cache operations
+- Percentage breakdown
+
+**Interpreting Results**:
+- High lock wait time → ProcessPool should help (should be enabled by default)
+- High libclang parse time → Normal for complex code
+- High cache operations → Check disk I/O speed
+
+## compile_commands.json Issues
+
+### All Files Failing to Parse
 
 If all files are failing with "Error parsing translation unit", follow these steps:
 
