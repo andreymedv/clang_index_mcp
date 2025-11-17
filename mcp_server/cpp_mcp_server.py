@@ -140,10 +140,12 @@ try:
     # Try package import first (when run as module)
     from mcp_server.cpp_analyzer import CppAnalyzer
     from mcp_server.compile_commands_manager import CompileCommandsManager
+    from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState, IndexingProgress
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer
     from compile_commands_manager import CompileCommandsManager
+    from state_manager import AnalyzerStateManager, AnalyzerState, IndexingProgress
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
@@ -151,7 +153,11 @@ PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
 # Initialize analyzer as None - will be set when project directory is specified
 analyzer = None
 
+# State management for analyzer lifecycle
+state_manager = AnalyzerStateManager()
+
 # Track if analyzer has been initialized with a valid project
+# TODO Phase 3: This boolean will be replaced by state_manager checks in async mode
 analyzer_initialized = False
 
 # MCP Server
@@ -312,6 +318,15 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="get_indexing_status",
+            description="Get real-time status of project indexing. Returns state (uninitialized/initializing/indexing/indexed/refreshing/error), progress information (files indexed/total, completion percentage, current file, ETA), and whether tools will return complete or partial results. Use this to check if indexing is complete before running queries on large projects, or to monitor indexing progress.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
             name="get_class_hierarchy",
             description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants both ancestors AND descendants. **Do NOT use** get_derived_classes which only returns immediate children.\n\nReturns: name (class name), base_hierarchy (all ancestors recursively to root), derived_hierarchy (all descendants recursively to leaves), class_info (detailed info), direct base_classes and derived_classes lists. If not found, returns {'error': 'Class <name> not found'}.",
             inputSchema={
@@ -428,19 +443,34 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 return [TextContent(type="text", text=f"Error: Directory '{project_path}' does not exist")]
 
             # Re-initialize analyzer with new path
-            global analyzer, analyzer_initialized
+            global analyzer, analyzer_initialized, state_manager
+
+            # Transition to INITIALIZING state
+            state_manager.transition_to(AnalyzerState.INITIALIZING)
             analyzer = CppAnalyzer(project_path)
 
-            # IMPORTANT: Don't set analyzer_initialized yet - indexing must complete first
-            # to prevent race condition where tools execute on partially-indexed data.
-            # Note: This blocks the MCP server until indexing completes (synchronous behavior).
-            # For large projects, this may take several minutes. Future enhancement: async indexing.
-            indexed_count = analyzer.index_project(force=False, include_dependencies=True)
+            # Transition to INDEXING state
+            state_manager.transition_to(AnalyzerState.INDEXING)
 
-            # Only now mark as initialized - indexing is complete, tools can safely execute
-            analyzer_initialized = True
+            try:
+                # IMPORTANT: Don't set analyzer_initialized yet - indexing must complete first
+                # to prevent race condition where tools execute on partially-indexed data.
+                # Note: This blocks the MCP server until indexing completes (synchronous behavior).
+                # For large projects, this may take several minutes. Future enhancement: async indexing.
+                indexed_count = analyzer.index_project(force=False, include_dependencies=True)
 
-            return [TextContent(type="text", text=f"Set project directory to: {project_path}\nIndexed {indexed_count} C++ files")]
+                # Transition to INDEXED state - indexing complete, tools can safely execute
+                state_manager.transition_to(AnalyzerState.INDEXED)
+
+                # Only now mark as initialized - indexing is complete
+                analyzer_initialized = True
+
+                return [TextContent(type="text", text=f"Set project directory to: {project_path}\nIndexed {indexed_count} C++ files")]
+
+            except Exception as e:
+                # Transition to ERROR state on failure
+                state_manager.transition_to(AnalyzerState.ERROR)
+                return [TextContent(type="text", text=f"Error: Indexing failed: {str(e)}")]
         
         # Check if analyzer is initialized for all other commands
         if not analyzer_initialized or analyzer is None:
@@ -506,7 +536,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "project_files": len(analyzer.translation_units)  # Approximate count
             })
             return [TextContent(type="text", text=json.dumps(status, indent=2))]
-        
+
+        elif name == "get_indexing_status":
+            # Get current state and progress from state manager
+            status_dict = state_manager.get_status_dict()
+            return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
+
         elif name == "get_class_hierarchy":
             class_name = arguments["class_name"]
             hierarchy = analyzer.get_class_hierarchy(class_name)
