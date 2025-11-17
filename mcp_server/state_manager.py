@@ -5,11 +5,12 @@ State management for C++ analyzer lifecycle
 Provides thread-safe state tracking and progress monitoring for the analyzer.
 """
 
+import asyncio
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from threading import Lock, Event
-from typing import Optional
+from typing import Optional, Callable, Any
 
 
 class AnalyzerState(Enum):
@@ -173,3 +174,90 @@ class AnalyzerStateManager:
                 "progress": self._progress.to_dict() if self._progress else None,
             }
             return status
+
+
+class BackgroundIndexer:
+    """
+    Manages background indexing with async support
+
+    Coordinates between synchronous indexing code and async MCP server.
+    """
+
+    def __init__(self, analyzer: Any, state_manager: AnalyzerStateManager):
+        """
+        Initialize background indexer
+
+        Args:
+            analyzer: CppAnalyzer instance
+            state_manager: State manager for tracking progress
+        """
+        self.analyzer = analyzer
+        self.state_manager = state_manager
+        self._indexing_task: Optional[asyncio.Task] = None
+
+    async def start_indexing(
+        self,
+        force: bool = False,
+        include_dependencies: bool = True
+    ) -> int:
+        """
+        Start background indexing (non-blocking)
+
+        Args:
+            force: Force re-indexing even if cache exists
+            include_dependencies: Include dependency files
+
+        Returns:
+            Number of files indexed
+
+        Raises:
+            RuntimeError: If indexing is already in progress
+        """
+        if self._indexing_task and not self._indexing_task.done():
+            raise RuntimeError("Indexing already in progress")
+
+        self.state_manager.transition_to(AnalyzerState.INDEXING)
+
+        # Run synchronous index_project in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+
+        try:
+            indexed_count = await loop.run_in_executor(
+                None,  # Use default executor
+                lambda: self.analyzer.index_project(force, include_dependencies)
+            )
+
+            self.state_manager.transition_to(AnalyzerState.INDEXED)
+            return indexed_count
+
+        except Exception as e:
+            self.state_manager.transition_to(AnalyzerState.ERROR)
+            # Log error if diagnostics available
+            try:
+                from . import diagnostics
+                diagnostics.error(f"Indexing failed: {e}")
+            except ImportError:
+                pass
+            raise
+
+    def is_indexing(self) -> bool:
+        """
+        Check if indexing is currently running
+
+        Returns:
+            True if indexing task exists and is not done
+        """
+        return self._indexing_task is not None and not self._indexing_task.done()
+
+    async def wait_for_completion(self, timeout: Optional[float] = None):
+        """
+        Wait for indexing to complete
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Raises:
+            asyncio.TimeoutError: If timeout expires
+        """
+        if self._indexing_task:
+            await asyncio.wait_for(self._indexing_task, timeout=timeout)
