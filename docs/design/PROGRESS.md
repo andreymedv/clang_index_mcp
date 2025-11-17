@@ -157,20 +157,54 @@ Completed Phase 1 (Foundation) in 4 days as planned. Core SQLite backend is full
 
 ## Phase 2: Integration & Testing 🔄 IN PROGRESS (Days 5-10)
 
-### Day 5: Adapter Pattern & Feature Flag 🔄 IN PROGRESS
+### Day 5: Adapter Pattern & Feature Flag ✅ COMPLETE
 
-**Tasks Remaining:**
-- [ ] Create cache backend protocol/interface
-- [ ] Extract JSON logic to JsonCacheBackend
-- [ ] Update CacheManager to use adapter pattern
-- [ ] Implement feature flag (CLANG_INDEX_USE_SQLITE)
-- [ ] Write adapter tests
+**Commit:** TBD
 
-**Expected Delivery:**
-- CacheBackend protocol (~50 lines)
-- JsonCacheBackend (~400 lines, extracted from CacheManager)
-- Updated CacheManager (~150 lines)
-- Adapter tests (~150 lines)
+**Delivered:**
+- `mcp_server/cache_backend.py` (55 lines)
+  - CacheBackend protocol defining interface for all cache backends
+  - Methods: save_cache, load_cache, save_file_cache, load_file_cache, remove_file_cache
+  - Runtime checkable protocol using @runtime_checkable decorator
+
+- `mcp_server/json_cache_backend.py` (277 lines)
+  - Extracted all JSON cache logic from CacheManager
+  - Implements CacheBackend protocol
+  - 100% backward compatible with existing JSON cache format
+  - All original functionality preserved
+
+- `mcp_server/cache_manager.py` (modified)
+  - Added feature flag support: CLANG_INDEX_USE_SQLITE (default: "1")
+  - Backend selection in __init__ with automatic fallback
+  - All cache operations delegated to backend
+  - SQLite failures automatically fall back to JSON
+  - Retained utility methods (error logging, progress tracking)
+
+- `mcp_server/sqlite_cache_backend.py` (260 lines added)
+  - Added CacheBackend protocol adapter methods
+  - save_cache() - Adapts class/function indexes to SQLite batch insert
+  - load_cache() - Rebuilds indexes from SQLite with validation
+  - save_file_cache() - File-level caching with symbol replacement
+  - load_file_cache() - File-level loading with hash validation
+  - remove_file_cache() - Cleanup for deleted files
+  - Made set_busy_handler optional for compatibility
+
+- `tests/base_functionality/test_cache_adapter.py` (275 lines, 15 tests)
+  - test_sqlite_backend_selected_with_flag_on/true
+  - test_json_backend_selected_with_flag_off/false
+  - test_sqlite_backend_default (default = SQLite)
+  - test_fallback_to_json_on_sqlite_error
+  - test_json/sqlite_backend_compatibility
+  - test_cache_manager_delegates_* (5 delegation tests)
+  - test_json/sqlite_backend_basic_operations
+  - **All 15 tests passing ✅**
+
+**Success Criteria:** ✅
+- Feature flag works correctly (1/true → SQLite, 0/false → JSON)
+- Both backends work independently
+- Automatic fallback to JSON on SQLite errors
+- No regression in JSON mode
+- Full test coverage for adapter pattern
 
 ### Day 6-10: Remaining Integration Work
 
