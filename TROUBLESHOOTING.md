@@ -232,11 +232,282 @@ sudo rm -rf /Library/Developer/CommandLineTools
 xcode-select --install
 ```
 
+## SQLite Cache Issues (New in v3.0.0)
+
+### Migration Fails: "Migration verification failed"
+
+**Symptom**: Automatic migration from JSON to SQLite fails with verification errors
+
+**Diagnosis**:
+```bash
+python3 scripts/diagnose_cache.py --verbose
+```
+
+**Common Causes**:
+1. **Symbol count mismatch**: JSON cache and SQLite cache have different symbol counts
+2. **Corrupted JSON cache**: Original cache has integrity issues
+3. **Disk full**: Insufficient space for migration
+
+**Solutions**:
+
+**1. Retry migration:**
+```bash
+# Remove failed SQLite cache
+rm .mcp_cache/cache.db .mcp_cache/.migrated_to_sqlite
+
+# Retry migration with verbose output
+python3 scripts/migrate_cache.py --verbose
+```
+
+**2. Verify JSON cache integrity:**
+```bash
+python3 -c "
+import json
+try:
+    with open('.mcp_cache/cache_info.json') as f:
+        data = json.load(f)
+    print(f'JSON cache OK: {sum(len(v) for v in data.get(\"class_index\", {}).values())} classes')
+except Exception as e:
+    print(f'JSON cache error: {e}')
+"
+```
+
+**3. Check disk space:**
+```bash
+df -h .mcp_cache
+```
+
+### Database Locked Error
+
+**Symptom**: `sqlite3.OperationalError: database is locked`
+
+**Common Causes**:
+1. Multiple analyzer instances running concurrently
+2. Stale lock files from crashed processes
+3. Database on network filesystem (not supported)
+
+**Solutions**:
+
+**1. Check for running processes:**
+```bash
+# Linux/macOS
+ps aux | grep cpp_mcp_server
+
+# Kill stale processes
+pkill -f cpp_mcp_server
+```
+
+**2. Remove stale lock files:**
+```bash
+# Close all analyzer instances first!
+ls -la .mcp_cache/*.db-wal .mcp_cache/*.db-shm
+
+# Remove lock files (only if no processes are running)
+rm .mcp_cache/*.db-wal .mcp_cache/*.db-shm
+```
+
+**3. Verify cache location is on local filesystem:**
+```bash
+df -T .mcp_cache  # Check filesystem type (Linux)
+
+# If on NFS/network storage, move cache to local disk:
+export CLANG_INDEX_CACHE_DIR="/local/path/cache"
+```
+
+### FTS5 Search Not Working
+
+**Symptom**: Symbol searches are slow or failing with FTS5 errors
+
+**Diagnosis**:
+```bash
+python3 scripts/diagnose_cache.py
+```
+
+Look for "FTS5 Health" check results.
+
+**Common Causes**:
+1. FTS5 index out of sync with symbols table
+2. SQLite built without FTS5 support (rare)
+
+**Solutions**:
+
+**1. Rebuild FTS5 index:**
+```bash
+python3 -c "
+from pathlib import Path
+from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+
+db = SqliteCacheBackend(Path('.mcp_cache/cache.db'))
+db.optimize()
+db._close()
+print('FTS5 index rebuilt successfully')
+"
+```
+
+**2. Check FTS5 availability:**
+```bash
+python3 -c "
+import sqlite3
+conn = sqlite3.connect(':memory:')
+try:
+    conn.execute('CREATE VIRTUAL TABLE test USING fts5(content)')
+    print('FTS5: Available ✅')
+except Exception as e:
+    print(f'FTS5: Not available ❌ - {e}')
+    print('Solution: Reinstall Python with full SQLite support')
+"
+```
+
+### Performance Worse After Migration
+
+**Symptom**: SQLite cache is slower than expected after migration
+
+**Diagnosis**:
+```bash
+# Check cache statistics and performance
+python3 scripts/cache_stats.py
+```
+
+**Common Causes**:
+1. Database not optimized after migration
+2. Missing indexes or FTS5 index corruption
+3. Disk I/O bottleneck
+
+**Solutions**:
+
+**1. Run database maintenance:**
+```bash
+python3 -c "
+from pathlib import Path
+from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+
+db = SqliteCacheBackend(Path('.mcp_cache/cache.db'))
+result = db.auto_maintenance()
+print(f'Maintenance complete: {result}')
+db._close()
+"
+```
+
+**2. Verify all indexes exist:**
+```bash
+python3 scripts/diagnose_cache.py
+```
+
+Look for "Index Health" check - all indexes should be present.
+
+**3. Check disk I/O:**
+```bash
+# Linux
+iostat -x 1 5  # Watch for high await times
+
+# Move cache to faster storage if needed
+export CLANG_INDEX_CACHE_DIR="/path/to/ssd/cache"
+```
+
+### Cache Corruption
+
+**Symptom**: Database integrity checks fail, or analyzer crashes on cache access
+
+**Diagnosis**:
+```bash
+python3 scripts/diagnose_cache.py
+```
+
+Look for integrity check failures.
+
+**Solutions**:
+
+**1. Restore from backup (safest):**
+```bash
+# Find most recent backup
+ls -lt .mcp_cache/backup_*/
+
+# Restore from backup
+cp -r .mcp_cache/backup_20251117_143022/* .mcp_cache/
+
+# Recreate SQLite cache
+rm .mcp_cache/cache.db .mcp_cache/.migrated_to_sqlite
+python3 scripts/migrate_cache.py
+```
+
+**2. Attempt database repair:**
+```bash
+python3 -c "
+from pathlib import Path
+from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+
+db = SqliteCacheBackend(Path('.mcp_cache/cache.db'))
+
+# Try integrity check
+is_healthy, msg = db.check_integrity(full=True)
+if not is_healthy:
+    print(f'Corruption detected: {msg}')
+    print('Running VACUUM to attempt repair...')
+    db.vacuum()
+
+    # Check again
+    is_healthy2, msg2 = db.check_integrity(full=True)
+    if is_healthy2:
+        print('Repair successful ✅')
+    else:
+        print('Repair failed ❌ - restore from backup')
+else:
+    print('Database is healthy ✅')
+
+db._close()
+"
+```
+
+**3. Delete and rebuild (last resort):**
+```bash
+# Delete corrupted cache
+rm -rf .mcp_cache/
+
+# Reindex project (will be slow for large projects)
+# The analyzer will create a fresh cache
+```
+
+### SQLite Diagnostic Tools
+
+Use these tools to diagnose and fix SQLite cache issues:
+
+```bash
+# 1. View comprehensive statistics
+python3 scripts/cache_stats.py
+
+# 2. Run health diagnostics with recommendations
+python3 scripts/diagnose_cache.py
+
+# 3. Check specific issues
+python3 scripts/diagnose_cache.py --verbose --json > cache_report.json
+
+# 4. Manually re-migrate
+python3 scripts/migrate_cache.py --verbose
+
+# 5. Batch migration for multiple projects
+python3 scripts/migrate_cache.py --batch project1 project2 project3
+```
+
+### Rollback to JSON Cache
+
+If SQLite issues persist, roll back to JSON cache:
+
+```bash
+# Method 1: Disable SQLite (temporary)
+export CLANG_INDEX_USE_SQLITE=0
+
+# Method 2: Delete SQLite cache (permanent)
+rm .mcp_cache/cache.db .mcp_cache/.migrated_to_sqlite
+
+# The analyzer will use the original JSON cache
+```
+
 ## Getting Help
 
 If none of the above helps, please provide:
 1. Output from `scripts/diagnose_compile_commands.py`
 2. Output from `scripts/diagnose_libclang.py` (for macOS header issues)
 3. Output from `scripts/view_parse_errors.py -l 1 -v`
-4. First 10 compilation arguments being passed to libclang
-5. Your libclang version and system compiler version
+4. Output from `scripts/diagnose_cache.py --verbose --json` (for cache issues)
+5. First 10 compilation arguments being passed to libclang
+6. Your libclang version and system compiler version
