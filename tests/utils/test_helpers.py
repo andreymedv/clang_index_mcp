@@ -20,7 +20,14 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+# Try to import CppAnalyzer, gracefully handle missing clang
+try:
+    from mcp_server.cpp_analyzer import CppAnalyzer
+    CLANG_AVAILABLE = True
+except SystemExit:
+    # clang.cindex not available
+    CppAnalyzer = None
+    CLANG_AVAILABLE = False
 
 
 @contextmanager
