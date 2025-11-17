@@ -11,7 +11,7 @@ import sys
 import re
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple
 from collections import defaultdict
@@ -38,6 +38,40 @@ try:
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
+
+
+def _process_file_worker(args_tuple):
+    """
+    Worker function for ProcessPoolExecutor-based parallel parsing.
+
+    This is a module-level function (required for pickling) that creates
+    a minimal analyzer instance to parse a single file.
+
+    Args:
+        args_tuple: (project_root, file_path, force, include_dependencies)
+
+    Returns:
+        (file_path, success, was_cached, symbols)
+        where symbols is a list of SymbolInfo objects or empty list on failure
+    """
+    project_root, file_path, force, include_dependencies = args_tuple
+
+    # Create a minimal analyzer for this process
+    # Each process gets its own analyzer instance
+    analyzer = CppAnalyzer(project_root)
+    analyzer.include_dependencies = include_dependencies
+
+    # Parse the file
+    success, was_cached = analyzer.index_file(file_path, force)
+
+    # Extract symbols from this file
+    symbols = []
+    if success:
+        with analyzer.index_lock:
+            if file_path in analyzer.file_index:
+                symbols = analyzer.file_index[file_path]
+
+    return (file_path, success, was_cached, symbols)
 
 
 class CppAnalyzer:
@@ -79,13 +113,17 @@ class CppAnalyzer:
         self.translation_units: Dict[str, TranslationUnit] = {}
         self.file_hashes: Dict[str, str] = {}
         
-        # Threading
+        # Threading/Processing
         self.index_lock = threading.Lock()
         self._thread_local = threading.local()
         cpu_count = os.cpu_count() or 1
         # Use cpu_count directly for CPU-bound parsing work
         # Using cpu_count * 2 causes excessive lock contention
         self.max_workers = cpu_count
+
+        # Use ProcessPoolExecutor by default to bypass Python's GIL
+        # Can be overridden via environment variable
+        self.use_processes = os.environ.get('CPP_ANALYZER_USE_THREADS', '').lower() != 'true'
         
         # Initialize cache manager and file scanner with config
         self.cache_manager = CacheManager(self.project_root)
@@ -119,6 +157,7 @@ class CppAnalyzer:
         self._restore_or_reset_header_tracking()
 
         diagnostics.info(f"CppAnalyzer initialized for project: {self.project_root}")
+        diagnostics.info(f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.use_processes else 'ThreadPool'} with {self.max_workers} workers")
 
         # Print compile commands configuration status
         if self.compile_commands_manager.enabled:
@@ -971,17 +1010,76 @@ class CppAnalyzer:
                       not os.environ.get('CLAUDE_CODE_SESSION'))
         
         # No special test mode needed - we'll handle Windows console properly
-        
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_file = {
-                executor.submit(self.index_file, os.path.abspath(file_path), force): os.path.abspath(file_path)
-                for file_path in files
-            }
+
+        # Choose executor based on configuration
+        # ProcessPoolExecutor bypasses Python's GIL for true parallelism
+        executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
+
+        if self.use_processes:
+            diagnostics.debug(f"Using ProcessPoolExecutor with {self.max_workers} workers (GIL bypass)")
+        else:
+            diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
+
+        with executor_class(max_workers=self.max_workers) as executor:
+            if self.use_processes:
+                # ProcessPoolExecutor: use worker function that returns symbols
+                future_to_file = {
+                    executor.submit(_process_file_worker,
+                                  (str(self.project_root), os.path.abspath(file_path),
+                                   force, include_dependencies)): os.path.abspath(file_path)
+                    for file_path in files
+                }
+            else:
+                # ThreadPoolExecutor: use index_file method directly
+                future_to_file = {
+                    executor.submit(self.index_file, os.path.abspath(file_path), force): os.path.abspath(file_path)
+                    for file_path in files
+                }
 
             for i, future in enumerate(as_completed(future_to_file)):
                 file_path = future_to_file[future]
                 try:
-                    success, was_cached = future.result()
+                    result = future.result()
+
+                    if self.use_processes:
+                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols)
+                        _, success, was_cached, symbols = result
+
+                        # Merge symbols into main process indexes
+                        if success and symbols:
+                            with self.index_lock:
+                                for symbol in symbols:
+                                    # Add to appropriate index
+                                    if symbol.kind in ("class", "struct"):
+                                        self.class_index[symbol.name].append(symbol)
+                                    else:
+                                        self.function_index[symbol.name].append(symbol)
+
+                                    # Add to USR index
+                                    if symbol.usr:
+                                        self.usr_index[symbol.usr] = symbol
+
+                                    # Add to file index
+                                    if symbol.file:
+                                        if symbol.file not in self.file_index:
+                                            self.file_index[symbol.file] = []
+                                        self.file_index[symbol.file].append(symbol)
+
+                                    # Restore call graph
+                                    if symbol.calls:
+                                        for called_usr in symbol.calls:
+                                            self.call_graph_analyzer.add_call(symbol.usr, called_usr)
+                                    if symbol.called_by:
+                                        for caller_usr in symbol.called_by:
+                                            self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+
+                                # Update file hash tracking
+                                file_hash = self._get_file_hash(file_path)
+                                self.file_hashes[file_path] = file_hash
+                    else:
+                        # ThreadPoolExecutor returns (success, was_cached)
+                        success, was_cached = result
+
                 except Exception as exc:
                     diagnostics.error(f"Error indexing {file_path}: {exc}")
                     success, was_cached = False, False

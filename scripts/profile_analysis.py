@@ -66,7 +66,7 @@ class ProfiledAnalyzer(CppAnalyzer):
 
     def _bulk_write_symbols(self):
         """Instrumented bulk write."""
-        self._start_timer('bulk_write', 'bulk_write')
+        self._start_timer('bulk_write')
 
         # Measure lock wait time
         lock_wait_start = time.time()
@@ -115,14 +115,14 @@ class ProfiledAnalyzer(CppAnalyzer):
 
     def _index_translation_unit(self, tu, source_file: str):
         """Instrumented TU indexing."""
-        self._start_timer('ast_traversal', 'ast_traversal')
+        self._start_timer('ast_traversal')
         result = super()._index_translation_unit(tu, source_file)
         self._stop_timer('ast_traversal', 'ast_traversal')
         return result
 
     def index_file(self, file_path: str, force: bool = False):
         """Instrumented file indexing."""
-        self._start_timer('total_file', 'total_file')
+        self._start_timer('total_file')
 
         file_path = os.path.abspath(file_path)
         current_hash = self._get_file_hash(file_path)
@@ -149,7 +149,7 @@ class ProfiledAnalyzer(CppAnalyzer):
 
         # Try cache
         if not force:
-            self._start_timer('cache_load', 'cache_load')
+            self._start_timer('cache_load')
             cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
             self._stop_timer('cache_load', 'cache_load')
 
@@ -207,7 +207,7 @@ class ProfiledAnalyzer(CppAnalyzer):
 
         try:
             # libclang parsing
-            self._start_timer('libclang_parse', 'libclang_parse')
+            self._start_timer('libclang_parse')
             index = self._get_thread_index()
 
             from clang.cindex import TranslationUnit
@@ -285,7 +285,7 @@ class ProfiledAnalyzer(CppAnalyzer):
                                 symbol.called_by = list(callers)
 
             # Save cache
-            self._start_timer('cache_save', 'cache_save')
+            self._start_timer('cache_save')
             self._save_file_cache(
                 file_path, collected_symbols, current_hash, compile_args_hash,
                 success=True, error_message=None, retry_count=0
@@ -388,7 +388,10 @@ def main():
     elapsed = time.time() - start
 
     print(f"\nIndexed {file_count} files in {elapsed:.2f}s")
-    print(f"Average: {elapsed/file_count:.3f}s per file")
+    if file_count > 0:
+        print(f"Average: {elapsed/file_count:.3f}s per file")
+    else:
+        print("No files were successfully indexed")
 
     # Print detailed timing report
     analyzer.print_timing_report()
