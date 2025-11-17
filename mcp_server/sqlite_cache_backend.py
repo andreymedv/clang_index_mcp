@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from .symbol_info import SymbolInfo
+from .schema_migrations import SchemaMigration
 
 # Handle both package and script imports
 try:
@@ -129,6 +130,20 @@ class SqliteCacheBackend:
             # Execute schema (creates tables, indexes, triggers)
             self.conn.executescript(schema_sql)
             self.conn.commit()
+
+            # Check and apply schema migrations
+            migration = SchemaMigration(self.conn)
+
+            # Verify version compatibility
+            migration.check_version_compatibility()
+
+            # Apply pending migrations if needed
+            if migration.needs_migration():
+                diagnostics.info("Database schema migration required")
+                migration.migrate()
+            else:
+                current_version = migration.get_current_version()
+                diagnostics.debug(f"Database schema up-to-date (version {current_version})")
 
             diagnostics.debug("SQLite database initialized successfully")
 
