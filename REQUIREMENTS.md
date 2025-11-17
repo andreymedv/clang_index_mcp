@@ -17,7 +17,8 @@ This document captures the functional requirements for the Clang Index MCP Serve
    - 7.6 [Centralized Error Logging (Developer-Only)](#76-centralized-error-logging-developer-only)
 8. [Statistics and Monitoring Requirements](#8-statistics-and-monitoring-requirements)
 9. [Security and Robustness Requirements](#9-security-and-robustness-requirements)
-10. [Header Extraction Requirements](#10-header-extraction-requirements)
+10. [Tools During Analysis Requirements](#10-tools-during-analysis-requirements)
+11. [Header Extraction Requirements](#11-header-extraction-requirements)
 
 ---
 
@@ -1407,138 +1408,408 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 ---
 
-## 10. Header Extraction Requirements
+## 10. Tools During Analysis Requirements
 
-### 10.1 Header File Discovery and Analysis
+### 10.1 Query Execution During Indexing
 
-**REQ-10.1.1**: When analyzing a source file with `compile_commands.json`, the system SHALL extract C++ symbols from project headers included by that source file.
+**REQ-10.1.1**: The system SHALL allow MCP tools to execute queries while project indexing is in progress.
 
-**REQ-10.1.2**: The system SHALL leverage libclang's translation unit to access already-parsed header ASTs, avoiding redundant file parsing.
+**REQ-10.1.2**: The system SHALL return partial results based on currently-indexed data when queries are executed during indexing.
 
-**REQ-10.1.3**: The system SHALL distinguish between:
+**REQ-10.1.3**: The system SHALL NOT block queries until indexing completes (unless explicitly configured to do so).
+
+**REQ-10.1.4**: **Rationale**: Enable users to start exploring large codebases immediately without waiting minutes for full indexing. Provide transparency and user choice.
+
+### 10.2 Analyzer State Management
+
+**REQ-10.2.1**: The system SHALL maintain an explicit state machine for the analyzer lifecycle with states:
+- `UNINITIALIZED`: No project set
+- `INITIALIZING`: Analyzer created, preparing to index
+- `INDEXING`: Actively indexing files
+- `INDEXED`: Indexing complete, ready for complete queries
+- `REFRESHING`: Incremental refresh in progress
+- `ERROR`: Indexing failed
+
+**REQ-10.2.2**: The system SHALL track state transitions atomically with thread-safe operations.
+
+**REQ-10.2.3**: The system SHALL provide `is_ready_for_queries()` method returning true for states: INDEXING, INDEXED, REFRESHING.
+
+**REQ-10.2.4**: The system SHALL provide `is_fully_indexed()` method returning true only for state: INDEXED.
+
+**REQ-10.2.5**: The system SHALL provide `wait_for_indexed(timeout)` method blocking until indexing completes or timeout expires.
+
+### 10.3 Indexing Progress Tracking
+
+**REQ-10.3.1**: The system SHALL track real-time indexing progress including:
+- `total_files`: Total number of files to index
+- `indexed_files`: Number of files successfully indexed
+- `failed_files`: Number of files that failed to parse
+- `cache_hits`: Number of files loaded from cache
+- `current_file`: File currently being processed
+- `start_time`: Timestamp when indexing started
+- `estimated_completion`: Calculated ETA for completion
+
+**REQ-10.3.2**: The system SHALL calculate `completion_percentage` as `(indexed_files / total_files * 100)`.
+
+**REQ-10.3.3**: The system SHALL provide `is_complete` property returning true when `indexed_files + failed_files >= total_files`.
+
+**REQ-10.3.4**: Progress tracking SHALL be thread-safe and atomic.
+
+**REQ-10.3.5**: The system SHALL update progress information during indexing in real-time.
+
+### 10.4 Query Result Metadata
+
+**REQ-10.4.1**: The system SHALL include metadata in ALL query tool responses with fields:
+- `status`: One of "complete", "partial", or "stale"
+- `indexed_files`: Number of files indexed when query executed
+- `total_files`: Total files in project
+- `completion_percentage`: Indexing progress percentage
+- `timestamp`: ISO format timestamp of query execution
+- `warning`: Human-readable warning message or null
+
+**REQ-10.4.2**: The system SHALL set `status = "partial"` when queries execute during INDEXING or INITIALIZING states.
+
+**REQ-10.4.3**: The system SHALL set `status = "complete"` when queries execute in INDEXED state.
+
+**REQ-10.4.4**: The system SHALL set `status = "stale"` when files have been modified since last indexing.
+
+**REQ-10.4.5**: The system SHALL include explicit warning messages when `status != "complete"`.
+
+**REQ-10.4.6**: Warning messages SHALL:
+- Start with severity indicator (⚠️ symbol)
+- Explain the completeness status clearly
+- Provide actionable recommendations
+- Suggest specific tools to use (get_indexing_status, wait_for_indexing, refresh_project)
+
+**REQ-10.4.7**: Query result format SHALL be:
+```json
+{
+  "data": [...],
+  "metadata": {
+    "status": "partial|complete|stale",
+    "indexed_files": 1234,
+    "total_files": 2890,
+    "completion_percentage": 42.7,
+    "timestamp": "2025-11-17T10:30:45.123456",
+    "warning": "string or null"
+  }
+}
+```
+
+### 10.5 Background Indexing
+
+**REQ-10.5.1**: The system SHALL support truly asynchronous background indexing using asyncio.
+
+**REQ-10.5.2**: The `set_project_directory` tool SHALL NOT block waiting for indexing to complete.
+
+**REQ-10.5.3**: The system SHALL use `asyncio.create_task()` to run indexing in the background.
+
+**REQ-10.5.4**: Background indexing SHALL use `loop.run_in_executor()` to run synchronous indexing code without blocking the event loop.
+
+**REQ-10.5.5**: The system SHALL transition state to INDEXING when background indexing starts.
+
+**REQ-10.5.6**: The system SHALL transition state to INDEXED when background indexing completes successfully.
+
+**REQ-10.5.7**: The system SHALL transition state to ERROR if indexing fails.
+
+**REQ-10.5.8**: The system SHALL support checking if indexing is currently running via `is_indexing()` method.
+
+### 10.6 New MCP Tools
+
+#### 10.6.1 get_indexing_status Tool
+
+**REQ-10.6.1.1**: The system SHALL provide `get_indexing_status` MCP tool with no required parameters.
+
+**REQ-10.6.1.2**: The tool SHALL return:
+- `state`: Current analyzer state (string)
+- `is_fully_indexed`: Boolean indicating if indexing is complete
+- `progress`: Object with progress information (or null if not indexing)
+  - `total_files`: Total files to index
+  - `indexed_files`: Files indexed so far
+  - `failed_files`: Files that failed to parse
+  - `completion_percentage`: Progress percentage
+  - `current_file`: File currently being processed (or null)
+  - `estimated_completion`: ISO timestamp of estimated completion
+
+**REQ-10.6.1.3**: The tool SHALL be available at all times after `set_project_directory`.
+
+**REQ-10.6.1.4**: The tool description SHALL explain: "Get real-time status of project indexing. Returns state, progress (files indexed/total, completion percentage), and whether tools will return complete or partial results."
+
+#### 10.6.2 wait_for_indexing Tool
+
+**REQ-10.6.2.1**: The system SHALL provide `wait_for_indexing` MCP tool with parameter:
+- `timeout`: Number (seconds to wait, default: 60.0)
+
+**REQ-10.6.2.2**: The tool SHALL block until indexing completes or timeout expires.
+
+**REQ-10.6.2.3**: On successful completion, the tool SHALL return:
+- `status`: "complete"
+- `message`: Success message with statistics
+- `duration_seconds`: Time waited
+- `statistics`: Object with indexed_files, failed_files, total_files, cache_hits
+
+**REQ-10.6.2.4**: On timeout, the tool SHALL return:
+- `status`: "timeout"
+- `message`: Timeout message with elapsed time and suggestion to check status
+
+**REQ-10.6.2.5**: The tool description SHALL explain: "Block until indexing completes or timeout is reached. Use this when you need complete results and want to wait for indexing to finish."
+
+### 10.7 Query Behavior Policy
+
+**REQ-10.7.1**: The system SHALL support configurable query behavior via `query_behavior` configuration option.
+
+**REQ-10.7.2**: Query behavior options SHALL be:
+- `allow_partial` (default): Return partial results with warnings
+- `block`: Automatically wait for indexing to complete before executing queries
+- `reject`: Return error message if indexing is in progress
+
+**REQ-10.7.3**: The query behavior SHALL be configurable via:
+- Configuration file: `.cpp-analyzer-config.json` field `query_behavior`
+- Environment variable: `CPP_ANALYZER_QUERY_BEHAVIOR`
+
+**REQ-10.7.4**: When `query_behavior = "block"`, the system SHALL:
+- Automatically wait for indexing to complete (with timeout: 300 seconds)
+- Execute query only after indexing completes
+- Return timeout error if indexing doesn't complete within timeout
+
+**REQ-10.7.5**: When `query_behavior = "reject"`, the system SHALL:
+- Check if indexing is in progress
+- Return error message with current progress percentage
+- Suggest using `get_indexing_status` or changing policy
+
+**REQ-10.7.6**: When `query_behavior = "allow_partial"` (default), the system SHALL:
+- Execute queries immediately
+- Return partial results with metadata and warnings
+
+**REQ-10.7.7**: The system SHALL support optional `auto_wait_threshold` configuration (percentage):
+- If indexing is >N% complete (e.g., 95%), automatically wait for completion
+- Only applies when `query_behavior = "allow_partial"`
+
+### 10.8 Notification Requirements
+
+**REQ-10.8.1**: The system SHALL provide multi-level notification of data completeness:
+- Level 1: Machine-readable metadata in every response
+- Level 2: Human-readable warning messages for incomplete results
+- Level 3: Upfront disclosure in tool descriptions
+
+**REQ-10.8.2**: Level 1 (Metadata) SHALL always be present in query responses (see REQ-10.4).
+
+**REQ-10.8.3**: Level 2 (Warning Messages) SHALL be included when `status = "partial"` or `status = "stale"`.
+
+**REQ-10.8.4**: Level 2 warning for partial results SHALL include:
+- Clear statement of incompleteness
+- Percentage indexed
+- File counts (indexed/total)
+- Suggestion to use `get_indexing_status` or `wait_for_indexing`
+
+**REQ-10.8.5**: Level 2 warning for stale results SHALL include:
+- Statement that index may be outdated
+- Count of modified files
+- Suggestion to use `refresh_project`
+
+**REQ-10.8.6**: Level 3 (Tool Descriptions) SHALL include warning in description of ALL query tools:
+- State that results will be incomplete if called during indexing
+- Instruct users to check response `metadata.status` field
+- Suggest using `wait_for_indexing` first if complete results are required
+
+**REQ-10.8.7**: **GUARANTEE**: No user SHALL be able to receive incomplete data without being explicitly warned through at least one notification level.
+
+### 10.9 Thread Safety During Queries
+
+**REQ-10.9.1**: The system SHALL support concurrent query execution while indexing is in progress.
+
+**REQ-10.9.2**: Query methods SHALL use thread-safe read operations with appropriate locking.
+
+**REQ-10.9.3**: Queries SHALL take snapshots of current index state to avoid holding locks during processing.
+
+**REQ-10.9.4**: The system SHALL NOT introduce deadlocks between indexing operations and query operations.
+
+**REQ-10.9.5**: Optional: The system MAY use read-write locks to allow multiple concurrent readers.
+
+### 10.10 Backward Compatibility
+
+**REQ-10.10.1**: Existing MCP tools SHALL continue to function without changes.
+
+**REQ-10.10.2**: The addition of `metadata` field to responses SHALL be non-breaking:
+- Old clients that ignore metadata will still receive correct data in `data` field
+- No existing field names or structures are changed
+
+**REQ-10.10.3**: New tools (`get_indexing_status`, `wait_for_indexing`) SHALL be additive only.
+
+**REQ-10.10.4**: Clients that do not check metadata SHALL still receive functionally correct results (just without completeness awareness).
+
+**REQ-10.10.5**: The system SHALL NOT require API version negotiation or breaking changes to existing integrations.
+
+### 10.11 Race Condition Fix
+
+**REQ-10.11.1**: The system SHALL NOT set `analyzer_initialized = True` before indexing starts.
+
+**REQ-10.11.2**: In blocking mode (Phase 1), `analyzer_initialized` SHALL only be set to True AFTER `index_project()` completes.
+
+**REQ-10.11.3**: In async mode (Phase 3+), tools SHALL check state management flags instead of simple boolean.
+
+**REQ-10.11.4**: The system SHALL prevent tools from executing on partially-indexed data unless explicitly designed to do so (with warnings).
+
+**REQ-10.11.5**: **Critical**: Fix for the current race condition in `cpp_mcp_server.py:433` where `analyzer_initialized = True` is set before indexing completes.
+
+### 10.12 Performance Requirements
+
+**REQ-10.12.1**: Indexing performance SHALL NOT degrade by more than 10% due to state management and progress tracking.
+
+**REQ-10.12.2**: Tool response time SHALL be ≤ 100ms for cached queries (no contention).
+
+**REQ-10.12.3**: Memory overhead for state management and synchronization SHALL be ≤ 5% of total index size.
+
+**REQ-10.12.4**: Concurrent queries during indexing SHALL have response time ≤ 120% of normal response time (20% overhead).
+
+**REQ-10.12.5**: Progress updates SHALL be batched appropriately to avoid performance impact.
+
+### 10.13 Error Handling
+
+**REQ-10.13.1**: If state management fails, the system SHALL fall back to safe defaults (block queries until indexed).
+
+**REQ-10.13.2**: If progress tracking fails, the system SHALL continue indexing and log errors.
+
+**REQ-10.13.3**: If background indexing task crashes, the system SHALL transition to ERROR state.
+
+**REQ-10.13.4**: The system SHALL provide clear error messages for timeout conditions.
+
+**REQ-10.13.5**: Error messages SHALL include suggestions for next steps (check status, increase timeout, etc.).
+
+---
+
+## 11. Header Extraction Requirements
+
+### 11.1 Header File Discovery and Analysis
+
+**REQ-11.1.1**: When analyzing a source file with `compile_commands.json`, the system SHALL extract C++ symbols from project headers included by that source file.
+
+**REQ-11.1.2**: The system SHALL leverage libclang's translation unit to access already-parsed header ASTs, avoiding redundant file parsing.
+
+**REQ-11.1.3**: The system SHALL distinguish between:
 - Project headers (files under the project root, not in excluded/dependency directories)
 - System headers (standard library headers like `<iostream>`)
 - External dependency headers (third-party libraries)
 
-**REQ-10.1.4**: The system SHALL extract symbols only from project headers, ignoring system and external headers.
+**REQ-11.1.4**: The system SHALL extract symbols only from project headers, ignoring system and external headers.
 
-**REQ-10.1.5**: The system SHALL support nested includes (headers including other headers) recursively to any depth.
+**REQ-11.1.5**: The system SHALL support nested includes (headers including other headers) recursively to any depth.
 
-**REQ-10.1.6**: For each cursor in the AST, the system SHALL use `cursor.location.file` to determine which file (source or header) the symbol belongs to.
+**REQ-11.1.6**: For each cursor in the AST, the system SHALL use `cursor.location.file` to determine which file (source or header) the symbol belongs to.
 
-### 10.2 First-Win Processing Strategy
+### 11.2 First-Win Processing Strategy
 
-**REQ-10.2.1**: The system SHALL use a "first-win" strategy where the first source file to include a header extracts its symbols.
+**REQ-11.2.1**: The system SHALL use a "first-win" strategy where the first source file to include a header extracts its symbols.
 
-**REQ-10.2.2**: Subsequent source files that include the same header SHALL skip symbol extraction for that header.
+**REQ-11.2.2**: Subsequent source files that include the same header SHALL skip symbol extraction for that header.
 
-**REQ-10.2.3**: Header identity for deduplication SHALL be based solely on the header's file path (absolute path).
+**REQ-11.2.3**: Header identity for deduplication SHALL be based solely on the header's file path (absolute path).
 
-**REQ-10.2.4**: The system SHALL maintain a thread-safe tracker of processed headers to coordinate first-win logic across concurrent source file analyses.
+**REQ-11.2.4**: The system SHALL maintain a thread-safe tracker of processed headers to coordinate first-win logic across concurrent source file analyses.
 
-**REQ-10.2.5**: The header tracker SHALL prevent race conditions when multiple threads attempt to claim the same header simultaneously.
+**REQ-11.2.5**: The header tracker SHALL prevent race conditions when multiple threads attempt to claim the same header simultaneously.
 
 **Rationale**: First-win strategy provides significant performance improvement (5-10×) for projects with headers included by multiple source files, while maintaining correctness through USR-based symbol deduplication.
 
-### 10.3 Header Change Detection
+### 11.3 Header Change Detection
 
-**REQ-10.3.1**: For each processed header, the system SHALL calculate and store a file hash (MD5) to detect content changes.
+**REQ-11.3.1**: For each processed header, the system SHALL calculate and store a file hash (MD5) to detect content changes.
 
-**REQ-10.3.2**: When a header file's hash changes, the system SHALL automatically invalidate the previous extraction and re-process the header on the next source file analysis.
+**REQ-11.3.2**: When a header file's hash changes, the system SHALL automatically invalidate the previous extraction and re-process the header on the next source file analysis.
 
-**REQ-10.3.3**: The header tracker SHALL compare the current file hash with the stored hash during claim attempts to detect changes.
+**REQ-11.3.3**: The header tracker SHALL compare the current file hash with the stored hash during claim attempts to detect changes.
 
-**REQ-10.3.4**: If a hash mismatch is detected, the header SHALL be re-claimed for extraction even if previously processed.
+**REQ-11.3.4**: If a hash mismatch is detected, the header SHALL be re-claimed for extraction even if previously processed.
 
-### 10.4 compile_commands.json Versioning
+### 11.4 compile_commands.json Versioning
 
-**REQ-10.4.1**: The system SHALL calculate and store a hash (MD5) of the entire `compile_commands.json` file.
+**REQ-11.4.1**: The system SHALL calculate and store a hash (MD5) of the entire `compile_commands.json` file.
 
-**REQ-10.4.2**: On analyzer startup, the system SHALL compare the current `compile_commands.json` hash with the cached hash.
+**REQ-11.4.2**: On analyzer startup, the system SHALL compare the current `compile_commands.json` hash with the cached hash.
 
-**REQ-10.4.3**: If the `compile_commands.json` hash has changed, the system SHALL clear all header processing tracking and trigger full re-analysis of all headers.
+**REQ-11.4.3**: If the `compile_commands.json` hash has changed, the system SHALL clear all header processing tracking and trigger full re-analysis of all headers.
 
-**REQ-10.4.4**: The system SHALL persist the `compile_commands.json` hash in the header tracker cache for version comparison across restarts.
+**REQ-11.4.4**: The system SHALL persist the `compile_commands.json` hash in the header tracker cache for version comparison across restarts.
 
 **Rationale**: Changes to compilation flags, include paths, or defines in `compile_commands.json` may affect header parsing results, requiring full re-analysis.
 
-### 10.5 Header Tracking Persistence
+### 11.5 Header Tracking Persistence
 
-**REQ-10.5.1**: The system SHALL persist header processing state to disk in a cache file (`header_tracker.json`).
+**REQ-11.5.1**: The system SHALL persist header processing state to disk in a cache file (`header_tracker.json`).
 
-**REQ-10.5.2**: The header tracker cache SHALL include:
+**REQ-11.5.2**: The header tracker cache SHALL include:
 - Cache version identifier
 - `compile_commands.json` hash
 - Map of processed header paths to file hashes
 - Timestamp of last update
 
-**REQ-10.5.3**: On analyzer startup, the system SHALL restore header tracking state from cache if the `compile_commands.json` hash matches.
+**REQ-11.5.3**: On analyzer startup, the system SHALL restore header tracking state from cache if the `compile_commands.json` hash matches.
 
-**REQ-10.5.4**: The system SHALL save header tracking state after each source file analysis to ensure persistence.
+**REQ-11.5.4**: The system SHALL save header tracking state after each source file analysis to ensure persistence.
 
-**REQ-10.5.5**: The header tracker cache SHALL be stored in the project-specific cache directory (`.mcp_cache/{project}/header_tracker.json`).
+**REQ-11.5.5**: The header tracker cache SHALL be stored in the project-specific cache directory (`.mcp_cache/{project}/header_tracker.json`).
 
-### 10.6 Thread Safety
+### 11.6 Thread Safety
 
-**REQ-10.6.1**: The header processing tracker SHALL use a threading Lock to protect all access to internal state (`_processed`, `_in_progress`).
+**REQ-11.6.1**: The header processing tracker SHALL use a threading Lock to protect all access to internal state (`_processed`, `_in_progress`).
 
-**REQ-10.6.2**: The `try_claim_header()` operation SHALL be atomic: checking processed state, checking in-progress state, and claiming the header must occur within a single lock acquisition.
+**REQ-11.6.2**: The `try_claim_header()` operation SHALL be atomic: checking processed state, checking in-progress state, and claiming the header must occur within a single lock acquisition.
 
-**REQ-10.6.3**: Multiple threads analyzing different source files simultaneously SHALL correctly coordinate header extraction without race conditions.
+**REQ-11.6.3**: Multiple threads analyzing different source files simultaneously SHALL correctly coordinate header extraction without race conditions.
 
-**REQ-10.6.4**: The system SHALL ensure that each header is extracted exactly once, even under high concurrency (e.g., 16 parallel workers).
+**REQ-11.6.4**: The system SHALL ensure that each header is extracted exactly once, even under high concurrency (e.g., 16 parallel workers).
 
-### 10.7 Symbol Deduplication
+### 11.7 Symbol Deduplication
 
-**REQ-10.7.1**: The system SHALL continue to use USR-based deduplication for all symbols, regardless of whether they originate from source files or headers.
+**REQ-11.7.1**: The system SHALL continue to use USR-based deduplication for all symbols, regardless of whether they originate from source files or headers.
 
-**REQ-10.7.2**: When a symbol with an existing USR is encountered during header extraction, the system SHALL skip adding it to the indexes (already present).
+**REQ-11.7.2**: When a symbol with an existing USR is encountered during header extraction, the system SHALL skip adding it to the indexes (already present).
 
-**REQ-10.7.3**: USR deduplication SHALL serve as a safety mechanism to ensure no duplicate symbols exist, even if header tracking logic has bugs.
+**REQ-11.7.3**: USR deduplication SHALL serve as a safety mechanism to ensure no duplicate symbols exist, even if header tracking logic has bugs.
 
-**REQ-10.7.4**: Optionally, the system MAY track which files define each symbol (for debugging and diagnostics), but this is not required for correctness.
+**REQ-11.7.4**: Optionally, the system MAY track which files define each symbol (for debugging and diagnostics), but this is not required for correctness.
 
-### 10.8 Cache Structure Extensions
+### 11.8 Cache Structure Extensions
 
-**REQ-10.8.1**: Per-file caches MAY optionally include metadata about header extraction:
+**REQ-11.8.1**: Per-file caches MAY optionally include metadata about header extraction:
 - `headers_extracted`: Map of header paths to file hashes for headers extracted during this source's analysis
 - `headers_skipped`: List of header paths that were already processed by other sources
 
-**REQ-10.8.2**: Header extraction metadata in per-file caches SHALL be for informational/diagnostic purposes only and SHALL NOT affect correctness.
+**REQ-11.8.2**: Header extraction metadata in per-file caches SHALL be for informational/diagnostic purposes only and SHALL NOT affect correctness.
 
-**REQ-10.8.3**: The system SHALL maintain backward compatibility: old caches without header metadata SHALL load successfully.
+**REQ-11.8.3**: The system SHALL maintain backward compatibility: old caches without header metadata SHALL load successfully.
 
-### 10.9 Performance Requirements
+### 11.9 Performance Requirements
 
-**REQ-10.9.1**: For projects where headers are included by multiple source files, header extraction SHALL provide a performance improvement of 5-10× compared to re-extracting from each source.
+**REQ-11.9.1**: For projects where headers are included by multiple source files, header extraction SHALL provide a performance improvement of 5-10× compared to re-extracting from each source.
 
-**REQ-10.9.2**: The overhead of header tracking (claim checks, hash calculations, cache persistence) SHALL be negligible compared to the time saved by avoiding redundant extractions.
+**REQ-11.9.2**: The overhead of header tracking (claim checks, hash calculations, cache persistence) SHALL be negligible compared to the time saved by avoiding redundant extractions.
 
-**REQ-10.9.3**: Header tracker cache operations (save/restore) SHALL complete in under 100ms for typical projects (up to 1000 unique headers).
+**REQ-11.9.3**: Header tracker cache operations (save/restore) SHALL complete in under 100ms for typical projects (up to 1000 unique headers).
 
 ---
 
-## 10.10 Assumptions and Constraints
+## 11.10 Assumptions and Constraints
 
 ### Assumptions
 
-**ASSUMPTION-10.1**: For a given version of `compile_commands.json`, analyzing a header file will produce identical symbol results regardless of which source file includes it.
+***ASSUMPTION-11.1**: For a given version of `compile_commands.json`, analyzing a header file will produce identical symbol results regardless of which source file includes it.
 
 **Why Safe**: In well-structured C++ projects, headers provide consistent declarations. The same compilation flags from `compile_commands.json` ensure consistent preprocessing. This assumption is sufficient for code analysis use cases.
 
 **Edge Cases**: Headers with macro-dependent behavior (different symbols based on which source includes them) may not be fully captured. This is considered poor C++ practice and acceptable to miss.
 
-**ASSUMPTION-10.2**: When `compile_commands.json` changes, all header tracking can be safely reset and headers re-analyzed from scratch.
+***ASSUMPTION-11.2**: When `compile_commands.json` changes, all header tracking can be safely reset and headers re-analyzed from scratch.
 
-**ASSUMPTION-10.3**: Header file path is a sufficient unique identifier for deduplication within a single `compile_commands.json` version.
+***ASSUMPTION-11.3**: Header file path is a sufficient unique identifier for deduplication within a single `compile_commands.json` version.
 
 ### Constraints
 
-**CONSTRAINT-10.1**: Headers with macro-dependent behavior (e.g., different symbols when included from different sources due to preprocessor state) may not be fully captured.
+**CONSTRAINT-11.1**: Headers with macro-dependent behavior (e.g., different symbols when included from different sources due to preprocessor state) may not be fully captured.
 
-**CONSTRAINT-10.2**: The system does NOT perform cross-source validation of header consistency (i.e., does not check if the same header produces different symbols when included from different sources).
+**CONSTRAINT-11.2**: The system does NOT perform cross-source validation of header consistency (i.e., does not check if the same header produces different symbols when included from different sources).
 
-**CONSTRAINT-10.3**: The system does NOT monitor `compile_commands.json` for changes at runtime. Users must restart the analyzer or manually trigger rebuild after modifying the compilation database.
+**CONSTRAINT-11.3**: The system does NOT monitor `compile_commands.json` for changes at runtime. Users must restart the analyzer or manually trigger rebuild after modifying the compilation database.
 
 ---
 
@@ -1556,15 +1827,34 @@ These requirements imply the following testing needs:
 8. **Platform Tests**: Verify Windows/Linux/macOS specific behavior
 9. **Configuration Tests**: Verify configuration loading and merging
 10. **Integration Tests**: Verify end-to-end workflows with real C++ projects
-11. **Header Extraction Tests**: Verify header discovery, first-win strategy, change detection, thread safety, and performance improvements
+11. **Tools During Analysis Tests**: Verify querying during indexing, partial results with metadata, state transitions, background indexing, notification warnings, race condition fix, and concurrent query safety
+12. **Header Extraction Tests**: Verify header discovery, first-win strategy, change detection, thread safety, and performance improvements
 
 ---
 
 ## Document Version
 
-- **Version**: 3.2
-- **Date**: 2025-11-16
-- **Status**: Production-ready with header extraction feature requirements
+- **Version**: 3.3
+- **Date**: 2025-11-17
+- **Status**: Production-ready with tools-during-analysis and header extraction features
+- **Changes from v3.2**:
+  - Added Section 10: Tools During Analysis Requirements (69 new requirements)
+    - REQ-10.1: Query Execution During Indexing (4 requirements)
+    - REQ-10.2: Analyzer State Management (5 requirements)
+    - REQ-10.3: Indexing Progress Tracking (5 requirements)
+    - REQ-10.4: Query Result Metadata (7 requirements)
+    - REQ-10.5: Background Indexing (8 requirements)
+    - REQ-10.6: New MCP Tools (10 requirements - get_indexing_status, wait_for_indexing)
+    - REQ-10.7: Query Behavior Policy (7 requirements)
+    - REQ-10.8: Notification Requirements (7 requirements)
+    - REQ-10.9: Thread Safety During Queries (5 requirements)
+    - REQ-10.10: Backward Compatibility (5 requirements)
+    - REQ-10.11: Race Condition Fix (5 requirements)
+    - REQ-10.12: Performance Requirements (5 requirements)
+    - REQ-10.13: Error Handling (5 requirements)
+  - Renumbered Section 10 (Header Extraction) to Section 11
+  - Updated Testing Implications: Added tools-during-analysis tests
+  - Total Requirements: 340+ requirements across 11 major sections
 - **Changes from v3.1**:
   - Added Section 10: Header Extraction Requirements (43 new requirements)
     - REQ-10.1: Header File Discovery and Analysis (6 requirements)
@@ -1610,5 +1900,5 @@ These requirements imply the following testing needs:
     - REQ-9.6: Platform-Specific Security (4 requirements)
     - REQ-9.7: Concurrent Access Protection (4 requirements)
     - REQ-9.8: Boundary Conditions (5 requirements)
-- **Total Requirements**: 270+ requirements across 10 major sections
-- **Coverage**: 100% of implemented functionality including header extraction planning
+- **Total Requirements**: 340+ requirements across 11 major sections
+- **Coverage**: 100% of implemented functionality including tools-during-analysis and header extraction features
