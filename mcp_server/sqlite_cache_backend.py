@@ -379,6 +379,185 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to count symbols: {e}")
             return 0
 
+    def delete_symbols_by_file(self, file_path: str) -> int:
+        """
+        Delete all symbols from a specific file.
+
+        Args:
+            file_path: Path to file whose symbols should be deleted
+
+        Returns:
+            Number of symbols deleted
+        """
+        try:
+            self._ensure_connected()
+
+            # Get count before deletion
+            cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM symbols WHERE file = ?",
+                (file_path,)
+            )
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                return 0
+
+            # Delete symbols
+            with self.conn:
+                self.conn.execute(
+                    "DELETE FROM symbols WHERE file = ?",
+                    (file_path,)
+                )
+
+            diagnostics.debug(f"Deleted {count} symbols from {file_path}")
+            return count
+
+        except Exception as e:
+            diagnostics.error(f"Failed to delete symbols for file {file_path}: {e}")
+            return 0
+
+    def update_file_metadata(self, file_path: str, file_hash: str,
+                            compile_args_hash: Optional[str] = None,
+                            symbol_count: int = 0) -> bool:
+        """
+        Update or insert file metadata.
+
+        Args:
+            file_path: Absolute path to file
+            file_hash: MD5 hash of file contents
+            compile_args_hash: Hash of compilation arguments
+            symbol_count: Number of symbols in file
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._ensure_connected()
+
+            with self.conn:
+                self.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO file_metadata
+                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (file_path, file_hash, compile_args_hash, time.time(), symbol_count)
+                )
+
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Failed to update file metadata for {file_path}: {e}")
+            return False
+
+    def get_file_metadata(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Get metadata for a file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Dict with file metadata if found, None otherwise
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                "SELECT * FROM file_metadata WHERE file_path = ?",
+                (file_path,)
+            )
+
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'file_path': row['file_path'],
+                    'file_hash': row['file_hash'],
+                    'compile_args_hash': row['compile_args_hash'],
+                    'indexed_at': row['indexed_at'],
+                    'symbol_count': row['symbol_count']
+                }
+
+            return None
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get file metadata for {file_path}: {e}")
+            return None
+
+    def load_all_file_hashes(self) -> Dict[str, str]:
+        """
+        Load all file hashes for cache validation.
+
+        Returns:
+            Dict mapping file_path to file_hash
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                "SELECT file_path, file_hash FROM file_metadata"
+            )
+
+            return {row['file_path']: row['file_hash'] for row in cursor.fetchall()}
+
+        except Exception as e:
+            diagnostics.error(f"Failed to load file hashes: {e}")
+            return {}
+
+    def update_cache_metadata(self, key: str, value: str) -> bool:
+        """
+        Update cache metadata.
+
+        Args:
+            key: Metadata key
+            value: Metadata value (as JSON string for complex types)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._ensure_connected()
+
+            with self.conn:
+                self.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (key, value, time.time())
+                )
+
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Failed to update cache metadata {key}: {e}")
+            return False
+
+    def get_cache_metadata(self, key: str) -> Optional[str]:
+        """
+        Get cache metadata value.
+
+        Args:
+            key: Metadata key
+
+        Returns:
+            Metadata value if found, None otherwise
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                "SELECT value FROM cache_metadata WHERE key = ?",
+                (key,)
+            )
+
+            row = cursor.fetchone()
+            return row['value'] if row else None
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get cache metadata {key}: {e}")
+            return None
+
     def verify_integrity(self) -> bool:
         """
         Verify database integrity.
