@@ -43,6 +43,74 @@ class CacheManager:
         cache_dir = cache_base / f"{self.project_root.name}_{project_hash}"
         return cache_dir
 
+    def _maybe_migrate_from_json(self) -> bool:
+        """
+        Automatically migrate from JSON cache to SQLite if needed.
+
+        Checks for existing JSON cache and migration marker. If JSON cache exists
+        and migration hasn't been done, performs automatic migration with backup.
+
+        Returns:
+            True if migration was performed or not needed, False if migration failed
+        """
+        try:
+            from .cache_migration import (
+                should_migrate,
+                create_migration_backup,
+                migrate_json_to_sqlite,
+                verify_migration,
+                create_migration_marker
+            )
+
+            db_path = self.cache_dir / "symbols.db"
+            marker_path = self.cache_dir / ".migrated_to_sqlite"
+
+            # Check if migration is needed
+            if not should_migrate(self.cache_dir, marker_path):
+                return True
+
+            diagnostics.info("Starting automatic JSON → SQLite migration...")
+
+            # Create backup before migration
+            backup_success, backup_msg, backup_path = create_migration_backup(self.cache_dir)
+            if not backup_success:
+                diagnostics.error(f"Failed to create backup: {backup_msg}")
+                return False
+
+            diagnostics.info(f"Backup created: {backup_path}")
+
+            # Perform migration
+            migrate_success, migrate_msg = migrate_json_to_sqlite(self.cache_dir, db_path)
+            if not migrate_success:
+                diagnostics.error(f"Migration failed: {migrate_msg}")
+                return False
+
+            diagnostics.info(f"Migration completed: {migrate_msg}")
+
+            # Verify migration
+            verify_success, verify_msg = verify_migration(self.cache_dir, db_path)
+            if not verify_success:
+                diagnostics.error(f"Migration verification failed: {verify_msg}")
+                return False
+
+            diagnostics.info(f"Migration verified: {verify_msg}")
+
+            # Create marker file to prevent re-migration
+            migration_info = {
+                "backup_path": str(backup_path) if backup_path else None,
+                "message": migrate_msg
+            }
+            create_migration_marker(marker_path, migration_info)
+
+            diagnostics.info("Migration successful! SQLite cache is now active.")
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Migration failed with exception: {e}")
+            import traceback
+            diagnostics.error(traceback.format_exc())
+            return False
+
     def _create_backend(self) -> CacheBackend:
         """
         Create appropriate cache backend based on feature flag.
@@ -60,6 +128,12 @@ class CacheManager:
 
         if use_sqlite in ("1", "true"):
             try:
+                # Attempt automatic migration from JSON if needed
+                migration_ok = self._maybe_migrate_from_json()
+                if not migration_ok:
+                    diagnostics.warning("Migration failed, falling back to JSON backend")
+                    return JsonCacheBackend(self.cache_dir)
+
                 # Import SQLite backend dynamically to avoid startup errors if missing
                 from .sqlite_cache_backend import SqliteCacheBackend
 
