@@ -67,14 +67,22 @@ The analyzer is optimized for performance on multi-core systems, but you can fur
 ### Optional Dependencies
 
 **For Large Projects (recommended):**
+
+Install the performance extras package:
 ```bash
-pip install orjson
+pip install .[performance]
+```
+
+Or install orjson directly:
+```bash
+pip install orjson>=3.0.0
 ```
 
 Benefits:
 - **3-5x faster** JSON parsing for large `compile_commands.json` files (40MB+)
 - Automatically used if installed, no configuration needed
 - Particularly beneficial for projects with 1000+ compilation units
+- Falls back gracefully to stdlib json if not available
 
 ### Performance Features
 

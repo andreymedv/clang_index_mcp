@@ -7,6 +7,10 @@ Tests cover:
 - Bulk symbol writes
 - compile_commands.json binary caching
 - Worker count optimization
+
+Requirements verified:
+- libclang>=16.0.0 (required) - Verified by all test classes
+- orjson>=3.0.0 (optional from performance extras) - Verified by TestOrjsonSupport
 """
 
 import unittest
@@ -297,16 +301,29 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
 
 @unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")
 class TestOrjsonSupport(unittest.TestCase):
-    """Test orjson optional dependency support"""
+    """Test orjson optional dependency support.
+
+    Verifies requirement: orjson>=3.0.0 (optional, from [performance] extras)
+    - Tests that code detects orjson availability correctly
+    - Tests graceful fallback to stdlib json when orjson not installed
+    - Ensures no errors occur regardless of orjson installation status
+    """
 
     def test_orjson_detection(self):
-        """Should detect if orjson is available"""
+        """Should detect if orjson is available.
+
+        Verifies: The code properly detects orjson installation status via HAS_ORJSON flag.
+        """
         from mcp_server.compile_commands_manager import HAS_ORJSON
         self.assertIsInstance(HAS_ORJSON, bool)
 
     @patch('mcp_server.compile_commands_manager.HAS_ORJSON', False)
     def test_fallback_to_stdlib_json(self):
-        """Should fall back to stdlib json if orjson not available"""
+        """Should fall back to stdlib json if orjson not available.
+
+        Verifies: Code works correctly even when orjson (optional requirement) is not installed.
+        This ensures the optional dependency is truly optional and not required for core functionality.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
 

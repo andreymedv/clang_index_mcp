@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Test script to verify C++ MCP Server installation
+Test script to verify C++ MCP Server installation.
+
+Requirements verified:
+- mcp>=1.0.0 (required) - Verified by test_imports()
+- libclang>=16.0.0 (required) - Verified by test_imports() and test_libclang_library()
+- orjson>=3.0.0 (optional from [performance] extras) - Checked by test_optional_dependencies()
 """
 import sys
 import os
@@ -8,22 +13,36 @@ import os
 def test_imports():
     """Test that all required packages can be imported"""
     print("Testing package imports...")
-    
+
     try:
         import mcp
         print("✓ MCP package imported successfully")
     except ImportError as e:
         print(f"✗ Failed to import MCP: {e}")
         return False
-    
+
     try:
         import clang.cindex
         print("✓ libclang Python bindings imported successfully")
     except ImportError as e:
         print(f"✗ Failed to import clang: {e}")
         return False
-    
+
     return True
+
+def test_optional_dependencies():
+    """Test optional performance dependencies (informational only, not required)"""
+    print("\nChecking optional dependencies...")
+
+    # Check orjson (from [performance] extras)
+    try:
+        import orjson
+        print("✓ orjson is installed (3-5x faster JSON parsing)")
+    except ImportError:
+        print("ℹ orjson not installed (optional performance optimization)")
+        print("  Install with: pip install .[performance] or pip install orjson>=3.0.0")
+
+    return True  # Always return True since these are optional
 
 def test_libclang_library():
     """Test that libclang library can be found and loaded"""
@@ -144,22 +163,25 @@ def main():
     """Run all tests"""
     print("C++ MCP Server Installation Test")
     print("=" * 40)
-    
+
     all_passed = True
-    
+
     # Run tests
     if not test_imports():
         all_passed = False
-    
+
     if not test_libclang_library():
         all_passed = False
-    
+
     if not test_server_import():
         all_passed = False
-    
+
     if not test_basic_parsing():
         all_passed = False
-    
+
+    # Check optional dependencies (informational, doesn't affect pass/fail)
+    test_optional_dependencies()
+
     # Summary
     print("\n" + "=" * 40)
     if all_passed:

@@ -51,6 +51,9 @@ dev = [
     "pre-commit>=3.0",
     "isort>=5.13",
 ]
+performance = [
+    "orjson>=3.0.0",  # 3-5x faster JSON parsing for large compile_commands.json files
+]
 
 [project.urls]
 Homepage = "https://github.com/andreymedv/clang_index_mcp"
