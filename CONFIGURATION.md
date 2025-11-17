@@ -2,6 +2,47 @@
 
 This document describes how to configure the C++ Analyzer MCP Server.
 
+## Table of Contents
+
+- [Configuration File Locations](#configuration-file-locations)
+- [Configuration File Format](#configuration-file-format)
+- [Configuration Options](#configuration-options)
+  - [General Options](#general-options)
+  - [Diagnostics Options](#diagnostics-options)
+  - [Compile Commands Options](#compile-commands-options)
+- [Environment Variables](#environment-variables)
+- [Creating a Configuration File](#creating-a-configuration-file)
+- [Configuration Examples](#examples)
+- [Troubleshooting](#troubleshooting)
+
+## Quick Reference
+
+All available configuration options:
+
+| Category | Option | Type | Default | Description |
+|----------|--------|------|---------|-------------|
+| **General** | `exclude_directories` | array | *see docs* | Directories to skip |
+| | `exclude_patterns` | array | `[]` | File patterns to exclude |
+| | `dependency_directories` | array | *see docs* | Third-party code dirs |
+| | `include_dependencies` | boolean | `true` | Analyze dependencies |
+| | `max_file_size_mb` | number | `10` | Max file size (MB) |
+| | `max_parse_retries` | number | `2` | Retry attempts for failed files |
+| **Diagnostics** | `diagnostics.level` | string | `"info"` | Logging level |
+| | `diagnostics.enabled` | boolean | `true` | Enable diagnostics |
+| **Compile Commands** | `compile_commands.enabled` | boolean | `true` | Enable support |
+| | `compile_commands.path` | string | `"compile_commands.json"` | File path |
+| | `compile_commands.cache_enabled` | boolean | `true` | Enable caching |
+| | `compile_commands.fallback_to_hardcoded` | boolean | `true` | Use defaults if missing |
+| | `compile_commands.cache_expiry_seconds` | number | `300` | *(deprecated)* |
+| | `compile_commands.supported_extensions` | array | *see docs* | File extensions |
+| | `compile_commands.exclude_patterns` | array | `[]` | Exclude patterns |
+
+**Environment Variables:**
+- `CPP_ANALYZER_CONFIG` - Path to custom config file
+- `CPP_ANALYZER_USE_THREADS` - Use ThreadPool instead of ProcessPool (not recommended)
+
+---
+
 ## Configuration File Locations
 
 The analyzer looks for configuration files in the following locations (in priority order):
@@ -63,13 +104,24 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 
   "include_dependencies": true,
   "max_file_size_mb": 10,
+  "max_parse_retries": 2,
+
+  "diagnostics": {
+    "level": "info",
+    "enabled": true
+  },
 
   "compile_commands": {
     "enabled": true,
     "path": "compile_commands.json",
     "cache_enabled": true,
     "fallback_to_hardcoded": true,
-    "cache_expiry_seconds": 300
+    "cache_expiry_seconds": 300,
+    "supported_extensions": [
+      ".cpp", ".cc", ".cxx", ".c++",
+      ".h", ".hpp", ".hxx", ".h++"
+    ],
+    "exclude_patterns": []
   }
 }
 ```
@@ -85,6 +137,7 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 | `dependency_directories` | array | See below | Directories containing third-party code |
 | `include_dependencies` | boolean | `true` | Whether to analyze dependency files |
 | `max_file_size_mb` | number | `10` | Maximum file size to analyze (MB) |
+| `max_parse_retries` | number | `2` | Maximum retry attempts for failed files |
 
 **Default exclude_directories**:
 ```json
@@ -98,6 +151,30 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
  "External", "vendor", "dependencies", "packages"]
 ```
 
+### Diagnostics Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `diagnostics.level` | string | `"info"` | Logging level: `"debug"`, `"info"`, `"warning"`, `"error"`, `"fatal"` |
+| `diagnostics.enabled` | boolean | `true` | Enable/disable diagnostic output |
+
+**Diagnostic Levels**:
+- `debug`: Verbose output including internal details
+- `info`: General informational messages (default)
+- `warning`: Warning messages for non-critical issues
+- `error`: Error messages for failures
+- `fatal`: Critical errors that stop execution
+
+**Example**:
+```json
+{
+  "diagnostics": {
+    "level": "warning",
+    "enabled": true
+  }
+}
+```
+
 ### Compile Commands Options
 
 | Option | Type | Default | Description |
@@ -106,7 +183,31 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 | `compile_commands.path` | string | `"compile_commands.json"` | Path to compile_commands.json (relative to project root) |
 | `compile_commands.cache_enabled` | boolean | `true` | Enable caching of compile commands |
 | `compile_commands.fallback_to_hardcoded` | boolean | `true` | Use default args if compile_commands.json not found |
-| `compile_commands.cache_expiry_seconds` | number | `300` | Cache expiry time in seconds |
+| `compile_commands.cache_expiry_seconds` | number | `300` | Cache expiry time in seconds (deprecated, binary cache used instead) |
+| `compile_commands.supported_extensions` | array | See below | File extensions to analyze |
+| `compile_commands.exclude_patterns` | array | `[]` | Patterns to exclude from compile_commands.json |
+
+**Default supported_extensions**:
+```json
+[".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]
+```
+
+**Notes**:
+- `cache_expiry_seconds`: This setting is deprecated. The new binary cache (`.clang_index/compile_commands.cache`) is hash-validated and doesn't use time-based expiry.
+- `supported_extensions`: Only files with these extensions will be analyzed from `compile_commands.json`
+- `exclude_patterns`: Additional glob patterns to exclude files found in `compile_commands.json`
+
+**Example**:
+```json
+{
+  "compile_commands": {
+    "enabled": true,
+    "path": "build/compile_commands.json",
+    "supported_extensions": [".cpp", ".cc", ".h", ".hpp"],
+    "exclude_patterns": ["*_generated.cpp", "*/test/*"]
+  }
+}
+```
 
 For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md).
 
