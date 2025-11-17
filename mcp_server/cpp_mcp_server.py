@@ -140,12 +140,12 @@ try:
     # Try package import first (when run as module)
     from mcp_server.cpp_analyzer import CppAnalyzer
     from mcp_server.compile_commands_manager import CompileCommandsManager
-    from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState, IndexingProgress
+    from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState, IndexingProgress, BackgroundIndexer
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer
     from compile_commands_manager import CompileCommandsManager
-    from state_manager import AnalyzerStateManager, AnalyzerState, IndexingProgress
+    from state_manager import AnalyzerStateManager, AnalyzerState, IndexingProgress, BackgroundIndexer
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
@@ -155,6 +155,9 @@ analyzer = None
 
 # State management for analyzer lifecycle
 state_manager = AnalyzerStateManager()
+
+# Background indexer for async indexing
+background_indexer = None
 
 # Track if analyzer has been initialized with a valid project
 # TODO Phase 3: This boolean will be replaced by state_manager checks in async mode
@@ -327,6 +330,21 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="wait_for_indexing",
+            description="Block until indexing completes or timeout is reached. Use this when you need complete results and want to wait for indexing to finish. Returns success when indexing completes, or timeout error if it takes too long. Useful after set_project_directory on large projects to ensure queries return complete data.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "timeout": {
+                        "type": "number",
+                        "description": "Maximum time to wait in seconds (default: 60.0). Set higher for large projects.",
+                        "default": 60.0
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
             name="get_class_hierarchy",
             description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants both ancestors AND descendants. **Do NOT use** get_derived_classes which only returns immediate children.\n\nReturns: name (class name), base_hierarchy (all ancestors recursively to root), derived_hierarchy (all descendants recursively to leaves), class_info (detailed info), direct base_classes and derived_classes lists. If not found, returns {'error': 'Class <name> not found'}.",
             inputSchema={
@@ -443,37 +461,40 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 return [TextContent(type="text", text=f"Error: Directory '{project_path}' does not exist")]
 
             # Re-initialize analyzer with new path
-            global analyzer, analyzer_initialized, state_manager
+            global analyzer, analyzer_initialized, state_manager, background_indexer
 
             # Transition to INITIALIZING state
             state_manager.transition_to(AnalyzerState.INITIALIZING)
             analyzer = CppAnalyzer(project_path)
+            background_indexer = BackgroundIndexer(analyzer, state_manager)
 
-            # Transition to INDEXING state
-            state_manager.transition_to(AnalyzerState.INDEXING)
+            # Start indexing in background (truly asynchronous, non-blocking)
+            # The task will run independently while the MCP server continues to handle requests
+            async def run_background_indexing():
+                try:
+                    await background_indexer.start_indexing(force=False, include_dependencies=True)
+                    # Indexing complete - mark as initialized
+                    global analyzer_initialized
+                    analyzer_initialized = True
+                except Exception as e:
+                    # Error already logged and state transitioned by start_indexing
+                    pass
 
-            try:
-                # IMPORTANT: Don't set analyzer_initialized yet - indexing must complete first
-                # to prevent race condition where tools execute on partially-indexed data.
-                # Note: This blocks the MCP server until indexing completes (synchronous behavior).
-                # For large projects, this may take several minutes. Future enhancement: async indexing.
-                indexed_count = analyzer.index_project(force=False, include_dependencies=True)
+            # Create background task (non-blocking)
+            asyncio.create_task(run_background_indexing())
 
-                # Transition to INDEXED state - indexing complete, tools can safely execute
-                state_manager.transition_to(AnalyzerState.INDEXED)
-
-                # Only now mark as initialized - indexing is complete
-                analyzer_initialized = True
-
-                return [TextContent(type="text", text=f"Set project directory to: {project_path}\nIndexed {indexed_count} C++ files")]
-
-            except Exception as e:
-                # Transition to ERROR state on failure
-                state_manager.transition_to(AnalyzerState.ERROR)
-                return [TextContent(type="text", text=f"Error: Indexing failed: {str(e)}")]
+            # Return immediately - indexing continues in background
+            return [TextContent(
+                type="text",
+                text=f"Set project directory to: {project_path}\n"
+                     f"Indexing started in background. Use 'get_indexing_status' to check progress.\n"
+                     f"Tools are available but will return partial results until indexing completes."
+            )]
         
         # Check if analyzer is initialized for all other commands
-        if not analyzer_initialized or analyzer is None:
+        # Phase 3: Allow queries during indexing (partial results)
+        # Tools can execute in INDEXING, INDEXED, or REFRESHING states
+        if analyzer is None or not state_manager.is_ready_for_queries():
             return [TextContent(type="text", text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.")]
         
         if name == "search_classes":
@@ -541,6 +562,30 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Get current state and progress from state manager
             status_dict = state_manager.get_status_dict()
             return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
+
+        elif name == "wait_for_indexing":
+            # Wait for indexing to complete with timeout
+            timeout = arguments.get("timeout", 60.0)
+
+            if state_manager.is_fully_indexed():
+                return [TextContent(type="text", text="Indexing already complete.")]
+
+            # Wait for indexed event
+            completed = state_manager.wait_for_indexed(timeout)
+
+            if completed:
+                progress = state_manager.get_progress()
+                indexed_count = progress.indexed_files if progress else 0
+                failed_count = progress.failed_files if progress else 0
+                return [TextContent(
+                    type="text",
+                    text=f"Indexing complete! Indexed {indexed_count} files successfully ({failed_count} failed)."
+                )]
+            else:
+                return [TextContent(
+                    type="text",
+                    text=f"Timeout waiting for indexing (waited {timeout}s). Use 'get_indexing_status' to check progress."
+                )]
 
         elif name == "get_class_hierarchy":
             class_name = arguments["class_name"]
