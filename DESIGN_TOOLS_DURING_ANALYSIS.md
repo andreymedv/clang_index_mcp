@@ -98,9 +98,341 @@ analyzer_initialized = True ← Tools become "available"
 
 ---
 
-## 3. Proposed Architecture
+## 3. Expected Behavior: Querying During Analysis
 
-### 3.1 State Machine for Analyzer
+### 3.1 Design Decision: Return Partial Results with Clear Notification
+
+**Chosen Strategy:** Allow queries during indexing and return **partial results** with **explicit warnings and metadata**.
+
+#### Why This Approach?
+
+| Strategy | Pros | Cons | Verdict |
+|----------|------|------|---------|
+| **Block all queries until complete** | Simple, guaranteed complete results | Poor UX for large projects (minutes of waiting), no progress visibility | ❌ Rejected |
+| **Return error "indexing in progress"** | Clear state, no confusion | Frustrating UX, requires polling, wastes time | ❌ Rejected |
+| **Return partial results silently** | Best performance | ⚠️ **DANGEROUS** - users get incomplete data without knowing | ❌ Rejected |
+| **Return partial results with warnings** | Good UX, transparency, user choice | Slightly more complex implementation | ✅ **SELECTED** |
+
+### 3.2 User Experience: What Users Will See
+
+#### Scenario 1: Querying During Indexing (Partial Results)
+
+**User Action:**
+```bash
+# User sets project directory (indexing starts)
+$ claude_mcp search_classes "MyClass"
+```
+
+**MCP Response:**
+```json
+{
+  "data": [
+    {
+      "name": "MyClass",
+      "kind": "CLASS_DECL",
+      "file": "/project/src/core/myclass.cpp",
+      "line": 42,
+      "is_project": true
+    }
+  ],
+  "metadata": {
+    "status": "partial",
+    "indexed_files": 1234,
+    "total_files": 2890,
+    "completion_percentage": 42.7,
+    "timestamp": "2025-11-17T10:30:45.123456",
+    "warning": "⚠️  INCOMPLETE RESULTS: Only 42.7% of files indexed (1,234/2,890). Results may be missing classes. Use 'get_indexing_status' to check progress or 'wait_for_indexing' to wait for completion."
+  }
+}
+```
+
+**User-Facing Message (formatted by MCP client):**
+```
+⚠️  WARNING: Incomplete Results
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Indexing in progress: 42.7% complete (1,234/2,890 files)
+
+Found 1 class matching "MyClass", but results may be incomplete.
+More classes might exist in files not yet indexed.
+
+Options:
+  • Use these partial results now (accept incompleteness)
+  • Run 'wait_for_indexing' to wait for complete results
+  • Run 'get_indexing_status' to check progress
+
+Result: MyClass (src/core/myclass.cpp:42)
+```
+
+#### Scenario 2: Querying After Indexing Completes (Complete Results)
+
+**User Action:**
+```bash
+$ claude_mcp search_classes "MyClass"
+```
+
+**MCP Response:**
+```json
+{
+  "data": [
+    {
+      "name": "MyClass",
+      "kind": "CLASS_DECL",
+      "file": "/project/src/core/myclass.cpp",
+      "line": 42,
+      "is_project": true
+    },
+    {
+      "name": "MyClassImpl",
+      "kind": "CLASS_DECL",
+      "file": "/project/src/impl/myclass_impl.cpp",
+      "line": 15,
+      "is_project": true
+    }
+  ],
+  "metadata": {
+    "status": "complete",
+    "indexed_files": 2890,
+    "total_files": 2890,
+    "completion_percentage": 100.0,
+    "timestamp": "2025-11-17T10:35:23.456789",
+    "warning": null
+  }
+}
+```
+
+**User-Facing Message:**
+```
+✓ Found 2 classes matching "MyClass" (index complete)
+
+Results:
+  • MyClass (src/core/myclass.cpp:42)
+  • MyClassImpl (src/impl/myclass_impl.cpp:15)
+```
+
+#### Scenario 3: Checking Indexing Progress
+
+**User Action:**
+```bash
+$ claude_mcp get_indexing_status
+```
+
+**MCP Response:**
+```json
+{
+  "state": "indexing",
+  "is_fully_indexed": false,
+  "progress": {
+    "total_files": 2890,
+    "indexed_files": 1234,
+    "failed_files": 12,
+    "completion_percentage": 42.7,
+    "current_file": "src/vendor/third_party/large_library.cpp",
+    "estimated_completion": "2025-11-17T10:32:15.000000"
+  }
+}
+```
+
+**User-Facing Message:**
+```
+Indexing Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+State: Indexing in progress
+
+Progress: [████████████░░░░░░░░░░░░░░] 42.7%
+Files:    1,234 / 2,890 indexed
+Failed:   12 files
+Current:  src/vendor/third_party/large_library.cpp
+ETA:      ~1m 30s (10:32:15 AM)
+
+All query tools are available but will return partial results
+until indexing completes.
+```
+
+#### Scenario 4: Waiting for Complete Results
+
+**User Action:**
+```bash
+$ claude_mcp wait_for_indexing --timeout=300
+```
+
+**MCP Response (while waiting):**
+```
+Waiting for indexing to complete...
+Progress: 42.7% → 58.3% → 76.1% → 89.5% → 100.0%
+```
+
+**MCP Response (success):**
+```json
+{
+  "status": "complete",
+  "message": "✓ Indexing complete! Indexed 2,878 files successfully (12 failed).",
+  "duration_seconds": 127.5,
+  "statistics": {
+    "indexed_files": 2878,
+    "failed_files": 12,
+    "total_files": 2890,
+    "cache_hits": 0
+  }
+}
+```
+
+### 3.3 Notification Strategy: Multi-Level Warnings
+
+We implement **three levels** of notification to ensure users are always aware of data completeness:
+
+#### Level 1: Response Metadata (Always Present)
+
+**Every query response includes metadata:**
+```json
+{
+  "data": [...],
+  "metadata": {
+    "status": "partial" | "complete" | "stale",
+    "indexed_files": 1234,
+    "total_files": 2890,
+    "completion_percentage": 42.7,
+    "timestamp": "2025-11-17T10:30:45.123456",
+    "warning": "string or null"
+  }
+}
+```
+
+**Guarantees:**
+- ✅ Machine-readable status for automated clients
+- ✅ Precise completion percentage
+- ✅ Timestamp for staleness detection
+
+#### Level 2: Explicit Warning Messages (When Incomplete)
+
+**When `status == "partial"`, the `warning` field contains:**
+```
+"⚠️  INCOMPLETE RESULTS: Only 42.7% of files indexed (1,234/2,890).
+Results may be missing classes. Use 'get_indexing_status' to check
+progress or 'wait_for_indexing' to wait for completion."
+```
+
+**When `status == "stale"`, the `warning` field contains:**
+```
+"⚠️  POTENTIALLY STALE: Index may be outdated. 15 files have been
+modified since last indexing. Use 'refresh_project' to update."
+```
+
+**Guarantees:**
+- ✅ Human-readable explanation
+- ✅ Actionable recommendations
+- ✅ Severity indicator (⚠️ symbol)
+
+#### Level 3: Tool-Specific Guidance (In Tool Descriptions)
+
+**Every query tool's description includes a note:**
+```python
+Tool(
+    name="search_classes",
+    description="""Search for C++ class and struct definitions by name pattern.
+
+    **IMPORTANT:** If called during indexing, results will be incomplete.
+    Check response metadata 'status' field. Use 'wait_for_indexing' first
+    if you need guaranteed complete results.
+
+    Returns list with: name, kind, file, line, is_project, base_classes.
+    Supports regex patterns.""",
+    # ...
+)
+```
+
+**Guarantees:**
+- ✅ Upfront disclosure in tool documentation
+- ✅ Clear expectations before tool is invoked
+- ✅ Guidance on how to get complete results
+
+### 3.4 Behavior Matrix: Query Results at Different Stages
+
+| Indexing Stage | Query Returns | Status | Warning | Recommendation |
+|----------------|---------------|--------|---------|----------------|
+| **0% indexed** | Empty `[]` | `partial` | ⚠️ Yes | Wait or accept empty results |
+| **25% indexed** | Partial data | `partial` | ⚠️ Yes | Continue waiting or use partial data |
+| **50% indexed** | Partial data | `partial` | ⚠️ Yes | Continue waiting or use partial data |
+| **75% indexed** | Partial data | `partial` | ⚠️ Yes | Nearly complete, consider using |
+| **100% indexed** | Complete data | `complete` | None | Use with confidence |
+| **100%, files modified** | Potentially stale | `stale` | ⚠️ Yes | Call `refresh_project` |
+
+### 3.5 Configuration Option: Query Behavior Policy
+
+Allow users to configure default behavior via environment variable or config file:
+
+```python
+class QueryBehaviorPolicy(Enum):
+    """How to handle queries during indexing"""
+    ALLOW_PARTIAL = "allow_partial"      # Return partial results with warnings (default)
+    BLOCK_UNTIL_COMPLETE = "block"       # Block queries until indexing completes
+    REJECT_DURING_INDEXING = "reject"    # Return error during indexing
+
+# In cpp_analyzer_config.py
+class CppAnalyzerConfig:
+    def __init__(self, project_root: Path):
+        # ...
+        self.query_behavior = self._load_query_behavior()
+
+    def _load_query_behavior(self) -> QueryBehaviorPolicy:
+        # Read from config file or environment variable
+        env_value = os.environ.get('CPP_ANALYZER_QUERY_BEHAVIOR', 'allow_partial')
+        return QueryBehaviorPolicy(env_value)
+
+# In cpp_mcp_server.py
+@server.call_tool()
+async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    # ...
+
+    # Check query behavior policy
+    if analyzer.config.query_behavior == QueryBehaviorPolicy.BLOCK_UNTIL_COMPLETE:
+        if not state_manager.is_fully_indexed():
+            # Wait for indexing to complete (with timeout)
+            diagnostics.info("Query blocked until indexing completes (policy: block_until_complete)")
+            completed = state_manager.wait_for_indexed(timeout=300)
+            if not completed:
+                return [TextContent(
+                    type="text",
+                    text="Error: Timeout waiting for indexing to complete. Change CPP_ANALYZER_QUERY_BEHAVIOR to 'allow_partial' to query during indexing."
+                )]
+
+    elif analyzer.config.query_behavior == QueryBehaviorPolicy.REJECT_DURING_INDEXING:
+        if not state_manager.is_fully_indexed():
+            progress = state_manager.get_progress()
+            return [TextContent(
+                type="text",
+                text=f"Error: Indexing in progress ({progress.completion_percentage:.1f}% complete). Queries are disabled by policy. Use 'get_indexing_status' to check progress or change CPP_ANALYZER_QUERY_BEHAVIOR to 'allow_partial'."
+            )]
+
+    # Default: ALLOW_PARTIAL - proceed with query
+    # ...
+```
+
+**Configuration file example (`.cpp_analyzer.yaml`):**
+```yaml
+query_behavior: allow_partial  # Options: allow_partial (default), block, reject
+
+# Optional: Auto-wait threshold (automatically wait if indexing is almost done)
+auto_wait_threshold: 95  # If >95% indexed, automatically wait for completion
+```
+
+### 3.6 Summary: Notification Guarantees
+
+Our design ensures users are **always notified** about data completeness through:
+
+1. ✅ **Metadata in every response** - Machine-readable status
+2. ✅ **Explicit warning messages** - Human-readable explanations when incomplete
+3. ✅ **Tool documentation** - Upfront disclosure
+4. ✅ **Progress monitoring tools** - `get_indexing_status` for real-time updates
+5. ✅ **Blocking option** - `wait_for_indexing` for guaranteed complete results
+6. ✅ **Configurable policy** - Users can choose blocking/rejecting behavior if preferred
+
+**No user can unknowingly receive incomplete data without being warned.**
+
+---
+
+## 4. Proposed Architecture
+
+### 4.1 State Machine for Analyzer
 
 Introduce a proper state management system:
 
@@ -187,7 +519,7 @@ class AnalyzerStateManager:
             return self._state == AnalyzerState.INDEXED
 ```
 
-### 3.2 Enhanced Query Results with Metadata
+### 4.2 Enhanced Query Results with Metadata
 
 Add metadata to all tool responses indicating data completeness:
 
@@ -246,7 +578,7 @@ class EnhancedQueryResult:
         return EnhancedQueryResult(data, metadata)
 ```
 
-### 3.3 Async Background Indexing
+### 4.3 Async Background Indexing
 
 Convert blocking indexing to truly asynchronous background task:
 
@@ -323,7 +655,7 @@ class BackgroundIndexer:
             await asyncio.wait_for(self._indexing_task, timeout=timeout)
 ```
 
-### 3.4 Modified MCP Server Flow
+### 4.4 Modified MCP Server Flow
 
 Update `cpp_mcp_server.py` to use new architecture:
 
@@ -417,7 +749,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 )]
 ```
 
-### 3.5 New MCP Tools
+### 4.5 New MCP Tools
 
 Add two new tools to support the new capabilities:
 
@@ -457,9 +789,9 @@ async def list_tools() -> List[Tool]:
 
 ---
 
-## 4. Enhanced CppAnalyzer Integration
+## 5. Enhanced CppAnalyzer Integration
 
-### 4.1 Progress Reporting from index_project()
+### 5.1 Progress Reporting from index_project()
 
 Modify `CppAnalyzer.index_project()` to report progress in real-time:
 
@@ -535,7 +867,7 @@ def index_project(
     return indexed_count
 ```
 
-### 4.2 Thread-Safe Read Operations
+### 5.2 Thread-Safe Read Operations
 
 Ensure all query methods in `CppAnalyzer` are thread-safe for concurrent access during indexing:
 
@@ -563,7 +895,7 @@ class CppAnalyzer:
 
 ---
 
-## 5. Alternative Design: Read-Write Locks
+## 6. Alternative Design: Read-Write Locks
 
 For more advanced optimization, use read-write locks to allow concurrent reads:
 
@@ -644,7 +976,7 @@ class CppAnalyzer:
 
 ---
 
-## 6. Implementation Phases
+## 7. Implementation Phases
 
 ### Phase 1: Fix Critical Race Condition (Quick Win)
 **Estimated effort:** 2 hours
@@ -692,9 +1024,9 @@ analyzer_initialized = True
 
 ---
 
-## 7. Testing Strategy
+## 8. Testing Strategy
 
-### 7.1 Unit Tests
+### 8.1 Unit Tests
 
 ```python
 # test_state_manager.py
@@ -720,7 +1052,7 @@ def test_wait_for_indexed():
     assert sm.wait_for_indexed(timeout=0.1)
 ```
 
-### 7.2 Integration Tests
+### 8.2 Integration Tests
 
 ```python
 # test_tools_during_indexing.py
@@ -749,7 +1081,7 @@ async def test_tools_during_indexing():
     assert results["metadata"]["completion_percentage"] == 100
 ```
 
-### 7.3 Performance Tests
+### 8.3 Performance Tests
 
 ```python
 def test_concurrent_query_performance():
@@ -781,9 +1113,9 @@ def test_concurrent_query_performance():
 
 ---
 
-## 8. Migration Plan
+## 9. Migration Plan
 
-### 8.1 Backward Compatibility
+### 9.1 Backward Compatibility
 
 The design maintains full backward compatibility:
 
@@ -792,7 +1124,7 @@ The design maintains full backward compatibility:
 - New tools (`get_indexing_status`, `wait_for_indexing`) are additive
 - Clients that don't check metadata still get correct data (just no completeness info)
 
-### 8.2 Client Migration Path
+### 9.2 Client Migration Path
 
 **Old Client Behavior (still works):**
 ```python
@@ -828,9 +1160,9 @@ if results["metadata"]["status"] == "partial":
 
 ---
 
-## 9. Performance Analysis
+## 10. Performance Analysis
 
-### 9.1 Expected Impact
+### 10.1 Expected Impact
 
 | Metric | Current | Phase 1 | Phase 3 | Phase 5 |
 |--------|---------|---------|---------|---------|
@@ -840,7 +1172,7 @@ if results["metadata"]["status"] == "partial":
 | **Concurrent Query Throughput** | ❌ N/A | ❌ N/A | 10x | 50x |
 | **Memory Overhead** | Baseline | +0% | +2% | +5% |
 
-### 9.2 Bottleneck Analysis
+### 10.2 Bottleneck Analysis
 
 **Current Bottleneck:** GIL contention between indexing threads and query execution
 
@@ -850,7 +1182,7 @@ if results["metadata"]["status"] == "partial":
 
 ---
 
-## 10. Risks and Mitigations
+## 11. Risks and Mitigations
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
@@ -862,9 +1194,9 @@ if results["metadata"]["status"] == "partial":
 
 ---
 
-## 11. Future Enhancements
+## 12. Future Enhancements
 
-### 11.1 Streaming Results
+### 12.1 Streaming Results
 
 For very large result sets, stream results as indexing progresses:
 
@@ -875,7 +1207,7 @@ async def search_classes_stream(pattern: str):
         yield result
 ```
 
-### 11.2 Incremental Indexing UI
+### 12.2 Incremental Indexing UI
 
 Provide real-time feedback in MCP client:
 
@@ -885,7 +1217,7 @@ Current: src/core/engine.cpp
 ETA: 2m 15s
 ```
 
-### 11.3 Priority Indexing
+### 12.3 Priority Indexing
 
 Index files by priority (e.g., project files first, dependencies later):
 
@@ -896,7 +1228,7 @@ await set_project_directory("/path", priority_mode="project_first")
 
 ---
 
-## 12. Conclusion
+## 13. Conclusion
 
 This architectural design provides a comprehensive solution for enabling MCP tools to execute during analysis while maintaining correctness, performance, and backward compatibility. The phased implementation approach allows incremental deployment with immediate value from Phase 1's critical bug fix.
 
