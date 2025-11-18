@@ -119,40 +119,56 @@ class SqliteCacheBackend:
         # Database should be on local filesystem
 
     def _init_database(self):
-        """Initialize database schema and configuration."""
-        try:
-            # Execute schema file
-            schema_path = Path(__file__).parent / "schema.sql"
+        """Initialize database schema and configuration with retry logic."""
+        max_retries = 10
+        base_delay = 0.1  # 100ms initial delay
 
-            if not schema_path.exists():
-                raise FileNotFoundError(f"Schema file not found: {schema_path}")
+        for attempt in range(max_retries):
+            try:
+                # Execute schema file
+                schema_path = Path(__file__).parent / "schema.sql"
 
-            with open(schema_path, 'r') as f:
-                schema_sql = f.read()
+                if not schema_path.exists():
+                    raise FileNotFoundError(f"Schema file not found: {schema_path}")
 
-            # Execute schema (creates tables, indexes, triggers)
-            self.conn.executescript(schema_sql)
-            self.conn.commit()
+                with open(schema_path, 'r') as f:
+                    schema_sql = f.read()
 
-            # Check and apply schema migrations
-            migration = SchemaMigration(self.conn)
+                # Execute schema (creates tables, indexes, triggers)
+                self.conn.executescript(schema_sql)
+                self.conn.commit()
 
-            # Verify version compatibility
-            migration.check_version_compatibility()
+                # Check and apply schema migrations
+                migration = SchemaMigration(self.conn)
 
-            # Apply pending migrations if needed
-            if migration.needs_migration():
-                diagnostics.info("Database schema migration required")
-                migration.migrate()
-            else:
-                current_version = migration.get_current_version()
-                diagnostics.debug(f"Database schema up-to-date (version {current_version})")
+                # Verify version compatibility
+                migration.check_version_compatibility()
 
-            diagnostics.debug("SQLite database initialized successfully")
+                # Apply pending migrations if needed
+                if migration.needs_migration():
+                    diagnostics.info("Database schema migration required")
+                    migration.migrate()
+                else:
+                    current_version = migration.get_current_version()
+                    diagnostics.debug(f"Database schema up-to-date (version {current_version})")
 
-        except Exception as e:
-            diagnostics.error(f"Failed to initialize database: {e}")
-            raise
+                diagnostics.debug("SQLite database initialized successfully")
+                return  # Success, exit the retry loop
+
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    # Exponential backoff with jitter
+                    import random
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.1)
+                    diagnostics.debug(f"Database locked during init, retry {attempt + 1}/{max_retries} after {delay:.2f}s")
+                    time.sleep(delay)
+                    continue
+                else:
+                    diagnostics.error(f"Failed to initialize database: {e}")
+                    raise
+            except Exception as e:
+                diagnostics.error(f"Failed to initialize database: {e}")
+                raise
 
     def _ensure_connected(self):
         """Ensure connection is active, reconnect if needed."""
