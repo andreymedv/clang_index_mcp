@@ -14,6 +14,7 @@ from .symbol_info import SymbolInfo
 from .cache_backend import CacheBackend
 from .json_cache_backend import JsonCacheBackend
 from .error_tracking import ErrorTracker, RecoveryManager
+from .project_identity import ProjectIdentity
 
 # Handle both package and script imports
 try:
@@ -25,8 +26,26 @@ except ImportError:
 class CacheManager:
     """Manages caching for the C++ analyzer with pluggable backends."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root
+    def __init__(self, project_root_or_identity: Union[Path, ProjectIdentity]):
+        """
+        Initialize CacheManager with project identity.
+
+        Args:
+            project_root_or_identity: Either a Path (backward compatibility) or ProjectIdentity
+
+        Backward Compatibility:
+            Accepts Path for backward compatibility, automatically creates ProjectIdentity
+            with no config file.
+        """
+        # Handle both Path and ProjectIdentity for backward compatibility
+        if isinstance(project_root_or_identity, ProjectIdentity):
+            self.project_identity = project_root_or_identity
+            self.project_root = project_root_or_identity.source_directory
+        else:
+            # Backward compatibility: Path provided
+            self.project_root = Path(project_root_or_identity)
+            self.project_identity = ProjectIdentity(self.project_root, None)
+
         self.cache_dir = self._get_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
@@ -46,17 +65,36 @@ class CacheManager:
 
         # Initialize cache backend based on feature flag
         self.backend = self._create_backend()
-        
+
     def _get_cache_dir(self) -> Path:
-        """Get the cache directory for this project"""
+        """
+        Get the cache directory for this project.
+
+        Uses ProjectIdentity to create unique cache directory based on:
+        - Source directory path
+        - Configuration file path (if provided)
+
+        Returns:
+            Path to cache directory
+        """
         # Use the MCP server directory for cache, not the project being analyzed
         mcp_server_root = Path(__file__).parent.parent  # Go up from mcp_server/cache_manager.py to root
         cache_base = mcp_server_root / ".mcp_cache"
 
-        # Use a hash of the project path to create a unique cache directory
-        project_hash = hashlib.md5(str(self.project_root).encode()).hexdigest()[:8]
-        cache_dir = cache_base / f"{self.project_root.name}_{project_hash}"
+        # Use ProjectIdentity to get unique cache directory name
+        cache_dir_name = self.project_identity.get_cache_directory_name()
+        cache_dir = cache_base / cache_dir_name
+
         return cache_dir
+
+    def cache_exists(self) -> bool:
+        """
+        Check if cache directory exists for this project.
+
+        Returns:
+            True if cache directory exists, False otherwise
+        """
+        return self.cache_dir.exists()
 
     def _maybe_migrate_from_json(self) -> bool:
         """

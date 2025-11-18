@@ -25,6 +25,7 @@ from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
 from .header_tracker import HeaderProcessingTracker
+from .project_identity import ProjectIdentity
 from datetime import datetime, timedelta
 
 # Handle both package and script imports
@@ -78,30 +79,45 @@ def _process_file_worker(args_tuple):
 class CppAnalyzer:
     """
     Pure Python C++ code analyzer using libclang.
-    
+
     This class provides code analysis functionality including:
     - Class and struct discovery
     - Function and method discovery
     - Symbol search with regex patterns
     - File-based filtering
     """
-    
-    def __init__(self, project_root: str):
+
+    def __init__(self, project_root: str, config_file: Optional[str] = None):
+        """
+        Initialize C++ Analyzer.
+
+        Args:
+            project_root: Path to project source directory
+            config_file: Optional path to configuration file for project identity
+
+        Note:
+            Project identity is determined by (source_directory, config_file) pair.
+            Different config_file values create separate cache directories.
+        """
         self.project_root = Path(project_root).resolve()
         self.index = Index.create()
-        
+
+        # Create project identity
+        config_path = Path(config_file).resolve() if config_file else None
+        self.project_identity = ProjectIdentity(self.project_root, config_path)
+
         # Load project configuration
         self.config = CppAnalyzerConfig(self.project_root)
-        
+
         # Indexes for fast lookup
         self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.function_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.file_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.usr_index: Dict[str, SymbolInfo] = {}  # USR to symbol mapping
-        
+
         # Initialize call graph analyzer
         self.call_graph_analyzer = CallGraphAnalyzer()
-        
+
         # Initialize search engine
         self.search_engine = SearchEngine(
             self.class_index,
@@ -109,11 +125,11 @@ class CppAnalyzer:
             self.file_index,
             self.usr_index
         )
-        
+
         # Track indexed files
         self.translation_units: Dict[str, TranslationUnit] = {}
         self.file_hashes: Dict[str, str] = {}
-        
+
         # Threading/Processing
         self.index_lock = threading.Lock()
         self._thread_local = threading.local()
@@ -125,9 +141,9 @@ class CppAnalyzer:
         # Use ProcessPoolExecutor by default to bypass Python's GIL
         # Can be overridden via environment variable
         self.use_processes = os.environ.get('CPP_ANALYZER_USE_THREADS', '').lower() != 'true'
-        
-        # Initialize cache manager and file scanner with config
-        self.cache_manager = CacheManager(self.project_root)
+
+        # Initialize cache manager with project identity
+        self.cache_manager = CacheManager(self.project_identity)
         self.file_scanner = FileScanner(self.project_root)
         
         # Apply configuration to file scanner
