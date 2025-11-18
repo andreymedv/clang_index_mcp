@@ -33,7 +33,7 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
     cc_path = project_root / cc_config.get('compile_commands_path', 'compile_commands.json')
 
     if not cc_path.exists():
-        print(f"❌ compile_commands.json not found at: {cc_path}")
+        print(f"[ERROR] compile_commands.json not found at: {cc_path}")
         return None
 
     print(f"\n{'='*70}")
@@ -65,11 +65,11 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
                 print(f"    Arguments format: STRING")
                 print(f"    Command: {cmd['command'][:200]}{'...' if len(cmd['command']) > 200 else ''}")
             else:
-                print(f"    ❌ No 'arguments' or 'command' field!")
+                print(f"    [ERROR] No 'arguments' or 'command' field!")
 
         return commands
     except Exception as e:
-        print(f"❌ Error reading compile_commands.json: {e}")
+        print(f"[ERROR] Error reading compile_commands.json: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -100,7 +100,7 @@ def test_argument_extraction(project_root: Path, compile_commands: list):
                 if len(args) > 20:
                     print(f"  ... and {len(args) - 20} more")
             else:
-                print("❌ No arguments extracted!")
+                print("[ERROR] No arguments extracted!")
                 print("\nThis suggests the file path normalization might be failing.")
                 print(f"File path from compile_commands.json: {first_file}")
                 print(f"Resolved path: {file_path.resolve()}")
@@ -119,14 +119,14 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
     files = analyzer.compile_commands_manager.get_all_files()
 
     if not files:
-        print("❌ No files found in compile_commands.json")
+        print("[ERROR] No files found in compile_commands.json")
         return
 
     # Select file to test
     if file_to_test:
         test_file = file_to_test
         if test_file not in files:
-            print(f"⚠️  File {test_file} not found in compile_commands.json")
+            print(f"[WARNING]  File {test_file} not found in compile_commands.json")
             print(f"Using first file instead...")
             test_file = files[0]
     else:
@@ -149,7 +149,7 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
     success, was_cached = analyzer.index_file(test_file, force=True)
 
     if success:
-        print("✅ File parsed successfully!")
+        print("[PASS] File parsed successfully!")
         # Show symbols found
         if test_file in analyzer.file_index:
             symbols = analyzer.file_index[test_file]
@@ -157,7 +157,7 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
             for sym in symbols[:10]:
                 print(f"  - {sym.kind}: {sym.name}")
     else:
-        print("❌ File failed to parse!")
+        print("[ERROR] File failed to parse!")
         print("\nTo see detailed error messages, run:")
         print(f"  python scripts/view_parse_errors.py {project_root} -l 5 -v")
 
@@ -192,7 +192,7 @@ def main():
     # Validate project root
     project_path = Path(args.project_root).resolve()
     if not project_path.exists():
-        print(f"❌ Project root does not exist: {args.project_root}", file=sys.stderr)
+        print(f"[ERROR] Project root does not exist: {args.project_root}", file=sys.stderr)
         sys.exit(1)
 
     print(f"\n{'='*70}")
