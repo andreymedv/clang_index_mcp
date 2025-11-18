@@ -30,12 +30,12 @@ async def test_mcp_server(project_path: str):
         return
 
     analyzer = CppAnalyzer(project_path)
-    print("✓ Analyzer created")
+    print("[OK] Analyzer created")
 
     # 2. Analyze - Index the project
     print("\n2. Analyzing project (indexing C++ files)...")
     indexed_count = analyzer.index_project(force=False, include_dependencies=True)
-    print(f"✓ Indexed {indexed_count} C++ files")
+    print(f"[OK] Indexed {indexed_count} C++ files")
 
     # 3. Get server status
     print("\n3. Getting server status...")
@@ -48,14 +48,14 @@ async def test_mcp_server(project_path: str):
         "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
         "compile_commands_path": str(analyzer.compile_commands_manager.compile_commands_path),
     }
-    print(f"✓ Server status:")
+    print(f"[OK] Server status:")
     for key, value in status.items():
         print(f"   {key}: {value}")
 
     # 4. Search for classes
     print("\n4. Searching for classes (pattern: '.*')...")
     classes = analyzer.search_classes(".*", project_only=True)
-    print(f"✓ Found {len(classes)} classes in project")
+    print(f"[OK] Found {len(classes)} classes in project")
     if classes:
         print("   First 5 classes:")
         for cls in classes[:5]:
@@ -64,7 +64,7 @@ async def test_mcp_server(project_path: str):
     # 5. Search for functions
     print("\n5. Searching for functions (pattern: '.*')...")
     functions = analyzer.search_functions(".*", project_only=True)
-    print(f"✓ Found {len(functions)} functions in project")
+    print(f"[OK] Found {len(functions)} functions in project")
     if functions:
         print("   First 5 functions:")
         for func in functions[:5]:
@@ -75,7 +75,7 @@ async def test_mcp_server(project_path: str):
         print(f"\n6. Getting detailed info for class: {classes[0]['name']}")
         class_info = analyzer.get_class_info(classes[0]['name'])
         if class_info:
-            print(f"✓ Class info:")
+            print(f"[OK] Class info:")
             print(f"   Name: {class_info['name']}")
             print(f"   File: {class_info['file']}:{class_info['line']}")
             print(f"   Methods: {len(class_info['methods'])}")
@@ -90,7 +90,7 @@ async def test_mcp_server(project_path: str):
         print(f"\n7. Getting signature for function: {functions[0]['name']}")
         signatures = analyzer.get_function_signature(functions[0]['name'])
         if signatures:
-            print(f"✓ Found {len(signatures)} function(s) with this name:")
+            print(f"[OK] Found {len(signatures)} function(s) with this name:")
             for sig in signatures[:3]:
                 # get_function_signature returns a list of signature strings
                 print(f"   - {sig}")
@@ -100,7 +100,7 @@ async def test_mcp_server(project_path: str):
         print(f"\n8. Getting class hierarchy for: {classes[0]['name']}")
         hierarchy = analyzer.get_class_hierarchy(classes[0]['name'])
         if hierarchy:
-            print(f"✓ Class hierarchy:")
+            print(f"[OK] Class hierarchy:")
             print(f"   Class: {hierarchy['name']}")
             if hierarchy.get('base_classes'):
                 print(f"   Base classes: {', '.join(hierarchy['base_classes'])}")
@@ -111,7 +111,7 @@ async def test_mcp_server(project_path: str):
     if functions:
         print(f"\n9. Finding callers of function: {functions[0]['name']}")
         callers = analyzer.find_callers(functions[0]['name'])
-        print(f"✓ Found {len(callers)} caller(s)")
+        print(f"[OK] Found {len(callers)} caller(s)")
         if callers:
             print("   First 3 callers:")
             for caller in callers[:3]:
@@ -121,7 +121,7 @@ async def test_mcp_server(project_path: str):
     if functions and len(functions) > 1:
         print(f"\n10. Finding callees of function: {functions[0]['name']}")
         callees = analyzer.find_callees(functions[0]['name'])
-        print(f"✓ Found {len(callees)} callee(s)")
+        print(f"[OK] Found {len(callees)} callee(s)")
         if callees:
             print("   First 3 callees:")
             for callee in callees[:3]:

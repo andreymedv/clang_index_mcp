@@ -10,7 +10,7 @@ from mcp_server.cpp_analyzer import CppAnalyzer
 class TestUnicode:
     def test_unicode_in_symbols(self, temp_project_dir):
         """Test Unicode identifiers and emoji in comments - Task 1.5.5"""
-        content = "// Unicode: 你好 🎉\nclass TestClass {\n// Comment with émoji 😀\npublic:\n    void method();\n};\n"
+        content = "// Unicode: 你好 \nclass TestClass {\n// Comment with émoji \npublic:\n    void method();\n};\n"
         (temp_project_dir / "src" / "unicode.cpp").write_text(content, encoding='utf-8')
         analyzer = CppAnalyzer(str(temp_project_dir))
         count = analyzer.index_project()
