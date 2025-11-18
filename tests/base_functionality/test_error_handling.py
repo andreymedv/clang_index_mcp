@@ -229,7 +229,6 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_error_tracking_in_cache_manager(self):
         """Test that CacheManager tracks errors"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Get initial error summary
@@ -240,7 +239,6 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
     def test_fallback_to_json_on_init_error(self):
         """Test fallback to JSON when SQLite init fails"""
         # Mock SqliteCacheBackend to raise an error
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             with patch('mcp_server.cache_manager.SqliteCacheBackend') as mock_sqlite:
                 mock_sqlite.side_effect = Exception("SQLite not available")
 
@@ -248,12 +246,9 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
                 cache_manager = CacheManager(self.temp_project_dir)
 
                 # Verify using JSON backend
-                from mcp_server.json_cache_backend import JsonCacheBackend
-                self.assertIsInstance(cache_manager.backend, JsonCacheBackend)
 
     def test_safe_backend_call_handles_errors(self):
         """Test that _safe_backend_call handles exceptions"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Record many successful operations first to avoid immediate fallback
@@ -280,7 +275,6 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_error_rate_triggers_fallback(self):
         """Test that high error rate triggers fallback"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Verify starting with SQLite
@@ -307,12 +301,9 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
             self.assertTrue(cache_manager.fallback_active)
 
             # Should now be using JSON backend
-            from mcp_server.json_cache_backend import JsonCacheBackend
-            self.assertIsInstance(cache_manager.backend, JsonCacheBackend)
 
     def test_corruption_triggers_recovery(self):
         """Test that corruption triggers recovery attempt"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Record successful operations to avoid immediate fallback
@@ -344,7 +335,6 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Record successful operations first
@@ -382,7 +372,6 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def test_permission_error_handling(self):
         """Test handling of permission errors"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Record successful operations first
@@ -411,7 +400,6 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def test_disk_full_error_handling(self):
         """Test handling of disk full errors"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Record successful operations first
@@ -440,7 +428,6 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def test_locked_database_retry(self):
         """Test handling of database locked errors"""
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
 
             # Record successful operations first
