@@ -26,12 +26,12 @@
 - [x] Commit Phase 1.1 changes
 
 ### 1.2 Database Schema Updates
-- [ ] Add `file_dependencies` table to `schema.sql`
-- [ ] Create schema migration in `schema_migrations.py`
-- [ ] Test migration on fresh database
-- [ ] Test migration on existing database (backward compatibility)
-- [ ] Run regression tests on existing functionality
-- [ ] Commit Phase 1.2 changes
+- [x] Add `file_dependencies` table to `schema.sql`
+- [x] Create schema migration in `schema_migrations.py`
+- [x] Test migration on fresh database (5 tests, all passed)
+- [x] Test migration on existing database (backward compatibility)
+- [x] Run regression tests on existing functionality (37 tests, all passed)
+- [x] Commit Phase 1.2 changes
 
 ### 1.3 Documentation & Testing
 - [ ] Update `REQUIREMENTS.md` with incremental analysis requirements
