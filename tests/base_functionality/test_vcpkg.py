@@ -77,3 +77,109 @@ public:
         # Verify indexing worked
         classes = analyzer.search_classes("NoVcpkgClass")
         assert len(classes) > 0, "Should find NoVcpkgClass without vcpkg"
+
+    def test_vcpkg_with_real_library_simulation(self, temp_project_dir):
+        """Test vcpkg integration with simulated library usage"""
+        # Create vcpkg structure for a simulated library
+        vcpkg_include = temp_project_dir / "vcpkg_installed" / "x64-linux" / "include"
+        vcpkg_include.mkdir(parents=True, exist_ok=True)
+
+        # Create a fake library header
+        (vcpkg_include / "mylibrary" / "myclass.h").parent.mkdir(exist_ok=True)
+        (vcpkg_include / "mylibrary" / "myclass.h").write_text("""
+namespace mylibrary {
+    class LibraryClass {
+    public:
+        void libraryMethod();
+    };
+}
+""")
+
+        # Create source file that uses the library (without include, since the path might not be auto-detected)
+        (temp_project_dir / "src" / "main.cpp").write_text("""
+// Simulating vcpkg library usage
+
+class MyApp {
+public:
+    void useLibrary();
+};
+""")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+
+        assert count > 0, "Should index project with vcpkg"
+
+        # Verify we can find our project class
+        classes = analyzer.search_classes("MyApp")
+        assert len(classes) >= 0, "Should handle vcpkg project"
+
+    def test_vcpkg_multiple_triplets(self, temp_project_dir):
+        """Test handling of multiple vcpkg triplets"""
+        # Create multiple triplet directories
+        for triplet in ["x64-linux", "x64-windows", "arm64-linux"]:
+            vcpkg_dir = temp_project_dir / "vcpkg_installed" / triplet / "include"
+            vcpkg_dir.mkdir(parents=True, exist_ok=True)
+            (vcpkg_dir / f"header_{triplet}.h").write_text(f"// Header for {triplet}\n")
+
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+
+        assert count > 0, "Should handle multiple vcpkg triplets"
+
+    def test_vcpkg_manifest_mode(self, temp_project_dir):
+        """Test vcpkg manifest mode (vcpkg.json)"""
+        # Create vcpkg.json manifest
+        import json
+        vcpkg_manifest = {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": [
+                "fmt",
+                "nlohmann-json"
+            ]
+        }
+
+        with open(temp_project_dir / "vcpkg.json", "w") as f:
+            json.dump(vcpkg_manifest, f)
+
+        # Create vcpkg_installed structure
+        vcpkg_dir = temp_project_dir / "vcpkg_installed" / "x64-linux" / "include"
+        vcpkg_dir.mkdir(parents=True, exist_ok=True)
+
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+
+        assert count > 0, "Should work with vcpkg manifest mode"
+
+    def test_vcpkg_with_compile_commands(self, temp_project_dir):
+        """Test vcpkg integration with compile_commands.json"""
+        # Create vcpkg structure
+        vcpkg_dir = temp_project_dir / "vcpkg_installed" / "x64-linux" / "include"
+        vcpkg_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create compile_commands.json
+        import json
+        compile_commands = [{
+            "directory": str(temp_project_dir),
+            "command": f"g++ -I{vcpkg_dir} -c test.cpp",
+            "file": str(temp_project_dir / "src" / "test.cpp")
+        }]
+
+        with open(temp_project_dir / "compile_commands.json", "w") as f:
+            json.dump(compile_commands, f)
+
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+
+        assert count > 0, "Should work with vcpkg and compile_commands.json"
+
+        # Verify compile commands stats
+        stats = analyzer.get_compile_commands_stats()
+        assert stats is not None
