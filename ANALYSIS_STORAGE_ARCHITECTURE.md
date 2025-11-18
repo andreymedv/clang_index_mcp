@@ -1,28 +1,35 @@
 # MCP Server Analysis Storage Architecture
 
+> **Note**: This document describes the analysis storage architecture. The current implementation uses **SQLite exclusively** for cache storage. Legacy JSON cache sections (1-10) are retained for historical reference only. For current architecture details, see [Section 11: SQLite Cache Backend Architecture](#sqlite-cache-backend-architecture-v300).
+
 ## Table of Contents
 1. [Overview](#overview)
-2. [Storage Mechanism](#storage-mechanism)
-3. [Data Structures](#data-structures)
-4. [Storage Location](#storage-location)
-5. [Responsible Classes and Methods](#responsible-classes-and-methods)
-6. [Multi-Codebase Handling](#multi-codebase-handling)
-7. [Complete Data Flow](#complete-data-flow)
-8. [Key Architectural Insights](#key-architectural-insights)
+2. [SQLite Cache Backend Architecture](#sqlite-cache-backend-architecture-v300) ⭐ **Current Implementation**
+3. [Legacy Architecture](#legacy-architecture-historical) (Historical reference)
 
 ---
 
 ## Overview
 
-The MCP (Model Context Protocol) server for C++ code analysis uses a sophisticated hybrid storage system that combines:
+The MCP (Model Context Protocol) server for C++ code analysis uses a high-performance SQLite storage system:
 - **In-memory indexes** for fast queries
-- **File-based cache** for persistence across sessions
-- **Two-level caching** (global + per-file) for incremental updates
+- **SQLite database** for persistent cache across sessions
+- **FTS5 full-text search** for lightning-fast symbol lookup
+- **WAL mode** for concurrent multi-process access
 - **Project-isolated storage** to support multiple codebases
+
+**Current Storage Backend**: SQLite (v3.0.0+)
+**Performance**: 2-5ms symbol searches, 70% smaller disk usage, multi-process safe
+
+For detailed SQLite architecture, **jump to [Section 11: SQLite Cache Backend Architecture](#sqlite-cache-backend-architecture-v300)**.
 
 ---
 
-## Storage Mechanism
+## Legacy Architecture (Historical)
+
+> **⚠️ Historical Reference Only**: The following sections (1-10) describe the legacy JSON cache architecture. This approach is no longer supported. They are retained for historical context and understanding the evolution of the system.
+
+### Storage Mechanism
 
 ### In-Memory Data Structures
 
@@ -1079,25 +1086,22 @@ except Exception as e:
 
 ## SQLite Cache Backend Architecture (v3.0.0+)
 
-Starting with version 3.0.0, the analyzer supports a high-performance SQLite cache backend that dramatically improves performance for large projects while maintaining backward compatibility with the JSON cache.
+The analyzer uses a high-performance SQLite cache backend for optimal performance on large projects.
 
 ### 11. SQLite Backend Overview
 
 **Key Features**:
-- **FTS5 Full-Text Search**: 2-5ms searches for 100K symbols (vs 50ms with JSON)
-- **Compact Storage**: 70% smaller disk usage (30MB vs 100MB for 100K symbols)
+- **FTS5 Full-Text Search**: 2-5ms searches for 100K symbols
+- **Compact Storage**: Efficient disk usage with automatic maintenance
 - **Concurrent Access**: WAL mode enables safe multi-process reads during writes
-- **Automatic Migration**: Seamless migration from JSON cache on first use
 - **Health Monitoring**: Built-in integrity checks and diagnostics
 
 **Architecture Components**:
 ```
 mcp_server/
 ├── cache_backend.py              # Protocol/interface definition
-├── json_cache_backend.py         # Legacy JSON implementation
 ├── sqlite_cache_backend.py       # SQLite implementation
-├── cache_manager.py              # Backend selector and coordinator
-├── cache_migration.py            # JSON→SQLite migration logic
+├── cache_manager.py              # Cache coordinator
 ├── error_tracking.py             # Error monitoring and recovery
 ├── schema.sql                    # Database schema with FTS5
 ├── schema_migrations.py          # Schema version management

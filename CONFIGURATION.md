@@ -40,7 +40,6 @@ All available configuration options:
 **Environment Variables:**
 - `CPP_ANALYZER_CONFIG` - Path to custom config file
 - `CPP_ANALYZER_USE_THREADS` - Use ThreadPool instead of ProcessPool (not recommended)
-- `CLANG_INDEX_USE_SQLITE` - Enable SQLite cache backend (default: 1)
 - `CLANG_INDEX_CACHE_DIR` - Custom cache directory location
 
 **Project Identity & Incremental Analysis:**
@@ -264,60 +263,28 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
 
 This is documented in detail in the "Configuration File Locations" section above.
 
-### SQLite Cache Configuration (New in v3.0.0)
+### Cache Configuration
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `CLANG_INDEX_USE_SQLITE` | boolean/int | `1` | Enable SQLite cache backend (1=SQLite, 0=JSON) |
 | `CLANG_INDEX_CACHE_DIR` | string | `.mcp_cache` | Custom cache directory location |
 
-**CLANG_INDEX_USE_SQLITE**:
-- **Default**: `1` (enabled - SQLite cache is used)
-- **Set to `0` or `false`**: Falls back to legacy JSON cache
-- **Recommendation**: Keep enabled for best performance
-- **Auto-Migration**: When enabled, automatically migrates existing JSON cache to SQLite
-
-**Performance with SQLite (vs JSON)**:
-- 20x faster symbol searches (2-5ms vs 50ms)
-- 2x faster startup (300ms vs 600ms for 100K symbols)
-- 70% smaller disk usage (30MB vs 100MB for 100K symbols)
-- Multi-process safe with WAL mode
-
-**Example - Enable SQLite (default)**:
-```bash
-# Linux/macOS (SQLite is default, no configuration needed)
-export CLANG_INDEX_USE_SQLITE=1
-
-# Windows
-set CLANG_INDEX_USE_SQLITE=1
-```
-
-**Example - Use Legacy JSON Cache**:
-```bash
-# Linux/macOS
-export CLANG_INDEX_USE_SQLITE=0
-
-# Windows
-set CLANG_INDEX_USE_SQLITE=0
-```
-
 **CLANG_INDEX_CACHE_DIR**:
-- **Default**: `.mcp_cache` (relative to project root)
+- **Default**: `.mcp_cache` (relative to MCP server root)
 - **Use Case**: Custom cache location (e.g., faster SSD, network storage)
 - **Note**: Cache location must be on a local filesystem (not NFS)
 
 **Example**:
 ```bash
 # Linux/macOS
-export CLANG_INDEX_CACHE_DIR="/fast/ssd/cache/my-project"
+export CLANG_INDEX_CACHE_DIR="/fast/ssd/cache"
 
 # Windows
-set CLANG_INDEX_CACHE_DIR=D:\cache\my-project
+set CLANG_INDEX_CACHE_DIR=D:\cache
 ```
 
 **SQLite Cache Features**:
 - **FTS5 Full-Text Search**: Lightning-fast prefix matching
-- **Automatic Migration**: Seamless migration from JSON cache
 - **Concurrent Access**: WAL mode for multi-process safety
 - **Health Monitoring**: Built-in integrity checks
 - **Database Maintenance**: Auto VACUUM, OPTIMIZE, ANALYZE
@@ -329,14 +296,10 @@ python3 scripts/cache_stats.py
 
 # Diagnose cache health
 python3 scripts/diagnose_cache.py
-
-# Manually migrate JSON → SQLite
-python3 scripts/migrate_cache.py
 ```
 
 **See Also**:
-- [Migration Guide](docs/MIGRATION_GUIDE.md) - Detailed migration instructions
-- [Troubleshooting](TROUBLESHOOTING.md) - SQLite-specific issues
+- [Troubleshooting](TROUBLESHOOTING.md) - Cache-specific issues
 - [Architecture](ANALYSIS_STORAGE_ARCHITECTURE.md) - Technical details
 
 ## Creating a Configuration File

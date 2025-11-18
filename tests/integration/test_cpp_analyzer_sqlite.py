@@ -55,7 +55,6 @@ void testFunction() {
 """)
 
         # Enable SQLite backend
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             # First indexing - should create SQLite cache
             analyzer1 = CppAnalyzer(str(self.temp_project_dir))
             count1 = analyzer1.index_project()
@@ -106,7 +105,6 @@ public:
 };
 """)
 
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             # First indexing
             analyzer1 = CppAnalyzer(str(self.temp_project_dir))
             analyzer1.index_project()
@@ -149,7 +147,6 @@ class TestClass {};
 patterns = ["*.cpp"]
 """)
 
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             # First indexing
             analyzer1 = CppAnalyzer(str(self.temp_project_dir))
             count1 = analyzer1.index_project()
@@ -194,7 +191,6 @@ namespace MyNamespace {
 }
 """)
 
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             # Index project
             analyzer1 = CppAnalyzer(str(self.temp_project_dir))
             analyzer1.index_project()
@@ -237,7 +233,6 @@ namespace MyNamespace {
             ])
             test_file.write_text(classes)
 
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             import time
 
             # Measure cold start (first indexing)
@@ -262,48 +257,6 @@ namespace MyNamespace {
             # Verify some symbols
             results = analyzer2.search_classes("File0Class0")
             self.assertGreater(len(results), 0, "Should find indexed class")
-
-    def test_json_to_sqlite_auto_migration_with_analyzer(self):
-        """Test automatic migration from JSON to SQLite with CppAnalyzer"""
-        # Create test file
-        test_file = self.temp_project_dir / "src" / "test.cpp"
-        test_file.write_text("""
-class MigrationTestClass {
-public:
-    void testMethod();
-};
-""")
-
-        # First, index with JSON backend
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "0"}):
-            analyzer_json = CppAnalyzer(str(self.temp_project_dir))
-            count_json = analyzer_json.index_project()
-            self.assertGreater(count_json, 0)
-
-            # Verify JSON cache exists
-            cache_dir = analyzer_json.cache_manager.cache_dir
-            json_cache = cache_dir / "cache_info.json"
-            self.assertTrue(json_cache.exists(), "JSON cache should exist")
-
-        # Now switch to SQLite - should trigger auto-migration
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
-            analyzer_sqlite = CppAnalyzer(str(self.temp_project_dir))
-
-            # Should have migrated automatically
-            self.assertIsInstance(analyzer_sqlite.cache_manager.backend, SqliteCacheBackend,
-                "Should use SQLite backend after migration")
-
-            # Verify migration marker exists
-            marker = cache_dir / ".migrated_to_sqlite"
-            self.assertTrue(marker.exists(), "Migration marker should exist")
-
-            # Index again - should load from migrated SQLite cache
-            count_sqlite = analyzer_sqlite.index_project()
-            self.assertGreater(count_sqlite, 0)
-
-            # Verify symbols are accessible
-            results = analyzer_sqlite.search_classes("MigrationTestClass")
-            self.assertGreater(len(results), 0, "Should find class from migrated cache")
 
 
 if __name__ == '__main__':

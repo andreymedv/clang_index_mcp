@@ -130,70 +130,21 @@ By default, the analyzer uses `os.cpu_count()` workers. For slow hosts or limite
 - ProcessPool mode provides best performance on multi-core systems
 - ThreadPool mode available via `CPP_ANALYZER_USE_THREADS=true` (not recommended)
 
-## High-Performance SQLite Cache (New in v3.0.0)
+## SQLite Cache
 
-Starting with version 3.0.0, the analyzer uses a high-performance SQLite cache backend for dramatically improved performance:
-
-### Performance Improvements
-
-| Metric | JSON Cache (v2.x) | SQLite Cache (v3.0) | Improvement |
-|--------|------------------|---------------------|-------------|
-| Symbol search | ~50ms | ~2-5ms | **20x faster** |
-| Cold startup (100K symbols) | ~600ms | ~300ms | **2x faster** |
-| Disk usage (100K symbols) | ~100MB | ~30MB | **70% smaller** |
-| Concurrent access | Blocked | Supported | **Multi-process safe** |
+The analyzer uses a high-performance SQLite cache for symbol storage:
 
 ### Key Features
 
-- **FTS5 Full-Text Search**: Lightning-fast symbol searches with prefix matching
-- **Automatic Migration**: Seamlessly migrates from JSON cache on first use
+- **FTS5 Full-Text Search**: Lightning-fast symbol searches with prefix matching (2-5ms for 100K symbols)
 - **Concurrent Access**: WAL mode enables safe multi-process access
-- **Better Incremental Updates**: Faster file-level cache updates
+- **Efficient Storage**: Compact database format with automatic maintenance
 - **Health Monitoring**: Built-in diagnostics and integrity checks
 - **Database Maintenance**: Automatic VACUUM, OPTIMIZE, and ANALYZE
 
-### Automatic Migration
-
-The analyzer automatically migrates your existing JSON cache to SQLite on first use:
-
-```bash
-# SQLite is enabled by default in v3.0.0+
-# Migration happens automatically when you run the analyzer
-clang-index-mcp analyze /path/to/project
-```
-
-**What happens during migration:**
-1. Automatic backup of your JSON cache
-2. Migration of all symbols and metadata to SQLite
-3. Verification of symbol counts
-4. Creation of `.migrated_to_sqlite` marker
-
-**Duration:** 1-5 seconds for typical projects (10K-50K symbols)
-
-### Configuration
-
-SQLite cache is **enabled by default**. To use the legacy JSON cache:
-
-```bash
-export CLANG_INDEX_USE_SQLITE=0
-```
-
-Or add to your client configuration:
-```json
-{
-  "mcpServers": {
-    "cpp-analyzer": {
-      "env": {
-        "CLANG_INDEX_USE_SQLITE": "0"
-      }
-    }
-  }
-}
-```
-
 ### Diagnostic Tools
 
-Three command-line tools are included for cache management:
+Two command-line tools are included for cache management:
 
 ```bash
 # View comprehensive cache statistics
@@ -201,17 +152,13 @@ python3 scripts/cache_stats.py
 
 # Diagnose cache health and get recommendations
 python3 scripts/diagnose_cache.py
-
-# Manually migrate cache (JSON → SQLite)
-python3 scripts/migrate_cache.py
 ```
 
 ### More Information
 
-- **Migration Guide**: See [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md) for detailed migration instructions
-- **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for all SQLite-related settings
+- **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
 - **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
-- **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for SQLite-specific issues
+- **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
 
 ## Intelligent Incremental Analysis (New in v3.1.0)
 

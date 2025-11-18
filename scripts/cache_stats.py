@@ -2,13 +2,12 @@
 """
 Cache Statistics Tool
 
-Shows comprehensive statistics about the C++ analyzer cache, including:
-- Backend type (JSON/SQLite)
-- Database/cache size
+Shows comprehensive statistics about the C++ analyzer SQLite cache, including:
+- Database size
 - Symbol count breakdown by kind
 - File statistics
-- Last vacuum time (SQLite only)
-- Query performance statistics (SQLite only)
+- Last vacuum time
+- Query performance statistics
 - Health status
 """
 
@@ -38,53 +37,9 @@ def format_size(bytes_value: int) -> str:
         return f"{bytes_value / (1024 * 1024 * 1024):.2f} GB"
 
 
-def get_json_cache_stats(cache_dir: Path) -> Dict[str, Any]:
-    """Get statistics for JSON cache."""
-    cache_info_path = cache_dir / "cache_info.json"
-
-    if not cache_info_path.exists():
-        return {"error": "No JSON cache found"}
-
-    stats = {
-        "backend_type": "JSON",
-        "cache_dir": str(cache_dir)
-    }
-
-    try:
-        with open(cache_info_path, 'r') as f:
-            cache_info = json.load(f)
-
-        stats["version"] = cache_info.get("version", "unknown")
-        stats["indexed_file_count"] = cache_info.get("indexed_file_count", 0)
-        stats["include_dependencies"] = cache_info.get("include_dependencies", False)
-
-        # Count symbols
-        class_count = sum(len(symbols) for symbols in cache_info.get("class_index", {}).values())
-        function_count = sum(len(symbols) for symbols in cache_info.get("function_index", {}).values())
-        stats["total_symbols"] = class_count + function_count
-        stats["class_symbols"] = class_count
-        stats["function_symbols"] = function_count
-
-        # Count files
-        stats["total_files"] = len(cache_info.get("file_hashes", {}))
-
-        # Calculate cache size
-        total_size = 0
-        for file in cache_dir.glob("**/*"):
-            if file.is_file():
-                total_size += file.stat().st_size
-        stats["cache_size_bytes"] = total_size
-        stats["cache_size_formatted"] = format_size(total_size)
-
-    except Exception as e:
-        stats["error"] = str(e)
-
-    return stats
-
-
 def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
     """Get statistics for SQLite cache."""
-    db_path = cache_dir / "cache.db"
+    db_path = cache_dir / "symbols.db"
 
     if not db_path.exists():
         return {"error": "No SQLite cache found"}
@@ -286,17 +241,14 @@ def main():
         print(f"❌ Cache directory not found: {cache_dir}", file=sys.stderr)
         sys.exit(1)
 
-    # Check which backend is in use
-    db_path = cache_dir / "cache.db"
-    json_path = cache_dir / "cache_info.json"
+    # Get SQLite cache statistics
+    db_path = cache_dir / "symbols.db"
 
-    if db_path.exists():
-        stats = get_sqlite_cache_stats(cache_dir)
-    elif json_path.exists():
-        stats = get_json_cache_stats(cache_dir)
-    else:
-        print(f"❌ No cache found in {cache_dir}", file=sys.stderr)
+    if not db_path.exists():
+        print(f"❌ No SQLite cache found in {cache_dir}", file=sys.stderr)
         sys.exit(1)
+
+    stats = get_sqlite_cache_stats(cache_dir)
 
     # Output
     if args.json:

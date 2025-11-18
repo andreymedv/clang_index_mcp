@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Any, Union
 from collections import defaultdict
 from .symbol_info import SymbolInfo
 from .cache_backend import CacheBackend
-from .json_cache_backend import JsonCacheBackend
 from .error_tracking import ErrorTracker, RecoveryManager
 from .project_identity import ProjectIdentity
 
@@ -59,11 +58,7 @@ class CacheManager:
         # Initialize recovery manager
         self.recovery_manager = RecoveryManager()
 
-        # Track initial backend type for fallback detection
-        self.initial_backend_type: Optional[str] = None
-        self.fallback_active = False
-
-        # Initialize cache backend based on feature flag
+        # Initialize SQLite cache backend
         self.backend = self._create_backend()
 
     def _get_cache_dir(self) -> Path:
@@ -96,132 +91,33 @@ class CacheManager:
         """
         return self.cache_dir.exists()
 
-    def _maybe_migrate_from_json(self) -> bool:
-        """
-        Automatically migrate from JSON cache to SQLite if needed.
-
-        Checks for existing JSON cache and migration marker. If JSON cache exists
-        and migration hasn't been done, performs automatic migration with backup.
-
-        Returns:
-            True if migration was performed or not needed, False if migration failed
-        """
-        try:
-            from .cache_migration import (
-                should_migrate,
-                create_migration_backup,
-                migrate_json_to_sqlite,
-                verify_migration,
-                create_migration_marker
-            )
-
-            db_path = self.cache_dir / "symbols.db"
-            marker_path = self.cache_dir / ".migrated_to_sqlite"
-
-            # Check if migration is needed
-            if not should_migrate(self.cache_dir, marker_path):
-                return True
-
-            diagnostics.info("Starting automatic JSON → SQLite migration...")
-
-            # Create backup before migration
-            backup_success, backup_msg, backup_path = create_migration_backup(self.cache_dir)
-            if not backup_success:
-                diagnostics.error(f"Failed to create backup: {backup_msg}")
-                return False
-
-            diagnostics.info(f"Backup created: {backup_path}")
-
-            # Perform migration
-            migrate_success, migrate_msg = migrate_json_to_sqlite(self.cache_dir, db_path)
-            if not migrate_success:
-                diagnostics.error(f"Migration failed: {migrate_msg}")
-                return False
-
-            diagnostics.info(f"Migration completed: {migrate_msg}")
-
-            # Verify migration
-            verify_success, verify_msg = verify_migration(self.cache_dir, db_path)
-            if not verify_success:
-                diagnostics.error(f"Migration verification failed: {verify_msg}")
-                return False
-
-            diagnostics.info(f"Migration verified: {verify_msg}")
-
-            # Create marker file to prevent re-migration
-            migration_info = {
-                "backup_path": str(backup_path) if backup_path else None,
-                "message": migrate_msg
-            }
-            create_migration_marker(marker_path, migration_info)
-
-            diagnostics.info("Migration successful! SQLite cache is now active.")
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Migration failed with exception: {e}")
-            import traceback
-            diagnostics.error(traceback.format_exc())
-            return False
-
     def _create_backend(self) -> CacheBackend:
         """
-        Create appropriate cache backend based on feature flag.
-
-        Feature flag: CLANG_INDEX_USE_SQLITE (default: "1")
-        - "1" or "true" -> Use SQLite backend
-        - "0" or "false" -> Use JSON backend
-
-        Falls back to JSON on SQLite initialization errors.
+        Create SQLite cache backend.
 
         Returns:
-            CacheBackend instance (SQLite or JSON)
+            SqliteCacheBackend instance
+
+        Raises:
+            Exception if SQLite backend initialization fails
         """
-        use_sqlite = os.environ.get("CLANG_INDEX_USE_SQLITE", "1").lower()
+        from .sqlite_cache_backend import SqliteCacheBackend
 
-        if use_sqlite in ("1", "true"):
-            try:
-                # Attempt automatic migration from JSON if needed
-                migration_ok = self._maybe_migrate_from_json()
-                if not migration_ok:
-                    diagnostics.warning("Migration failed, falling back to JSON backend")
-                    self.initial_backend_type = "json"
-                    return JsonCacheBackend(self.cache_dir)
-
-                # Import SQLite backend dynamically to avoid startup errors if missing
-                from .sqlite_cache_backend import SqliteCacheBackend
-
-                db_path = self.cache_dir / "symbols.db"
-                backend = SqliteCacheBackend(db_path)
-                diagnostics.debug(f"Using SQLite cache backend: {db_path}")
-                self.initial_backend_type = "sqlite"
-                return backend
-
-            except Exception as e:
-                diagnostics.warning(f"Failed to initialize SQLite backend: {e}")
-                diagnostics.warning("Falling back to JSON cache backend")
-                self.error_tracker.record_error(
-                    "InitializationError",
-                    str(e),
-                    "backend_init",
-                    recoverable=False
-                )
-
-        # Fall back to JSON backend
-        diagnostics.debug(f"Using JSON cache backend: {self.cache_dir}")
-        self.initial_backend_type = "json"
-        return JsonCacheBackend(self.cache_dir)
+        db_path = self.cache_dir / "symbols.db"
+        backend = SqliteCacheBackend(db_path)
+        diagnostics.debug(f"Using SQLite cache backend: {db_path}")
+        return backend
 
     def _handle_backend_error(self, error: Exception, operation: str) -> bool:
         """
-        Handle backend errors with tracking and fallback logic.
+        Handle backend errors with tracking and recovery logic.
 
         Args:
             error: Exception that occurred
             operation: Operation that failed
 
         Returns:
-            True if operation should be retried with fallback backend, False otherwise
+            True if recovery was attempted, False otherwise
         """
         # Classify error type
         error_type = type(error).__name__
@@ -235,28 +131,17 @@ class CacheManager:
         ))
 
         # Record error
-        should_fallback = self.error_tracker.record_error(
+        self.error_tracker.record_error(
             error_type,
             error_message,
             operation,
             recoverable=recoverable
         )
 
-        # If error tracker triggers fallback, switch to JSON backend
-        if should_fallback and not self.fallback_active:
-            diagnostics.error(
-                f"Error rate threshold exceeded. Falling back to JSON backend."
-            )
-            self._fallback_to_json()
-            return True
-
         # For critical errors (corruption, disk full), attempt recovery
-        if not recoverable and not self.fallback_active:
+        if not recoverable:
             recovery_attempted = self._attempt_recovery(error, operation)
-            if not recovery_attempted:
-                # Recovery failed, fall back to JSON
-                self._fallback_to_json()
-                return True
+            return recovery_attempted
 
         return False
 
@@ -312,22 +197,6 @@ class CacheManager:
 
         return False
 
-    def _fallback_to_json(self):
-        """Fallback to JSON backend."""
-        if self.fallback_active:
-            return  # Already using fallback
-
-        diagnostics.warning("Switching to JSON backend")
-        self.fallback_active = True
-
-        try:
-            self.backend = JsonCacheBackend(self.cache_dir)
-            diagnostics.info("Successfully switched to JSON backend")
-        except Exception as e:
-            diagnostics.error(f"Failed to initialize JSON backend: {e}")
-            # This is a critical error - we can't continue
-            raise
-
     def _safe_backend_call(self, operation: str, func, *args, **kwargs):
         """
         Safely call a backend method with error tracking.
@@ -348,19 +217,8 @@ class CacheManager:
         except Exception as e:
             diagnostics.error(f"Backend error in {operation}: {e}")
 
-            # Handle error with potential fallback
-            retry_with_fallback = self._handle_backend_error(e, operation)
-
-            if retry_with_fallback and self.fallback_active:
-                # Retry with JSON backend
-                try:
-                    diagnostics.info(f"Retrying {operation} with JSON backend")
-                    self.error_tracker.record_operation(f"{operation}_retry")
-                    result = func(*args, **kwargs)
-                    return result
-                except Exception as e2:
-                    diagnostics.error(f"Retry failed: {e2}")
-                    return None
+            # Handle error and attempt recovery if needed
+            self._handle_backend_error(e, operation)
 
             return None
     
@@ -465,11 +323,10 @@ class CacheManager:
         Get summary of cache errors and health status.
 
         Returns:
-            Dict with error statistics and backend status
+            Dict with error statistics
         """
         summary = self.error_tracker.get_error_summary()
-        summary['backend_type'] = self.initial_backend_type
-        summary['fallback_active'] = self.fallback_active
+        summary['backend_type'] = 'sqlite'
         return summary
 
     def reset_error_tracking(self):

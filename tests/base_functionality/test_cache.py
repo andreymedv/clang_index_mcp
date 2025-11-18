@@ -48,9 +48,9 @@ void cachedFunction() {}
         cache_dir = Path(analyzer1.cache_dir)
         assert cache_dir.exists(), "Cache directory should be created"
 
-        # Verify cache file exists
-        cache_file = cache_dir / "cache_info.json"
-        assert cache_file.exists(), "Cache file should be created"
+        # Verify SQLite database exists
+        db_file = cache_dir / "symbols.db"
+        assert db_file.exists(), "SQLite database should be created"
 
         # Check that symbols were indexed
         classes1 = analyzer1.search_classes("CachedClass")
