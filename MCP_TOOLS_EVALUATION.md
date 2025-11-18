@@ -985,6 +985,346 @@ find_callers("FeatureXManager::initialize")
 - ❌ Don't forget to set project directory before using other tools
 - ❌ Don't use `get_derived_classes` when you need all subclasses (use `get_class_hierarchy`)
 
+---
+
+## Agent Prompt Guidance: Maximizing Tool Effectiveness
+
+This section provides specific guidance for LLM agents to utilize these MCP tools optimally. **This information should be incorporated into agent system prompts** when working with C++ codebases that have this MCP server available.
+
+### Decision Tree: Tool Selection Strategy
+
+Use this decision tree to choose the right tool for each task:
+
+```
+User Request Analysis:
+│
+├─ "Find/locate/search for a class/struct"
+│  └─> Use: search_classes(pattern="...")
+│
+├─ "Find/locate/search for a function/method"
+│  └─> Use: search_functions(pattern="...")
+│
+├─ "What does class X contain?" / "What methods does X have?"
+│  └─> Use: get_class_info(class_name="X")
+│
+├─ "Show me all subclasses/descendants of X" / "What inherits from X?"
+│  └─> Use: get_class_hierarchy(class_name="X")  [NOT get_derived_classes]
+│
+├─ "What calls function X?" / "Where is X used?" / "Impact of changing X?"
+│  └─> Use: find_callers(function_name="X")
+│
+├─ "What does function X call?" / "What does X depend on?"
+│  └─> Use: find_callees(function_name="X")
+│
+├─ "How does execution get from A to B?" / "What's the call path?"
+│  └─> Use: get_call_path(from_function="A", to_function="B", max_depth=10)
+│
+├─ "Show me function signature/parameters for X"
+│  └─> Use: get_function_signature(function_name="X")
+│
+├─ User mentions they edited C++ files / after git operations
+│  └─> Use: refresh_project(incremental=true)
+│
+└─ Starting work on a C++ project
+   └─> Use: set_project_directory(project_path="...")
+```
+
+### Tool Chaining Patterns
+
+Common sequences of tool calls that work well together:
+
+#### Pattern 1: Discovery → Inspection
+```python
+# User: "Tell me about the Player class"
+1. search_classes(pattern="Player")  # Find it
+2. get_class_info(class_name="Player")  # Inspect structure
+3. get_class_hierarchy(class_name="Player")  # Understand relationships
+```
+
+#### Pattern 2: Search → Verify → Read
+```python
+# User: "Find the implementation of calculateDamage"
+1. search_functions(pattern="calculateDamage")  # Locate (instant)
+2. # Now read the specific file:line from results (targeted, efficient)
+```
+
+#### Pattern 3: Impact Analysis Chain
+```python
+# User: "I want to refactor function X"
+1. get_function_signature(function_name="X")  # Understand current signature
+2. find_callers(function_name="X")  # Find all usage points
+3. # Read each caller file to plan changes
+```
+
+#### Pattern 4: Inheritance Analysis
+```python
+# User: "What's the class hierarchy for GameObject?"
+1. get_class_hierarchy(class_name="GameObject")  # Get full tree
+2. get_class_info(class_name="GameObject")  # Inspect base class
+3. get_class_info(class_name="PhysicsObject")  # Inspect derived classes
+```
+
+#### Pattern 5: Project Initialization
+```python
+# User: "Help me work on this C++ project"
+1. set_project_directory(project_path="...", auto_refresh=true)
+2. get_indexing_status()  # Check if large project still indexing
+3. # If indexing: inform user, optionally wait_for_indexing(timeout=120)
+4. # Proceed with queries when ready
+```
+
+### Query Optimization Strategies
+
+#### Strategy 1: Use Precise Patterns
+```python
+# ❌ BAD: Overly broad pattern
+search_classes(pattern=".*")  # Returns everything, huge result set
+
+# ✅ GOOD: Specific pattern
+search_classes(pattern=".*Manager")  # Focused results
+```
+
+#### Strategy 2: Leverage project_only Flag
+```python
+# ❌ BAD: Including dependencies when not needed
+search_functions(pattern="update", project_only=False)
+# Returns update() from: project code, STL, boost, vcpkg, etc.
+
+# ✅ GOOD: Focus on project code (default)
+search_functions(pattern="update", project_only=True)
+# Returns only project's update() functions
+```
+
+#### Strategy 3: Use class_name Scoping
+```python
+# ❌ BAD: Broad search when class is known
+search_functions(pattern="render")  # Returns 100s of matches
+
+# ✅ GOOD: Scope to specific class
+search_functions(pattern="render", class_name="Renderer")
+# Returns only Renderer::render() methods
+```
+
+#### Strategy 4: Conservative max_depth
+```python
+# ❌ BAD: Excessive depth in large codebase
+get_call_path("main", "helper", max_depth=20)  # May timeout or return 1000s of paths
+
+# ✅ GOOD: Reasonable depth
+get_call_path("main", "helper", max_depth=8)  # Manageable results
+```
+
+#### Strategy 5: Progressive Refinement
+```python
+# Start broad, then refine based on results
+1. search_symbols(pattern="Player")  # See all Player-related symbols
+2. # Review results, identify specific class needed
+3. get_class_info(class_name="PlayerController")  # Focus on specific class
+```
+
+### State Awareness & Timing
+
+#### Check Indexing Status on Large Projects
+```python
+# After set_project_directory on large codebase:
+status = get_indexing_status()
+
+if status["state"] == "indexing":
+    completion = status["progress"]["completion_percentage"]
+
+    if completion < 20:
+        # Inform user: "Indexing project (15% complete), results will be partial"
+        # Option: wait_for_indexing(timeout=120) if completeness needed
+    else:
+        # Proceed with queries, results increasingly complete
+```
+
+#### When to Refresh
+```python
+# User says: "I just edited Player.cpp"
+refresh_project(incremental=True)  # Fast incremental update
+
+# User says: "I merged a large branch"
+refresh_project(incremental=True)  # Still incremental, analyzes only changes
+
+# Configuration changed or cache seems corrupt:
+refresh_project(force_full=True)  # Full rebuild
+```
+
+### Error Handling Patterns
+
+#### Pattern 1: Handle "Not Found" Gracefully
+```python
+result = get_class_info(class_name="MyClass")
+
+# Check metadata to see if found
+if result["result"] is None:
+    # Not found - fall back to search
+    search_results = search_classes(pattern="MyClass")
+    # Suggest alternatives from search results
+```
+
+#### Pattern 2: Handle Partial Results During Indexing
+```python
+results = search_functions(pattern="update")
+
+# Check metadata
+if results["metadata"]["complete"] == False:
+    # Inform user: "Results are partial (indexing in progress)"
+    # Suggest: wait_for_indexing() or proceed with caveat
+```
+
+#### Pattern 3: Validate Project Initialization
+```python
+# Before running queries, ensure project is set:
+try:
+    status = get_server_status()
+    # Success - project initialized
+except:
+    # Not initialized - guide user:
+    # "Please provide the path to your C++ project"
+    # Then: set_project_directory(project_path=user_provided_path)
+```
+
+### Context Efficiency Tips
+
+#### Tip 1: Avoid Reading Files for Structure
+```python
+# ❌ INEFFICIENT: Read entire header to see class structure
+Read(file_path="/project/include/Player.h")  # 500+ lines, huge context
+
+# ✅ EFFICIENT: Use structured query
+get_class_info(class_name="Player")  # Concise JSON with all methods
+```
+
+#### Tip 2: Use Signatures Before Reading Implementations
+```python
+# ❌ INEFFICIENT: Read file to see function signature
+Read(file_path="/project/src/utils.cpp")  # Search through file
+
+# ✅ EFFICIENT: Direct signature lookup
+get_function_signature(function_name="calculateHash")  # Instant
+```
+
+#### Tip 3: Target Reads with MCP Results
+```python
+# ✅ EFFICIENT WORKFLOW:
+1. search_functions(pattern="loadConfig")
+   # Result: file="/config/loader.cpp", line=145
+2. Read(file_path="/config/loader.cpp", offset=140, limit=30)
+   # Read only relevant section, not entire file
+```
+
+#### Tip 4: Prefer search_symbols Over Multiple Calls
+```python
+# ❌ INEFFICIENT: Multiple tool calls
+results_classes = search_classes(pattern="Network.*")
+results_functions = search_functions(pattern="Network.*")
+
+# ✅ EFFICIENT: Single unified call
+results = search_symbols(pattern="Network.*")
+# Returns: {"classes": [...], "functions": [...]}
+```
+
+### Common Pitfalls to Avoid
+
+#### Pitfall 1: Using Grep Instead of Semantic Search
+```python
+# ❌ WRONG: Text search for C++ symbols
+Grep(pattern="class GameObject", output_mode="content")
+# Problem: Matches comments, strings, false positives
+
+# ✅ CORRECT: Semantic AST-based search
+search_classes(pattern="GameObject")
+# Returns: Only actual class definitions with metadata
+```
+
+#### Pitfall 2: Forgetting project_only Default
+```python
+# ❌ CONFUSION: Wondering why so many results
+search_functions(pattern="begin", project_only=False)
+# Returns: STL begin(), boost begin(), project begin() - 100s of results
+
+# ✅ CLARITY: Understand the default
+search_functions(pattern="begin", project_only=True)  # Default behavior
+# Returns: Only project's begin() functions
+```
+
+#### Pitfall 3: Using get_derived_classes for Full Hierarchy
+```python
+# ❌ WRONG: Expects all descendants
+get_derived_classes("Entity")
+# Returns: Only DIRECT children, not grandchildren
+
+# ✅ CORRECT: For full hierarchy
+get_class_hierarchy("Entity")
+# Returns: Complete ancestor and descendant tree
+```
+
+#### Pitfall 4: Not Handling Line Number Limitations
+```python
+# ❌ INCOMPLETE: Expecting call site line numbers
+callers = find_callers("saveFile")
+# callers[0]["line"] is where CALLER is DEFINED, not call site
+
+# ✅ COMPLETE: Two-step approach
+1. callers = find_callers("saveFile")
+2. Read each caller's file and search for "saveFile" text to find call sites
+```
+
+#### Pitfall 5: Ignoring Indexing State
+```python
+# ❌ WRONG: Assuming immediate completeness
+set_project_directory(project_path="/huge/project")
+results = search_classes(pattern=".*")  # Called immediately
+# Problem: Indexing still running, results incomplete
+
+# ✅ CORRECT: Check status
+set_project_directory(project_path="/huge/project")
+status = get_indexing_status()
+if status["state"] == "indexing":
+    wait_for_indexing(timeout=180)  # Or inform user
+results = search_classes(pattern=".*")  # Now complete
+```
+
+### Prompt Integration Suggestions
+
+When incorporating this MCP server into an agent's system prompt, include:
+
+1. **Tool Availability Statement:**
+   ```
+   "You have access to a C++ semantic analysis MCP server that provides AST-level
+   understanding of C++ code. Prefer these tools over text-based search (Grep/Glob)
+   for C++ symbol discovery and analysis."
+   ```
+
+2. **Primary Tool Mapping:**
+   ```
+   "For C++ codebases:
+   - Finding classes → use search_classes (not Grep)
+   - Finding functions → use search_functions (not Grep)
+   - Class structure → use get_class_info (not Read)
+   - Inheritance → use get_class_hierarchy
+   - Call analysis → use find_callers/find_callees"
+   ```
+
+3. **Initialization Reminder:**
+   ```
+   "When starting work on a C++ project, first call set_project_directory()
+   to initialize the semantic analyzer. Monitor indexing status with
+   get_indexing_status() on large projects."
+   ```
+
+4. **Decision Priority:**
+   ```
+   "Decision priority for C++ code analysis:
+   1st: MCP semantic tools (if available)
+   2nd: Default tools (Grep/Read) for non-C++ or when MCP unavailable
+   Always prefer semantic understanding over text matching."
+   ```
+
+---
+
 ### Configuration Recommendations
 
 **For Best Performance:**
