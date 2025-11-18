@@ -43,6 +43,12 @@ All available configuration options:
 - `CLANG_INDEX_USE_SQLITE` - Enable SQLite cache backend (default: 1)
 - `CLANG_INDEX_CACHE_DIR` - Custom cache directory location
 
+**Project Identity & Incremental Analysis:**
+- Project identity is determined by the combination of source directory and config file path
+- Different config file paths create separate cache directories (enabling multi-config workflows)
+- Changing only file contents (not paths) preserves project identity and enables incremental analysis
+- See [Incremental Analysis](#incremental-analysis) section below for details
+
 ---
 
 ## Configuration File Locations
