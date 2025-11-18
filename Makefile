@@ -2,17 +2,24 @@
 
 # Detect operating system
 ifeq ($(OS),Windows_NT)
-	PYTHON := python
-	VENV_BIN := mcp_env\Scripts
-	ACTIVATE := $(VENV_BIN)\activate
-	RM := del /Q
-	RMDIR := rmdir /S /Q
+DETECTED_OS := Windows
 else
-	PYTHON := python3
-	VENV_BIN := mcp_env/bin
-	ACTIVATE := source $(VENV_BIN)/activate
-	RM := rm -f
-	RMDIR := rm -rf
+DETECTED_OS := $(shell uname -s)
+endif
+
+# Set platform-specific variables
+ifeq ($(DETECTED_OS),Windows)
+PYTHON := python
+VENV_BIN := mcp_env\Scripts
+ACTIVATE := $(VENV_BIN)\activate
+RM := del /Q
+RMDIR := rmdir /S /Q
+else
+PYTHON := python3
+VENV_BIN := mcp_env/bin
+ACTIVATE := source $(VENV_BIN)/activate
+RM := rm -f
+RMDIR := rm -rf
 endif
 
 # Colors for output (Unix-like systems)
@@ -136,7 +143,14 @@ install-wheel: build-wheel ## Build and install the wheel package locally
 
 clean: ## Clean cache and build artifacts
 	@echo "$(BLUE)Cleaning up...$(NC)"
-	@$(RMDIR) .mcp_cache 2>/dev/null || true
+ifeq ($(DETECTED_OS),Windows)
+	@if exist .mcp_cache\* ( \
+		for /d %%d in (.mcp_cache\*) do @rmdir /s /q "%%d" 2>nul & \
+		for %%f in (.mcp_cache\*) do @if not "%%~nxf"==".gitkeep" del /q "%%f" 2>nul \
+	)
+else
+	@find .mcp_cache -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
+endif
 	@$(RMDIR) __pycache__ 2>/dev/null || true
 	@$(RMDIR) mcp_server/__pycache__ 2>/dev/null || true
 	@$(RMDIR) scripts/__pycache__ 2>/dev/null || true
@@ -147,15 +161,29 @@ clean: ## Clean cache and build artifacts
 	@$(RMDIR) *.egg-info 2>/dev/null || true
 	@$(RMDIR) clang_index_mcp.egg-info 2>/dev/null || true
 	@$(RM) .coverage 2>/dev/null || true
+ifeq ($(DETECTED_OS),Windows)
+	@for /d /r . %%d in (__pycache__) do @if exist "%%d" rmdir /s /q "%%d" 2>nul
+	@for /d /r . %%d in (*.egg-info) do @if exist "%%d" rmdir /s /q "%%d" 2>nul
+	@del /s /q *.pyc 2>nul
+	@del /s /q *.pyo 2>nul
+else
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@find . -type f -name "*.pyo" -delete 2>/dev/null || true
+endif
 	@echo "$(GREEN)Cleanup complete!$(NC)"
 
 clean-cache: ## Clean only the MCP cache
 	@echo "$(BLUE)Cleaning MCP cache...$(NC)"
-	@$(RMDIR) .mcp_cache 2>/dev/null || true
+ifeq ($(DETECTED_OS),Windows)
+	@if exist .mcp_cache\* ( \
+		for /d %%d in (.mcp_cache\*) do @rmdir /s /q "%%d" 2>nul & \
+		for %%f in (.mcp_cache\*) do @if not "%%~nxf"==".gitkeep" del /q "%%f" 2>nul \
+	)
+else
+	@find .mcp_cache -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
+endif
 	@echo "$(GREEN)Cache cleaned!$(NC)"
 
 clean-all: clean ## Clean everything including virtual environment
