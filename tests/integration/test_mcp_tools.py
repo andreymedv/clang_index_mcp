@@ -324,3 +324,161 @@ class InvalidClass {
         classes = analyzer.search_classes(".*")
         assert isinstance(classes, list)
         assert len(classes) == 0
+
+
+class TestMCPServerToolsAdditional:
+    """Additional tests to cover gaps from removed test_mcp_protocol.py"""
+
+    def test_get_server_status(self, temp_project_dir):
+        """Test get_stats (equivalent to get_server_status)"""
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Get server statistics
+        stats = analyzer.get_stats()
+        assert stats is not None
+        assert "class_count" in stats
+        assert "function_count" in stats
+        assert "file_count" in stats
+        assert stats["class_count"] >= 1
+
+    def test_nonexistent_class(self, temp_project_dir):
+        """Test querying non-existent class returns None or empty"""
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+        
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+        
+        # Query non-existent class
+        info = analyzer.get_class_info("NonExistentClass")
+        assert info is None, "Should return None for non-existent class"
+        
+        # Search should return empty list
+        results = analyzer.search_classes("NonExistentClass")
+        assert isinstance(results, list)
+        assert len(results) == 0
+
+    def test_invalid_project_path(self):
+        """Test that invalid project path raises appropriate error"""
+        import pytest
+        
+        # Test with non-existent path - should raise or handle gracefully
+        # CppAnalyzer might create directories, so we test with None or invalid type
+        with pytest.raises((TypeError, ValueError, OSError)):
+            analyzer = CppAnalyzer(None)
+        
+        # Test with file instead of directory
+        import tempfile
+        with tempfile.NamedTemporaryFile() as tmp:
+            # This might succeed (treats parent directory as project)
+            # or fail - either is acceptable error handling
+            try:
+                analyzer = CppAnalyzer(tmp.name)
+                # If it succeeds, it should handle it gracefully
+                count = analyzer.index_project()
+                assert count >= 0  # Should not crash
+            except (ValueError, OSError):
+                pass  # Error is acceptable
+
+    def test_error_when_analyzer_not_initialized(self):
+        """Test error handling when operations are called without initialization"""
+        # Create analyzer but don't index
+        import tempfile
+        import shutil
+        from pathlib import Path
+        
+        temp_dir = tempfile.mkdtemp()
+        try:
+            project_dir = Path(temp_dir) / "project"
+            project_dir.mkdir(parents=True)
+            (project_dir / "src").mkdir()
+            
+            analyzer = CppAnalyzer(str(project_dir))
+            # Don't call index_project()
+            
+            # Operations should handle gracefully (return empty or None)
+            results = analyzer.search_classes("Test")
+            assert isinstance(results, list)
+            # Might be empty or have cached results
+            
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_compile_commands_stats(self, temp_project_dir):
+        """Test get_compile_commands_stats API"""
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+        
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+        
+        # Get compile commands stats
+        stats = analyzer.get_compile_commands_stats()
+        assert stats is not None
+        assert isinstance(stats, dict)
+        # Should have information about compile commands usage
+
+    def test_invalid_regex_patterns(self, temp_project_dir):
+        """Test handling of various invalid regex patterns"""
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+        
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+        
+        from mcp_server.regex_validator import RegexValidationError
+        
+        # Test various dangerous patterns
+        dangerous_patterns = [
+            "(a+)+b",           # Nested quantifiers
+            "(a*)*c",           # Nested star quantifiers
+            "(a|a)*b",          # Alternation with quantifiers
+            "(x+x+)+y",         # Multiple nested quantifiers
+        ]
+        
+        for pattern in dangerous_patterns:
+            with pytest.raises(RegexValidationError):
+                analyzer.search_classes(pattern)
+
+    def test_find_in_file_with_nonexistent_file(self, temp_project_dir):
+        """Test find_in_file with non-existent file"""
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+        
+        # Query non-existent file
+        results = analyzer.find_in_file("nonexistent.cpp", ".*")
+        assert isinstance(results, list)
+        assert len(results) == 0, "Should return empty list for non-existent file"
+
+    def test_get_parse_errors(self, temp_project_dir):
+        """Test get_parse_errors API for tracking indexing issues"""
+        # Create file with syntax errors
+        (temp_project_dir / "src" / "bad.cpp").write_text("""
+class BrokenClass {
+    void method(
+};  // Missing closing paren
+""")
+        (temp_project_dir / "src" / "good.cpp").write_text("class GoodClass {};")
+        
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+        
+        # Get parse errors
+        errors = analyzer.get_parse_errors()
+        assert isinstance(errors, list)
+        # Might have errors from bad.cpp
+
+    def test_empty_search_pattern(self, temp_project_dir):
+        """Test search with empty pattern"""
+        (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
+        
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+        
+        # Empty pattern might be treated as "match nothing" or "match all"
+        # Either behavior is acceptable as long as it doesn't crash
+        try:
+            results = analyzer.search_classes("")
+            assert isinstance(results, list)
+        except RegexValidationError:
+            pass  # Rejecting empty pattern is also acceptable
