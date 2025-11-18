@@ -110,9 +110,9 @@ class TestProcessPoolCache(unittest.TestCase):
         symbols_per_worker = 100
 
         # Pre-create database to avoid initialization race condition
-            cache_manager = CacheManager(self.temp_project_dir)
-            # Just initialize - don't write anything yet
-            del cache_manager
+        cache_manager = CacheManager(self.temp_project_dir)
+        # Just initialize - don't write anything yet
+        del cache_manager
 
         # Use ProcessPoolExecutor to write symbols concurrently
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
@@ -143,23 +143,23 @@ class TestProcessPoolCache(unittest.TestCase):
         """Test concurrent reads from multiple processes"""
         # First, populate database with some data
         symbol_count = 1000
-            cache_manager = CacheManager(self.temp_project_dir)
-            backend = cache_manager.backend
+        cache_manager = CacheManager(self.temp_project_dir)
+        backend = cache_manager.backend
 
-            if isinstance(backend, SqliteCacheBackend):
-                symbols = []
-                for i in range(symbol_count):
-                    symbol = SymbolInfo(
-                        name=f"TestSymbol{i}",
-                        kind="function",
-                        file="/test/test.cpp",
-                        line=i + 1,
-                        column=1,
-                        usr=f"usr_test_{i}"
-                    )
-                    symbols.append(symbol)
+        if isinstance(backend, SqliteCacheBackend):
+            symbols = []
+            for i in range(symbol_count):
+                symbol = SymbolInfo(
+                    name=f"TestSymbol{i}",
+                    kind="function",
+                    file="/test/test.cpp",
+                    line=i + 1,
+                    column=1,
+                    usr=f"usr_test_{i}"
+                )
+                symbols.append(symbol)
 
-                backend.save_symbols_batch(symbols)
+            backend.save_symbols_batch(symbols)
 
         # Now use ProcessPoolExecutor to read concurrently
         num_workers = 4
@@ -185,8 +185,8 @@ class TestProcessPoolCache(unittest.TestCase):
         symbols_per_worker = 50
 
         # Pre-create database to avoid initialization race condition
-            cache_manager = CacheManager(self.temp_project_dir)
-            del cache_manager
+        cache_manager = CacheManager(self.temp_project_dir)
+        del cache_manager
 
         # Run concurrent writes
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
@@ -206,8 +206,8 @@ class TestProcessPoolCache(unittest.TestCase):
     def test_isolated_connections(self):
         """Test that each process gets its own isolated connection"""
         # Pre-create database
-            cache_manager = CacheManager(self.temp_project_dir)
-            del cache_manager
+        cache_manager = CacheManager(self.temp_project_dir)
+        del cache_manager
 
         # Get connection IDs from multiple processes
         with ProcessPoolExecutor(max_workers=4) as executor:

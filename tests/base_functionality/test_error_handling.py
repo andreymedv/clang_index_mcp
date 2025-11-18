@@ -229,132 +229,132 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_error_tracking_in_cache_manager(self):
         """Test that CacheManager tracks errors"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Get initial error summary
-            summary = cache_manager.get_error_summary()
-            self.assertEqual(summary['total_errors'], 0)
-            self.assertEqual(summary['total_operations'], 0)
+        # Get initial error summary
+        summary = cache_manager.get_error_summary()
+        self.assertEqual(summary['total_errors'], 0)
+        self.assertEqual(summary['total_operations'], 0)
 
     def test_fallback_to_json_on_init_error(self):
         """Test fallback to JSON when SQLite init fails"""
         # Mock SqliteCacheBackend to raise an error
-            with patch('mcp_server.cache_manager.SqliteCacheBackend') as mock_sqlite:
-                mock_sqlite.side_effect = Exception("SQLite not available")
+        with patch('mcp_server.cache_manager.SqliteCacheBackend') as mock_sqlite:
+            mock_sqlite.side_effect = Exception("SQLite not available")
 
-                # Should fallback to JSON
-                cache_manager = CacheManager(self.temp_project_dir)
+            # Should fallback to JSON
+            cache_manager = CacheManager(self.temp_project_dir)
 
-                # Verify using JSON backend
+            # Verify using JSON backend
 
     def test_safe_backend_call_handles_errors(self):
         """Test that _safe_backend_call handles exceptions"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Record many successful operations first to avoid immediate fallback
-            for i in range(100):
-                cache_manager.error_tracker.record_operation("test_op")
+        # Record many successful operations first to avoid immediate fallback
+        for i in range(100):
+            cache_manager.error_tracker.record_operation("test_op")
 
-            # Mock backend method to raise an error (but not enough to trigger fallback)
-            cache_manager.backend.save_cache = Mock(side_effect=Exception("Test error"))
+        # Mock backend method to raise an error (but not enough to trigger fallback)
+        cache_manager.backend.save_cache = Mock(side_effect=Exception("Test error"))
 
-            # Call should handle the error gracefully
-            result = cache_manager.save_cache(
-                class_index={},
-                function_index={},
-                file_hashes={},
-                indexed_file_count=0
-            )
+        # Call should handle the error gracefully
+        result = cache_manager.save_cache(
+            class_index={},
+            function_index={},
+            file_hashes={},
+            indexed_file_count=0
+        )
 
-            # Should return False (error handled)
-            self.assertFalse(result)
+        # Should return False (error handled)
+        self.assertFalse(result)
 
-            # Error should be tracked
-            summary = cache_manager.get_error_summary()
-            self.assertGreater(summary['total_errors'], 0)
+        # Error should be tracked
+        summary = cache_manager.get_error_summary()
+        self.assertGreater(summary['total_errors'], 0)
 
     def test_error_rate_triggers_fallback(self):
         """Test that high error rate triggers fallback"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Verify starting with SQLite
-            from mcp_server.sqlite_cache_backend import SqliteCacheBackend
-            self.assertIsInstance(cache_manager.backend, SqliteCacheBackend)
+        # Verify starting with SQLite
+        from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+        self.assertIsInstance(cache_manager.backend, SqliteCacheBackend)
 
-            # Simulate many failed operations to trigger fallback
-            cache_manager.backend.save_cache = Mock(side_effect=sqlite3.DatabaseError("Simulated corruption"))
+        # Simulate many failed operations to trigger fallback
+        cache_manager.backend.save_cache = Mock(side_effect=sqlite3.DatabaseError("Simulated corruption"))
 
-            # Make 100 save attempts (will fail with DatabaseError)
-            for i in range(100):
-                cache_manager.save_cache(
-                    class_index={},
-                    function_index={},
-                    file_hashes={},
-                    indexed_file_count=0
-                )
-
-                # Check if fallback triggered
-                if cache_manager.fallback_active:
-                    break
-
-            # Fallback should be triggered
-            self.assertTrue(cache_manager.fallback_active)
-
-            # Should now be using JSON backend
-
-    def test_corruption_triggers_recovery(self):
-        """Test that corruption triggers recovery attempt"""
-            cache_manager = CacheManager(self.temp_project_dir)
-
-            # Record successful operations to avoid immediate fallback
-            for i in range(100):
-                cache_manager.error_tracker.record_operation("test_op")
-
-            # Get DB path
-            db_path = cache_manager.cache_dir / "symbols.db"
-
-            # Mock backend to raise corruption error
-            corruption_error = sqlite3.DatabaseError("database disk image is malformed")
-            cache_manager.backend.save_cache = Mock(side_effect=corruption_error)
-
-            # Mock recovery manager
-            cache_manager.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
-            cache_manager.recovery_manager.attempt_repair = Mock(return_value=True)
-
-            # Attempt save (will trigger error handling)
-            result = cache_manager.save_cache(
+        # Make 100 save attempts (will fail with DatabaseError)
+        for i in range(100):
+            cache_manager.save_cache(
                 class_index={},
                 function_index={},
                 file_hashes={},
                 indexed_file_count=0
             )
 
-            # Verify recovery was attempted
-            cache_manager.recovery_manager.backup_database.assert_called_once()
-            cache_manager.recovery_manager.attempt_repair.assert_called_once()
+            # Check if fallback triggered
+            if cache_manager.fallback_active:
+                break
+
+        # Fallback should be triggered
+        self.assertTrue(cache_manager.fallback_active)
+
+        # Should now be using JSON backend
+
+    def test_corruption_triggers_recovery(self):
+        """Test that corruption triggers recovery attempt"""
+        cache_manager = CacheManager(self.temp_project_dir)
+
+        # Record successful operations to avoid immediate fallback
+        for i in range(100):
+            cache_manager.error_tracker.record_operation("test_op")
+
+        # Get DB path
+        db_path = cache_manager.cache_dir / "symbols.db"
+
+        # Mock backend to raise corruption error
+        corruption_error = sqlite3.DatabaseError("database disk image is malformed")
+        cache_manager.backend.save_cache = Mock(side_effect=corruption_error)
+
+        # Mock recovery manager
+        cache_manager.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
+        cache_manager.recovery_manager.attempt_repair = Mock(return_value=True)
+
+        # Attempt save (will trigger error handling)
+        result = cache_manager.save_cache(
+            class_index={},
+            function_index={},
+            file_hashes={},
+            indexed_file_count=0
+        )
+
+        # Verify recovery was attempted
+        cache_manager.recovery_manager.backup_database.assert_called_once()
+        cache_manager.recovery_manager.attempt_repair.assert_called_once()
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Record successful operations first
-            for i in range(100):
-                cache_manager.error_tracker.record_operation("test_op")
+        # Record successful operations first
+        for i in range(100):
+            cache_manager.error_tracker.record_operation("test_op")
 
-            # Generate some errors
-            cache_manager.backend.load_cache = Mock(side_effect=Exception("Test error"))
-            cache_manager.load_cache()
+        # Generate some errors
+        cache_manager.backend.load_cache = Mock(side_effect=Exception("Test error"))
+        cache_manager.load_cache()
 
-            # Verify errors tracked
-            summary = cache_manager.get_error_summary()
-            self.assertGreater(summary['total_errors'], 0)
+        # Verify errors tracked
+        summary = cache_manager.get_error_summary()
+        self.assertGreater(summary['total_errors'], 0)
 
-            # Reset
-            cache_manager.reset_error_tracking()
+        # Reset
+        cache_manager.reset_error_tracking()
 
-            # Verify reset
-            summary = cache_manager.get_error_summary()
-            self.assertEqual(summary['total_errors'], 0)
+        # Verify reset
+        summary = cache_manager.get_error_summary()
+        self.assertEqual(summary['total_errors'], 0)
 
 
 class TestErrorHandlingScenarios(unittest.TestCase):
@@ -372,85 +372,85 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def test_permission_error_handling(self):
         """Test handling of permission errors"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Record successful operations first
-            for i in range(100):
-                cache_manager.error_tracker.record_operation("test_op")
+        # Record successful operations first
+        for i in range(100):
+            cache_manager.error_tracker.record_operation("test_op")
 
-            # Mock permission error
-            cache_manager.backend.save_cache = Mock(side_effect=PermissionError("Access denied"))
+        # Mock permission error
+        cache_manager.backend.save_cache = Mock(side_effect=PermissionError("Access denied"))
 
-            # Mock clear cache to succeed
-            cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
+        # Mock clear cache to succeed
+        cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
 
-            # Attempt operation
-            result = cache_manager.save_cache(
-                class_index={},
-                function_index={},
-                file_hashes={},
-                indexed_file_count=0
-            )
+        # Attempt operation
+        result = cache_manager.save_cache(
+            class_index={},
+            function_index={},
+            file_hashes={},
+            indexed_file_count=0
+        )
 
-            # Should handle error
-            self.assertFalse(result)
+        # Should handle error
+        self.assertFalse(result)
 
-            # Recovery should be attempted
-            cache_manager.recovery_manager.clear_cache.assert_called_once()
+        # Recovery should be attempted
+        cache_manager.recovery_manager.clear_cache.assert_called_once()
 
     def test_disk_full_error_handling(self):
         """Test handling of disk full errors"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Record successful operations first
-            for i in range(100):
-                cache_manager.error_tracker.record_operation("test_op")
+        # Record successful operations first
+        for i in range(100):
+            cache_manager.error_tracker.record_operation("test_op")
 
-            # Mock disk full error
-            cache_manager.backend.save_cache = Mock(side_effect=OSError("[Errno 28] No space left on device"))
+        # Mock disk full error
+        cache_manager.backend.save_cache = Mock(side_effect=OSError("[Errno 28] No space left on device"))
 
-            # Mock clear cache to succeed
-            cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
+        # Mock clear cache to succeed
+        cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
 
-            # Attempt operation
-            result = cache_manager.save_cache(
-                class_index={},
-                function_index={},
-                file_hashes={},
-                indexed_file_count=0
-            )
+        # Attempt operation
+        result = cache_manager.save_cache(
+            class_index={},
+            function_index={},
+            file_hashes={},
+            indexed_file_count=0
+        )
 
-            # Should handle error
-            self.assertFalse(result)
+        # Should handle error
+        self.assertFalse(result)
 
-            # Recovery should be attempted
-            cache_manager.recovery_manager.clear_cache.assert_called_once()
+        # Recovery should be attempted
+        cache_manager.recovery_manager.clear_cache.assert_called_once()
 
     def test_locked_database_retry(self):
         """Test handling of database locked errors"""
-            cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = CacheManager(self.temp_project_dir)
 
-            # Record successful operations first
-            for i in range(100):
-                cache_manager.error_tracker.record_operation("test_op")
+        # Record successful operations first
+        for i in range(100):
+            cache_manager.error_tracker.record_operation("test_op")
 
-            # Mock database locked error (considered non-recoverable in our classification)
-            cache_manager.backend.save_cache = Mock(side_effect=sqlite3.OperationalError("database is locked"))
+        # Mock database locked error (considered non-recoverable in our classification)
+        cache_manager.backend.save_cache = Mock(side_effect=sqlite3.OperationalError("database is locked"))
 
-            # Attempt operation
-            result = cache_manager.save_cache(
-                class_index={},
-                function_index={},
-                file_hashes={},
-                indexed_file_count=0
-            )
+        # Attempt operation
+        result = cache_manager.save_cache(
+            class_index={},
+            function_index={},
+            file_hashes={},
+            indexed_file_count=0
+        )
 
-            # Should handle error (may not succeed but won't crash)
-            self.assertFalse(result)
+        # Should handle error (may not succeed but won't crash)
+        self.assertFalse(result)
 
-            # Error should be tracked
-            summary = cache_manager.get_error_summary()
-            self.assertGreater(summary['total_errors'], 0)
+        # Error should be tracked
+        summary = cache_manager.get_error_summary()
+        self.assertGreater(summary['total_errors'], 0)
 
 
 if __name__ == '__main__':
