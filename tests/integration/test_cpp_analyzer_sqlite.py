@@ -224,6 +224,8 @@ namespace MyNamespace {
 
     def test_large_project_performance(self):
         """Test SQLite backend with moderately large project"""
+        import time
+
         # Create multiple files with multiple classes
         for i in range(20):
             test_file = self.temp_project_dir / "src" / f"file{i}.cpp"
@@ -233,30 +235,28 @@ namespace MyNamespace {
             ])
             test_file.write_text(classes)
 
-            import time
+        # Measure cold start (first indexing)
+        start = time.time()
+        analyzer1 = CppAnalyzer(str(self.temp_project_dir))
+        count1 = analyzer1.index_project()
+        cold_time = time.time() - start
 
-            # Measure cold start (first indexing)
-            start = time.time()
-            analyzer1 = CppAnalyzer(str(self.temp_project_dir))
-            count1 = analyzer1.index_project()
-            cold_time = time.time() - start
+        # Should have indexed many files
+        self.assertGreater(count1, 10, "Should have indexed many files")
 
-            # Should have indexed many symbols
-            self.assertGreater(count1, 10, "Should have indexed many files")
+        # Measure warm start (loading from cache)
+        start = time.time()
+        analyzer2 = CppAnalyzer(str(self.temp_project_dir))
+        count2 = analyzer2.index_project()
+        warm_time = time.time() - start
 
-            # Measure warm start (loading from cache)
-            start = time.time()
-            analyzer2 = CppAnalyzer(str(self.temp_project_dir))
-            count2 = analyzer2.index_project()
-            warm_time = time.time() - start
+        # Warm start should be significantly faster
+        # (though this depends on libclang initialization)
+        self.assertGreater(count2, 10)
 
-            # Warm start should be significantly faster
-            # (though this depends on libclang initialization)
-            self.assertGreater(count2, 10)
-
-            # Verify some symbols
-            results = analyzer2.search_classes("File0Class0")
-            self.assertGreater(len(results), 0, "Should find indexed class")
+        # Verify some symbols
+        results = analyzer2.search_classes("File0Class0")
+        self.assertGreater(len(results), 0, "Should find indexed class")
 
 
 if __name__ == '__main__':
