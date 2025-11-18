@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.incremental_analyzer import IncrementalAnalyzer
-from mcp_server.config import Config
 
 
 class TestIncrementalAnalysisIntegration(unittest.TestCase):
@@ -97,7 +96,6 @@ int multiply(int a, int b) {
     def test_initial_analysis_then_no_changes(self):
         """Test that no re-analysis occurs when no changes detected."""
         # Initialize analyzer with SQLite backend
-        config = Config(config_file=str(self.config_file))
         analyzer = CppAnalyzer(
             project_root=str(self.test_dir),
             config_file=str(self.config_file)
@@ -119,7 +117,6 @@ int multiply(int a, int b) {
     def test_source_file_modification(self):
         """Test that modifying a source file triggers re-analysis."""
         # Initialize analyzer
-        config = Config(config_file=str(self.config_file))
         analyzer = CppAnalyzer(
             project_root=str(self.test_dir),
             config_file=str(self.config_file)
@@ -150,7 +147,6 @@ int multiply(int a, int b) {
     def test_header_file_modification_cascade(self):
         """Test that modifying a header triggers re-analysis of dependents."""
         # Initialize analyzer
-        config = Config(config_file=str(self.config_file))
         analyzer = CppAnalyzer(
             project_root=str(self.test_dir),
             config_file=str(self.config_file)
@@ -188,7 +184,6 @@ int subtract(int a, int b) {  // New function
     def test_new_file_added(self):
         """Test that adding a new file triggers analysis."""
         # Initialize analyzer
-        config = Config(config_file=str(self.config_file))
         analyzer = CppAnalyzer(
             project_root=str(self.test_dir),
             config_file=str(self.config_file)
@@ -230,7 +225,6 @@ int divide(int a, int b) {
     def test_file_deletion(self):
         """Test that deleting a file removes it from cache."""
         # Initialize analyzer
-        config = Config(config_file=str(self.config_file))
         analyzer = CppAnalyzer(
             project_root=str(self.test_dir),
             config_file=str(self.config_file)
@@ -258,7 +252,6 @@ int divide(int a, int b) {
     def test_compile_commands_modification(self):
         """Test that modifying compile_commands.json triggers selective re-analysis."""
         # Initialize analyzer
-        config = Config(config_file=str(self.config_file))
         analyzer = CppAnalyzer(
             project_root=str(self.test_dir),
             config_file=str(self.config_file)

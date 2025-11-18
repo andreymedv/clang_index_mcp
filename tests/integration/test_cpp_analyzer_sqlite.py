@@ -55,43 +55,43 @@ void testFunction() {
 """)
 
         # Enable SQLite backend
-            # First indexing - should create SQLite cache
-            analyzer1 = CppAnalyzer(str(self.temp_project_dir))
-            count1 = analyzer1.index_project()
+        # First indexing - should create SQLite cache
+        analyzer1 = CppAnalyzer(str(self.temp_project_dir))
+        count1 = analyzer1.index_project()
 
-            # Verify indexing succeeded
-            self.assertGreater(count1, 0, "Should have indexed at least one file")
+        # Verify indexing succeeded
+        self.assertGreater(count1, 0, "Should have indexed at least one file")
 
-            # Verify SQLite backend is being used
-            self.assertIsInstance(analyzer1.cache_manager.backend, SqliteCacheBackend,
-                "Should use SQLite backend")
+        # Verify SQLite backend is being used
+        self.assertIsInstance(analyzer1.cache_manager.backend, SqliteCacheBackend,
+            "Should use SQLite backend")
 
-            # Verify symbols were indexed
-            classes1 = analyzer1.search_classes("TestClass")
-            funcs1 = analyzer1.search_functions("testFunction")
-            self.assertGreater(len(classes1), 0, "Should find TestClass")
-            self.assertGreater(len(funcs1), 0, "Should find testFunction")
+        # Verify symbols were indexed
+        classes1 = analyzer1.search_classes("TestClass")
+        funcs1 = analyzer1.search_functions("testFunction")
+        self.assertGreater(len(classes1), 0, "Should find TestClass")
+        self.assertGreater(len(funcs1), 0, "Should find testFunction")
 
-            # Save class and function counts
-            class_count1 = len(classes1)
-            func_count1 = len(funcs1)
+        # Save class and function counts
+        class_count1 = len(classes1)
+        func_count1 = len(funcs1)
 
-            # Create new analyzer instance - should load from SQLite cache
-            analyzer2 = CppAnalyzer(str(self.temp_project_dir))
-            count2 = analyzer2.index_project()
+        # Create new analyzer instance - should load from SQLite cache
+        analyzer2 = CppAnalyzer(str(self.temp_project_dir))
+        count2 = analyzer2.index_project()
 
-            # Verify cache was loaded
-            self.assertGreater(count2, 0, "Should have loaded from cache")
+        # Verify cache was loaded
+        self.assertGreater(count2, 0, "Should have loaded from cache")
 
-            # Verify cached symbols are available
-            classes2 = analyzer2.search_classes("TestClass")
-            funcs2 = analyzer2.search_functions("testFunction")
-            self.assertEqual(len(classes2), class_count1, "Should find same number of classes")
-            self.assertEqual(len(funcs2), func_count1, "Should find same number of functions")
+        # Verify cached symbols are available
+        classes2 = analyzer2.search_classes("TestClass")
+        funcs2 = analyzer2.search_functions("testFunction")
+        self.assertEqual(len(classes2), class_count1, "Should find same number of classes")
+        self.assertEqual(len(funcs2), func_count1, "Should find same number of functions")
 
-            # Verify results match
-            self.assertEqual(classes1[0]['name'], classes2[0]['name'])
-            self.assertEqual(funcs1[0]['name'], funcs2[0]['name'])
+        # Verify results match
+        self.assertEqual(classes1[0]['name'], classes2[0]['name'])
+        self.assertEqual(funcs1[0]['name'], funcs2[0]['name'])
 
     def test_incremental_file_update_sqlite(self):
         """Test incremental update when file changes with SQLite"""
@@ -105,32 +105,32 @@ public:
 };
 """)
 
-            # First indexing
-            analyzer1 = CppAnalyzer(str(self.temp_project_dir))
-            analyzer1.index_project()
+        # First indexing
+        analyzer1 = CppAnalyzer(str(self.temp_project_dir))
+        analyzer1.index_project()
 
-            # Verify original class is found
-            original = analyzer1.search_classes("OriginalClass")
-            self.assertGreater(len(original), 0, "Should find OriginalClass")
+        # Verify original class is found
+        original = analyzer1.search_classes("OriginalClass")
+        self.assertGreater(len(original), 0, "Should find OriginalClass")
 
-            # Modify the file
-            test_file.write_text("""
+        # Modify the file
+        test_file.write_text("""
 class ModifiedClass {
 public:
     void newMethod();
 };
 """)
 
-            # Re-index - should detect file change
-            analyzer2 = CppAnalyzer(str(self.temp_project_dir))
-            analyzer2.index_project()
+        # Re-index - should detect file change
+        analyzer2 = CppAnalyzer(str(self.temp_project_dir))
+        analyzer2.index_project()
 
-            # Verify modified class is found and original is not
-            modified = analyzer2.search_classes("ModifiedClass")
-            original2 = analyzer2.search_classes("OriginalClass")
+        # Verify modified class is found and original is not
+        modified = analyzer2.search_classes("ModifiedClass")
+        original2 = analyzer2.search_classes("OriginalClass")
 
-            self.assertGreater(len(modified), 0, "Should find ModifiedClass")
-            self.assertEqual(len(original2), 0, "Should not find OriginalClass anymore")
+        self.assertGreater(len(modified), 0, "Should find ModifiedClass")
+        self.assertEqual(len(original2), 0, "Should not find OriginalClass anymore")
 
     def test_cache_invalidation_on_config_change(self):
         """Test cache invalidation when config file changes"""
@@ -147,27 +147,27 @@ class TestClass {};
 patterns = ["*.cpp"]
 """)
 
-            # First indexing
-            analyzer1 = CppAnalyzer(str(self.temp_project_dir))
-            count1 = analyzer1.index_project()
-            self.assertGreater(count1, 0)
+        # First indexing
+        analyzer1 = CppAnalyzer(str(self.temp_project_dir))
+        count1 = analyzer1.index_project()
+        self.assertGreater(count1, 0)
 
-            # Modify config file
-            import time
-            time.sleep(0.1)  # Ensure timestamp difference
-            config_file.write_text("""
+        # Modify config file
+        import time
+        time.sleep(0.1)  # Ensure timestamp difference
+        config_file.write_text("""
 [files]
 patterns = ["*.cpp", "*.h"]
 exclude = ["test/*"]
 """)
 
-            # Re-index - should invalidate cache due to config change
-            analyzer2 = CppAnalyzer(str(self.temp_project_dir))
-            count2 = analyzer2.index_project()
+        # Re-index - should invalidate cache due to config change
+        analyzer2 = CppAnalyzer(str(self.temp_project_dir))
+        count2 = analyzer2.index_project()
 
-            # Should have re-indexed (not loaded from cache)
-            # We can't directly verify cache invalidation, but the system should work
-            self.assertGreater(count2, 0)
+        # Should have re-indexed (not loaded from cache)
+        # We can't directly verify cache invalidation, but the system should work
+        self.assertGreater(count2, 0)
 
     def test_sqlite_backend_preserves_all_symbol_data(self):
         """Test that SQLite backend preserves all symbol fields"""
@@ -191,36 +191,36 @@ namespace MyNamespace {
 }
 """)
 
-            # Index project
-            analyzer1 = CppAnalyzer(str(self.temp_project_dir))
-            analyzer1.index_project()
+        # Index project
+        analyzer1 = CppAnalyzer(str(self.temp_project_dir))
+        analyzer1.index_project()
 
-            # Search for DerivedClass
-            derived_results = analyzer1.search_classes("DerivedClass")
-            self.assertGreater(len(derived_results), 0, "Should find DerivedClass")
+        # Search for DerivedClass
+        derived_results = analyzer1.search_classes("DerivedClass")
+        self.assertGreater(len(derived_results), 0, "Should find DerivedClass")
 
-            derived = derived_results[0]
+        derived = derived_results[0]
 
-            # Verify all fields are preserved
-            self.assertEqual(derived['name'], "DerivedClass")
-            self.assertEqual(derived['kind'], "class")
-            self.assertIn("detailed.cpp", derived['file'])
+        # Verify all fields are preserved
+        self.assertEqual(derived['name'], "DerivedClass")
+        self.assertEqual(derived['kind'], "class")
+        self.assertIn("detailed.cpp", derived['file'])
 
-            # Create new analyzer - load from cache
-            analyzer2 = CppAnalyzer(str(self.temp_project_dir))
-            analyzer2.index_project()
+        # Create new analyzer - load from cache
+        analyzer2 = CppAnalyzer(str(self.temp_project_dir))
+        analyzer2.index_project()
 
-            # Search again
-            derived_results2 = analyzer2.search_classes("DerivedClass")
-            self.assertGreater(len(derived_results2), 0, "Should find DerivedClass from cache")
+        # Search again
+        derived_results2 = analyzer2.search_classes("DerivedClass")
+        self.assertGreater(len(derived_results2), 0, "Should find DerivedClass from cache")
 
-            derived2 = derived_results2[0]
+        derived2 = derived_results2[0]
 
-            # Verify all fields match
-            self.assertEqual(derived2['name'], derived['name'])
-            self.assertEqual(derived2['kind'], derived['kind'])
-            self.assertEqual(derived2['file'], derived['file'])
-            self.assertEqual(derived2['line'], derived['line'])
+        # Verify all fields match
+        self.assertEqual(derived2['name'], derived['name'])
+        self.assertEqual(derived2['kind'], derived['kind'])
+        self.assertEqual(derived2['file'], derived['file'])
+        self.assertEqual(derived2['line'], derived['line'])
 
     def test_large_project_performance(self):
         """Test SQLite backend with moderately large project"""
