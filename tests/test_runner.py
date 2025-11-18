@@ -38,14 +38,14 @@ def main():
         
         print("\n" + "=" * 60)
         if success:
-            print("✅ All tests passed!")
+            print("[PASS] All tests passed!")
             sys.exit(0)
         else:
-            print("❌ Some tests failed!")
+            print("[ERROR] Some tests failed!")
             sys.exit(1)
             
     except Exception as e:
-        print(f"❌ Error running tests: {e}")
+        print(f"[ERROR] Error running tests: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

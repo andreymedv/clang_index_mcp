@@ -28,10 +28,10 @@ def diagnose_file_args(project_root: str, file_path: str):
     args = manager.get_compile_args(file_path)
 
     if args is None:
-        print("❌ No compile arguments found for this file")
+        print("[ERROR] No compile arguments found for this file")
         return 1
 
-    print(f"✓ Found {len(args)} arguments\n")
+    print(f"[OK] Found {len(args)} arguments\n")
 
     # Categorize arguments
     include_paths = []
@@ -86,13 +86,13 @@ def diagnose_file_args(project_root: str, file_path: str):
     if include_paths:
         print(f"\n-I Include Paths ({len(include_paths)}):")
         for path in include_paths:
-            exists = "✓" if Path(path).exists() else "❌"
+            exists = "[OK]" if Path(path).exists() else "[ERROR]"
             print(f"  {exists} {path}")
 
     if isystem_paths:
         print(f"\n-isystem Include Paths ({len(isystem_paths)}):")
         for path in isystem_paths:
-            exists = "✓" if Path(path).exists() else "❌"
+            exists = "[OK]" if Path(path).exists() else "[ERROR]"
             print(f"  {exists} {path}")
 
     if warnings:
@@ -114,15 +114,15 @@ def diagnose_file_args(project_root: str, file_path: str):
     print("\n=== Path Validation ===\n")
 
     if missing_include or missing_isystem:
-        print("⚠️  Some include paths don't exist:")
+        print("[WARNING]  Some include paths don't exist:")
         for p in missing_include:
-            print(f"  ❌ -I {p}")
+            print(f"  [ERROR] -I {p}")
         for p in missing_isystem:
-            print(f"  ❌ -isystem {p}")
+            print(f"  [ERROR] -isystem {p}")
         print("\nThis will cause 'file not found' errors when parsing.")
         print("The paths in compile_commands.json may be from a different build or system.")
     else:
-        print("✓ All include paths exist")
+        print("[OK] All include paths exist")
 
     # Show all arguments as they would be passed to libclang
     print("\n=== Full Argument List (as passed to libclang) ===\n")

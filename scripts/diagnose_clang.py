@@ -27,19 +27,19 @@ class Colors:
 
 
 def print_success(msg):
-    print(f"{Colors.GREEN}✓{Colors.END} {msg}")
+    print(f"{Colors.GREEN}[OK]{Colors.END} {msg}")
 
 
 def print_error(msg):
-    print(f"{Colors.RED}✗{Colors.END} {msg}")
+    print(f"{Colors.RED}[X]{Colors.END} {msg}")
 
 
 def print_warning(msg):
-    print(f"{Colors.YELLOW}⚠{Colors.END} {msg}")
+    print(f"{Colors.YELLOW}[WARNING]{Colors.END} {msg}")
 
 
 def print_info(msg):
-    print(f"{Colors.BLUE}ℹ{Colors.END} {msg}")
+    print(f"{Colors.BLUE}[INFO]{Colors.END} {msg}")
 
 
 def print_section(title):
@@ -364,7 +364,7 @@ def main():
 
         # Run comprehensive test
         if run_comprehensive_test():
-            print(f"\n{Colors.GREEN}{Colors.BOLD}✓ EVERYTHING WORKS PERFECTLY!{Colors.END}\n")
+            print(f"\n{Colors.GREEN}{Colors.BOLD}[OK] EVERYTHING WORKS PERFECTLY!{Colors.END}\n")
             return 0
         else:
             print_warning("Basic checks passed but comprehensive test failed")

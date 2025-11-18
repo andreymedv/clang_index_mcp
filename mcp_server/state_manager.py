@@ -373,14 +373,14 @@ class EnhancedQueryResult:
                     incomplete_type = "symbols"
 
                 warning = (
-                    f"⚠️  INCOMPLETE RESULTS: Only {completion:.1f}% of files indexed "
+                    f"[WARNING]  INCOMPLETE RESULTS: Only {completion:.1f}% of files indexed "
                     f"({indexed:,}/{total:,}). Results may be missing {incomplete_type}. "
                     f"Use 'get_indexing_status' to check progress or 'wait_for_indexing' "
                     f"to wait for completion."
                 )
             else:
                 warning = (
-                    "⚠️  INCOMPLETE RESULTS: Indexing in progress. "
+                    "[WARNING]  INCOMPLETE RESULTS: Indexing in progress. "
                     "Results may be incomplete. Use 'wait_for_indexing' to wait for completion."
                 )
 

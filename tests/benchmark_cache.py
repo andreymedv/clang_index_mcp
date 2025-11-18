@@ -187,7 +187,7 @@ def run_benchmarks():
                     print(f"  Bulk Write:")
                     print(f"    Time: {write_results['elapsed_ms']:.2f} ms")
                     print(f"    Throughput: {write_results['throughput_per_sec']:.0f} symbols/sec")
-                    print(f"    Status: {'✅ PASS' if write_results['throughput_per_sec'] > 5000 else '❌ FAIL'}")
+                    print(f"    Status: {'[PASS] PASS' if write_results['throughput_per_sec'] > 5000 else '[ERROR] FAIL'}")
 
                 # Benchmark FTS5 search
                 if symbol_count <= 100000:
@@ -197,7 +197,7 @@ def run_benchmarks():
                     print(f"    Min: {search_results['min_ms']:.2f} ms")
                     print(f"    Max: {search_results['max_ms']:.2f} ms")
                     print(f"    P95: {search_results['p95_ms']:.2f} ms")
-                    print(f"    Status: {'✅ PASS' if search_results['avg_ms'] < 5.0 else '⚠️  WARN'}")
+                    print(f"    Status: {'[PASS] PASS' if search_results['avg_ms'] < 5.0 else '[WARNING]  WARN'}")
 
                 # Benchmark cache save/load
                 save_results = benchmark_cache_save(cache_manager, symbol_count)
@@ -215,7 +215,7 @@ def run_benchmarks():
                     db_size_mb = stats.get('db_size_mb', 0)
                     print(f"  Database Size: {db_size_mb:.2f} MB")
                     expected_size = symbol_count * 0.0003  # ~300 bytes per symbol
-                    print(f"    Status: {'✅ PASS' if db_size_mb < 50 else '⚠️  WARN'}")
+                    print(f"    Status: {'[PASS] PASS' if db_size_mb < 50 else '[WARNING]  WARN'}")
 
             print()
 
@@ -252,10 +252,10 @@ def run_benchmarks():
     print("=" * 80)
     print()
     print("Target Metrics (100K symbols):")
-    print("  ✅ Startup time: < 500ms")
-    print("  ✅ FTS5 search: < 5ms average")
-    print("  ✅ Bulk write: > 5,000 symbols/sec")
-    print("  ✅ Database size: < 50MB")
+    print("  [PASS] Startup time: < 500ms")
+    print("  [PASS] FTS5 search: < 5ms average")
+    print("  [PASS] Bulk write: > 5,000 symbols/sec")
+    print("  [PASS] Database size: < 50MB")
     print()
     print("All performance targets met or exceeded!")
     print("=" * 80)
