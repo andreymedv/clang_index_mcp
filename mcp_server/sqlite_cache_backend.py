@@ -1376,20 +1376,20 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            # Check if database has any symbols
-            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols")
-            if cursor.fetchone()[0] == 0:
+            # Check if cache has been initialized (has metadata)
+            cached_deps = self.get_cache_metadata("include_dependencies")
+            if cached_deps is None:
+                # No cache metadata - cache is empty/uninitialized
                 return None
 
             # Check cache metadata for compatibility
-            cached_deps = self.get_cache_metadata("include_dependencies")
-            if cached_deps and cached_deps != str(include_dependencies):
+            if cached_deps != str(include_dependencies):
                 diagnostics.info(f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}")
                 return None
 
             # Check config file changes
+            cached_config = self.get_cache_metadata("config_file_path")
             if config_file_path:
-                cached_config = self.get_cache_metadata("config_file_path")
                 if cached_config != str(config_file_path):
                     diagnostics.info("Configuration file path changed")
                     return None
@@ -1397,10 +1397,14 @@ class SqliteCacheBackend:
                 if cached_mtime and cached_mtime != str(config_file_mtime):
                     diagnostics.info("Configuration file modified")
                     return None
+            elif cached_config:
+                # Config was cached but not provided on load - invalidate
+                diagnostics.info("Configuration file was cached but not provided")
+                return None
 
             # Check compile_commands.json changes
+            cached_cc = self.get_cache_metadata("compile_commands_path")
             if compile_commands_path:
-                cached_cc = self.get_cache_metadata("compile_commands_path")
                 if cached_cc != str(compile_commands_path):
                     diagnostics.info("compile_commands.json path changed")
                     return None
@@ -1408,6 +1412,10 @@ class SqliteCacheBackend:
                 if cached_cc_mtime and cached_cc_mtime != str(compile_commands_mtime):
                     diagnostics.info("compile_commands.json modified")
                     return None
+            elif cached_cc:
+                # Compile commands was cached but not provided on load - invalidate
+                diagnostics.info("compile_commands.json was cached but not provided")
+                return None
 
             # Load all symbols
             cursor = self.conn.execute("SELECT * FROM symbols")

@@ -414,7 +414,7 @@ class CacheManager:
             print(f"Failed to load parse errors: {e}", file=sys.stderr)
             return []
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_parse_error_summary(self) -> Dict[str, Any]:
         """Get a summary of parse errors for developer analysis.
 
         Returns:
