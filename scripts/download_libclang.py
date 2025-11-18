@@ -100,7 +100,7 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
         extracted_libs.extend(matches)
 
     if not extracted_libs:
-        print("✗ Could not locate libclang in the downloaded archive")
+        print("[X] Could not locate libclang in the downloaded archive")
         return False
 
     _ensure_directory(config.dest_dir)
@@ -110,7 +110,7 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
         target_name = src.name
         target_path = config.dest_dir / target_name
         shutil.copy2(src, target_path)
-        print(f"✓ Copied {target_name} to {target_path}")
+        print(f"[OK] Copied {target_name} to {target_path}")
         copied = True
 
         # For Linux we need libclang.so.1 as well as the full versioned .so
@@ -119,14 +119,14 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
             if not symlink_target.exists():
                 try:
                     os.symlink(target_path.name, symlink_target)
-                    print(f"✓ Created symlink {symlink_target} -> {target_path.name}")
+                    print(f"[OK] Created symlink {symlink_target} -> {target_path.name}")
                 except OSError:
                     # Fall back to copying if symlinks are unavailable
                     shutil.copy2(target_path, symlink_target)
-                    print(f"✓ Copied duplicate {symlink_target}")
+                    print(f"[OK] Copied duplicate {symlink_target}")
 
     if not copied:
-        print("✗ Failed to copy any libclang files")
+        print("[X] Failed to copy any libclang files")
     return copied
 
 
@@ -144,7 +144,7 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
     }[config.system]
 
     if _already_present(config.dest_dir, expected_names):
-        print("✓ libclang already present, skipping download")
+        print("[OK] libclang already present, skipping download")
         return True
 
     temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
@@ -153,12 +153,12 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
     try:
         urllib.request.urlretrieve(config.url, temp_file)
     except Exception as exc:
-        print(f"✗ Download failed: {exc}")
+        print(f"[X] Download failed: {exc}")
         print("Please download the archive manually and extract libclang into:")
         print(f"  {config.dest_dir}")
         return False
 
-    print("✓ Download complete, extracting...")
+    print("[OK] Download complete, extracting...")
 
     with tarfile.open(temp_file, "r:xz") as tar:
         with tempfile.TemporaryDirectory() as extract_dir:
@@ -171,9 +171,9 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
         pass
 
     if success:
-        print("✓ libclang ready for use")
+        print("[OK] libclang ready for use")
     else:
-        print("✗ libclang setup failed")
+        print("[X] libclang setup failed")
 
     return success
 

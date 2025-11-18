@@ -95,7 +95,7 @@ def print_stats(stats: Dict[str, Any]):
     print()
 
     if "error" in stats:
-        print(f"❌ Error: {stats['error']}")
+        print(f"[ERROR] Error: {stats['error']}")
         return
 
     # Backend type
@@ -177,11 +177,11 @@ def print_stats(stats: Dict[str, Any]):
         print("─" * 70)
         status = stats.get("health_status", "unknown")
         if status == "healthy":
-            print(f"Status: ✅ {status.upper()}")
+            print(f"Status: [PASS] {status.upper()}")
         elif status == "warning":
-            print(f"Status: ⚠️  {status.upper()}")
+            print(f"Status: [WARNING]  {status.upper()}")
         elif status == "error":
-            print(f"Status: ❌ {status.upper()}")
+            print(f"Status: [ERROR] {status.upper()}")
         else:
             print(f"Status: {status}")
 
@@ -189,13 +189,13 @@ def print_stats(stats: Dict[str, Any]):
         if warnings:
             print(f"\nWarnings ({len(warnings)}):")
             for warning in warnings:
-                print(f"  ⚠️  {warning}")
+                print(f"  [WARNING]  {warning}")
 
         errors = stats.get("health_errors", [])
         if errors:
             print(f"\nErrors ({len(errors)}):")
             for error in errors:
-                print(f"  ❌ {error}")
+                print(f"  [ERROR] {error}")
         print()
 
     # Metadata
@@ -238,14 +238,14 @@ def main():
         cache_dir = Path.cwd() / ".mcp_cache"
 
     if not cache_dir.exists():
-        print(f"❌ Cache directory not found: {cache_dir}", file=sys.stderr)
+        print(f"[ERROR] Cache directory not found: {cache_dir}", file=sys.stderr)
         sys.exit(1)
 
     # Get SQLite cache statistics
     db_path = cache_dir / "symbols.db"
 
     if not db_path.exists():
-        print(f"❌ No SQLite cache found in {cache_dir}", file=sys.stderr)
+        print(f"[ERROR] No SQLite cache found in {cache_dir}", file=sys.stderr)
         sys.exit(1)
 
     stats = get_sqlite_cache_stats(cache_dir)

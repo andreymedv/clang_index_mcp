@@ -51,7 +51,7 @@ class TestArgumentSanitization:
         result = manager._sanitize_args_for_libclang(args)
         assert '-Winvalid-pch' not in result, "Should remove -Winvalid-pch"
 
-        print("✓ REQ-5.7.1.1: PCH removal works correctly")
+        print("[OK] REQ-5.7.1.1: PCH removal works correctly")
 
     def test_req_5_7_1_2_cosmetic_removal(self):
         """REQ-5.7.1.2: Remove cosmetic and formatting options"""
@@ -72,7 +72,7 @@ class TestArgumentSanitization:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.7.1.2: Cosmetic options removal works correctly")
+        print("[OK] REQ-5.7.1.2: Cosmetic options removal works correctly")
 
     def test_req_5_7_1_3_version_specific_removal(self):
         """REQ-5.7.1.3: Remove version-specific compiler options"""
@@ -92,7 +92,7 @@ class TestArgumentSanitization:
         assert not any('-ftemplate-depth' in arg for arg in result)
         assert '-std=c++17' in result
 
-        print("✓ REQ-5.7.1.3: Version-specific options removal works correctly")
+        print("[OK] REQ-5.7.1.3: Version-specific options removal works correctly")
 
     def test_req_5_7_1_4_optimization_debug_removal(self):
         """REQ-5.7.1.4: Remove optimization and debug options"""
@@ -117,7 +117,7 @@ class TestArgumentSanitization:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.7.1.4: Optimization/debug options removal works correctly")
+        print("[OK] REQ-5.7.1.4: Optimization/debug options removal works correctly")
 
     def test_req_5_7_1_5_architecture_removal(self):
         """REQ-5.7.1.5: Remove architecture-specific options"""
@@ -132,7 +132,7 @@ class TestArgumentSanitization:
         assert '-mfpmath=sse' not in result
         assert '-std=c++17' in result
 
-        print("✓ REQ-5.7.1.5: Architecture options removal works correctly")
+        print("[OK] REQ-5.7.1.5: Architecture options removal works correctly")
 
     def test_req_5_7_1_6_codegen_removal(self):
         """REQ-5.7.1.6: Remove code generation options"""
@@ -154,7 +154,7 @@ class TestArgumentSanitization:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.7.1.6: Code generation options removal works correctly")
+        print("[OK] REQ-5.7.1.6: Code generation options removal works correctly")
 
     def test_req_5_7_1_7_essential_preservation(self):
         """REQ-5.7.1.7: Preserve essential compilation flags"""
@@ -186,7 +186,7 @@ class TestArgumentSanitization:
         # Should remove
         assert '-O0' not in result
 
-        print("✓ REQ-5.7.1.7: Essential flags preservation works correctly")
+        print("[OK] REQ-5.7.1.7: Essential flags preservation works correctly")
 
 
 class TestBuiltinHeaders:
@@ -205,9 +205,9 @@ class TestBuiltinHeaders:
             stddef_path = Path(manager.clang_resource_dir) / "stddef.h"
             assert stddef_path.exists(), f"stddef.h should exist at {stddef_path}"
 
-            print(f"✓ REQ-5.7.2.1: Resource directory detected: {manager.clang_resource_dir}")
+            print(f"[OK] REQ-5.7.2.1: Resource directory detected: {manager.clang_resource_dir}")
         else:
-            print("⚠ REQ-5.7.2.1: Resource directory not detected (acceptable if clang not installed)")
+            print("[WARNING] REQ-5.7.2.1: Resource directory not detected (acceptable if clang not installed)")
 
     def test_req_5_7_2_2_addition_to_args(self):
         """REQ-5.7.2.2: Add resource directory using -isystem"""
@@ -220,9 +220,9 @@ class TestBuiltinHeaders:
             assert '-isystem' in result, "Should add -isystem flag"
             assert manager.clang_resource_dir in result, "Should add resource directory"
 
-            print("✓ REQ-5.7.2.2: Resource directory added with -isystem")
+            print("[OK] REQ-5.7.2.2: Resource directory added with -isystem")
         else:
-            print("⚠ REQ-5.7.2.2: Skipped (no resource directory)")
+            print("[WARNING] REQ-5.7.2.2: Skipped (no resource directory)")
 
     def test_req_5_7_2_3_proper_positioning(self):
         """REQ-5.7.2.3: Resource directory positioning"""
@@ -243,9 +243,9 @@ class TestBuiltinHeaders:
             count = result.count(manager.clang_resource_dir)
             assert count == 1, "Resource directory should appear exactly once"
 
-            print("✓ REQ-5.7.2.3: Resource directory positioning is correct")
+            print("[OK] REQ-5.7.2.3: Resource directory positioning is correct")
         else:
-            print("⚠ REQ-5.7.2.3: Skipped (no resource directory)")
+            print("[WARNING] REQ-5.7.2.3: Skipped (no resource directory)")
 
     def test_req_5_7_2_4_included_everywhere(self):
         """REQ-5.7.2.4: Builtin headers included in all contexts"""
@@ -256,9 +256,9 @@ class TestBuiltinHeaders:
             assert manager.clang_resource_dir in ' '.join(manager.fallback_args), \
                 "Should be in fallback args"
 
-            print("✓ REQ-5.7.2.4: Builtin headers included in fallback args")
+            print("[OK] REQ-5.7.2.4: Builtin headers included in fallback args")
         else:
-            print("⚠ REQ-5.7.2.4: Skipped (no resource directory)")
+            print("[WARNING] REQ-5.7.2.4: Skipped (no resource directory)")
 
 
 class TestPathNormalization:
@@ -288,7 +288,7 @@ class TestPathNormalization:
         path = i_arg[2:]  # Remove -I prefix
         assert os.path.isabs(path), f"Path should be absolute: {path}"
 
-        print("✓ REQ-5.7.3.1: -I path normalization works correctly")
+        print("[OK] REQ-5.7.3.1: -I path normalization works correctly")
 
     def test_req_5_7_3_2_isystem_path_normalization(self):
         """REQ-5.7.3.2: Normalize -isystem include paths"""
@@ -303,7 +303,7 @@ class TestPathNormalization:
         path = result[isystem_index + 1]
         assert os.path.isabs(path), f"Path should be absolute: {path}"
 
-        print("✓ REQ-5.7.3.2: -isystem path normalization works correctly")
+        print("[OK] REQ-5.7.3.2: -isystem path normalization works correctly")
 
     def test_req_5_7_3_3_relative_to_absolute(self):
         """REQ-5.7.3.3: Convert relative paths to absolute using directory"""
@@ -323,7 +323,7 @@ class TestPathNormalization:
 
         assert i_count == 2, "Should have 2 include paths"
 
-        print("✓ REQ-5.7.3.3: Relative to absolute conversion works correctly")
+        print("[OK] REQ-5.7.3.3: Relative to absolute conversion works correctly")
 
 
 class TestProcessingPipeline:
@@ -381,9 +381,9 @@ class TestProcessingPipeline:
                 assert '-DTEST' in args
                 assert '-Wall' in args
 
-                print("✓ REQ-5.7.4: Complete processing pipeline works correctly")
+                print("[OK] REQ-5.7.4: Complete processing pipeline works correctly")
             else:
-                print("⚠ REQ-5.7.4: Could not get args (file not in compile_commands)")
+                print("[WARNING] REQ-5.7.4: Could not get args (file not in compile_commands)")
 
     def test_req_5_7_4_1_consistency(self):
         """REQ-5.7.4.1: Pipeline applied consistently to command and arguments"""
@@ -424,9 +424,9 @@ class TestProcessingPipeline:
                 assert '-O0' not in args1 and '-O0' not in args2
                 assert '-o' not in args1 and '-o' not in args2
 
-                print("✓ REQ-5.7.4.1: Pipeline applied consistently")
+                print("[OK] REQ-5.7.4.1: Pipeline applied consistently")
             else:
-                print("⚠ REQ-5.7.4.1: Could not test (files not in compile_commands)")
+                print("[WARNING] REQ-5.7.4.1: Could not test (files not in compile_commands)")
 
     def test_req_5_7_4_2_integrity(self):
         """REQ-5.7.4.2: Argument list integrity preserved"""
@@ -458,7 +458,7 @@ class TestProcessingPipeline:
         # Verify no empty strings or None
         assert all(arg and isinstance(arg, str) for arg in result)
 
-        print("✓ REQ-5.7.4.2: Argument list integrity preserved")
+        print("[OK] REQ-5.7.4.2: Argument list integrity preserved")
 
 
 def run_all_tests():
@@ -489,9 +489,9 @@ def run_all_tests():
                     method()
                     passed_tests += 1
                 except AssertionError as e:
-                    print(f"✗ {method_name}: {e}")
+                    print(f"[X] {method_name}: {e}")
                 except Exception as e:
-                    print(f"✗ {method_name}: Unexpected error: {e}")
+                    print(f"[X] {method_name}: Unexpected error: {e}")
 
     print("\n" + "=" * 70)
     print(f"Test Results: {passed_tests}/{total_tests} passed")

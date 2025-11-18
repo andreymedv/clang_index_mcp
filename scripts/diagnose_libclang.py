@@ -72,9 +72,9 @@ def check_sdk_paths():
             ]
             for path in stdbool_paths:
                 if path.exists():
-                    print(f"    ✓ {path.relative_to(sdk)}")
+                    print(f"    [OK] {path.relative_to(sdk)}")
                 else:
-                    print(f"    ✗ {path.relative_to(sdk)} (not found)")
+                    print(f"    [X] {path.relative_to(sdk)} (not found)")
     else:
         print(f"SDK directory not found: {sdk_base}")
 
@@ -117,10 +117,10 @@ int main() {
                 if d.location.file:
                     print(f"    {d.location.file}:{d.location.line}:{d.location.column}")
         else:
-            print("✓ Parsed successfully without errors!")
+            print("[OK] Parsed successfully without errors!")
 
     except Exception as e:
-        print(f"✗ Parse failed: {e}")
+        print(f"[X] Parse failed: {e}")
     finally:
         Path(temp_path).unlink()
 

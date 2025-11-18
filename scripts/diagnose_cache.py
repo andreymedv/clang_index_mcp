@@ -342,7 +342,7 @@ def print_diagnostic_results(results: Dict[str, Any]):
         print("DIAGNOSTIC CHECKS")
         print("─" * 70)
         for check_name, check_result in results["checks"].items():
-            status = "✅ PASS" if check_result.get("passed", True) else "❌ FAIL"
+            status = "[PASS] PASS" if check_result.get("passed", True) else "[ERROR] FAIL"
             print(f"{check_result['name']:30s} {status}")
         print()
 
@@ -352,7 +352,7 @@ def print_diagnostic_results(results: Dict[str, Any]):
         print("ISSUES FOUND")
         print("─" * 70)
         for i, issue in enumerate(results["issues"], 1):
-            print(f"{i}. ❌ {issue}")
+            print(f"{i}. [ERROR] {issue}")
         print()
 
     # Warnings
@@ -361,7 +361,7 @@ def print_diagnostic_results(results: Dict[str, Any]):
         print("WARNINGS")
         print("─" * 70)
         for i, warning in enumerate(results["warnings"], 1):
-            print(f"{i}. ⚠️  {warning}")
+            print(f"{i}. [WARNING]  {warning}")
         print()
 
     # Suggestions
@@ -370,18 +370,18 @@ def print_diagnostic_results(results: Dict[str, Any]):
         print("SUGGESTIONS")
         print("─" * 70)
         for i, suggestion in enumerate(results["suggestions"], 1):
-            print(f"{i}. 💡 {suggestion}")
+            print(f"{i}. [TIP] {suggestion}")
         print()
 
     # Overall status
     print("=" * 70)
     if not results["issues"]:
         if not results["warnings"]:
-            print("✅ Cache is healthy")
+            print("[PASS] Cache is healthy")
         else:
-            print(f"⚠️  Cache is functional but has {len(results['warnings'])} warning(s)")
+            print(f"[WARNING]  Cache is functional but has {len(results['warnings'])} warning(s)")
     else:
-        print(f"❌ Cache has {len(results['issues'])} issue(s)")
+        print(f"[ERROR] Cache has {len(results['issues'])} issue(s)")
     print("=" * 70)
 
 
@@ -418,7 +418,7 @@ def main():
         cache_dir = Path.cwd() / ".mcp_cache"
 
     if not cache_dir.exists():
-        print(f"❌ Cache directory not found: {cache_dir}", file=sys.stderr)
+        print(f"[ERROR] Cache directory not found: {cache_dir}", file=sys.stderr)
         sys.exit(1)
 
     # Run diagnostics

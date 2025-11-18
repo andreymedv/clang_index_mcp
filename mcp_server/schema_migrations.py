@@ -164,7 +164,7 @@ class SchemaMigration:
                     (version, time.time(), migration_file.stem)
                 )
 
-            diagnostics.info(f"✓ Migration {version} applied successfully")
+            diagnostics.info(f"[OK] Migration {version} applied successfully")
 
         except Exception as e:
             diagnostics.error(f"Migration {version} failed: {e}")
