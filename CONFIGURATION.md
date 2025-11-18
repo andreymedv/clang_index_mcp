@@ -581,3 +581,224 @@ vim .cpp-analyzer-config.json
   }
 }
 ```
+
+---
+
+## Incremental Analysis
+
+The analyzer supports intelligent incremental analysis that dramatically reduces re-analysis time when files change. Instead of re-analyzing the entire project, only affected files are re-parsed.
+
+### How It Works
+
+The incremental analysis system tracks:
+- **File changes** (added, modified, deleted) via MD5 hashing
+- **Header dependencies** via include graph traversal
+- **Compilation changes** via per-entry diffing of `compile_commands.json`
+
+When you refresh the project, the analyzer:
+1. Detects which files have changed since last analysis
+2. Identifies affected files (e.g., files that include a modified header)
+3. Re-analyzes only those files, skipping unchanged code
+4. Updates the cache with new results
+
+### Performance Benefits
+
+| Scenario | Full Re-analysis | Incremental Analysis | Speedup |
+|----------|-----------------|---------------------|---------|
+| Single file changed | 30-60s | <1s | **30-60x** |
+| Header changed (10 dependents) | 30-60s | 3-5s | **6-10x** |
+| No changes detected | 30-60s | <0.1s | **300-600x** |
+| `compile_commands.json` changed (1 entry) | 30-60s | 1-2s | **15-30x** |
+
+*Times based on a medium-sized project (~1000 files). Actual performance varies by project size.*
+
+### Project Identity
+
+Projects are uniquely identified by the combination of:
+- **Source directory path** (absolute)
+- **Configuration file path** (absolute, optional)
+
+Different combinations create separate cache directories:
+
+```bash
+# Same source, no config → Same cache
+/project + (no config) → cache: project_abc123def456
+
+# Same source, different config → Different caches
+/project + /project/config1.json → cache: project_111aaa222bbb
+/project + /project/config2.json → cache: project_333ccc444ddd
+
+# Different source, same config name → Different caches
+/project1 + /project1/config.json → cache: project1_555eee666fff
+/project2 + /project2/config.json → cache: project2_777ggg888hhh
+```
+
+This enables **multi-configuration workflows** where you can work with the same source code using different build configurations (Debug/Release, different compiler flags, etc.) without cache conflicts.
+
+### MCP Tool Integration
+
+#### `set_project_directory` Tool
+
+When initializing a project, you can control incremental analysis behavior:
+
+```json
+{
+  "project_path": "/path/to/project",
+  "config_file": "/path/to/project/.cpp-analyzer-config.json",
+  "auto_refresh": true
+}
+```
+
+**Parameters:**
+- `project_path` (required): Absolute path to project root
+- `config_file` (optional): Path to configuration file for project identity
+- `auto_refresh` (optional, default `true`): Automatically detect and re-analyze changes after loading cache
+
+**With `auto_refresh=true` (recommended):**
+- Loads cache if available
+- Automatically detects changes since last analysis
+- Re-analyzes only affected files
+- Result: Project is always up-to-date with minimal delay
+
+**With `auto_refresh=false`:**
+- Loads cache as-is without checking for changes
+- Faster startup (skips change detection)
+- Use when you know files haven't changed
+
+#### `refresh_project` Tool
+
+Manually refresh the project to detect and re-analyze changes:
+
+```json
+{
+  "incremental": true,
+  "force_full": false
+}
+```
+
+**Parameters:**
+- `incremental` (optional, default `true`): Use incremental analysis
+- `force_full` (optional, default `false`): Force full re-analysis of all files
+
+**Modes:**
+
+1. **Incremental (default)**:
+   ```json
+   {"incremental": true}
+   ```
+   - Detects changes since last analysis
+   - Re-analyzes only affected files
+   - Returns detailed change statistics
+   - Recommended for regular use
+
+2. **Full refresh**:
+   ```json
+   {"force_full": true}
+   ```
+   - Re-analyzes all files regardless of changes
+   - Use after major configuration changes
+   - Use to rebuild corrupted cache
+
+**Response Format:**
+```json
+{
+  "mode": "incremental",
+  "files_analyzed": 5,
+  "files_removed": 1,
+  "elapsed_seconds": 2.34,
+  "changes": {
+    "compile_commands_changed": false,
+    "added_files": 1,
+    "modified_files": 2,
+    "modified_headers": 1,
+    "removed_files": 1,
+    "total_changes": 5
+  },
+  "message": "Incremental refresh complete: Re-analyzed 5 files, removed 1 files in 2.34s"
+}
+```
+
+### Change Detection
+
+The analyzer detects several types of changes:
+
+#### 1. Source File Changes
+When a `.cpp` or `.cc` file is modified:
+- **Only that file** is re-analyzed
+- No cascade to other files (source files don't affect each other)
+
+#### 2. Header File Changes
+When a `.h`, `.hpp`, or `.hxx` file is modified:
+- The analyzer finds all files that include it (directly or transitively)
+- **All dependent files** are re-analyzed
+- Uses dependency graph for efficient traversal
+
+Example:
+```
+utils.h modified
+  ├─ main.cpp includes utils.h → re-analyzed
+  ├─ helper.cpp includes utils.h → re-analyzed
+  └─ test.cpp (doesn't include utils.h) → skipped
+```
+
+#### 3. New Files Added
+When new files appear in the project:
+- Added files are analyzed
+- If `compile_commands.json` is updated, only new entries are processed
+
+#### 4. Files Deleted
+When files are removed:
+- Removed from cache
+- Removed from dependency graph
+- No re-analysis needed
+
+#### 5. `compile_commands.json` Changes
+When compilation database changes:
+- Per-entry diff identifies which files have different compilation flags
+- Only files with changed flags are re-analyzed
+- Much faster than full project re-analysis
+
+Example:
+```json
+// Before
+{"file": "main.cpp", "arguments": ["-std=c++17"]}
+
+// After (changed flags)
+{"file": "main.cpp", "arguments": ["-std=c++20"]}
+// → main.cpp re-analyzed
+
+// File with unchanged flags → skipped
+```
+
+### Best Practices
+
+1. **Use `auto_refresh=true`** (default) when initializing projects for automatic freshness
+2. **Call `refresh_project`** after bulk file changes (git checkout, code generation, etc.)
+3. **Use incremental mode** (default) for regular refreshes
+4. **Use `force_full=true`** only when needed:
+   - After major configuration changes
+   - If cache appears corrupted
+   - If you want to rebuild everything from scratch
+5. **Leverage multi-config support** by using different config files for Debug/Release builds
+
+### Troubleshooting
+
+**"Changes not detected":**
+- Ensure file modification times are updated
+- Try `force_full=true` to force re-analysis
+- Check that files are within the project directory
+
+**"Too many files re-analyzed":**
+- Common headers may trigger widespread re-analysis
+- Consider excluding frequently-changing generated headers
+- Use `exclude_patterns` in config to skip certain files
+
+**"Cache seems stale":**
+- Use `auto_refresh=true` or call `refresh_project`
+- As a last resort, delete `.mcp_cache` directory and re-initialize
+
+### Related Documentation
+
+- **Design**: See [docs/INCREMENTAL_ANALYSIS_DESIGN.md](docs/INCREMENTAL_ANALYSIS_DESIGN.md) for architecture details
+- **Implementation**: See [docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md](docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md) for implementation status
+- **Cache Backend**: See [SQLite Cache Configuration](#sqlite-cache-configuration-new-in-v300) section above

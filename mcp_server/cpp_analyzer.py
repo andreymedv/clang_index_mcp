@@ -159,6 +159,7 @@ class CppAnalyzer:
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
         self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
+        self.cache_loaded = False  # Track whether cache was successfully loaded
 
         # Initialize compile commands manager with config
         compile_commands_config = self.config.get_compile_commands_config()
@@ -1275,6 +1276,7 @@ class CppAnalyzer:
             compile_commands_mtime=cc_mtime
         )
         if not cache_data:
+            self.cache_loaded = False
             return False
         
         try:
@@ -1323,10 +1325,12 @@ class CppAnalyzer:
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
 
             diagnostics.debug(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions")
+            self.cache_loaded = True
             return True
 
         except Exception as e:
             diagnostics.error(f"Error loading cache: {e}")
+            self.cache_loaded = False
             return False
     
     def _save_progress_summary(self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0):
