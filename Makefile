@@ -143,7 +143,7 @@ install-wheel: build-wheel ## Build and install the wheel package locally
 
 clean: ## Clean cache and build artifacts
 	@echo "$(BLUE)Cleaning up...$(NC)"
-	@$(RMDIR) .mcp_cache 2>/dev/null || true
+	@find .mcp_cache -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
 	@$(RMDIR) __pycache__ 2>/dev/null || true
 	@$(RMDIR) mcp_server/__pycache__ 2>/dev/null || true
 	@$(RMDIR) scripts/__pycache__ 2>/dev/null || true
@@ -162,7 +162,7 @@ clean: ## Clean cache and build artifacts
 
 clean-cache: ## Clean only the MCP cache
 	@echo "$(BLUE)Cleaning MCP cache...$(NC)"
-	@$(RMDIR) .mcp_cache 2>/dev/null || true
+	@find .mcp_cache -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
 	@echo "$(GREEN)Cache cleaned!$(NC)"
 
 clean-all: clean ## Clean everything including virtual environment
