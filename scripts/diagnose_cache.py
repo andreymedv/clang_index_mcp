@@ -31,8 +31,7 @@ class CacheDiagnostic:
     def __init__(self, cache_dir: Path):
         """Initialize diagnostic tool."""
         self.cache_dir = cache_dir
-        self.db_path = cache_dir / "cache.db"
-        self.json_path = cache_dir / "cache_info.json"
+        self.db_path = cache_dir / "symbols.db"
         self.issues = []
         self.warnings = []
         self.suggestions = []
@@ -41,23 +40,19 @@ class CacheDiagnostic:
         """Run all diagnostics."""
         results = {
             "cache_dir": str(self.cache_dir),
-            "cache_type": None,
+            "cache_type": "SQLite",
             "issues": [],
             "warnings": [],
             "suggestions": [],
             "checks": {}
         }
 
-        # Determine cache type
+        # Check if SQLite cache exists
         if self.db_path.exists():
-            results["cache_type"] = "SQLite"
             self._diagnose_sqlite(results)
-        elif self.json_path.exists():
-            results["cache_type"] = "JSON"
-            self._diagnose_json(results)
         else:
             results["cache_type"] = "None"
-            results["issues"].append("No cache found")
+            results["issues"].append("No SQLite cache found")
             results["suggestions"].append("Run the analyzer to create a cache")
 
         return results
@@ -102,73 +97,6 @@ class CacheDiagnostic:
         except Exception as e:
             results["issues"].append(f"Failed to open SQLite database: {e}")
             results["suggestions"].append("Database may be corrupted. Try running sqlite_cache_backend.auto_maintenance()")
-
-    def _diagnose_json(self, results: Dict[str, Any]):
-        """Run JSON-specific diagnostics."""
-        try:
-            # 1. File existence check
-            check = {
-                "name": "File Existence",
-                "passed": True,
-                "issues": [],
-                "warnings": [],
-                "suggestions": []
-            }
-
-            if not self.json_path.exists():
-                check["passed"] = False
-                check["issues"].append("cache_info.json not found")
-            else:
-                # Try to load and validate JSON
-                try:
-                    with open(self.json_path, 'r') as f:
-                        cache_info = json.load(f)
-
-                    # Check version
-                    version = cache_info.get("version")
-                    if not version:
-                        check["warnings"].append("No version field in cache")
-
-                    # Check required fields
-                    required_fields = ["class_index", "function_index", "file_hashes"]
-                    for field in required_fields:
-                        if field not in cache_info:
-                            check["issues"].append(f"Missing required field: {field}")
-                            check["passed"] = False
-
-                    # Check symbol counts
-                    class_count = sum(len(symbols) for symbols in cache_info.get("class_index", {}).values())
-                    function_count = sum(len(symbols) for symbols in cache_info.get("function_index", {}).values())
-
-                    if class_count == 0 and function_count == 0:
-                        check["warnings"].append("Cache contains no symbols")
-                        check["suggestions"].append("Run the analyzer to index your project")
-
-                except json.JSONDecodeError as e:
-                    check["passed"] = False
-                    check["issues"].append(f"Invalid JSON: {e}")
-                    check["suggestions"].append("Cache file is corrupted. Delete and re-index")
-
-            results["checks"]["json_validity"] = check
-
-            # Aggregate issues and suggestions
-            for check_name, check_result in results["checks"].items():
-                if not check_result.get("passed", True):
-                    results["issues"].extend(check_result.get("issues", []))
-                if check_result.get("warnings"):
-                    results["warnings"].extend(check_result["warnings"])
-                if check_result.get("suggestions"):
-                    results["suggestions"].extend(check_result["suggestions"])
-
-            # Suggest migration to SQLite
-            if len(results["issues"]) == 0:
-                results["suggestions"].append(
-                    "Consider migrating to SQLite for better performance. "
-                    "Set CLANG_INDEX_USE_SQLITE=1"
-                )
-
-        except Exception as e:
-            results["issues"].append(f"Failed to diagnose JSON cache: {e}")
 
     def _check_integrity(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
         """Check database integrity."""
