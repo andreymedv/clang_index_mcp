@@ -4,6 +4,7 @@ import re
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
 from .symbol_info import SymbolInfo
+from .regex_validator import RegexValidator, RegexValidationError
 
 
 class SearchEngine:
@@ -20,6 +21,9 @@ class SearchEngine:
     
     def search_classes(self, pattern: str, project_only: bool = True) -> List[Dict[str, Any]]:
         """Search for classes matching a pattern"""
+        # Validate pattern for ReDoS prevention
+        RegexValidator.validate_or_raise(pattern)
+
         results = []
         regex = re.compile(pattern, re.IGNORECASE)
         
@@ -38,9 +42,12 @@ class SearchEngine:
         
         return results
     
-    def search_functions(self, pattern: str, project_only: bool = True, 
+    def search_functions(self, pattern: str, project_only: bool = True,
                         class_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """Search for functions matching a pattern"""
+        # Validate pattern for ReDoS prevention
+        RegexValidator.validate_or_raise(pattern)
+
         results = []
         regex = re.compile(pattern, re.IGNORECASE)
         
