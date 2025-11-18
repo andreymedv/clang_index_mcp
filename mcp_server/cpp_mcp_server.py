@@ -296,13 +296,22 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="set_project_directory",
-            description="**REQUIRED FIRST STEP**: Initialize the analyzer with your C++ project directory. Must be called before any other tools. Indexes all C++ source/header files (.cpp, .h, .hpp, etc.) in the directory and subdirectories, parsing with libclang to build searchable database of classes, functions, and relationships.\n\nWARNING: Indexing large projects takes time. Can be called multiple times to switch projects (reinitializes each time). Returns count of indexed files.",
+            description="**REQUIRED FIRST STEP**: Initialize the analyzer with your C++ project directory. Must be called before any other tools. Indexes all C++ source/header files (.cpp, .h, .hpp, etc.) in the directory and subdirectories, parsing with libclang to build searchable database of classes, functions, and relationships.\n\nSupports incremental analysis: If a valid cache exists and auto_refresh=true (default), will automatically detect and re-analyze only changed files. Different config_file paths create separate cache directories, enabling multi-configuration workflows.\n\nWARNING: Indexing large projects takes time. Can be called multiple times to switch projects (reinitializes each time). Returns count of indexed files.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "project_path": {
                         "type": "string",
                         "description": "Absolute path to the root directory of your C++ project. Must be a valid, existing directory. All subsequent analysis operations will be performed on this project."
+                    },
+                    "config_file": {
+                        "type": "string",
+                        "description": "Optional: Path to configuration file (.cpp-analyzer-config.json). When provided, creates a unique cache for this project+config combination, enabling multiple configurations for the same source directory."
+                    },
+                    "auto_refresh": {
+                        "type": "boolean",
+                        "description": "When true (default), automatically performs incremental analysis on cache load to detect and re-analyze changed files. Set to false to skip automatic refresh and use cached data as-is.",
+                        "default": True
                     }
                 },
                 "required": ["project_path"]
@@ -310,10 +319,21 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="refresh_project",
-            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. The analyzer does NOT automatically detect file changes - you must call this tool whenever source files are modified (whether by you, external editor, git checkout, build system, or any other means) to ensure the index reflects the current state of the codebase. Returns the count of files that were re-parsed.",
+            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. The analyzer does NOT automatically detect file changes - you must call this tool whenever source files are modified (whether by you, external editor, git checkout, build system, or any other means) to ensure the index reflects the current state of the codebase.\n\nSupports two modes:\n- Incremental (default): Analyzes only changed files using dependency tracking\n- Full: Re-analyzes all files (use force_full=true)\n\nReturns detailed statistics about files analyzed, removed, and elapsed time.",
             inputSchema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "incremental": {
+                        "type": "boolean",
+                        "description": "When true (default), performs incremental analysis by detecting changes and re-analyzing only affected files. When false, performs full re-analysis of all files.",
+                        "default": True
+                    },
+                    "force_full": {
+                        "type": "boolean",
+                        "description": "When true, forces full re-analysis of all files regardless of incremental setting. Use after major configuration changes or to rebuild index from scratch.",
+                        "default": False
+                    }
+                },
                 "required": []
             }
         ),
@@ -541,6 +561,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
         if name == "set_project_directory":
             project_path = arguments["project_path"]
+            config_file = arguments.get("config_file", None)
+            auto_refresh = arguments.get("auto_refresh", True)
 
             if not isinstance(project_path, str) or not project_path.strip():
                 return [TextContent(type="text", text="Error: 'project_path' must be a non-empty string")]
@@ -556,19 +578,44 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if not os.path.isdir(project_path):
                 return [TextContent(type="text", text=f"Error: Directory '{project_path}' does not exist")]
 
-            # Re-initialize analyzer with new path
+            # Validate config_file if provided
+            if config_file:
+                if not isinstance(config_file, str) or not config_file.strip():
+                    return [TextContent(type="text", text="Error: 'config_file' must be a non-empty string")]
+                config_file = config_file.strip()
+                if not os.path.isabs(config_file):
+                    return [TextContent(type="text", text=f"Error: '{config_file}' is not an absolute path")]
+                if not os.path.isfile(config_file):
+                    return [TextContent(type="text", text=f"Error: Config file '{config_file}' does not exist")]
+
+            # Re-initialize analyzer with new path and config
             global analyzer, analyzer_initialized, state_manager, background_indexer
 
             # Transition to INITIALIZING state
             state_manager.transition_to(AnalyzerState.INITIALIZING)
-            analyzer = CppAnalyzer(project_path)
+            analyzer = CppAnalyzer(project_path, config_file=config_file)
             background_indexer = BackgroundIndexer(analyzer, state_manager)
 
             # Start indexing in background (truly asynchronous, non-blocking)
             # The task will run independently while the MCP server continues to handle requests
             async def run_background_indexing():
                 try:
+                    # Perform initial indexing
                     await background_indexer.start_indexing(force=False, include_dependencies=True)
+
+                    # If auto_refresh enabled and cache was loaded, perform incremental analysis
+                    if auto_refresh and hasattr(analyzer, 'cache_loaded') and analyzer.cache_loaded:
+                        try:
+                            from mcp_server.incremental_analyzer import IncrementalAnalyzer
+                            incremental = IncrementalAnalyzer(analyzer)
+                            result = incremental.perform_incremental_analysis()
+                            diagnostics.info(
+                                f"Auto-refresh complete: {result.files_analyzed} files analyzed, "
+                                f"{result.files_removed} files removed"
+                            )
+                        except Exception as e:
+                            diagnostics.warning(f"Auto-refresh failed: {e}")
+
                     # Indexing complete - mark as initialized
                     global analyzer_initialized
                     analyzer_initialized = True
@@ -579,11 +626,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Create background task (non-blocking)
             asyncio.create_task(run_background_indexing())
 
+            # Build response message
+            config_msg = f" with config '{config_file}'" if config_file else ""
+            auto_refresh_msg = " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
+
             # Return immediately - indexing continues in background
             return [TextContent(
                 type="text",
-                text=f"Set project directory to: {project_path}\n"
-                     f"Indexing started in background. Use 'get_indexing_status' to check progress.\n"
+                text=f"Set project directory to: {project_path}{config_msg}\n"
+                     f"Indexing started in background.{auto_refresh_msg}\n"
+                     f"Use 'get_indexing_status' to check progress.\n"
                      f"Tools are available but will return partial results until indexing completes."
             )]
         
@@ -656,8 +708,67 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
         
         elif name == "refresh_project":
-            modified_count = analyzer.refresh_if_needed()
-            return [TextContent(type="text", text=f"Refreshed project. Re-parsed {modified_count} modified/new files.")]
+            incremental = arguments.get("incremental", True)
+            force_full = arguments.get("force_full", False)
+
+            # Force full re-analysis overrides incremental setting
+            if force_full:
+                modified_count = analyzer.refresh_if_needed()
+                return [TextContent(
+                    type="text",
+                    text=f"Full refresh complete. Re-analyzed {modified_count} files."
+                )]
+
+            # Incremental analysis using IncrementalAnalyzer
+            if incremental:
+                try:
+                    from mcp_server.incremental_analyzer import IncrementalAnalyzer
+                    incremental_analyzer = IncrementalAnalyzer(analyzer)
+                    result = incremental_analyzer.perform_incremental_analysis()
+
+                    # Build detailed response
+                    response = {
+                        "mode": "incremental",
+                        "files_analyzed": result.files_analyzed,
+                        "files_removed": result.files_removed,
+                        "elapsed_seconds": result.elapsed_seconds,
+                        "changes": {
+                            "compile_commands_changed": result.changes.compile_commands_changed,
+                            "added_files": len(result.changes.added_files),
+                            "modified_files": len(result.changes.modified_files),
+                            "modified_headers": len(result.changes.modified_headers),
+                            "removed_files": len(result.changes.removed_files),
+                            "total_changes": result.changes.get_total_changes()
+                        }
+                    }
+
+                    if result.changes.is_empty():
+                        response["message"] = "No changes detected. Cache is up to date."
+                    else:
+                        response["message"] = (
+                            f"Incremental refresh complete: Re-analyzed {result.files_analyzed} files, "
+                            f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
+                        )
+
+                    return [TextContent(type="text", text=json.dumps(response, indent=2))]
+
+                except Exception as e:
+                    diagnostics.error(f"Incremental analysis failed: {e}")
+                    # Fallback to full refresh
+                    modified_count = analyzer.refresh_if_needed()
+                    return [TextContent(
+                        type="text",
+                        text=f"Incremental analysis failed, performed full refresh. "
+                             f"Re-analyzed {modified_count} files.\nError: {str(e)}"
+                    )]
+
+            # Non-incremental (full) refresh
+            else:
+                modified_count = analyzer.refresh_if_needed()
+                return [TextContent(
+                    type="text",
+                    text=f"Full refresh complete. Re-analyzed {modified_count} files."
+                )]
         
         elif name == "get_server_status":
             # Determine analyzer type
