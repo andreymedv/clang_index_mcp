@@ -11,6 +11,8 @@ import tempfile
 import hashlib
 from pathlib import Path
 
+import pytest
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -20,8 +22,12 @@ from mcp_server.cache_manager import CacheManager
 from mcp_server.symbol_info import SymbolInfo
 
 
-class TestResults:
-    """Track test results"""
+# Skip all tests in this module - it's designed to be run standalone
+pytestmark = pytest.mark.skip(reason="This module is designed to be run standalone via: python tests/test_session_features.py")
+
+
+class SessionTestResults:
+    """Track test results (renamed from TestResults to avoid pytest collection)"""
     def __init__(self):
         self.passed = 0
         self.failed = 0
@@ -512,7 +518,7 @@ def main():
     print("COMPREHENSIVE TEST SUITE - Session Features")
     print("=" * 70)
 
-    results = TestResults()
+    results = SessionTestResults()
 
     # Run all test suites
     test_config_validation(results)
