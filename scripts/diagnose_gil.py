@@ -124,8 +124,8 @@ def main():
         print(f"\n  ProcessPool speedup: {speedup:.2f}x")
 
         if speedup > 1.5:
-            print("  ⚠️  WARNING: ProcessPool is significantly faster!")
-            print("  ⚠️  This indicates GIL contention is limiting ThreadPool performance!")
+            print("  [WARNING]  WARNING: ProcessPool is significantly faster!")
+            print("  [WARNING]  This indicates GIL contention is limiting ThreadPool performance!")
 
     print("\n" + "="*80)
     print("ANALYSIS:")

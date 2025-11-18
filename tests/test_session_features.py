@@ -29,12 +29,12 @@ class TestResults:
 
     def record_pass(self, test_name):
         self.passed += 1
-        print(f"  ✓ {test_name}")
+        print(f"  [OK] {test_name}")
 
     def record_fail(self, test_name, error):
         self.failed += 1
         self.errors.append((test_name, error))
-        print(f"  ✗ {test_name}: {error}")
+        print(f"  [X] {test_name}: {error}")
 
     def print_summary(self):
         print("\n" + "=" * 70)

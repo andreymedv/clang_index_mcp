@@ -42,7 +42,7 @@ class TestRuleLoading:
         assert 'color-diagnostics' in rule_ids
         assert 'debug-info' in rule_ids
 
-        print("✓ REQ-5.8.1.1: Default rules loaded successfully")
+        print("[OK] REQ-5.8.1.1: Default rules loaded successfully")
 
     def test_req_5_8_1_2_custom_rules_loading(self):
         """REQ-5.8.1.2: Load and append custom rules"""
@@ -77,7 +77,7 @@ class TestRuleLoading:
             assert '-std=c++17' in result
             assert '-Wall' in result
 
-            print("✓ REQ-5.8.1.2: Custom rules loaded and appended successfully")
+            print("[OK] REQ-5.8.1.2: Custom rules loaded and appended successfully")
 
         finally:
             os.unlink(custom_file)
@@ -91,7 +91,7 @@ class TestRuleLoading:
         info = sanitizer.get_rules_info()
         assert info['rule_count'] > 0, "Should fall back to default rules"
 
-        print("✓ REQ-5.8.1.3: Gracefully handles missing rule files")
+        print("[OK] REQ-5.8.1.3: Gracefully handles missing rule files")
 
 
 class TestRuleTypes:
@@ -112,7 +112,7 @@ class TestRuleTypes:
         assert '-Wall' in result
         assert '-Werror' in result
 
-        print("✓ REQ-5.8.4.1: exact_match rule works correctly")
+        print("[OK] REQ-5.8.4.1: exact_match rule works correctly")
 
     def test_req_5_8_4_2_prefix_match_rule(self):
         """REQ-5.8.4.2: prefix_match rule type"""
@@ -135,7 +135,7 @@ class TestRuleTypes:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.8.4.2: prefix_match rule works correctly")
+        print("[OK] REQ-5.8.4.2: prefix_match rule works correctly")
 
     def test_req_5_8_4_3_flag_with_optional_value_rule(self):
         """REQ-5.8.4.3: flag_with_optional_value rule type"""
@@ -158,7 +158,7 @@ class TestRuleTypes:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.8.4.3: flag_with_optional_value rule works correctly")
+        print("[OK] REQ-5.8.4.3: flag_with_optional_value rule works correctly")
 
     def test_req_5_8_4_4_xclang_sequence_rule(self):
         """REQ-5.8.4.4: xclang_sequence rule type"""
@@ -180,7 +180,7 @@ class TestRuleTypes:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.8.4.4: xclang_sequence rule works correctly")
+        print("[OK] REQ-5.8.4.4: xclang_sequence rule works correctly")
 
     def test_req_5_8_4_5_xclang_conditional_sequence_rule(self):
         """REQ-5.8.4.5: xclang_conditional_sequence rule type"""
@@ -213,7 +213,7 @@ class TestRuleTypes:
         assert 'config.h' in result
         assert '-include' in result
 
-        print("✓ REQ-5.8.4.5: xclang_conditional_sequence rule works correctly")
+        print("[OK] REQ-5.8.4.5: xclang_conditional_sequence rule works correctly")
 
     def test_req_5_8_4_6_xclang_option_with_value_rule(self):
         """REQ-5.8.4.6: xclang_option_with_value rule type"""
@@ -233,7 +233,7 @@ class TestRuleTypes:
         assert '-std=c++17' in result
         assert '-Wall' in result
 
-        print("✓ REQ-5.8.4.6: xclang_option_with_value rule works correctly")
+        print("[OK] REQ-5.8.4.6: xclang_option_with_value rule works correctly")
 
 
 class TestRuleApplication:
@@ -254,7 +254,7 @@ class TestRuleApplication:
         # Non-matching flags should remain in order
         assert result.index('-std=c++17') < result.index('-Wall')
 
-        print("✓ REQ-5.8.2.1: Sequential processing works correctly")
+        print("[OK] REQ-5.8.2.1: Sequential processing works correctly")
 
     def test_req_5_8_2_2_no_rule_match_preserves_arg(self):
         """REQ-5.8.2.2: Arguments with no matching rule are preserved"""
@@ -271,7 +271,7 @@ class TestRuleApplication:
         # All should be preserved (no rules match these)
         assert result == args, "Arguments without matching rules should be preserved"
 
-        print("✓ REQ-5.8.2.2: Non-matching arguments preserved")
+        print("[OK] REQ-5.8.2.2: Non-matching arguments preserved")
 
     def test_req_5_8_2_3_first_matching_rule_wins(self):
         """REQ-5.8.2.3: First matching rule is applied"""
@@ -307,7 +307,7 @@ class TestRuleApplication:
             # First rule (prefix_match) should match and remove
             assert '-ftest-specific' not in result
 
-            print("✓ REQ-5.8.2.3: First matching rule is applied")
+            print("[OK] REQ-5.8.2.3: First matching rule is applied")
 
         finally:
             os.unlink(custom_file)
@@ -368,7 +368,7 @@ class TestComplexScenarios:
         assert '/build/pch.pch' not in result
         assert 'cmake_pch.hxx' not in result
 
-        print("✓ Complex CMake PCH removal works correctly")
+        print("[OK] Complex CMake PCH removal works correctly")
 
 
 def run_all_tests():
@@ -399,9 +399,9 @@ def run_all_tests():
                     method()
                     passed_tests += 1
                 except AssertionError as e:
-                    print(f"✗ {method_name}: {e}")
+                    print(f"[X] {method_name}: {e}")
                 except Exception as e:
-                    print(f"✗ {method_name}: Unexpected error: {e}")
+                    print(f"[X] {method_name}: Unexpected error: {e}")
                     import traceback
                     traceback.print_exc()
 
