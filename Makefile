@@ -2,17 +2,24 @@
 
 # Detect operating system
 ifeq ($(OS),Windows_NT)
-	PYTHON := python
-	VENV_BIN := mcp_env\Scripts
-	ACTIVATE := $(VENV_BIN)\activate
-	RM := del /Q
-	RMDIR := rmdir /S /Q
+DETECTED_OS := Windows
 else
-	PYTHON := python3
-	VENV_BIN := mcp_env/bin
-	ACTIVATE := source $(VENV_BIN)/activate
-	RM := rm -f
-	RMDIR := rm -rf
+DETECTED_OS := $(shell uname -s)
+endif
+
+# Set platform-specific variables
+ifeq ($(DETECTED_OS),Windows)
+PYTHON := python
+VENV_BIN := mcp_env\Scripts
+ACTIVATE := $(VENV_BIN)\activate
+RM := del /Q
+RMDIR := rmdir /S /Q
+else
+PYTHON := python3
+VENV_BIN := mcp_env/bin
+ACTIVATE := source $(VENV_BIN)/activate
+RM := rm -f
+RMDIR := rm -rf
 endif
 
 # Colors for output (Unix-like systems)
