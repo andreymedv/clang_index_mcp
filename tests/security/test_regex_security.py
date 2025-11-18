@@ -18,22 +18,21 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.regex_validator import RegexValidator, RegexValidationError
 
 
 @pytest.mark.security
 @pytest.mark.critical
-@pytest.mark.timeout(30)  # Allow time for ReDoS patterns (not yet prevented)
+@pytest.mark.timeout(5)  # Should reject dangerous patterns immediately
 class TestRegexDoSPrevention:
     """Test ReDoS attack prevention - REQ-10.2
 
-    NOTE: Full ReDoS prevention not yet implemented. These tests verify that
-    pathological regex patterns complete within reasonable time (30s) but may
-    be slow. Future enhancement: implement regex complexity analysis to reject
-    dangerous patterns before execution.
+    Tests verify that regex patterns are validated before execution to prevent
+    catastrophic backtracking and DoS attacks.
     """
 
     def test_regex_dos_prevention(self, temp_project_dir):
-        """Test that ReDoS patterns complete within reasonable time - Task 1.3.2"""
+        """Test that dangerous ReDoS patterns are rejected - Task 1.3.2"""
         # Create test file
         test_content = "class TestClass {};\nclass AnotherClass {};"
         (temp_project_dir / "src" / "test.cpp").write_text(test_content)
@@ -43,43 +42,66 @@ class TestRegexDoSPrevention:
         analyzer.index_project()
 
         # Test Case 1: Catastrophic backtracking pattern (a+)+
-        # SKIP: This pattern causes catastrophic backtracking with Python's re module.
-        # ReDoS prevention is not yet implemented. This test documents the vulnerability.
-        # TODO: Implement regex complexity analysis before pattern execution
-        pytest.skip("ReDoS prevention not yet implemented - catastrophic backtracking occurs with pattern (A+)+B")
+        with pytest.raises(RegexValidationError, match="Dangerous pattern|too complex"):
+            analyzer.search_functions("(a+)+b")
 
         # Test Case 2: Nested quantifiers
-        start = time.time()
-        try:
-            results = analyzer.search_functions("(x+x+)+y")
-            elapsed = time.time() - start
-            assert elapsed < 10.0, "Nested quantifiers should complete within 10s"
-        except:
-            pass  # Error is acceptable, hanging is not
+        with pytest.raises(RegexValidationError, match="Dangerous pattern|too complex"):
+            analyzer.search_functions("(x+x+)+y")
 
         # Test Case 3: Alternation with overlap
-        start = time.time()
-        try:
-            results = analyzer.search_classes("(a|a)*b")
-            elapsed = time.time() - start
-            assert elapsed < 10.0, "Overlapping alternation should complete within 10s"
-        except:
-            pass
+        with pytest.raises(RegexValidationError, match="Dangerous pattern|too complex"):
+            analyzer.search_classes("(a|a)*b")
 
-        # Test Case 4: Long input with complex pattern
-        start = time.time()
-        try:
-            results = analyzer.search_classes("(a*)*b")
-            elapsed = time.time() - start
-            assert elapsed < 10.0, "Complex pattern should complete within 10s"
-        except:
-            pass
+        # Test Case 4: Nested star quantifiers
+        with pytest.raises(RegexValidationError, match="Dangerous pattern|too complex"):
+            analyzer.search_classes("(a*)*b")
 
-        # Test Case 5: Pathological regex
-        start = time.time()
-        try:
-            results = analyzer.search_functions("(a|ab)*c")
-            elapsed = time.time() - start
-            assert elapsed < 10.0, "Pathological regex should complete within 10s"
-        except:
-            pass
+        # Test Case 5: Multiple nested quantifiers
+        with pytest.raises(RegexValidationError, match="Dangerous pattern|too complex"):
+            analyzer.search_functions("(a*)+c")
+
+    def test_safe_patterns_allowed(self, temp_project_dir):
+        """Test that safe regex patterns are allowed - Task 1.3.2"""
+        # Create test file
+        test_content = "class TestClass {};\nclass AnotherClass {};"
+        (temp_project_dir / "src" / "test.cpp").write_text(test_content)
+
+        # Create analyzer
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Safe patterns should work without exceptions
+        results = analyzer.search_classes("Test.*")
+        assert len(results) >= 0  # Should complete successfully
+
+        results = analyzer.search_classes(".*Class")
+        assert len(results) >= 0
+
+        results = analyzer.search_functions("[a-zA-Z]+")
+        assert len(results) >= 0
+
+    def test_validator_complexity_analysis(self):
+        """Test the complexity analysis function"""
+        # Simple patterns should have low scores
+        assert RegexValidator.analyze_complexity("test") < 5
+        assert RegexValidator.analyze_complexity("test.*") < 10
+
+        # Nested quantifiers should have high scores
+        assert RegexValidator.analyze_complexity("(a+)+") > 50
+        assert RegexValidator.analyze_complexity("(a*)*") > 50
+
+        # Alternation with quantifiers should have high scores
+        assert RegexValidator.analyze_complexity("(a|a)*") > 20
+
+    def test_validator_sanitize(self):
+        """Test pattern sanitization"""
+        # Safe patterns should pass through unchanged
+        safe_pattern = "TestClass"
+        assert RegexValidator.sanitize(safe_pattern) == safe_pattern
+
+        # Dangerous patterns should be escaped
+        dangerous_pattern = "(a+)+"
+        sanitized = RegexValidator.sanitize(dangerous_pattern)
+        assert sanitized != dangerous_pattern
+        assert sanitized == r"\(a\+\)\+"  # All special chars escaped
