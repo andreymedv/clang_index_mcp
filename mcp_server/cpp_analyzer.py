@@ -26,6 +26,7 @@ from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
 from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
+from .dependency_graph import DependencyGraphBuilder
 from datetime import datetime, timedelta
 
 # Handle both package and script imports
@@ -165,6 +166,15 @@ class CppAnalyzer:
 
         # Initialize header processing tracker for first-win strategy
         self.header_tracker = HeaderProcessingTracker()
+
+        # Initialize dependency graph builder for incremental analysis
+        # Note: Only initialize if using SQLite backend (has conn attribute)
+        self.dependency_graph = None
+        if hasattr(self.cache_manager.backend, 'conn'):
+            self.dependency_graph = DependencyGraphBuilder(self.cache_manager.backend.conn)
+            diagnostics.debug("Dependency graph builder initialized")
+        else:
+            diagnostics.debug("Dependency graph not available (non-SQLite backend)")
 
         # Track compile_commands.json version for header tracking invalidation
         self.compile_commands_hash = ""
@@ -737,6 +747,14 @@ class CppAnalyzer:
 
         # Save header tracker state to disk (implements REQ-10.5.4)
         self._save_header_tracking()
+
+        # Extract and store include dependencies for incremental analysis
+        if self.dependency_graph is not None:
+            try:
+                includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
+                self.dependency_graph.update_dependencies(source_file, includes)
+            except Exception as e:
+                diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
 
         return {
             "source_file": source_file,
