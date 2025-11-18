@@ -28,7 +28,7 @@ class SchemaMigration:
             migration.migrate()
     """
 
-    CURRENT_VERSION = 1
+    CURRENT_VERSION = 2  # Updated for file_dependencies table
 
     def __init__(self, conn: sqlite3.Connection):
         """
@@ -147,8 +147,15 @@ class SchemaMigration:
             # Apply migration in transaction
             with self.conn:
                 # Execute migration SQL if it contains actual statements
-                # (001_initial_schema.sql is just documentation, schema already created)
-                if sql.strip() and not sql.strip().startswith('--'):
+                # Skip only if file is empty or contains ONLY comments
+                has_sql = False
+                for line in sql.split('\n'):
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith('--'):
+                        has_sql = True
+                        break
+
+                if has_sql:
                     self.conn.executescript(sql)
 
                 # Record migration in schema_version table

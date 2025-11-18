@@ -25,6 +25,8 @@ from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
 from .header_tracker import HeaderProcessingTracker
+from .project_identity import ProjectIdentity
+from .dependency_graph import DependencyGraphBuilder
 from datetime import datetime, timedelta
 
 # Handle both package and script imports
@@ -78,30 +80,45 @@ def _process_file_worker(args_tuple):
 class CppAnalyzer:
     """
     Pure Python C++ code analyzer using libclang.
-    
+
     This class provides code analysis functionality including:
     - Class and struct discovery
     - Function and method discovery
     - Symbol search with regex patterns
     - File-based filtering
     """
-    
-    def __init__(self, project_root: str):
+
+    def __init__(self, project_root: str, config_file: Optional[str] = None):
+        """
+        Initialize C++ Analyzer.
+
+        Args:
+            project_root: Path to project source directory
+            config_file: Optional path to configuration file for project identity
+
+        Note:
+            Project identity is determined by (source_directory, config_file) pair.
+            Different config_file values create separate cache directories.
+        """
         self.project_root = Path(project_root).resolve()
         self.index = Index.create()
-        
+
+        # Create project identity
+        config_path = Path(config_file).resolve() if config_file else None
+        self.project_identity = ProjectIdentity(self.project_root, config_path)
+
         # Load project configuration
         self.config = CppAnalyzerConfig(self.project_root)
-        
+
         # Indexes for fast lookup
         self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.function_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.file_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.usr_index: Dict[str, SymbolInfo] = {}  # USR to symbol mapping
-        
+
         # Initialize call graph analyzer
         self.call_graph_analyzer = CallGraphAnalyzer()
-        
+
         # Initialize search engine
         self.search_engine = SearchEngine(
             self.class_index,
@@ -109,11 +126,11 @@ class CppAnalyzer:
             self.file_index,
             self.usr_index
         )
-        
+
         # Track indexed files
         self.translation_units: Dict[str, TranslationUnit] = {}
         self.file_hashes: Dict[str, str] = {}
-        
+
         # Threading/Processing
         self.index_lock = threading.Lock()
         self._thread_local = threading.local()
@@ -125,9 +142,9 @@ class CppAnalyzer:
         # Use ProcessPoolExecutor by default to bypass Python's GIL
         # Can be overridden via environment variable
         self.use_processes = os.environ.get('CPP_ANALYZER_USE_THREADS', '').lower() != 'true'
-        
-        # Initialize cache manager and file scanner with config
-        self.cache_manager = CacheManager(self.project_root)
+
+        # Initialize cache manager with project identity
+        self.cache_manager = CacheManager(self.project_identity)
         self.file_scanner = FileScanner(self.project_root)
         
         # Apply configuration to file scanner
@@ -142,6 +159,7 @@ class CppAnalyzer:
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
         self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
+        self.cache_loaded = False  # Track whether cache was successfully loaded
 
         # Initialize compile commands manager with config
         compile_commands_config = self.config.get_compile_commands_config()
@@ -149,6 +167,15 @@ class CppAnalyzer:
 
         # Initialize header processing tracker for first-win strategy
         self.header_tracker = HeaderProcessingTracker()
+
+        # Initialize dependency graph builder for incremental analysis
+        # Note: Only initialize if using SQLite backend (has conn attribute)
+        self.dependency_graph = None
+        if hasattr(self.cache_manager.backend, 'conn'):
+            self.dependency_graph = DependencyGraphBuilder(self.cache_manager.backend.conn)
+            diagnostics.debug("Dependency graph builder initialized")
+        else:
+            diagnostics.debug("Dependency graph not available (non-SQLite backend)")
 
         # Track compile_commands.json version for header tracking invalidation
         self.compile_commands_hash = ""
@@ -722,6 +749,14 @@ class CppAnalyzer:
         # Save header tracker state to disk (implements REQ-10.5.4)
         self._save_header_tracking()
 
+        # Extract and store include dependencies for incremental analysis
+        if self.dependency_graph is not None:
+            try:
+                includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
+                self.dependency_graph.update_dependencies(source_file, includes)
+            except Exception as e:
+                diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
+
         return {
             "source_file": source_file,
             "processed": list(processed_files),
@@ -1241,6 +1276,7 @@ class CppAnalyzer:
             compile_commands_mtime=cc_mtime
         )
         if not cache_data:
+            self.cache_loaded = False
             return False
         
         try:
@@ -1289,10 +1325,12 @@ class CppAnalyzer:
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
 
             diagnostics.debug(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions")
+            self.cache_loaded = True
             return True
 
         except Exception as e:
             diagnostics.error(f"Error loading cache: {e}")
+            self.cache_loaded = False
             return False
     
     def _save_progress_summary(self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0):
