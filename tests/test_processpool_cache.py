@@ -30,7 +30,6 @@ def worker_write_symbols(args):
 
     try:
         # Each process gets its own CacheManager and connection
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(Path(cache_dir))
 
             # Create symbols for this worker
@@ -64,7 +63,6 @@ def worker_read_symbols(args):
 
     try:
         # Each process gets its own CacheManager and connection
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(Path(cache_dir))
 
             backend = cache_manager.backend
@@ -83,7 +81,6 @@ def worker_read_symbols(args):
 def check_connection_id(cache_dir):
     """Get SQLite connection object ID (module-level for pickling)"""
     try:
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(Path(cache_dir))
             backend = cache_manager.backend
             if isinstance(backend, SqliteCacheBackend):
@@ -113,7 +110,6 @@ class TestProcessPoolCache(unittest.TestCase):
         symbols_per_worker = 100
 
         # Pre-create database to avoid initialization race condition
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
             # Just initialize - don't write anything yet
             del cache_manager
@@ -133,7 +129,6 @@ class TestProcessPoolCache(unittest.TestCase):
                 f"Worker {worker_id} should have written {symbols_per_worker} symbols")
 
         # Verify total symbol count
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
             backend = cache_manager.backend
 
@@ -148,7 +143,6 @@ class TestProcessPoolCache(unittest.TestCase):
         """Test concurrent reads from multiple processes"""
         # First, populate database with some data
         symbol_count = 1000
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
             backend = cache_manager.backend
 
@@ -191,7 +185,6 @@ class TestProcessPoolCache(unittest.TestCase):
         symbols_per_worker = 50
 
         # Pre-create database to avoid initialization race condition
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
             del cache_manager
 
@@ -213,7 +206,6 @@ class TestProcessPoolCache(unittest.TestCase):
     def test_isolated_connections(self):
         """Test that each process gets its own isolated connection"""
         # Pre-create database
-        with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
             cache_manager = CacheManager(self.temp_project_dir)
             del cache_manager
 

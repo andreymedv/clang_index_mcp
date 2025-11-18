@@ -234,49 +234,6 @@ xcode-select --install
 
 ## SQLite Cache Issues (New in v3.0.0)
 
-### Migration Fails: "Migration verification failed"
-
-**Symptom**: Automatic migration from JSON to SQLite fails with verification errors
-
-**Diagnosis**:
-```bash
-python3 scripts/diagnose_cache.py --verbose
-```
-
-**Common Causes**:
-1. **Symbol count mismatch**: JSON cache and SQLite cache have different symbol counts
-2. **Corrupted JSON cache**: Original cache has integrity issues
-3. **Disk full**: Insufficient space for migration
-
-**Solutions**:
-
-**1. Retry migration:**
-```bash
-# Remove failed SQLite cache
-rm .mcp_cache/cache.db .mcp_cache/.migrated_to_sqlite
-
-# Retry migration with verbose output
-python3 scripts/migrate_cache.py --verbose
-```
-
-**2. Verify JSON cache integrity:**
-```bash
-python3 -c "
-import json
-try:
-    with open('.mcp_cache/cache_info.json') as f:
-        data = json.load(f)
-    print(f'JSON cache OK: {sum(len(v) for v in data.get(\"class_index\", {}).values())} classes')
-except Exception as e:
-    print(f'JSON cache error: {e}')
-"
-```
-
-**3. Check disk space:**
-```bash
-df -h .mcp_cache
-```
-
 ### Database Locked Error
 
 **Symptom**: `sqlite3.OperationalError: database is locked`
@@ -358,9 +315,9 @@ except Exception as e:
 "
 ```
 
-### Performance Worse After Migration
+### Slow Performance
 
-**Symptom**: SQLite cache is slower than expected after migration
+**Symptom**: SQLite cache is slower than expected
 
 **Diagnosis**:
 ```bash
@@ -369,7 +326,7 @@ python3 scripts/cache_stats.py
 ```
 
 **Common Causes**:
-1. Database not optimized after migration
+1. Database not optimized
 2. Missing indexes or FTS5 index corruption
 3. Disk I/O bottleneck
 
@@ -480,26 +437,6 @@ python3 scripts/diagnose_cache.py
 
 # 3. Check specific issues
 python3 scripts/diagnose_cache.py --verbose --json > cache_report.json
-
-# 4. Manually re-migrate
-python3 scripts/migrate_cache.py --verbose
-
-# 5. Batch migration for multiple projects
-python3 scripts/migrate_cache.py --batch project1 project2 project3
-```
-
-### Rollback to JSON Cache
-
-If SQLite issues persist, roll back to JSON cache:
-
-```bash
-# Method 1: Disable SQLite (temporary)
-export CLANG_INDEX_USE_SQLITE=0
-
-# Method 2: Delete SQLite cache (permanent)
-rm .mcp_cache/cache.db .mcp_cache/.migrated_to_sqlite
-
-# The analyzer will use the original JSON cache
 ```
 
 ## Getting Help

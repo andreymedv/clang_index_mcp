@@ -20,7 +20,6 @@ sys.path.insert(0, str(project_root))
 from mcp_server.cache_manager import CacheManager
 from mcp_server.symbol_info import SymbolInfo
 from mcp_server.sqlite_cache_backend import SqliteCacheBackend
-from mcp_server.json_cache_backend import JsonCacheBackend
 
 
 def generate_test_symbols(count):
@@ -179,7 +178,6 @@ def run_benchmarks():
             print("SQLite Backend:")
             print("-" * 40)
 
-            with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "1"}):
                 cache_manager = CacheManager(temp_path)
                 backend = cache_manager.backend
 
@@ -231,7 +229,6 @@ def run_benchmarks():
                 temp_dir = tempfile.mkdtemp()
                 temp_path = Path(temp_dir)
 
-                with patch.dict(os.environ, {"CLANG_INDEX_USE_SQLITE": "0"}):
                     cache_manager = CacheManager(temp_path)
 
                     save_results = benchmark_cache_save(cache_manager, symbol_count)
