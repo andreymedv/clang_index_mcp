@@ -166,15 +166,32 @@ def main():
         description='Filter compile_commands.json by source file directories',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Directory Path Specifications:
+  Directories can be specified as:
+    - Absolute paths: /home/user/project/src
+    - Relative paths: src/ or ./tests (resolved from current working directory)
+
+  Notes:
+    - Paths must be actual directories (not globs or substring patterns)
+    - All source files within the specified directories are included recursively
+    - Source file paths from compile_commands.json are resolved and matched
+      against the normalized directory paths
+
 Examples:
-  # Filter to include only src/ directory
+  # Filter to include only src/ directory (relative path)
   %(prog)s input.json output.json src/
+
+  # Filter using absolute path
+  %(prog)s input.json output.json /home/user/project/src
 
   # Filter to include multiple directories
   %(prog)s input.json output.json src/ tests/ include/
 
   # Use verbose mode to see what's being included/excluded
   %(prog)s -v input.json output.json src/
+
+  # Mix of relative and absolute paths
+  %(prog)s input.json output.json ./src /opt/project/external
         """
     )
 
@@ -191,7 +208,10 @@ Examples:
     parser.add_argument(
         'directories',
         nargs='+',
-        help='One or more directories to filter by (recursive)'
+        metavar='DIR',
+        help='One or more directories to filter by (recursive). '
+             'Can be absolute or relative paths. '
+             'Relative paths are resolved from the current working directory.'
     )
 
     parser.add_argument(
