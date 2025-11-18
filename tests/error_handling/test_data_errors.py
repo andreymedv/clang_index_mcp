@@ -105,41 +105,30 @@ public:
         cache_dir = Path(analyzer1.cache_dir)
         assert cache_dir.exists(), "Cache directory should exist"
 
-        cache_file = cache_dir / "cache_info.json"
-        assert cache_file.exists(), "Cache file should exist"
+        # Check for SQLite database file (not JSON cache_info.json)
+        cache_file = cache_dir / "symbols.db"
+        assert cache_file.exists(), "SQLite cache file should exist"
 
-        # Test Case 1: Truncated cache JSON
-        cache_file.write_text('{"class_index": {"SomeClass":')  # Truncated
+        # Test corruption by truncating the SQLite database
+        original_size = cache_file.stat().st_size
+        with open(cache_file, 'r+b') as f:
+            f.truncate(original_size // 2)  # Truncate to half size
 
         analyzer2 = CppAnalyzer(str(temp_project_dir))
         count2 = analyzer2.index_project()
-        # Should re-index from scratch
+        # Should re-index from scratch when cache is corrupt
         assert count2 > 0, "Should re-index when cache is corrupt"
 
         classes2 = analyzer2.search_classes("CachedClass")
         assert len(classes2) > 0, "Should find class after re-indexing"
 
-        # Test Case 2: Null bytes in cache
-        cache_file.write_bytes(b'{"class_index":\x00\x00\x00}')
+        # Test Case 2: Delete the cache file entirely
+        cache_file.unlink()
 
         analyzer3 = CppAnalyzer(str(temp_project_dir))
         count3 = analyzer3.index_project()
-        assert count3 > 0, "Should re-index when cache has null bytes"
-
-        # Test Case 3: Invalid UTF-8
-        cache_file.write_bytes(b'{"class_index": "\xff\xfe invalid utf8"}')
-
-        analyzer4 = CppAnalyzer(str(temp_project_dir))
-        count4 = analyzer4.index_project()
-        assert count4 > 0, "Should re-index when cache has invalid UTF-8"
-
-        # Test Case 4: Wrong format (not a dictionary)
-        cache_file.write_text('["array", "instead", "of", "object"]')
-
-        analyzer5 = CppAnalyzer(str(temp_project_dir))
-        count5 = analyzer5.index_project()
-        assert count5 > 0, "Should re-index when cache has wrong format"
+        assert count3 > 0, "Should re-index when cache is missing"
 
         # Verify final state - all should work
-        classes5 = analyzer5.search_classes("CachedClass")
-        assert len(classes5) > 0, "Should find class after recovering from corrupt cache"
+        classes3 = analyzer3.search_classes("CachedClass")
+        assert len(classes3) > 0, "Should find CachedClass after recovery"

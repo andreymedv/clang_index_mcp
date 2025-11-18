@@ -88,17 +88,20 @@ class TestConfigChangeDetection(unittest.TestCase):
 
         self.assertTrue(success, "Cache save should succeed")
 
-        # Load the cache file and verify metadata is stored
-        cache_file = self.cache_manager.cache_dir / "cache_info.json"
+        # Load the cache file and verify it exists (SQLite backend)
+        cache_file = self.cache_manager.cache_dir / "symbols.db"
         self.assertTrue(cache_file.exists(), "Cache file should exist")
 
-        with open(cache_file, 'r') as f:
-            cache_data = json.load(f)
-
-        self.assertEqual(cache_data.get("config_file_path"), str(config_file))
-        self.assertEqual(cache_data.get("config_file_mtime"), config_mtime)
-        self.assertEqual(cache_data.get("compile_commands_path"), str(cc_file))
-        self.assertEqual(cache_data.get("compile_commands_mtime"), cc_mtime)
+        # Verify metadata is stored by loading cache with same params
+        # The SQLite backend stores metadata internally
+        cache_data = self.cache_manager.load_cache(
+            include_dependencies=False,
+            config_file_path=config_file,
+            config_file_mtime=config_mtime,
+            compile_commands_path=cc_file,
+            compile_commands_mtime=cc_mtime
+        )
+        self.assertIsNotNone(cache_data, "Should be able to load cache with matching metadata")
 
     def test_cache_valid_when_config_unchanged(self):
         """Test that cache is valid when configuration hasn't changed"""
@@ -397,38 +400,8 @@ class TestConfigChangeDetection(unittest.TestCase):
 
     def test_backward_compatibility_with_old_cache(self):
         """Test that old cache format without timestamps is handled gracefully"""
-        # Create an old-style cache manually
-        cache_file = self.cache_manager.cache_dir / "cache_info.json"
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-
-        old_cache_data = {
-            "version": "2.0",
-            "include_dependencies": False,
-            # Missing: config_file_path, config_file_mtime, compile_commands_path, compile_commands_mtime
-            "class_index": {},
-            "function_index": {},
-            "file_hashes": self.sample_file_hashes,
-            "indexed_file_count": self.sample_indexed_count,
-            "timestamp": time.time()
-        }
-
-        with open(cache_file, 'w') as f:
-            json.dump(old_cache_data, f, indent=2)
-
-        config_file = self._create_config_file()
-        cc_file = self._create_compile_commands_file()
-
-        # Try to load old cache with current config - should be invalidated
-        cache_data = self.cache_manager.load_cache(
-            include_dependencies=False,
-            config_file_path=config_file,
-            config_file_mtime=config_file.stat().st_mtime,
-            compile_commands_path=cc_file,
-            compile_commands_mtime=cc_file.stat().st_mtime
-        )
-
-        # Old cache should be invalidated because paths don't match (None != path)
-        self.assertIsNone(cache_data, "Old cache format should be invalidated")
+        # Skip this test - it's testing JSON backward compatibility which doesn't apply to SQLite backend
+        self.skipTest("JSON backward compatibility test not applicable to SQLite backend")
 
 
 def suite():
