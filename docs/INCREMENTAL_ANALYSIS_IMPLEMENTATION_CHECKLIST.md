@@ -46,27 +46,27 @@
 ## Phase 2: Dependency Tracking
 
 ### 2.1 Dependency Graph Builder
-- [ ] Create `mcp_server/dependency_graph.py`
-- [ ] Implement `DependencyGraphBuilder` class
-- [ ] Implement `extract_includes_from_tu()` method
-- [ ] Implement `update_dependencies()` method
-- [ ] Implement `find_dependents()` method
-- [ ] Implement `find_transitive_dependents()` method with recursive CTE
-- [ ] Add unit tests for DependencyGraphBuilder in `tests/test_dependency_graph.py`
-- [ ] Test with simple include chains (A→B, B→C)
-- [ ] Test with circular includes (A→B, B→A)
-- [ ] Run tests and verify all pass
-- [ ] Commit Phase 2.1 changes
+- [x] Create `mcp_server/dependency_graph.py`
+- [x] Implement `DependencyGraphBuilder` class
+- [x] Implement `extract_includes_from_tu()` method
+- [x] Implement `update_dependencies()` method
+- [x] Implement `find_dependents()` method
+- [x] Implement `find_transitive_dependents()` method with recursive CTE
+- [x] Add unit tests for DependencyGraphBuilder in `tests/test_dependency_graph.py`
+- [x] Test with simple include chains (A→B, B→C)
+- [x] Test with circular includes (A→B, B→A)
+- [x] Run tests and verify all pass (15 tests, all passed)
+- [x] Commit Phase 2.1 changes
 
 ### 2.2 Integration with Parsing Pipeline
-- [ ] Modify `cpp_analyzer.py` to instantiate DependencyGraphBuilder
-- [ ] Update `_index_translation_unit()` to extract includes
-- [ ] Update `_index_translation_unit()` to call `update_dependencies()`
-- [ ] Test dependency extraction on real codebase
-- [ ] Verify database contains correct dependency records
-- [ ] Add integration test for dependency tracking during parse
-- [ ] Run regression tests
-- [ ] Commit Phase 2.2 changes
+- [x] Modify `cpp_analyzer.py` to instantiate DependencyGraphBuilder
+- [x] Update `_index_translation_unit()` to extract includes
+- [x] Update `_index_translation_unit()` to call `update_dependencies()`
+- [x] Test dependency extraction on real codebase
+- [x] Verify database contains correct dependency records
+- [x] Add integration test for dependency tracking during parse
+- [x] Run regression tests (41 tests, all passed)
+- [x] Commit Phase 2.2 changes
 
 ### 2.3 Documentation & Testing
 - [ ] Create `DEPENDENCY_TRACKING_ARCHITECTURE.md`
@@ -251,18 +251,22 @@
 
 ## Progress Summary
 
-**Phase 1**: 15/21 tasks (71%) - IN PROGRESS
+**Phase 1**: 16/21 tasks (76%) - MOSTLY COMPLETE
 - ✅ Phase 1.1: Project Identity System (9/9 complete)
 - ✅ Phase 1.2: Database Schema Updates (6/6 complete)
-- ⏳ Phase 1.3: Documentation & Testing (0/6 in progress)
+- ⏳ Phase 1.3: Documentation & Testing (1/6 partial)
 
-**Phase 2**: 0/10 tasks (0%) - NOT STARTED
+**Phase 2**: 18/20 tasks (90%) - MOSTLY COMPLETE
+- ✅ Phase 2.1: Dependency Graph Builder (10/10 complete)
+- ✅ Phase 2.2: Integration with Parsing Pipeline (8/8 complete)
+- ⏳ Phase 2.3: Documentation & Testing (0/2 pending)
+
 **Phase 3**: 0/10 tasks (0%) - NOT STARTED
 **Phase 4**: 0/11 tasks (0%) - NOT STARTED
 **Phase 5**: 0/9 tasks (0%) - NOT STARTED
 **Phase 6**: 0/11 tasks (0%) - NOT STARTED
 
-**Overall**: 15/72 tasks (21%)
+**Overall**: 34/72 tasks (47%)
 
 ---
 
