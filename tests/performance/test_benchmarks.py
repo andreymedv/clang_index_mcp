@@ -268,49 +268,55 @@ class TestCacheBenchmarks:
     def test_bulk_write_performance(self, temp_dir):
         """Benchmark bulk symbol write performance"""
         cache_manager = CacheManager(temp_dir)
-        backend = cache_manager.backend
+        try:
+            backend = cache_manager.backend
 
-        if not isinstance(backend, SqliteCacheBackend):
-            pytest.skip("This test is for SQLite backend only")
+            if not isinstance(backend, SqliteCacheBackend):
+                pytest.skip("This test is for SQLite backend only")
 
-        symbols = self.generate_test_symbols(10000)
+            symbols = self.generate_test_symbols(10000)
 
-        start = time.time()
-        backend.save_symbols_batch(symbols)
-        elapsed = time.time() - start
+            start = time.time()
+            backend.save_symbols_batch(symbols)
+            elapsed = time.time() - start
 
-        throughput = len(symbols) / elapsed
-        # Use conservative threshold that works across different environments
-        # 5000 symbols/sec is ideal but 1000 is acceptable minimum
-        assert throughput > 1000, f"Throughput should be >1000 symbols/sec, was {throughput:.0f}"
+            throughput = len(symbols) / elapsed
+            # Use conservative threshold that works across different environments
+            # 5000 symbols/sec is ideal but 1000 is acceptable minimum
+            assert throughput > 1000, f"Throughput should be >1000 symbols/sec, was {throughput:.0f}"
 
-        print(f"\nBulk write performance: {throughput:.0f} symbols/sec ({elapsed*1000:.2f}ms for {len(symbols)} symbols)")
+            print(f"\nBulk write performance: {throughput:.0f} symbols/sec ({elapsed*1000:.2f}ms for {len(symbols)} symbols)")
+        finally:
+            cache_manager.close()
 
     def test_fts_search_performance(self, temp_dir):
         """Benchmark FTS5 search performance"""
         cache_manager = CacheManager(temp_dir)
-        backend = cache_manager.backend
+        try:
+            backend = cache_manager.backend
 
-        if not isinstance(backend, SqliteCacheBackend):
-            pytest.skip("This test is for SQLite backend only")
+            if not isinstance(backend, SqliteCacheBackend):
+                pytest.skip("This test is for SQLite backend only")
 
-        # Populate database
-        symbols = self.generate_test_symbols(10000)
-        backend.save_symbols_batch(symbols)
+            # Populate database
+            symbols = self.generate_test_symbols(10000)
+            backend.save_symbols_batch(symbols)
 
-        # Benchmark searches
-        search_times = []
-        for i in range(100):
-            search_name = f"TestClass{(i * 100) % 10000}"
-            start = time.time()
-            results = backend.search_symbols_fts(search_name)
-            elapsed = time.time() - start
-            search_times.append(elapsed * 1000)
+            # Benchmark searches
+            search_times = []
+            for i in range(100):
+                search_name = f"TestClass{(i * 100) % 10000}"
+                start = time.time()
+                results = backend.search_symbols_fts(search_name)
+                elapsed = time.time() - start
+                search_times.append(elapsed * 1000)
 
-        avg_time = sum(search_times) / len(search_times)
-        assert avg_time < 5.0, f"Average FTS search should be <5ms, was {avg_time:.2f}ms"
+            avg_time = sum(search_times) / len(search_times)
+            assert avg_time < 5.0, f"Average FTS search should be <5ms, was {avg_time:.2f}ms"
 
-        print(f"\nFTS search performance: {avg_time:.2f}ms average (min: {min(search_times):.2f}ms, max: {max(search_times):.2f}ms)")
+            print(f"\nFTS search performance: {avg_time:.2f}ms average (min: {min(search_times):.2f}ms, max: {max(search_times):.2f}ms)")
+        finally:
+            cache_manager.close()
 
 
 @pytest.mark.slow

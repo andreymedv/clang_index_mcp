@@ -171,6 +171,7 @@ def run_benchmarks():
 
         # Create temporary directory for this test
         temp_dir = tempfile.mkdtemp()
+        cache_manager = None
         try:
             temp_path = Path(temp_dir)
 
@@ -178,44 +179,48 @@ def run_benchmarks():
             print("SQLite Backend:")
             print("-" * 40)
 
-                cache_manager = CacheManager(temp_path)
-                backend = cache_manager.backend
+            cache_manager = CacheManager(temp_path)
+            backend = cache_manager.backend
 
-                # Benchmark bulk write
-                if symbol_count <= 100000:  # Only for SQLite backend
-                    write_results = benchmark_bulk_write(backend, symbol_count)
-                    print(f"  Bulk Write:")
-                    print(f"    Time: {write_results['elapsed_ms']:.2f} ms")
-                    print(f"    Throughput: {write_results['throughput_per_sec']:.0f} symbols/sec")
-                    print(f"    Status: {'[PASS] PASS' if write_results['throughput_per_sec'] > 5000 else '[ERROR] FAIL'}")
+            # Benchmark bulk write
+            if symbol_count <= 100000:  # Only for SQLite backend
+                write_results = benchmark_bulk_write(backend, symbol_count)
+                print(f"  Bulk Write:")
+                print(f"    Time: {write_results['elapsed_ms']:.2f} ms")
+                print(f"    Throughput: {write_results['throughput_per_sec']:.0f} symbols/sec")
+                print(f"    Status: {'[PASS] PASS' if write_results['throughput_per_sec'] > 5000 else '[ERROR] FAIL'}")
 
-                # Benchmark FTS5 search
-                if symbol_count <= 100000:
-                    search_results = benchmark_fts5_search(backend, symbol_count, query_count=100)
-                    print(f"  FTS5 Search (100 queries):")
-                    print(f"    Average: {search_results['avg_ms']:.2f} ms")
-                    print(f"    Min: {search_results['min_ms']:.2f} ms")
-                    print(f"    Max: {search_results['max_ms']:.2f} ms")
-                    print(f"    P95: {search_results['p95_ms']:.2f} ms")
-                    print(f"    Status: {'[PASS] PASS' if search_results['avg_ms'] < 5.0 else '[WARNING]  WARN'}")
+            # Benchmark FTS5 search
+            if symbol_count <= 100000:
+                search_results = benchmark_fts5_search(backend, symbol_count, query_count=100)
+                print(f"  FTS5 Search (100 queries):")
+                print(f"    Average: {search_results['avg_ms']:.2f} ms")
+                print(f"    Min: {search_results['min_ms']:.2f} ms")
+                print(f"    Max: {search_results['max_ms']:.2f} ms")
+                print(f"    P95: {search_results['p95_ms']:.2f} ms")
+                print(f"    Status: {'[PASS] PASS' if search_results['avg_ms'] < 5.0 else '[WARNING]  WARN'}")
 
-                # Benchmark cache save/load
-                save_results = benchmark_cache_save(cache_manager, symbol_count)
-                print(f"  Cache Save:")
-                print(f"    Time: {save_results['elapsed_ms']:.2f} ms")
+            # Benchmark cache save/load
+            save_results = benchmark_cache_save(cache_manager, symbol_count)
+            print(f"  Cache Save:")
+            print(f"    Time: {save_results['elapsed_ms']:.2f} ms")
 
-                load_results = benchmark_cache_load(cache_manager)
-                print(f"  Cache Load:")
-                print(f"    Time: {load_results['elapsed_ms']:.2f} ms")
-                print(f"    Symbols loaded: {load_results['symbol_count']:,}")
+            load_results = benchmark_cache_load(cache_manager)
+            print(f"  Cache Load:")
+            print(f"    Time: {load_results['elapsed_ms']:.2f} ms")
+            print(f"    Symbols loaded: {load_results['symbol_count']:,}")
 
-                # Get database size
-                if isinstance(backend, SqliteCacheBackend):
-                    stats = backend.get_symbol_stats()
-                    db_size_mb = stats.get('db_size_mb', 0)
-                    print(f"  Database Size: {db_size_mb:.2f} MB")
-                    expected_size = symbol_count * 0.0003  # ~300 bytes per symbol
-                    print(f"    Status: {'[PASS] PASS' if db_size_mb < 50 else '[WARNING]  WARN'}")
+            # Get database size
+            if isinstance(backend, SqliteCacheBackend):
+                stats = backend.get_symbol_stats()
+                db_size_mb = stats.get('db_size_mb', 0)
+                print(f"  Database Size: {db_size_mb:.2f} MB")
+                expected_size = symbol_count * 0.0003  # ~300 bytes per symbol
+                print(f"    Status: {'[PASS] PASS' if db_size_mb < 50 else '[WARNING]  WARN'}")
+
+            # Close the first cache manager before creating another
+            cache_manager.close()
+            cache_manager = None
 
             print()
 
@@ -229,20 +234,26 @@ def run_benchmarks():
                 temp_dir = tempfile.mkdtemp()
                 temp_path = Path(temp_dir)
 
-                    cache_manager = CacheManager(temp_path)
+                cache_manager = CacheManager(temp_path)
 
-                    save_results = benchmark_cache_save(cache_manager, symbol_count)
-                    print(f"  Cache Save:")
-                    print(f"    Time: {save_results['elapsed_ms']:.2f} ms")
+                save_results = benchmark_cache_save(cache_manager, symbol_count)
+                print(f"  Cache Save:")
+                print(f"    Time: {save_results['elapsed_ms']:.2f} ms")
 
-                    load_results = benchmark_cache_load(cache_manager)
-                    print(f"  Cache Load:")
-                    print(f"    Time: {load_results['elapsed_ms']:.2f} ms")
-                    print(f"    Symbols loaded: {load_results['symbol_count']:,}")
+                load_results = benchmark_cache_load(cache_manager)
+                print(f"  Cache Load:")
+                print(f"    Time: {load_results['elapsed_ms']:.2f} ms")
+                print(f"    Symbols loaded: {load_results['symbol_count']:,}")
 
                 print()
 
         finally:
+            # Close cache manager to avoid resource leaks
+            if cache_manager is not None:
+                try:
+                    cache_manager.close()
+                except Exception:
+                    pass
             # Clean up
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
