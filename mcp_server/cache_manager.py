@@ -108,6 +108,31 @@ class CacheManager:
         diagnostics.debug(f"Using SQLite cache backend: {db_path}")
         return backend
 
+    def close(self):
+        """
+        Close the cache manager and release all resources.
+
+        This should be called when the CacheManager is no longer needed
+        to properly close the SQLite connection and avoid resource leaks.
+        """
+        if hasattr(self, 'backend') and self.backend is not None:
+            from .sqlite_cache_backend import SqliteCacheBackend
+            if isinstance(self.backend, SqliteCacheBackend):
+                self.backend._close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+        return False
+
+    def __del__(self):
+        """Destructor to ensure resources are released on garbage collection."""
+        self.close()
+
     def _handle_backend_error(self, error: Exception, operation: str) -> bool:
         """
         Handle backend errors with tracking and recovery logic.

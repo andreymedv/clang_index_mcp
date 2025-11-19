@@ -203,6 +203,10 @@ class SqliteCacheBackend:
         """Context manager exit."""
         self._close()
 
+    def __del__(self):
+        """Destructor to ensure connection is closed on garbage collection."""
+        self._close()
+
     def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
         """
         Convert SymbolInfo to tuple for SQL insertion.

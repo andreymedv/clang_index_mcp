@@ -8,6 +8,7 @@ import unittest
 import tempfile
 import shutil
 import json
+import os
 from pathlib import Path
 from unittest.mock import Mock, patch
 import sys
@@ -143,7 +144,9 @@ int multiply(int a, int b) {
 
         # Should re-analyze only utils.cpp
         self.assertGreaterEqual(result.files_analyzed, 1)
-        self.assertIn(str(self.utils_cpp), result.changes.modified_files)
+        # Use realpath to resolve symlinks (e.g., /var -> /private/var on macOS)
+        expected_path = os.path.realpath(str(self.utils_cpp))
+        self.assertIn(expected_path, result.changes.modified_files)
 
     def test_header_file_modification_cascade(self):
         """Test that modifying a header triggers re-analysis of dependents."""
