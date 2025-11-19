@@ -129,6 +129,10 @@ class CacheManager:
         self.close()
         return False
 
+    def __del__(self):
+        """Destructor to ensure resources are released on garbage collection."""
+        self.close()
+
     def _handle_backend_error(self, error: Exception, operation: str) -> bool:
         """
         Handle backend errors with tracking and recovery logic.
