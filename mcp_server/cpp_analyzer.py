@@ -197,7 +197,30 @@ class CppAnalyzer:
                 diagnostics.info(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args")
         else:
             diagnostics.info("Compile commands disabled in configuration")
-    
+
+    def close(self):
+        """
+        Close the analyzer and release all resources.
+
+        This should be called when the CppAnalyzer is no longer needed
+        to properly close database connections and avoid resource leaks.
+        """
+        if hasattr(self, 'cache_manager') and self.cache_manager is not None:
+            self.cache_manager.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+        return False
+
+    def __del__(self):
+        """Destructor to ensure resources are released on garbage collection."""
+        self.close()
+
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
