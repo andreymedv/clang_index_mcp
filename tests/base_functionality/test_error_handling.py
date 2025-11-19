@@ -221,15 +221,30 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         """Set up test fixtures"""
         self.temp_dir = tempfile.mkdtemp()
         self.temp_project_dir = Path(self.temp_dir)
+        self.cache_managers = []  # Track cache managers for cleanup
 
     def tearDown(self):
         """Clean up test fixtures"""
+        # Close all cache managers to avoid resource leaks
+        for cm in self.cache_managers:
+            try:
+                cm.close()
+            except Exception:
+                pass
+        self.cache_managers.clear()
+
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
+    def _create_cache_manager(self):
+        """Create a CacheManager and track it for cleanup."""
+        cm = CacheManager(self.temp_project_dir)
+        self.cache_managers.append(cm)
+        return cm
+
     def test_error_tracking_in_cache_manager(self):
         """Test that CacheManager tracks errors"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Get initial error summary
         summary = cache_manager.get_error_summary()
@@ -244,7 +259,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_safe_backend_call_handles_errors(self):
         """Test that _safe_backend_call handles exceptions"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Mock backend method to raise an error
         cache_manager.backend.save_cache = Mock(side_effect=Exception("Test error"))
@@ -267,7 +282,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_error_rate_triggers_fallback(self):
         """Test that high error rate triggers fallback"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Verify starting with SQLite
         from mcp_server.sqlite_cache_backend import SqliteCacheBackend
@@ -296,7 +311,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_corruption_triggers_recovery(self):
         """Test that corruption triggers recovery attempt"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Record successful operations to avoid immediate fallback
         for i in range(100):
@@ -333,7 +348,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Generate some errors by calling save_cache with a mocked failing backend
         cache_manager.backend.save_cache = Mock(side_effect=Exception("Test error"))
@@ -366,15 +381,30 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         """Set up test fixtures"""
         self.temp_dir = tempfile.mkdtemp()
         self.temp_project_dir = Path(self.temp_dir)
+        self.cache_managers = []  # Track cache managers for cleanup
 
     def tearDown(self):
         """Clean up test fixtures"""
+        # Close all cache managers to avoid resource leaks
+        for cm in self.cache_managers:
+            try:
+                cm.close()
+            except Exception:
+                pass
+        self.cache_managers.clear()
+
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
+    def _create_cache_manager(self):
+        """Create a CacheManager and track it for cleanup."""
+        cm = CacheManager(self.temp_project_dir)
+        self.cache_managers.append(cm)
+        return cm
+
     def test_permission_error_handling(self):
         """Test handling of permission errors"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Mock permission error
         cache_manager.backend.save_cache = Mock(side_effect=PermissionError("Access denied"))
@@ -398,7 +428,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def test_disk_full_error_handling(self):
         """Test handling of disk full errors"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Mock disk full error
         cache_manager.backend.save_cache = Mock(side_effect=OSError("[Errno 28] No space left on device"))
@@ -422,7 +452,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def test_locked_database_retry(self):
         """Test handling of database locked errors"""
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
 
         # Mock database locked error
         cache_manager.backend.save_cache = Mock(side_effect=sqlite3.OperationalError("database is locked"))

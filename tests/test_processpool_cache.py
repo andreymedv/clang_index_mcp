@@ -28,67 +28,79 @@ def worker_write_symbols(args):
     """Worker function that writes symbols to cache (runs in separate process)"""
     cache_dir, worker_id, symbol_count = args
 
+    cache_manager = None
     try:
         # Each process gets its own CacheManager and connection
-            cache_manager = CacheManager(Path(cache_dir))
+        cache_manager = CacheManager(Path(cache_dir))
 
-            # Create symbols for this worker
-            symbols = []
-            for i in range(symbol_count):
-                symbol = SymbolInfo(
-                    name=f"Worker{worker_id}_Symbol{i}",
-                    kind="function",
-                    file=f"/test/worker{worker_id}.cpp",
-                    line=i + 1,
-                    column=1,
-                    usr=f"usr_w{worker_id}_s{i}"
-                )
-                symbols.append(symbol)
+        # Create symbols for this worker
+        symbols = []
+        for i in range(symbol_count):
+            symbol = SymbolInfo(
+                name=f"Worker{worker_id}_Symbol{i}",
+                kind="function",
+                file=f"/test/worker{worker_id}.cpp",
+                line=i + 1,
+                column=1,
+                usr=f"usr_w{worker_id}_s{i}"
+            )
+            symbols.append(symbol)
 
-            # Write symbols
-            backend = cache_manager.backend
-            if isinstance(backend, SqliteCacheBackend):
-                backend.save_symbols_batch(symbols)
-                return (worker_id, symbol_count, True, None)
-            else:
-                return (worker_id, 0, False, "Not using SQLite backend")
+        # Write symbols
+        backend = cache_manager.backend
+        if isinstance(backend, SqliteCacheBackend):
+            backend.save_symbols_batch(symbols)
+            return (worker_id, symbol_count, True, None)
+        else:
+            return (worker_id, 0, False, "Not using SQLite backend")
 
     except Exception as e:
         return (worker_id, 0, False, str(e))
+    finally:
+        if cache_manager is not None:
+            cache_manager.close()
 
 
 def worker_read_symbols(args):
     """Worker function that reads symbols from cache (runs in separate process)"""
     cache_dir, worker_id, expected_count = args
 
+    cache_manager = None
     try:
         # Each process gets its own CacheManager and connection
-            cache_manager = CacheManager(Path(cache_dir))
+        cache_manager = CacheManager(Path(cache_dir))
 
-            backend = cache_manager.backend
-            if isinstance(backend, SqliteCacheBackend):
-                # Read all symbols
-                stats = backend.get_symbol_stats()
-                total_symbols = stats.get('total_symbols', 0)
-                return (worker_id, total_symbols, True, None)
-            else:
-                return (worker_id, 0, False, "Not using SQLite backend")
+        backend = cache_manager.backend
+        if isinstance(backend, SqliteCacheBackend):
+            # Read all symbols
+            stats = backend.get_symbol_stats()
+            total_symbols = stats.get('total_symbols', 0)
+            return (worker_id, total_symbols, True, None)
+        else:
+            return (worker_id, 0, False, "Not using SQLite backend")
 
     except Exception as e:
         return (worker_id, 0, False, str(e))
+    finally:
+        if cache_manager is not None:
+            cache_manager.close()
 
 
 def check_connection_id(cache_dir):
     """Get SQLite connection object ID (module-level for pickling)"""
+    cache_manager = None
     try:
-            cache_manager = CacheManager(Path(cache_dir))
-            backend = cache_manager.backend
-            if isinstance(backend, SqliteCacheBackend):
-                # Return connection object ID
-                return id(backend.conn)
-            return None
+        cache_manager = CacheManager(Path(cache_dir))
+        backend = cache_manager.backend
+        if isinstance(backend, SqliteCacheBackend):
+            # Return connection object ID
+            return id(backend.conn)
+        return None
     except Exception as e:
         return str(e)
+    finally:
+        if cache_manager is not None:
+            cache_manager.close()
 
 
 class TestProcessPoolCache(unittest.TestCase):
@@ -98,11 +110,26 @@ class TestProcessPoolCache(unittest.TestCase):
         """Set up test fixtures"""
         self.temp_dir = tempfile.mkdtemp()
         self.temp_project_dir = Path(self.temp_dir)
+        self.cache_managers = []  # Track cache managers for cleanup
 
     def tearDown(self):
         """Clean up test fixtures"""
+        # Close all cache managers to avoid resource leaks
+        for cm in self.cache_managers:
+            try:
+                cm.close()
+            except Exception:
+                pass
+        self.cache_managers.clear()
+
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
+
+    def _create_cache_manager(self):
+        """Create a CacheManager and track it for cleanup."""
+        cm = CacheManager(self.temp_project_dir)
+        self.cache_managers.append(cm)
+        return cm
 
     def test_concurrent_writes(self):
         """Test concurrent writes from multiple processes"""
@@ -110,9 +137,8 @@ class TestProcessPoolCache(unittest.TestCase):
         symbols_per_worker = 100
 
         # Pre-create database to avoid initialization race condition
-        cache_manager = CacheManager(self.temp_project_dir)
+        init_cache_manager = self._create_cache_manager()
         # Just initialize - don't write anything yet
-        del cache_manager
 
         # Use ProcessPoolExecutor to write symbols concurrently
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
@@ -129,21 +155,21 @@ class TestProcessPoolCache(unittest.TestCase):
                 f"Worker {worker_id} should have written {symbols_per_worker} symbols")
 
         # Verify total symbol count
-            cache_manager = CacheManager(self.temp_project_dir)
-            backend = cache_manager.backend
+        cache_manager = self._create_cache_manager()
+        backend = cache_manager.backend
 
-            if isinstance(backend, SqliteCacheBackend):
-                stats = backend.get_symbol_stats()
-                total_symbols = stats.get('total_symbols', 0)
-                expected_total = num_workers * symbols_per_worker
-                self.assertEqual(total_symbols, expected_total,
-                    f"Should have {expected_total} total symbols from {num_workers} workers")
+        if isinstance(backend, SqliteCacheBackend):
+            stats = backend.get_symbol_stats()
+            total_symbols = stats.get('total_symbols', 0)
+            expected_total = num_workers * symbols_per_worker
+            self.assertEqual(total_symbols, expected_total,
+                f"Should have {expected_total} total symbols from {num_workers} workers")
 
     def test_concurrent_reads(self):
         """Test concurrent reads from multiple processes"""
         # First, populate database with some data
         symbol_count = 1000
-        cache_manager = CacheManager(self.temp_project_dir)
+        cache_manager = self._create_cache_manager()
         backend = cache_manager.backend
 
         if isinstance(backend, SqliteCacheBackend):
@@ -185,8 +211,7 @@ class TestProcessPoolCache(unittest.TestCase):
         symbols_per_worker = 50
 
         # Pre-create database to avoid initialization race condition
-        cache_manager = CacheManager(self.temp_project_dir)
-        del cache_manager
+        init_cache_manager = self._create_cache_manager()
 
         # Run concurrent writes
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
@@ -206,8 +231,7 @@ class TestProcessPoolCache(unittest.TestCase):
     def test_isolated_connections(self):
         """Test that each process gets its own isolated connection"""
         # Pre-create database
-        cache_manager = CacheManager(self.temp_project_dir)
-        del cache_manager
+        init_cache_manager = self._create_cache_manager()
 
         # Get connection IDs from multiple processes
         with ProcessPoolExecutor(max_workers=4) as executor:
