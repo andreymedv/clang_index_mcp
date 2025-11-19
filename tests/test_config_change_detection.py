@@ -41,6 +41,13 @@ class TestConfigChangeDetection(unittest.TestCase):
 
     def tearDown(self):
         """Clean up test fixtures"""
+        # Close cache manager to avoid resource leaks
+        if hasattr(self, 'cache_manager') and self.cache_manager is not None:
+            try:
+                self.cache_manager.close()
+            except Exception:
+                pass
+
         if self.test_dir.exists():
             shutil.rmtree(self.test_dir)
 
