@@ -1,5 +1,6 @@
 """Unit tests for ChangeScanner and ChangeSet."""
 
+import os
 import unittest
 import tempfile
 import shutil
@@ -119,7 +120,8 @@ class TestChangeScanner(unittest.TestCase):
         changes = self.scanner.scan_for_changes()
 
         self.assertEqual(len(changes.added_files), 1)
-        self.assertIn(new_file, changes.added_files)
+        # Normalize path to handle symlinks (e.g., /var -> /private/var on macOS)
+        self.assertIn(os.path.realpath(new_file), changes.added_files)
 
     def test_detect_modified_file(self):
         """Test detection of modified file."""
@@ -144,7 +146,8 @@ class TestChangeScanner(unittest.TestCase):
         changes = self.scanner.scan_for_changes()
 
         self.assertEqual(len(changes.modified_files), 1)
-        self.assertIn(modified_file, changes.modified_files)
+        # Normalize path to handle symlinks (e.g., /var -> /private/var on macOS)
+        self.assertIn(os.path.realpath(modified_file), changes.modified_files)
 
     def test_detect_modified_header(self):
         """Test detection of modified header file."""
@@ -173,7 +176,8 @@ class TestChangeScanner(unittest.TestCase):
         changes = self.scanner.scan_for_changes()
 
         self.assertEqual(len(changes.modified_headers), 1)
-        self.assertIn(header_file, changes.modified_headers)
+        # Normalize path to handle symlinks (e.g., /var -> /private/var on macOS)
+        self.assertIn(os.path.realpath(header_file), changes.modified_headers)
 
     def test_detect_deleted_file(self):
         """Test detection of deleted file."""
@@ -196,7 +200,8 @@ class TestChangeScanner(unittest.TestCase):
         changes = self.scanner.scan_for_changes()
 
         self.assertEqual(len(changes.removed_files), 1)
-        self.assertIn(deleted_file, changes.removed_files)
+        # Normalize path to handle symlinks (e.g., /var -> /private/var on macOS)
+        self.assertIn(os.path.realpath(deleted_file), changes.removed_files)
 
     def test_detect_compile_commands_changed(self):
         """Test detection of compile_commands.json change."""
