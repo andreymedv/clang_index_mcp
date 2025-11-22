@@ -593,7 +593,17 @@ class CppAnalyzer:
             file_path = str(cursor.location.file.name)
             should_extract = should_extract_from_file(file_path)
 
-        kind = cursor.kind
+        # Get cursor kind, handling unknown kinds from version mismatches
+        try:
+            kind = cursor.kind
+        except ValueError as e:
+            # This can happen when libclang library supports newer C++ features
+            # but Python bindings have outdated cursor kind enums
+            # Just skip this cursor and continue with children
+            diagnostics.debug(f"Skipping cursor with unknown kind: {e}")
+            for child in cursor.get_children():
+                self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
+            return
 
         # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
