@@ -62,7 +62,7 @@ python -m mcp_server.cpp_mcp_server --transport sse --host 127.0.0.1 --port 8000
 - JSON-RPC 2.0 protocol compliance
 - Graceful shutdown with resource cleanup
 
-For detailed HTTP/SSE usage instructions, examples, and API reference, see **[HTTP_USAGE.md](HTTP_USAGE.md)**
+For detailed HTTP/SSE usage instructions, examples, and API reference, see **[HTTP_USAGE.md](docs/HTTP_USAGE.md)**
 
 ## Prerequisites
 
@@ -197,7 +197,7 @@ python scripts/diagnose_cache.py
 ### More Information
 
 - **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
-- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
+- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](docs/ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
 
 ## Intelligent Incremental Analysis (New in v3.1.0)
@@ -382,7 +382,7 @@ The server supports using `compile_commands.json` to provide accurate compilatio
 - Headers processed only once even if included by multiple sources (5-10× performance improvement)
 - Restart analyzer after modifying `compile_commands.json` for best results
 
-**For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)**
+**For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](docs/COMPILE_COMMANDS_INTEGRATION.md)**
 
 ## Troubleshooting
 

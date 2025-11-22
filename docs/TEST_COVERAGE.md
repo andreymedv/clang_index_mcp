@@ -285,8 +285,6 @@ Not `temp_project_dir/.cache/` (incorrect assumption)
 
 - **TESTING.md** - How to set up and run tests
 - **CLANG_TROUBLESHOOTING.md** - Fix libclang installation issues
-- **WORKFLOW.md** - Development workflow and git practices
-- **TEST_IMPLEMENTATION_CHECKLIST.md** - Detailed progress tracking
 
 ---
 
@@ -302,7 +300,6 @@ Not `temp_project_dir/.cache/` (incorrect assumption)
 ## Contact
 
 For test-related issues, see:
-- Issues log in TEST_IMPLEMENTATION_CHECKLIST.md
 - GitHub Issues: https://github.com/anthropics/clang_index_mcp/issues
 
 **Last Test Run**: 2025-11-14
