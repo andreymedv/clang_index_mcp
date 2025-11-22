@@ -190,8 +190,8 @@ class ChangeScanner:
             tracked_headers = self.analyzer.header_tracker.get_processed_headers()
 
             for header_path, tracked_hash in tracked_headers.items():
-                # Normalize path to resolve symlinks
-                normalized_header = os.path.realpath(header_path) if os.path.exists(header_path) else header_path
+                # Normalize path even if file doesn't exist (resolves parent dir symlinks)
+                normalized_header = os.path.realpath(header_path)
 
                 # Check if header still exists (use normalized path)
                 if not Path(normalized_header).exists():
@@ -213,8 +213,8 @@ class ChangeScanner:
         cached_files = self._get_cached_source_files()
 
         for cached_file in cached_files:
-            # Normalize path first for consistent comparison
-            normalized_cached = os.path.realpath(cached_file) if os.path.exists(cached_file) else cached_file
+            # Normalize path even if file doesn't exist (resolves parent dir symlinks)
+            normalized_cached = os.path.realpath(cached_file)
 
             if not Path(normalized_cached).exists():
                 changeset.removed_files.add(normalized_cached)
