@@ -193,7 +193,8 @@ curl -X POST http://127.0.0.1:8080/mcp/v1/messages \
 
 - Each unique `x-mcp-session-id` creates a separate session
 - If no session ID is provided, a new one is automatically generated
-- Sessions persist until explicitly terminated or timeout
+- **Session Timeout**: Sessions automatically expire after 1 hour (3600 seconds) of inactivity
+- Sessions are cleaned up every minute by a background task
 - Multiple concurrent sessions are supported
 
 ### SSE Sessions
@@ -201,7 +202,15 @@ curl -X POST http://127.0.0.1:8080/mcp/v1/messages \
 - SSE connections automatically create a session
 - The session ID is provided in the initial connection event
 - Reconnection with the same session ID resumes the session
-- Long-running operations stream progress events
+- Long-running operations stream keepalive events (`: keepalive`)
+- **Note**: Full indexing progress updates are planned for a future release
+
+### Session Lifecycle
+
+1. **Creation**: Session created on first request without session ID
+2. **Activity**: Each request updates the session's last activity timestamp
+3. **Timeout**: After 1 hour of inactivity, session is automatically cleaned up
+4. **Cleanup**: Background task removes expired sessions every 60 seconds
 
 ## Python Client Example
 
