@@ -170,10 +170,12 @@ class ChangeScanner:
         current_source_files = set(self.analyzer.file_scanner.find_cpp_files())
 
         for source_file in current_source_files:
-            change_type = self._check_file_change(source_file)
-
             # Normalize path to resolve symlinks (e.g., /var -> /private/var on macOS)
+            # Do this BEFORE checking the cache to ensure consistent path matching
             normalized_path = os.path.realpath(source_file)
+
+            # Check if file changed using normalized path
+            change_type = self._check_file_change(normalized_path)
 
             if change_type == ChangeType.ADDED:
                 changeset.added_files.add(normalized_path)
@@ -191,29 +193,30 @@ class ChangeScanner:
                 # Normalize path to resolve symlinks
                 normalized_header = os.path.realpath(header_path) if os.path.exists(header_path) else header_path
 
-                # Check if header still exists
-                if not Path(header_path).exists():
+                # Check if header still exists (use normalized path)
+                if not Path(normalized_header).exists():
                     changeset.removed_files.add(normalized_header)
                     diagnostics.debug(f"Detected deleted header: {normalized_header}")
                     continue
 
-                # Check if header content changed
+                # Check if header content changed (use normalized path)
                 try:
-                    current_hash = self.analyzer._get_file_hash(header_path)
+                    current_hash = self.analyzer._get_file_hash(normalized_header)
                     if current_hash != tracked_hash:
                         changeset.modified_headers.add(normalized_header)
                         diagnostics.debug(f"Detected modified header: {normalized_header}")
                 except Exception as e:
-                    diagnostics.warning(f"Error checking header {header_path}: {e}")
+                    diagnostics.warning(f"Error checking header {normalized_header}: {e}")
 
         # 4. Check for deleted source files
         # Files in cache but not in current scan
         cached_files = self._get_cached_source_files()
 
         for cached_file in cached_files:
-            if not Path(cached_file).exists():
-                # Normalize path for consistency (even if file doesn't exist)
-                normalized_cached = os.path.realpath(cached_file) if os.path.exists(os.path.dirname(cached_file)) else cached_file
+            # Normalize path first for consistent comparison
+            normalized_cached = os.path.realpath(cached_file) if os.path.exists(cached_file) else cached_file
+
+            if not Path(normalized_cached).exists():
                 changeset.removed_files.add(normalized_cached)
                 diagnostics.debug(f"Detected deleted file: {normalized_cached}")
 
