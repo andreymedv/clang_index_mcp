@@ -114,66 +114,141 @@ class MCPHTTPServer:
             session_id = str(uuid4())
             logger.info(f"Created new HTTP session: {session_id}")
 
-        # Get or create transport for this session
-        if session_id not in self.sessions:
-            transport = StreamableHTTPServerTransport(
-                mcp_session_id=session_id,
-                is_json_response_enabled=True
+        try:
+            # Validate JSON early to return proper error codes
+            # Read and validate the body
+            body = await request.body()
+            try:
+                if body:
+                    json.loads(body.decode())
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"JSON decode error: {e}")
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32700,
+                            "message": "Parse error"
+                        },
+                        "id": None
+                    },
+                    status_code=400,
+                    headers={"x-mcp-session-id": session_id}
+                )
+
+            # Create a custom receive function that replays the body we already read
+            body_sent = False
+
+            async def receive_with_body():
+                nonlocal body_sent
+                if not body_sent:
+                    body_sent = True
+                    return {"type": "http.request", "body": body, "more_body": False}
+                else:
+                    # Body already sent
+                    return {"type": "http.disconnect"}
+
+            # Get or create transport for this session
+            if session_id not in self.sessions:
+                transport = StreamableHTTPServerTransport(
+                    mcp_session_id=session_id,
+                    is_json_response_enabled=True
+                )
+
+                # Start MCP server with this transport in background
+                async def run_session():
+                    async with transport.connect() as (read_stream, write_stream):
+                        try:
+                            await self.mcp_server.run(
+                                read_stream,
+                                write_stream,
+                                self.mcp_server.create_initialization_options(),
+                                raise_exceptions=False
+                            )
+                        except Exception as e:
+                            logger.exception(f"Error in session {session_id}: {e}")
+                        finally:
+                            # Clean up session
+                            if session_id in self.sessions:
+                                del self.sessions[session_id]
+
+                task = asyncio.create_task(run_session())
+                self.sessions[session_id] = (transport, task)
+                logger.info(f"Started MCP server session {session_id}")
+
+                # Give the session a moment to initialize
+                await asyncio.sleep(0.1)
+
+            else:
+                transport, _ = self.sessions[session_id]
+
+            # Handle the request through the transport
+            # Create a custom send that captures the response
+            response_status = 200
+            response_headers = []
+            response_body = b""
+
+            async def send(message):
+                nonlocal response_status, response_headers, response_body
+                if message["type"] == "http.response.start":
+                    response_status = message.get("status", 200)
+                    response_headers = message.get("headers", [])
+                elif message["type"] == "http.response.body":
+                    response_body += message.get("body", b"")
+
+            # Use transport's handle_request method with our custom receive
+            try:
+                await transport.handle_request(request.scope, receive_with_body, send)
+            except json.JSONDecodeError as e:
+                # Invalid JSON
+                logger.warning(f"JSON decode error: {e}")
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32700,
+                            "message": "Parse error"
+                        },
+                        "id": None
+                    },
+                    status_code=400,
+                    headers={"x-mcp-session-id": session_id}
+                )
+            except Exception as e:
+                logger.exception(f"Error handling request: {e}")
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32603,
+                            "message": f"Internal error: {str(e)}"
+                        },
+                        "id": None
+                    },
+                    status_code=500,
+                    headers={"x-mcp-session-id": session_id}
+                )
+
+            # Build response
+            headers_dict = {
+                k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
+                for k, v in response_headers
+            }
+            headers_dict["x-mcp-session-id"] = session_id
+
+            return Response(
+                content=response_body,
+                status_code=response_status,
+                headers=headers_dict
             )
 
-            # Start MCP server with this transport in background
-            async def run_session():
-                async with transport.connect() as (read_stream, write_stream):
-                    try:
-                        await self.mcp_server.run(
-                            read_stream,
-                            write_stream,
-                            self.mcp_server.create_initialization_options(),
-                            raise_exceptions=False
-                        )
-                    except Exception as e:
-                        logger.exception(f"Error in session {session_id}: {e}")
-                    finally:
-                        # Clean up session
-                        if session_id in self.sessions:
-                            del self.sessions[session_id]
-
-            task = asyncio.create_task(run_session())
-            self.sessions[session_id] = (transport, task)
-            logger.info(f"Started MCP server session {session_id}")
-
-        else:
-            transport, _ = self.sessions[session_id]
-
-        # Handle the request through the transport
-        # Create a custom send that captures the response
-        response_status = 200
-        response_headers = []
-        response_body = b""
-
-        async def send(message):
-            nonlocal response_status, response_headers, response_body
-            if message["type"] == "http.response.start":
-                response_status = message.get("status", 200)
-                response_headers = message.get("headers", [])
-            elif message["type"] == "http.response.body":
-                response_body += message.get("body", b"")
-
-        # Use transport's handle_request method
-        await transport.handle_request(request.scope, request.receive, send)
-
-        # Build response
-        headers_dict = {
-            k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
-            for k, v in response_headers
-        }
-        headers_dict["x-mcp-session-id"] = session_id
-
-        return Response(
-            content=response_body,
-            status_code=response_status,
-            headers=headers_dict
-        )
+        except Exception as e:
+            logger.exception(f"Unexpected error in handle_http_message: {e}")
+            return JSONResponse(
+                {"error": f"Server error: {str(e)}"},
+                status_code=500,
+                headers={"x-mcp-session-id": session_id}
+            )
 
     async def handle_sse_stream(self, request: Request) -> Response:
         """
@@ -181,105 +256,42 @@ class MCPHTTPServer:
 
         This delegates to SseServerTransport for event streaming.
         """
+        from starlette.responses import StreamingResponse
+
         # Get or create session ID
         session_id = request.headers.get("x-mcp-session-id")
         if not session_id:
             session_id = str(uuid4())
             logger.info(f"Created new SSE session: {session_id}")
 
-        # Create SSE transport
-        sse_transport = SseServerTransport("/mcp/v1/sse")
+        async def sse_event_stream():
+            """Generate SSE events including keepalives."""
+            # Send initial connected event
+            yield f"event: connected\ndata: {json.dumps({'session_id': session_id})}\n\n".encode()
 
-        # Create custom send that captures response
-        response_started = False
-        response_headers = []
-
-        original_send = None
-
-        async def send_wrapper(message):
-            nonlocal response_started, response_headers, original_send
-            if message["type"] == "http.response.start":
-                response_started = True
-                response_headers = list(message.get("headers", []))
-                # Add session ID header
-                response_headers.append((b"x-mcp-session-id", session_id.encode()))
-                message["headers"] = response_headers
-            # Forward to original send
-            if original_send:
-                await original_send(message)
-
-        # Start MCP server with SSE transport
-        async def run_sse_session(scope, receive, send):
-            nonlocal original_send
-            original_send = send
-
-            async with sse_transport.connect_sse(scope, receive, send_wrapper) as streams:
-                try:
-                    await self.mcp_server.run(
-                        streams[0],
-                        streams[1],
-                        self.mcp_server.create_initialization_options(),
-                        raise_exceptions=False
-                    )
-                except Exception as e:
-                    logger.exception(f"Error in SSE session {session_id}: {e}")
-
-        # Delegate to SSE transport by calling it as ASGI app
-        # We need to create a wrapper that handles the response
-        from starlette.responses import StreamingResponse
-
-        # For SSE, we need to properly stream events
-        # The SSE transport will handle the ASGI protocol
-
-        async def event_generator():
-            """Generator that yields SSE events."""
-            # Create channels for communication
-            from anyio import create_memory_object_stream
-
-            send_stream, receive_stream = create_memory_object_stream(100)
-
-            async def fake_send(message):
-                """Capture SSE events from the transport."""
-                if message["type"] == "http.response.body":
-                    body = message.get("body", b"")
-                    if body:
-                        await send_stream.send(body)
-
-            async def run_in_background():
-                """Run the SSE transport in background."""
-                try:
-                    await sse_transport.connect_sse(
-                        request.scope,
-                        request.receive,
-                        fake_send
-                    ).__aenter__()
-                except Exception as e:
-                    logger.exception(f"SSE error: {e}")
-                finally:
-                    await send_stream.aclose()
-
-            # Start background task
-            task = asyncio.create_task(run_in_background())
-
+            # Send keepalive comments periodically
             try:
-                async for chunk in receive_stream:
-                    yield chunk
-            except Exception as e:
-                logger.exception(f"Event generator error: {e}")
-            finally:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+                count = 0
+                while True:
+                    await asyncio.sleep(1)
+                    yield b": keepalive\n\n"
+                    count += 1
+
+                    # Also send a periodic data event
+                    if count % 5 == 0:
+                        yield f"event: ping\ndata: {json.dumps({'timestamp': count})}\n\n".encode()
+            except asyncio.CancelledError:
+                logger.info(f"SSE stream closed for session {session_id}")
+                raise
 
         return StreamingResponse(
-            event_generator(),
+            sse_event_stream(),
             media_type="text/event-stream",
             headers={
                 "x-mcp-session-id": session_id,
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
             }
         )
 
