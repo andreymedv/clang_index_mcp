@@ -144,27 +144,44 @@ class SchemaMigration:
             with open(migration_file, 'r') as f:
                 sql = f.read()
 
-            # Apply migration in transaction
-            with self.conn:
-                # Execute migration SQL if it contains actual statements
-                # Skip only if file is empty or contains ONLY comments
-                has_sql = False
-                for line in sql.split('\n'):
-                    stripped = line.strip()
-                    if stripped and not stripped.startswith('--'):
-                        has_sql = True
-                        break
+            # Check if migration was already applied (race condition protection)
+            # Do this without a transaction to avoid locking issues
+            cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM schema_version WHERE version = ?",
+                (version,)
+            )
+            if cursor.fetchone()[0] > 0:
+                # Another thread already applied this migration
+                diagnostics.debug(f"Migration {version} already applied")
+                return
 
-                if has_sql:
-                    self.conn.executescript(sql)
+            # Execute migration SQL if it contains actual statements
+            # Skip only if file is empty or contains ONLY comments
+            has_sql = False
+            for line in sql.split('\n'):
+                stripped = line.strip()
+                if stripped and not stripped.startswith('--'):
+                    has_sql = True
+                    break
 
-                # Record migration in schema_version table
-                self.conn.execute(
-                    "INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)",
-                    (version, time.time(), migration_file.stem)
-                )
+            if has_sql:
+                # executescript() auto-commits and handles transactions internally
+                self.conn.executescript(sql)
 
-            diagnostics.info(f"[OK] Migration {version} applied successfully")
+            # Record migration in schema_version table
+            # Use INSERT OR IGNORE to handle race condition where another thread
+            # might have inserted this between our check and now
+            cursor = self.conn.execute(
+                "INSERT OR IGNORE INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)",
+                (version, time.time(), migration_file.stem)
+            )
+            self.conn.commit()
+
+            # Check if we actually inserted it
+            if cursor.rowcount > 0:
+                diagnostics.info(f"[OK] Migration {version} applied successfully")
+            else:
+                diagnostics.debug(f"Migration {version} was applied by another thread")
 
         except Exception as e:
             diagnostics.error(f"Migration {version} failed: {e}")
