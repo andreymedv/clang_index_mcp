@@ -861,11 +861,72 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         return [TextContent(type="text", text=f"Error: {str(e)}")]
 
 async def main():
-    # Import here to avoid issues if mcp package not installed
-    from mcp.server.stdio import stdio_server
-    
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    """Main entry point for the MCP server."""
+    import argparse
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="C++ Code Analysis MCP Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Transport Options:
+  stdio  - Standard I/O transport (default, for CLI integration)
+  http   - HTTP/Streamable HTTP transport (RESTful API)
+  sse    - Server-Sent Events transport (streaming updates)
+
+Examples:
+  %(prog)s                                    # Run with stdio transport
+  %(prog)s --transport http --port 8000      # Run HTTP server on port 8000
+  %(prog)s --transport sse --port 8080       # Run SSE server on port 8080
+        """
+    )
+
+    parser.add_argument(
+        "--transport",
+        type=str,
+        choices=["stdio", "http", "sse"],
+        default="stdio",
+        help="Transport protocol to use (default: stdio)"
+    )
+
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host address for HTTP/SSE server (default: 127.0.0.1)"
+    )
+
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port number for HTTP/SSE server (default: 8000)"
+    )
+
+    args = parser.parse_args()
+
+    # Run with selected transport
+    if args.transport == "stdio":
+        # Import here to avoid issues if mcp package not installed
+        from mcp.server.stdio import stdio_server
+
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+
+    elif args.transport in ("http", "sse"):
+        # Import HTTP server module
+        try:
+            from mcp_server.http_server import run_http_server
+        except ImportError:
+            from http_server import run_http_server
+
+        # Run HTTP/SSE server
+        await run_http_server(server, args.host, args.port, args.transport)
+
+    else:
+        diagnostics.fatal(f"Unknown transport: {args.transport}")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
