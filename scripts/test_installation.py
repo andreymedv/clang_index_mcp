@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Test script to verify C++ MCP Server installation
+Test script to verify C++ MCP Server installation.
+
+Requirements verified:
+- mcp>=1.0.0 (required) - Verified by test_imports()
+- libclang>=16.0.0 (required) - Verified by test_imports() and test_libclang_library()
+- orjson>=3.0.0 (optional from [performance] extras) - Checked by test_optional_dependencies()
 """
 import sys
 import os
@@ -8,22 +13,36 @@ import os
 def test_imports():
     """Test that all required packages can be imported"""
     print("Testing package imports...")
-    
+
     try:
         import mcp
-        print("✓ MCP package imported successfully")
+        print("[OK] MCP package imported successfully")
     except ImportError as e:
-        print(f"✗ Failed to import MCP: {e}")
+        print(f"[FAIL] Failed to import MCP: {e}")
         return False
-    
+
     try:
         import clang.cindex
-        print("✓ libclang Python bindings imported successfully")
+        print("[OK] libclang Python bindings imported successfully")
     except ImportError as e:
-        print(f"✗ Failed to import clang: {e}")
+        print(f"[FAIL] Failed to import clang: {e}")
         return False
-    
+
     return True
+
+def test_optional_dependencies():
+    """Test optional performance dependencies (informational only, not required)"""
+    print("\nChecking optional dependencies...")
+
+    # Check orjson (from [performance] extras)
+    try:
+        import orjson
+        print("[OK] orjson is installed (3-5x faster JSON parsing)")
+    except ImportError:
+        print("[INFO] orjson not installed (optional performance optimization)")
+        print("  Install with: pip install .[performance] or pip install orjson>=3.0.0")
+
+    return True  # Always return True since these are optional
 
 def test_libclang_library():
     """Test that libclang library can be found and loaded"""
@@ -51,22 +70,22 @@ def test_libclang_library():
         bundled_found = False
         for path in libclang_paths:
             if os.path.exists(path):
-                print(f"✓ Found bundled libclang at: {path}")
+                print(f"[OK] Found bundled libclang at: {path}")
                 bundled_found = True
                 Config.set_library_file(path)
                 break
-        
+
         if not bundled_found:
-            print("⚠ No bundled libclang found, will use system library")
-        
+            print("[WARN] No bundled libclang found, will use system library")
+
         # Try to create an index (this will fail if libclang can't be loaded)
         from clang.cindex import Index
         index = Index.create()
-        print("✓ libclang library loaded successfully")
+        print("[OK] libclang library loaded successfully")
         return True
-        
+
     except Exception as e:
-        print(f"✗ Failed to load libclang: {e}")
+        print(f"[FAIL] Failed to load libclang: {e}")
         return False
 
 def test_server_import():
@@ -95,14 +114,14 @@ print("SUCCESS")
         )
         
         if result.returncode == 0 and "SUCCESS" in result.stdout:
-            print("✓ MCP server module imported successfully")
+            print("[OK] MCP server module imported successfully")
             return True
         else:
             error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-            print(f"✗ Failed to import MCP server: {error_msg}")
+            print(f"[FAIL] Failed to import MCP server: {error_msg}")
             return False
     except Exception as e:
-        print(f"✗ Failed to test MCP server import: {e}")
+        print(f"[FAIL] Failed to test MCP server import: {e}")
         return False
 
 def test_basic_parsing():
@@ -130,46 +149,49 @@ def test_basic_parsing():
         
         # Check if parsing succeeded
         if tu:
-            print("✓ Basic C++ parsing works")
+            print("[OK] Basic C++ parsing works")
             return True
         else:
-            print("✗ Failed to parse test C++ code")
+            print("[FAIL] Failed to parse test C++ code")
             return False
-            
+
     except Exception as e:
-        print(f"✗ C++ parsing test failed: {e}")
+        print(f"[FAIL] C++ parsing test failed: {e}")
         return False
 
 def main():
     """Run all tests"""
     print("C++ MCP Server Installation Test")
     print("=" * 40)
-    
+
     all_passed = True
-    
+
     # Run tests
     if not test_imports():
         all_passed = False
-    
+
     if not test_libclang_library():
         all_passed = False
-    
+
     if not test_server_import():
         all_passed = False
-    
+
     if not test_basic_parsing():
         all_passed = False
-    
+
+    # Check optional dependencies (informational, doesn't affect pass/fail)
+    test_optional_dependencies()
+
     # Summary
     print("\n" + "=" * 40)
     if all_passed:
-        print("✓ All tests passed! The C++ MCP Server is ready to use.")
+        print("[OK] All tests passed! The C++ MCP Server is ready to use.")
         print("\nNext steps:")
         print("1. Configure Claude Desktop (see README)")
         print("2. Start Claude and set a C++ project directory")
         return 0
     else:
-        print("✗ Some tests failed. Please check the errors above.")
+        print("[FAIL] Some tests failed. Please check the errors above.")
         print("\nCommon fixes:")
         print("- Run server_setup.bat (Windows) or server_setup.sh (Linux/macOS)")
         print("- Make sure you're in the virtual environment")

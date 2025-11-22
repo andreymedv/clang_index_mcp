@@ -1,0 +1,7 @@
+# Mutation Testing Configuration for mutmut
+
+[mutmut]
+paths_to_mutate = "mcp_server/"
+backup = false
+runner = "pytest -x tests/ -m \"not slow\""
+tests_dir = "tests/"

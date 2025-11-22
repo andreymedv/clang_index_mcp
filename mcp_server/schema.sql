@@ -1,0 +1,149 @@
+-- SQLite Schema for C++ Symbol Cache
+-- Version: 3.0
+-- Optimized for fast symbol lookups with FTS5 full-text search
+
+-- Enable optimizations
+PRAGMA journal_mode = WAL;        -- Write-Ahead Logging for concurrency
+PRAGMA synchronous = NORMAL;      -- Balance safety and speed
+PRAGMA cache_size = -64000;       -- 64MB cache
+PRAGMA temp_store = MEMORY;       -- Keep temp tables in RAM
+PRAGMA mmap_size = 268435456;     -- 256MB memory-mapped I/O
+
+-- Schema version tracking
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at REAL NOT NULL,
+    description TEXT NOT NULL
+);
+
+-- Insert initial version
+INSERT OR IGNORE INTO schema_version (version, applied_at, description)
+VALUES (1, julianday('now'), 'Initial schema with FTS5 support');
+
+-- Main symbols table
+CREATE TABLE IF NOT EXISTS symbols (
+    usr TEXT PRIMARY KEY,              -- Unified Symbol Resolution (unique ID)
+    name TEXT NOT NULL,                -- Symbol name (e.g., "Vector", "push_back")
+    kind TEXT NOT NULL,                -- "class", "function", "method", "struct"
+    file TEXT NOT NULL,                -- Source file path (absolute)
+    line INTEGER NOT NULL,             -- Line number
+    column INTEGER NOT NULL,           -- Column number
+    signature TEXT DEFAULT '',         -- Function signature
+    is_project BOOLEAN NOT NULL DEFAULT 1,  -- True for project code, False for dependencies
+    namespace TEXT DEFAULT '',         -- Namespace (e.g., "std", "myapp::utils")
+    access TEXT DEFAULT 'public',      -- "public", "private", "protected"
+    parent_class TEXT DEFAULT '',      -- For methods: containing class name
+    base_classes TEXT DEFAULT '[]',    -- JSON array of base class names
+    calls TEXT DEFAULT '[]',           -- JSON array of USRs this function calls
+    called_by TEXT DEFAULT '[]',       -- JSON array of USRs that call this
+
+    -- Metadata
+    created_at REAL NOT NULL,          -- Unix timestamp
+    updated_at REAL NOT NULL           -- Unix timestamp for incremental updates
+);
+
+-- Indexes for fast lookups (critical for performance)
+CREATE INDEX IF NOT EXISTS idx_symbol_name ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_symbol_kind ON symbols(kind);
+CREATE INDEX IF NOT EXISTS idx_symbol_file ON symbols(file);
+CREATE INDEX IF NOT EXISTS idx_symbol_parent ON symbols(parent_class);
+CREATE INDEX IF NOT EXISTS idx_symbol_namespace ON symbols(namespace);
+CREATE INDEX IF NOT EXISTS idx_symbol_project ON symbols(is_project);
+CREATE INDEX IF NOT EXISTS idx_symbol_updated ON symbols(updated_at);
+
+-- Composite index for common query patterns
+CREATE INDEX IF NOT EXISTS idx_name_kind_project ON symbols(name, kind, is_project);
+
+-- Full-text search index (FTS5)
+CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+    name,           -- Tokenized for full-text search
+    kind,
+    usr UNINDEXED,  -- Store but don't index
+    content=symbols,
+    content_rowid=rowid
+);
+
+-- Triggers to keep FTS index in sync with symbols table
+CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
+    INSERT INTO symbols_fts(rowid, name, kind, usr)
+    VALUES (new.rowid, new.name, new.kind, new.usr);
+END;
+
+CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
+    DELETE FROM symbols_fts WHERE rowid = old.rowid;
+END;
+
+CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
+    UPDATE symbols_fts SET name = new.name, kind = new.kind
+    WHERE rowid = old.rowid;
+END;
+
+-- File metadata table (replaces file_hashes dict)
+CREATE TABLE IF NOT EXISTS file_metadata (
+    file_path TEXT PRIMARY KEY,        -- Absolute file path
+    file_hash TEXT NOT NULL,           -- MD5 hash of file contents
+    compile_args_hash TEXT,            -- Hash of compilation arguments
+    indexed_at REAL NOT NULL,          -- When file was last indexed
+    symbol_count INTEGER DEFAULT 0     -- Number of symbols in file
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_indexed ON file_metadata(indexed_at);
+
+-- Cache metadata table (replaces top-level cache_info fields)
+CREATE TABLE IF NOT EXISTS cache_metadata (
+    key TEXT PRIMARY KEY,              -- Setting key
+    value TEXT NOT NULL,               -- Setting value (JSON for complex types)
+    updated_at REAL NOT NULL           -- Last update timestamp
+);
+
+-- Initial metadata
+INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
+    ('version', '"3.0"', julianday('now')),
+    ('include_dependencies', 'false', julianday('now')),
+    ('indexed_file_count', '0', julianday('now')),
+    ('last_vacuum', '0', julianday('now'));
+
+-- Header tracking table (replaces header_tracker.json)
+CREATE TABLE IF NOT EXISTS header_tracker (
+    header_path TEXT PRIMARY KEY,      -- Absolute path to header file
+    processed_by TEXT NOT NULL,        -- Source file that first processed this header
+    file_hash TEXT NOT NULL,           -- Hash of header when processed
+    compile_commands_hash TEXT,        -- Hash of compile_commands.json when processed
+    processed_at REAL NOT NULL         -- Timestamp
+);
+
+-- Parse error log table (replaces parse_errors.jsonl)
+CREATE TABLE IF NOT EXISTS parse_errors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT NOT NULL,
+    error_type TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    stack_trace TEXT,
+    file_hash TEXT NOT NULL,
+    compile_args_hash TEXT,
+    retry_count INTEGER DEFAULT 0,
+    timestamp REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_file ON parse_errors(file_path);
+CREATE INDEX IF NOT EXISTS idx_error_timestamp ON parse_errors(timestamp);
+
+-- File dependencies table for incremental analysis
+-- Tracks include relationships to enable cascade re-analysis when headers change
+CREATE TABLE IF NOT EXISTS file_dependencies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_file TEXT NOT NULL,          -- File doing the including (source or header)
+    included_file TEXT NOT NULL,        -- File being included (header)
+    is_direct BOOLEAN NOT NULL DEFAULT 1, -- True if direct #include, False if transitive
+    include_depth INTEGER NOT NULL DEFAULT 1, -- 1 for direct, 2+ for transitive
+    detected_at REAL NOT NULL,          -- When relationship discovered (Unix timestamp)
+
+    -- Unique constraint: one row per relationship
+    UNIQUE(source_file, included_file)
+);
+
+-- Indexes for efficient graph traversal
+CREATE INDEX IF NOT EXISTS idx_dep_source ON file_dependencies(source_file);
+CREATE INDEX IF NOT EXISTS idx_dep_included ON file_dependencies(included_file);
+CREATE INDEX IF NOT EXISTS idx_dep_direct ON file_dependencies(is_direct);
+CREATE INDEX IF NOT EXISTS idx_dep_detected ON file_dependencies(detected_at);
