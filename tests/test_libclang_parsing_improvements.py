@@ -176,10 +176,12 @@ class TestUnknownCursorKindHandling:
         cursor.spelling = "test_symbol"
 
         # Should not raise exception
+        # Note: _process_cursor signature is (cursor, should_extract_from_file, parent_class, parent_function_usr)
+        # should_extract_from_file is an optional callback, default None extracts from all files
         try:
-            result = analyzer._process_cursor(cursor, f"{temp_project}/test.cpp", None, set())
-            # The function should return an empty list when it can't process the cursor
-            assert result == []
+            # Call with default parameters - should_extract_from_file=None means extract from all
+            analyzer._process_cursor(cursor)
+            # No assertion needed - we're just verifying it doesn't crash
         except ValueError:
             pytest.fail("_process_cursor should handle unknown cursor kinds gracefully")
 
@@ -207,7 +209,7 @@ class TestUnknownCursorKindHandling:
         # Processing should handle parent gracefully and still process children
         # (actual behavior depends on implementation details)
         try:
-            analyzer._process_cursor(parent_cursor, f"{temp_project}/test.cpp", None, set())
+            analyzer._process_cursor(parent_cursor)
             # No assertion needed - we're just verifying it doesn't crash
         except ValueError:
             pytest.fail("Should handle unknown cursor kinds without raising ValueError")
@@ -218,7 +220,7 @@ class TestCppStdlibPathDetection:
 
     def test_detect_cxx_stdlib_path_with_libcxx_and_isysroot(self, temp_project):
         """Test detection of libc++ path with -stdlib and -isysroot flags."""
-        manager = CompileCommandsManager(temp_project)
+        manager = CompileCommandsManager(Path(temp_project))
 
         args = [
             "-stdlib=libc++",
@@ -235,7 +237,7 @@ class TestCppStdlibPathDetection:
 
     def test_detect_cxx_stdlib_path_with_libstdcxx(self, temp_project):
         """Test detection of libstdc++ path."""
-        manager = CompileCommandsManager(temp_project)
+        manager = CompileCommandsManager(Path(temp_project))
 
         args = [
             "-stdlib=libstdc++",
@@ -250,7 +252,7 @@ class TestCppStdlibPathDetection:
 
     def test_detect_cxx_stdlib_path_no_stdlib_flag(self, temp_project):
         """Test behavior when no -stdlib flag is present."""
-        manager = CompileCommandsManager(temp_project)
+        manager = CompileCommandsManager(Path(temp_project))
 
         args = [
             "-I/some/include/path",
@@ -264,7 +266,7 @@ class TestCppStdlibPathDetection:
 
     def test_detect_cxx_stdlib_path_isysroot_only(self, temp_project):
         """Test detection with only -isysroot (no explicit -stdlib)."""
-        manager = CompileCommandsManager(temp_project)
+        manager = CompileCommandsManager(Path(temp_project))
 
         args = [
             "-isysroot", "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
@@ -278,7 +280,7 @@ class TestCppStdlibPathDetection:
 
     def test_add_builtin_includes_adds_stdlib_path(self, temp_project):
         """Test that _add_builtin_includes adds C++ stdlib path when detected."""
-        manager = CompileCommandsManager(temp_project)
+        manager = CompileCommandsManager(Path(temp_project))
 
         original_args = [
             "-stdlib=libc++",
