@@ -2,6 +2,14 @@
 
 An MCP (Model Context Protocol) server for analyzing C++ codebases using libclang.
 
+## About This Fork
+
+This project is a fork of [kandrwmrtn/cplusplus_mcp](https://github.com/kandrwmrtn/cplusplus_mcp). The main intention of this fork was to add support for projects described by `compile_commands.json`.
+
+**⚠️ Development Status**: This MCP server is currently in active development and is **not suitable for production use**. Use at your own risk.
+
+**Platform Support**: This server has been primarily developed and tested to run on **Linux and macOS**. While Windows support may work, it is not the primary focus of development.
+
 ## Why Use This?
 
 Instead of having Claude grep through your C++ codebase trying to understand the structure, this server provides semantic understanding of your code. Claude can instantly find classes, functions, and their relationships without getting lost in thousands of files. It understands C++ syntax, inheritance hierarchies, and call graphs - giving Claude the ability to navigate your codebase like an IDE would.
@@ -35,7 +43,7 @@ Standard input/output transport for MCP client integration (Claude Desktop, Clau
 python -m mcp_server.cpp_mcp_server
 ```
 
-### HTTP (Streamable HTTP)
+### HTTP (Streamable HTTP) ✨ New
 RESTful HTTP transport for API access and web integrations:
 ```bash
 python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
@@ -67,27 +75,28 @@ For detailed HTTP/SSE usage instructions, examples, and API reference, see **[HT
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd CPlusPlus-MCP-Server
+git clone https://github.com/andreymedv/clang_index_mcp.git
+cd clang_index_mcp
 ```
 
-2. Run the setup script for your platform (this creates a virtual environment, installs dependencies, and fetches libclang if possible):
-   - **Windows**
-     ```bash
-     server_setup.bat
-     ```
-   - **Linux/macOS**
+2. Run the setup script (this creates a virtual environment, installs dependencies, and fetches libclang if possible):
+   - **Linux/macOS** (recommended):
      ```bash
      ./server_setup.sh
+     ```
+   - **Windows** (not primary platform):
+     ```bash
+     server_setup.bat
      ```
 
 3. Test the installation (recommended):
 ```bash
 # Activate the virtual environment first
-mcp_env\Scripts\activate
+source mcp_env/bin/activate  # Linux/macOS
+# OR: mcp_env\Scripts\activate  # Windows
 
 # Run the installation test
-python scripts\test_installation.py
+python scripts/test_installation.py
 ```
 
 This will verify that all components are properly installed and working. The test script lives at `scripts/test_installation.py`.
@@ -179,10 +188,10 @@ Two command-line tools are included for cache management:
 
 ```bash
 # View comprehensive cache statistics
-python3 scripts/cache_stats.py
+python scripts/cache_stats.py
 
 # Diagnose cache health and get recommendations
-python3 scripts/diagnose_cache.py
+python scripts/diagnose_cache.py
 ```
 
 ### More Information
@@ -302,7 +311,7 @@ Once configured, you can use the C++ analyzer in your conversations with Claude:
 
 1. First, ask Claude to set your project directory using the MCP tool:
    ```
-   "Use the cpp-analyzer tool to set the project directory to C:\path\to\your\cpp\project"
+   "Use the cpp-analyzer tool to set the project directory to /path/to/your/cpp/project"
    ```
    
    **Note:** The initial indexing might take a long time for very large projects (several minutes for codebases with thousands of files). The server will cache the results for faster subsequent queries.
@@ -397,7 +406,7 @@ The server supports using `compile_commands.json` to provide accurate compilatio
    - Verify all dependencies are installed: `pip install -r requirements.txt`
    - Run the installation test to identify issues:
      ```bash
-     mcp_env\Scripts\activate
+     source mcp_env/bin/activate  # Linux/macOS
      python -m mcp_server.test_installation
      ```
 
