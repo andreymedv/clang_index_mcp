@@ -24,30 +24,54 @@ async def sse_server():
 
     Starts the server in the background and yields the base URL.
     """
-    # Import server components
-    from mcp_server.cpp_mcp_server import server
+    # Import MCP Server class (not the instance, to avoid libclang init)
+    from mcp.server import Server
     from mcp_server.http_server import MCPHTTPServer
+    import socket
 
-    # Create server instance
-    sse_srv = MCPHTTPServer(server, host=TEST_HOST, port=TEST_PORT, transport_type="sse")
+    # Find an available port dynamically to avoid conflicts
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+
+    # Create a minimal mock MCP server for testing SSE transport
+    # This doesn't need libclang or C++ analyzer functionality
+    mock_server = Server("test-cpp-analyzer")
+
+    # Register minimal tools for testing
+    @mock_server.list_tools()
+    async def list_tools():
+        return []
+
+    @mock_server.call_tool()
+    async def call_tool(name: str, arguments: dict):
+        from mcp.types import TextContent
+        return [TextContent(type="text", text=json.dumps({"status": "ok", "tool": name}))]
+
+    # Create SSE server instance with mock server
+    sse_srv = MCPHTTPServer(mock_server, host=TEST_HOST, port=port, transport_type="sse")
 
     # Start server in background task
     server_task = asyncio.create_task(sse_srv.start())
 
     # Wait a bit for server to start
-    await asyncio.sleep(1)
+    await asyncio.sleep(1.5)
 
     # Yield base URL for tests
-    base_url = f"http://{TEST_HOST}:{TEST_PORT}"
+    base_url = f"http://{TEST_HOST}:{port}"
 
     yield base_url
 
-    # Cleanup: cancel server task
+    # Cleanup: cancel server task and wait for it to finish
     server_task.cancel()
     try:
         await server_task
     except asyncio.CancelledError:
         pass
+
+    # Give time for port to be released
+    await asyncio.sleep(0.5)
 
 
 @pytest.mark.asyncio
