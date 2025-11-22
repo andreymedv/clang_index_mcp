@@ -628,17 +628,105 @@ class CompileCommandsManager:
             diagnostics.warning(f"Failed to parse command string '{command}': {e}")
             return []
     
+    def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
+        """
+        Detect the C++ standard library include path based on compile arguments.
+
+        When using libclang programmatically, the C++ standard library headers
+        are not automatically found even when -stdlib and -isysroot are specified.
+        We need to explicitly add the C++ stdlib include path.
+
+        Args:
+            arguments: List of compilation arguments
+
+        Returns:
+            Path to C++ standard library includes, or None if not found
+        """
+        stdlib = None
+        sysroot = None
+
+        # Detect -stdlib flag
+        for i, arg in enumerate(arguments):
+            if arg == '-stdlib' and i + 1 < len(arguments):
+                stdlib = arguments[i + 1]
+            elif arg.startswith('-stdlib='):
+                stdlib = arg[8:]  # Remove '-stdlib=' prefix
+
+        # Detect -isysroot flag
+        for i, arg in enumerate(arguments):
+            if arg == '-isysroot' and i + 1 < len(arguments):
+                sysroot = arguments[i + 1]
+            elif arg.startswith('-isysroot='):
+                sysroot = arg[10:]  # Remove '-isysroot=' prefix
+
+        # If no stdlib specified, assume system default
+        # For macOS, this is typically libc++
+        if not stdlib and sysroot:
+            # On macOS, default is libc++
+            if 'MacOSX' in sysroot or 'macos' in sysroot.lower():
+                stdlib = 'libc++'
+
+        if not stdlib:
+            # No stdlib or sysroot info, can't determine path
+            return None
+
+        # Build the C++ stdlib include path
+        if stdlib == 'libc++':
+            # For libc++, headers are in /usr/include/c++/v1
+            if sysroot:
+                cxx_path = os.path.join(sysroot, 'usr', 'include', 'c++', 'v1')
+                # Return the path even if directory doesn't exist on current system
+                # (e.g., when analyzing macOS code on Linux)
+                # libclang will handle missing directories gracefully
+                return cxx_path
+
+            # Try system paths
+            system_paths = [
+                '/usr/include/c++/v1',
+                '/usr/local/include/c++/v1'
+            ]
+            for path in system_paths:
+                if os.path.isdir(path):
+                    return path
+
+        elif stdlib == 'libstdc++':
+            # For libstdc++, headers are in /usr/include/c++/<version>
+            if sysroot:
+                cxx_base = os.path.join(sysroot, 'usr', 'include', 'c++')
+                if os.path.isdir(cxx_base):
+                    # Find the highest version directory
+                    try:
+                        versions = [d for d in os.listdir(cxx_base)
+                                   if os.path.isdir(os.path.join(cxx_base, d))
+                                   and d[0].isdigit()]
+                        if versions:
+                            versions.sort(reverse=True)
+                            return os.path.join(cxx_base, versions[0])
+                    except Exception:
+                        pass
+
+        return None
+
     def _add_builtin_includes(self, arguments: List[str]) -> List[str]:
         """
-        Add clang builtin include directory to arguments if not already present.
+        Add clang builtin include directory and C++ stdlib to arguments if not already present.
 
         This is necessary for libclang to find compiler builtin headers like:
         - stddef.h
         - stdarg.h
         - stdint.h
 
+        And C++ standard library headers like:
+        - <iostream>
+        - <vector>
+        - <string>
+
         These headers are not automatically available when using libclang
         programmatically, unlike when using the clang compiler directly.
+
+        IMPORTANT: The C++ stdlib path MUST come before the clang resource directory.
+        This is because C++ wrapper headers (like <cstddef>) need to include the C++
+        version of C headers, not the plain C versions.
 
         Args:
             arguments: List of compilation arguments
@@ -646,29 +734,51 @@ class CompileCommandsManager:
         Returns:
             Arguments with builtin include directory added if needed
         """
-        if not self.clang_resource_dir:
-            # No resource directory detected, return arguments as-is
-            return arguments
-
-        # Check if the resource directory is already in the include paths
-        for arg in arguments:
-            if self.clang_resource_dir in arg:
-                # Already present
-                return arguments
-
-        # Add the resource directory as a system include (-isystem)
-        # Use -isystem instead of -I to avoid warnings from system headers
         result = arguments.copy()
-        # Insert near the beginning but after language standard flags
-        # This ensures it has lower priority than project includes
+
+        # Find insertion position (after -std= flag if present)
         insert_pos = 0
         for i, arg in enumerate(result):
             if arg.startswith('-std='):
                 insert_pos = i + 1
                 break
 
-        result.insert(insert_pos, '-isystem')
-        result.insert(insert_pos + 1, self.clang_resource_dir)
+        # Step 1: Add C++ standard library include path FIRST
+        # This must come BEFORE the clang resource directory to ensure proper header resolution
+        cxx_stdlib_path = self._detect_cxx_stdlib_path(arguments)
+        if cxx_stdlib_path:
+            # Check if already present
+            already_has_stdlib = False
+            for arg in result:
+                if cxx_stdlib_path in arg:
+                    already_has_stdlib = True
+                    break
+
+            if not already_has_stdlib:
+                # Add C++ stdlib path as first system include
+                # This ensures it has priority for C++ headers
+                result.insert(insert_pos, '-isystem')
+                result.insert(insert_pos + 1, cxx_stdlib_path)
+                diagnostics.debug(f"Added C++ stdlib path: {cxx_stdlib_path}")
+                # Update insert position for next includes
+                insert_pos += 2
+
+        # Step 2: Add clang resource directory for builtin headers AFTER C++ stdlib
+        if self.clang_resource_dir:
+            # Check if the resource directory is already in the include paths
+            already_has_resource = False
+            for arg in result:
+                if self.clang_resource_dir in arg:
+                    already_has_resource = True
+                    break
+
+            if not already_has_resource:
+                # Add the resource directory as a system include (-isystem)
+                # Use -isystem instead of -I to avoid warnings from system headers
+                # Insert after C++ stdlib
+                result.insert(insert_pos, '-isystem')
+                result.insert(insert_pos + 1, self.clang_resource_dir)
+                diagnostics.debug(f"Added clang resource dir: {self.clang_resource_dir}")
 
         return result
 
