@@ -216,7 +216,7 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 }
 ```
 
-For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md).
+For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](docs/COMPILE_COMMANDS_INTEGRATION.md).
 
 ## Environment Variables
 
@@ -300,7 +300,7 @@ python3 scripts/diagnose_cache.py
 
 **See Also**:
 - [Troubleshooting](TROUBLESHOOTING.md) - Cache-specific issues
-- [Architecture](ANALYSIS_STORAGE_ARCHITECTURE.md) - Technical details
+- [Architecture](docs/ANALYSIS_STORAGE_ARCHITECTURE.md) - Technical details
 
 ## Creating a Configuration File
 
