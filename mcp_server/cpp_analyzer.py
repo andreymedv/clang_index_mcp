@@ -451,8 +451,43 @@ class CppAnalyzer:
         args_str = " ".join(sorted(args))
         return hashlib.md5(args_str.encode()).hexdigest()
 
+    def _is_system_header_diagnostic(self, diag) -> bool:
+        """Check if a diagnostic originates from a system header.
+
+        System headers include:
+        - Compiler built-in headers (clang/*/include/)
+        - SDK headers (under -isysroot paths)
+        - Standard library headers
+
+        Args:
+            diag: libclang diagnostic object
+
+        Returns:
+            True if the diagnostic is from a system header, False otherwise
+        """
+        if not diag.location.file:
+            return False
+
+        file_path = str(diag.location.file)
+
+        # Check for common system header patterns
+        system_patterns = [
+            '/usr/include/',
+            '/usr/local/include/',
+            'lib/clang/',  # Clang builtin headers (e.g., arm_acle.h, arm_neon.h)
+            '/Library/Developer/CommandLineTools/usr/lib/clang/',  # macOS
+            '/Library/Developer/CommandLineTools/SDKs/',  # macOS SDK
+            'C:\\Program Files',  # Windows system
+            '/opt/homebrew/',  # macOS Homebrew
+        ]
+
+        return any(pattern in file_path for pattern in system_patterns)
+
     def _extract_diagnostics(self, tu) -> tuple[List, List]:
         """Extract error and warning diagnostics from translation unit.
+
+        Filters out errors from system headers to avoid false positives from
+        incompatible compiler intrinsics (e.g., ARM built-ins on Mac M1).
 
         Returns:
             (error_diagnostics, warning_diagnostics) - Lists of diagnostic objects
@@ -464,8 +499,15 @@ class CppAnalyzer:
             for diag in tu.diagnostics:
                 severity = diag.severity
                 # Severity levels: Ignored=0, Note=1, Warning=2, Error=3, Fatal=4
+
+                # Filter out errors from system headers
+                # These are often false positives due to compiler version mismatches
                 if severity >= 3:  # Error or Fatal
-                    error_diagnostics.append(diag)
+                    if not self._is_system_header_diagnostic(diag):
+                        error_diagnostics.append(diag)
+                    else:
+                        # Downgrade system header errors to warnings for logging
+                        warning_diagnostics.append(diag)
                 elif severity == 2:  # Warning
                     warning_diagnostics.append(diag)
 
