@@ -25,6 +25,37 @@ Context-efficient C++ code analysis:
 - **Smart Deduplication**: Headers included by multiple source files are processed only once for optimal performance
 - **Incremental Analysis**: Detects changes and re-analyzes only affected files for fast refreshes (30-300x faster than full re-analysis)
 
+## Transport Protocols
+
+The server supports multiple transport protocols for different use cases:
+
+### stdio (Default)
+Standard input/output transport for MCP client integration (Claude Desktop, Claude Code, etc.):
+```bash
+python -m mcp_server.cpp_mcp_server
+```
+
+### HTTP (Streamable HTTP)
+RESTful HTTP transport for API access and web integrations:
+```bash
+python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
+```
+
+### SSE (Server-Sent Events)
+Real-time streaming transport for event-driven applications:
+```bash
+python -m mcp_server.cpp_mcp_server --transport sse --host 127.0.0.1 --port 8000
+```
+
+**Features:**
+- Multi-session support with automatic session management
+- 1-hour session timeout with automatic cleanup
+- Health check endpoints for monitoring
+- JSON-RPC 2.0 protocol compliance
+- Graceful shutdown with resource cleanup
+
+For detailed HTTP/SSE usage instructions, examples, and API reference, see **[HTTP_USAGE.md](HTTP_USAGE.md)**
+
 ## Prerequisites
 
 - Python 3.9 or higher
