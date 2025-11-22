@@ -368,6 +368,37 @@ class MCPHTTPServer:
                 except asyncio.CancelledError:
                     pass
 
+    async def shutdown(self):
+        """
+        Gracefully shutdown the server and cleanup all sessions.
+
+        Should be called before canceling the server task to ensure
+        proper cleanup of resources and prevent unclosed socket warnings.
+        """
+        logger.info("Shutting down MCP HTTP server...")
+
+        # Cancel all active sessions
+        for session_id, (transport, task, _) in list(self.sessions.items()):
+            logger.debug(f"Closing session {session_id}")
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # Clear sessions
+        self.sessions.clear()
+
+        # Stop cleanup task
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+        logger.info("Server shutdown complete")
+
     def run(self):
         """Run the server (blocking)."""
         asyncio.run(self.start())

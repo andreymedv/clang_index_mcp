@@ -63,7 +63,8 @@ async def sse_server():
 
     yield base_url
 
-    # Cleanup: cancel server task and wait for it to finish
+    # Cleanup: shutdown server gracefully, then cancel task
+    await sse_srv.shutdown()
     server_task.cancel()
     try:
         await server_task

@@ -61,18 +61,28 @@ class TestStdioTransport:
             stderr=subprocess.PIPE,
         )
 
-        # Give it a moment to start
-        time.sleep(0.5)
-
-        # Check it's running
-        assert proc.poll() is None, "Server should be running"
-
-        # Terminate
-        proc.terminate()
         try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+            # Give it a moment to start
+            time.sleep(0.5)
+
+            # Check it's running
+            assert proc.poll() is None, "Server should be running"
+        finally:
+            # Terminate and cleanup
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+            # Close pipes to prevent resource warnings
+            if proc.stdin:
+                proc.stdin.close()
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
 
     def test_stdio_explicit(self):
         """Test that server starts with explicit stdio transport."""
@@ -84,18 +94,28 @@ class TestStdioTransport:
             stderr=subprocess.PIPE,
         )
 
-        # Give it a moment to start
-        time.sleep(0.5)
-
-        # Check it's running
-        assert proc.poll() is None, "Server should be running"
-
-        # Terminate
-        proc.terminate()
         try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+            # Give it a moment to start
+            time.sleep(0.5)
+
+            # Check it's running
+            assert proc.poll() is None, "Server should be running"
+        finally:
+            # Terminate and cleanup
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+            # Close pipes to prevent resource warnings
+            if proc.stdin:
+                proc.stdin.close()
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
 
 
 @pytest.mark.asyncio
@@ -140,6 +160,13 @@ class TestHTTPTransportIntegration:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait()
+
+            # Close pipes to prevent resource warnings
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
 
 
 @pytest.mark.asyncio
@@ -184,6 +211,13 @@ class TestSSETransportIntegration:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait()
+
+            # Close pipes to prevent resource warnings
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
 
 
 if __name__ == "__main__":
