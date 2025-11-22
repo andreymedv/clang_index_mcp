@@ -164,19 +164,40 @@ For HTTP/SSE transports:
 
 ## Success Criteria
 
-1. Server can start with `--transport http` or `--transport sse`
-2. All existing tools work over HTTP/SSE transports
-3. SSE provides real-time indexing progress updates
-4. Multiple concurrent clients supported
-5. All existing tests pass
-6. New tests have >80% code coverage
-7. Documentation is complete and accurate
+1. ✅ Server can start with `--transport http` or `--transport sse`
+2. ✅ All existing tools work over HTTP/SSE transports
+3. ⚠️ SSE provides real-time updates (keepalives implemented, progress updates future work)
+4. ✅ Multiple concurrent clients supported
+5. ✅ All existing tests pass
+6. ✅ New tests have >80% code coverage
+7. ✅ Documentation is complete and accurate
 
-## Out of Scope (Future Work)
+## Implementation Status
 
+### ✅ Completed (v1.0)
+- HTTP and SSE transport protocols
+- Session management with timeouts (1 hour default)
+- Command-line transport selection
+- Health check and info endpoints
+- Error handling with proper HTTP status codes
+- JSON-RPC 2.0 compliance
+- Multi-session support
+- Comprehensive test suite
+- Usage documentation
+- macOS compatibility
+
+### 🔄 Partially Implemented
+- **SSE Progress Updates**: Currently sends keepalives only. Full indexing progress updates planned for future release
+- **503 Service Unavailable**: Not used; server returns 500 for errors
+
+### 📋 Future Work (Out of Scope for v1.0)
 - Authentication/authorization
 - Rate limiting
 - CORS configuration
+- TLS/SSL support
+- Resource limits per session
 - WebSocket transport
 - gRPC transport
 - Distributed deployment
+- Advanced connection timeout handling
+- Real-time SSE progress updates during indexing

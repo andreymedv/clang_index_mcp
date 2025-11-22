@@ -37,7 +37,8 @@ class MCPHTTPServer:
         mcp_server: Server,
         host: str = "127.0.0.1",
         port: int = 8000,
-        transport_type: str = "http"
+        transport_type: str = "http",
+        session_timeout: float = 3600.0  # 1 hour default
     ):
         """
         Initialize the HTTP/SSE server.
@@ -47,14 +48,49 @@ class MCPHTTPServer:
             host: Host address to bind to
             port: Port number to listen on
             transport_type: Type of transport ("http" or "sse")
+            session_timeout: Session timeout in seconds (default: 3600 = 1 hour)
         """
         self.mcp_server = mcp_server
         self.host = host
         self.port = port
         self.transport_type = transport_type
+        self.session_timeout = session_timeout
 
         # Session management (for multi-client support)
-        self.sessions = {}  # session_id -> (transport, task)
+        # Format: session_id -> (transport, task, last_activity_time)
+        self.sessions = {}
+
+        # Start background task for session cleanup
+        self._cleanup_task = None
+
+    async def _cleanup_inactive_sessions(self):
+        """Background task to clean up inactive sessions."""
+        import time
+
+        while True:
+            try:
+                await asyncio.sleep(60)  # Check every minute
+
+                current_time = time.time()
+                sessions_to_remove = []
+
+                for session_id, (transport, task, last_activity) in self.sessions.items():
+                    if current_time - last_activity > self.session_timeout:
+                        sessions_to_remove.append(session_id)
+                        logger.info(f"Session {session_id} timed out after {current_time - last_activity:.1f}s")
+
+                # Clean up timed out sessions
+                for session_id in sessions_to_remove:
+                    if session_id in self.sessions:
+                        _, task, _ = self.sessions[session_id]
+                        task.cancel()
+                        del self.sessions[session_id]
+                        logger.info(f"Cleaned up session {session_id}")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.exception(f"Error in session cleanup: {e}")
 
     def _create_app(self) -> Starlette:
         """Create and configure the Starlette application."""
@@ -115,6 +151,8 @@ class MCPHTTPServer:
             logger.info(f"Created new HTTP session: {session_id}")
 
         try:
+            import time
+
             # Validate JSON early to return proper error codes
             # Read and validate the body
             body = await request.body()
@@ -173,14 +211,18 @@ class MCPHTTPServer:
                                 del self.sessions[session_id]
 
                 task = asyncio.create_task(run_session())
-                self.sessions[session_id] = (transport, task)
+                current_time = time.time()
+                self.sessions[session_id] = (transport, task, current_time)
                 logger.info(f"Started MCP server session {session_id}")
 
                 # Give the session a moment to initialize
                 await asyncio.sleep(0.1)
 
             else:
-                transport, _ = self.sessions[session_id]
+                transport, task, _ = self.sessions[session_id]
+                # Update last activity time
+                current_time = time.time()
+                self.sessions[session_id] = (transport, task, current_time)
 
             # Handle the request through the transport
             # Create a custom send that captures the response
@@ -299,6 +341,9 @@ class MCPHTTPServer:
         """Start the HTTP/SSE server."""
         app = self._create_app()
 
+        # Start session cleanup task
+        self._cleanup_task = asyncio.create_task(self._cleanup_inactive_sessions())
+
         config = uvicorn.Config(
             app,
             host=self.host,
@@ -310,8 +355,18 @@ class MCPHTTPServer:
 
         logger.info(f"Starting MCP HTTP server on {self.host}:{self.port}")
         logger.info(f"Transport type: {self.transport_type}")
+        logger.info(f"Session timeout: {self.session_timeout}s")
 
-        await server.serve()
+        try:
+            await server.serve()
+        finally:
+            # Stop cleanup task
+            if self._cleanup_task:
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
 
     def run(self):
         """Run the server (blocking)."""
