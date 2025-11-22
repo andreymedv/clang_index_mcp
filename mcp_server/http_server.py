@@ -62,6 +62,7 @@ class MCPHTTPServer:
 
         # Start background task for session cleanup
         self._cleanup_task = None
+        self._server = None  # Store uvicorn server instance for proper shutdown
 
     async def _cleanup_inactive_sessions(self):
         """Background task to clean up inactive sessions."""
@@ -351,14 +352,14 @@ class MCPHTTPServer:
             log_level="info",
             access_log=True,
         )
-        server = uvicorn.Server(config)
+        self._server = uvicorn.Server(config)
 
         logger.info(f"Starting MCP HTTP server on {self.host}:{self.port}")
         logger.info(f"Transport type: {self.transport_type}")
         logger.info(f"Session timeout: {self.session_timeout}s")
 
         try:
-            await server.serve()
+            await self._server.serve()
         finally:
             # Stop cleanup task
             if self._cleanup_task:
@@ -376,6 +377,12 @@ class MCPHTTPServer:
         proper cleanup of resources and prevent unclosed socket warnings.
         """
         logger.info("Shutting down MCP HTTP server...")
+
+        # Shutdown uvicorn server first to stop accepting new connections
+        if self._server:
+            self._server.should_exit = True
+            # Give it a moment to stop accepting connections
+            await asyncio.sleep(0.1)
 
         # Cancel all active sessions
         for session_id, (transport, task, _) in list(self.sessions.items()):
@@ -396,6 +403,9 @@ class MCPHTTPServer:
                 await self._cleanup_task
             except asyncio.CancelledError:
                 pass
+
+        # Give uvicorn time to clean up its resources
+        await asyncio.sleep(0.2)
 
         logger.info("Server shutdown complete")
 
