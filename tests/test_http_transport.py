@@ -72,8 +72,8 @@ async def http_server():
     except asyncio.CancelledError:
         pass
 
-    # Give time for port to be released
-    await asyncio.sleep(0.5)
+    # Give time for port to be released and sockets to close
+    await asyncio.sleep(1.0)
 
 
 @pytest.mark.asyncio
