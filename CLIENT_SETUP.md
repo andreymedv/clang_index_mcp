@@ -447,6 +447,6 @@ To enable debug output for troubleshooting:
 If you encounter issues:
 
 1. Check the [Troubleshooting](README.md#troubleshooting) section in README.md
-2. Review [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md) for build system integration
+2. Review [COMPILE_COMMANDS_INTEGRATION.md](docs/COMPILE_COMMANDS_INTEGRATION.md) for build system integration
 3. Open an issue on [GitHub](https://github.com/andreymedv/clang_index_mcp/issues)
 4. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
