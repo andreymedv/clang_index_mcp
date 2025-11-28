@@ -130,7 +130,9 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
     return copied
 
 
-def download_libclang(system_override: Optional[str] = None) -> bool:
+def download_libclang(
+    system_override: Optional[str] = None, save_archive_to: Optional[Path] = None
+) -> bool:
     """Download and extract a libclang build for the current platform."""
 
     config = get_download_config(system_override)
@@ -147,8 +149,14 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
         print("[OK] libclang already present, skipping download")
         return True
 
-    temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
-    print(f"Downloading LLVM archive from {config.url} ...")
+    # Determine the path for the downloaded archive
+    if save_archive_to:
+        temp_file = save_archive_to
+        _ensure_directory(temp_file.parent)
+        print(f"Downloading LLVM archive to {temp_file} from {config.url} ...")
+    else:
+        temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
+        print(f"Downloading LLVM archive to temporary file from {config.url} ...")
 
     try:
         urllib.request.urlretrieve(config.url, temp_file)
@@ -165,10 +173,12 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
             tar.extractall(extract_dir)
             success = _copy_libclang(Path(extract_dir), config)
 
-    try:
-        temp_file.unlink()
-    except OSError:
-        pass
+    # Only delete the archive if it was a temporary file
+    if not save_archive_to:
+        try:
+            temp_file.unlink()
+        except OSError:
+            pass
 
     if success:
         print("[OK] libclang ready for use")
@@ -185,9 +195,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         choices=["windows", "linux", "darwin"],
         help="Override detected operating system",
     )
+    parser.add_argument(
+        "--save-archive-to",
+        type=Path,
+        help="Optional path to save the downloaded archive instead of a temporary file.",
+    )
     args = parser.parse_args(argv)
 
-    success = download_libclang(args.system)
+    success = download_libclang(args.system, args.save_archive_to)
     return 0 if success else 1
 
 
