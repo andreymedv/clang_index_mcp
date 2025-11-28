@@ -196,29 +196,40 @@ def download_libclang(
         return True
 
     # Determine the path for the downloaded archive
+    temp_file: Path
     if save_archive_to:
         temp_file = save_archive_to
         _ensure_directory(temp_file.parent)
-        print(f"Downloading LLVM archive to {temp_file} from {config.url} ...")
+        if temp_file.exists():
+            print(f"[OK] Archive already exists at {temp_file}, skipping download.")
+        else:
+            print(f"Downloading LLVM archive to {temp_file} from {config.url} ...")
+            try:
+                urllib.request.urlretrieve(config.url, temp_file)
+            except Exception as exc:
+                print(f"[X] Download failed: {exc}")
+                print("Please download the archive manually and extract libclang into:")
+                print(f"  {config.dest_dir}")
+                return False
     else:
         temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
         print(f"Downloading LLVM archive to temporary file from {config.url} ...")
-
-    try:
-        urllib.request.urlretrieve(config.url, temp_file)
-    except Exception as exc:
-        print(f"[X] Download failed: {exc}")
-        print("Please download the archive manually and extract libclang into:")
-        print(f"  {config.dest_dir}")
-        return False
+        try:
+            urllib.request.urlretrieve(config.url, temp_file)
+        except Exception as exc:
+            print(f"[X] Download failed: {exc}")
+            print("Please download the archive manually and extract libclang into:")
+            print(f"  {config.dest_dir}")
+            return False
 
     print("[OK] Download complete, extracting...")
 
     with tarfile.open(temp_file, "r:xz") as tar:
         with tempfile.TemporaryDirectory() as extract_dir:
+            tar.extractall(extract_dir)
             success = _copy_libclang(Path(extract_dir), config)
 
-    # Only delete the archive if it was a temporary file
+    # Only delete the archive if it was a temporary file and not explicitly saved
     if not save_archive_to:
         try:
             temp_file.unlink()
