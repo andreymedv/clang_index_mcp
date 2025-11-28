@@ -42,7 +42,10 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
     """Return the download configuration for the current platform."""
 
     system = (system_override or platform.system()).lower()
-    base_dir = Path("lib")
+    # Get the directory where the script itself is located
+    script_dir = Path(__file__).parent
+    # Set the base_dir to 'lib' in the parent directory of the script
+    base_dir = script_dir.parent / "lib"
 
     if system == "windows":
         return DownloadConfig(
