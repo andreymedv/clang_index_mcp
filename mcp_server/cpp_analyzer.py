@@ -897,7 +897,31 @@ class CppAnalyzer:
                     # Successfully cached - load symbols
                     cached_symbols = cache_data['symbols']
 
-                    # Apply cached symbols to indexes
+                    # Prepare index updates outside the lock to minimize lock duration
+                    # Build updates for class_index and function_index
+                    class_updates = defaultdict(list)
+                    function_updates = defaultdict(list)
+                    usr_updates = {}
+                    call_graph_updates = []
+
+                    for symbol in cached_symbols:
+                        if symbol.kind in ("class", "struct"):
+                            class_updates[symbol.name].append(symbol)
+                        else:
+                            function_updates[symbol.name].append(symbol)
+
+                        if symbol.usr:
+                            usr_updates[symbol.usr] = symbol
+
+                        # Collect call graph relationships
+                        if symbol.calls:
+                            for called_usr in symbol.calls:
+                                call_graph_updates.append((symbol.usr, called_usr))
+                        if symbol.called_by:
+                            for caller_usr in symbol.called_by:
+                                call_graph_updates.append((caller_usr, symbol.usr))
+
+                    # Apply all updates with a single lock acquisition
                     with self.index_lock:
                         # Clear old entries for this file
                         if file_path in self.file_index:
@@ -913,24 +937,24 @@ class CppAnalyzer:
 
                         # Add cached symbols
                         self.file_index[file_path] = cached_symbols
-                        for symbol in cached_symbols:
-                            if symbol.kind in ("class", "struct"):
-                                self.class_index[symbol.name].append(symbol)
-                            else:
-                                self.function_index[symbol.name].append(symbol)
 
-                            # Also update USR index
-                            if symbol.usr:
-                                self.usr_index[symbol.usr] = symbol
+                        # Apply class updates
+                        for name, symbols in class_updates.items():
+                            self.class_index[name].extend(symbols)
 
-                            # Restore call graph relationships
-                            if symbol.calls:
-                                for called_usr in symbol.calls:
-                                    self.call_graph_analyzer.add_call(symbol.usr, called_usr)
-                            if symbol.called_by:
-                                for caller_usr in symbol.called_by:
-                                    self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+                        # Apply function updates
+                        for name, symbols in function_updates.items():
+                            self.function_index[name].extend(symbols)
+
+                        # Apply USR updates
+                        self.usr_index.update(usr_updates)
+
+                        # Restore call graph relationships
+                        for caller_usr, called_usr in call_graph_updates:
+                            self.call_graph_analyzer.add_call(caller_usr, called_usr)
+
                         self.file_hashes[file_path] = current_hash
+
                     return (True, True)  # Successfully loaded from cache
 
         # Determine retry count for this attempt
@@ -1001,7 +1025,8 @@ class CppAnalyzer:
                 formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
                 diagnostics.debug(f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}")
 
-            # Clear old entries for this file
+            # Clear old entries for this file before re-parsing
+            # This must be atomic to ensure index consistency
             with self.index_lock:
                 if file_path in self.file_index:
                     # Remove old entries from class and function indexes
@@ -1014,9 +1039,9 @@ class CppAnalyzer:
                             self.function_index[info.name] = [
                                 i for i in self.function_index[info.name] if i.file != file_path
                             ]
-                    
+
                     self.file_index[file_path].clear()
-            
+
             # Collect symbols for this file
             collected_symbols = []
 
@@ -1033,23 +1058,26 @@ class CppAnalyzer:
                     f"({header_count} headers extracted, {skipped_count} headers skipped)"
                 )
 
-            # Get the symbols we just added for this file
+            # Get the symbols we just added for this file (quick copy under lock)
             with self.index_lock:
                 if file_path in self.file_index:
                     collected_symbols = self.file_index[file_path].copy()
-                    
-                    # Populate call graph info in symbols before caching
-                    for symbol in collected_symbols:
-                        if symbol.usr and symbol.kind in ("function", "method"):
-                            # Add calls list
-                            # Get calls from call graph analyzer
-                            calls = self.call_graph_analyzer.find_callees(symbol.usr)
-                            if calls:
-                                symbol.calls = list(calls)
-                            # Add called_by list  
-                            callers = self.call_graph_analyzer.find_callers(symbol.usr)
-                            if callers:
-                                symbol.called_by = list(callers)
+                else:
+                    collected_symbols = []
+
+            # Populate call graph info OUTSIDE the lock to minimize lock duration
+            # Call graph queries can be expensive for large codebases
+            for symbol in collected_symbols:
+                if symbol.usr and symbol.kind in ("function", "method"):
+                    # Add calls list
+                    # Get calls from call graph analyzer
+                    calls = self.call_graph_analyzer.find_callees(symbol.usr)
+                    if calls:
+                        symbol.calls = list(calls)
+                    # Add called_by list
+                    callers = self.call_graph_analyzer.find_callers(symbol.usr)
+                    if callers:
+                        symbol.called_by = list(callers)
             
             # Save to per-file cache (mark as successfully parsed)
             self._save_file_cache(
