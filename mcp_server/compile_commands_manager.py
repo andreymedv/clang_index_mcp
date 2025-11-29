@@ -41,11 +41,11 @@ except ImportError:
 
 class CompileCommandsManager:
     """Manages compilation commands from compile_commands.json files."""
-    
+
     def __init__(self, project_root: Path, config: Optional[Dict[str, Any]] = None):
         self.project_root = project_root
         self.config = config or {}
-        
+
         # Configuration settings
         self.enabled = self.config.get('compile_commands_enabled', True)
         self.compile_commands_path = self.config.get('compile_commands_path', 'compile_commands.json')
@@ -55,7 +55,7 @@ class CompileCommandsManager:
         self.supported_extensions = set(self.config.get('supported_extensions',
             [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]))
         self.exclude_patterns = self.config.get('exclude_patterns', [])
-        
+
         # Cache data
         self.compile_commands = {}
         self.file_to_command_map = {}
@@ -167,7 +167,7 @@ class CompileCommandsManager:
 
         except Exception as e:
             diagnostics.debug(f"Failed to save cache: {e}")
-    
+
     def _build_fallback_args(self) -> List[str]:
         """Build the fallback compilation arguments (current hardcoded approach)."""
         args = [
@@ -347,7 +347,7 @@ class CompileCommandsManager:
         except Exception as e:
             diagnostics.error(f"Error loading compile_commands.json: {e}")
             return False
-    
+
     def _parse_compile_commands(self, commands: List[Dict[str, Any]]) -> None:
         """Parse compile commands and build file-to-command mapping."""
         self.compile_commands.clear()
@@ -363,7 +363,7 @@ class CompileCommandsManager:
             if 'file' not in cmd:
                 diagnostics.warning(f"Skipping command without 'file' field at index {i}")
                 continue
-            
+
             file_path = cmd['file']
             directory = cmd.get('directory', str(self.project_root))
             arguments = cmd.get('arguments', [])
@@ -426,12 +426,12 @@ class CompileCommandsManager:
                 'command': command,
                 'index': i
             }
-            
+
             # Build mapping from file to command (handle multiple entries for same file)
             if file_path not in self.file_to_command_map:
                 self.file_to_command_map[file_path] = []
             self.file_to_command_map[file_path].append(self.compile_commands[file_path])
-    
+
     def _normalize_path(self, file_path: str, directory: str) -> str:
         """Normalize file path to absolute path."""
         # Handle relative paths
@@ -442,7 +442,7 @@ class CompileCommandsManager:
             else:
                 # Fall back to project root
                 file_path = str(self.project_root / file_path)
-        
+
         # Convert to absolute path and normalize
         return str(Path(file_path).resolve())
 
@@ -555,7 +555,7 @@ class CompileCommandsManager:
 
         try:
             # Handle quoted arguments properly
-            args = shlex.split(command)
+            args = shlex.split(command)  # TODO seems too slow, optimize for speed
 
             # Filter out empty strings
             args = [arg for arg in args if arg.strip()]
@@ -627,7 +627,7 @@ class CompileCommandsManager:
         except Exception as e:
             diagnostics.warning(f"Failed to parse command string '{command}': {e}")
             return []
-    
+
     def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
         """
         Detect the C++ standard library include path based on compile arguments.
@@ -814,22 +814,22 @@ class CompileCommandsManager:
                     return self._add_builtin_includes(normalized_args)
 
         return None
-    
+
     def get_compile_args_with_fallback(self, file_path: Path) -> List[str]:
         """Get compilation arguments for a file, with fallback to hardcoded args."""
         # Try to get compile commands first
         compile_args = self.get_compile_args(file_path)
-        
+
         if compile_args is not None:
             return compile_args
-        
+
         # Fall back to hardcoded arguments
         if self.fallback_to_hardcoded:
             return self.fallback_args.copy()
-        
+
         # Return empty list if fallback is disabled
         return []
-    
+
     def refresh_if_needed(self) -> bool:
         """Refresh compile commands if the file has been modified."""
         if not self.enabled:
@@ -844,19 +844,19 @@ class CompileCommandsManager:
                 self.file_to_command_map.clear()
                 self.last_modified = 0
             return False
-        
+
         # Check if file has been modified
         current_modified = compile_commands_file.stat().st_mtime
         if current_modified <= self.last_modified:
             return False
-        
+
         # Reload the commands
         success = self._load_compile_commands()
         if success:
             diagnostics.info("Refreshed compile_commands.json cache")
 
         return success
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the compile commands manager."""
         with self.cache_lock:
@@ -869,35 +869,35 @@ class CompileCommandsManager:
                 'last_modified': self.last_modified,
                 'compile_commands_path': str(self.project_root / self.compile_commands_path)
             }
-    
+
     def is_file_supported(self, file_path: Path) -> bool:
         """Check if a file has compile commands available."""
         if not self.enabled:
             return False
-        
+
         file_path_str = str(file_path.resolve())
         return file_path_str in self.file_to_command_map
-    
+
     def get_all_files(self) -> List[str]:
         """Get all files that have compile commands."""
         if not self.enabled:
             return []
-        
+
         with self.cache_lock:
             return list(self.file_to_command_map.keys())
-        
+
     def should_process_file(self, file_path: Path) -> bool:
         """Determine if a file should be processed based on compile_commands.json availability and extensions."""
         # Check if the file has compile commands available
         if self.is_file_supported(file_path):
             return True
-        
+
         # If no compile commands are available but extension is supported, we can still process it with fallback
         if self.is_extension_supported(file_path):
             return True
-            
+
         return False
-    
+
     def is_extension_supported(self, file_path: Path) -> bool:
         """Check if a file extension is supported for compile commands."""
         try:
@@ -905,7 +905,7 @@ class CompileCommandsManager:
             return ext in self.supported_extensions
         except Exception:
             return False
-    
+
     def clear_cache(self) -> None:
         """Clear the compile commands cache."""
         with self.cache_lock:
