@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import time
 import threading
 from collections import defaultdict
+from clang.cindex import CompilationDatabase
 
 # Try to import orjson for faster JSON parsing (optional)
 try:
@@ -279,9 +280,8 @@ class CompileCommandsManager:
 
         Optimized for large files:
         1. Try loading from cache first (fastest - ~10-100x faster)
-        2. If cache miss, parse JSON file
-        3. Use orjson if available (3-5x faster than stdlib json)
-        4. Save to cache for next time
+        2. If cache miss, use CompilationDatabase API
+        3. Save to cache for next time
         """
         if not self.enabled:
             return False
@@ -300,33 +300,22 @@ class CompileCommandsManager:
             diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
             return True
 
-        # Cache miss - parse the file
+        # Cache miss - parse using CompilationDatabase API
         file_size_mb = compile_commands_file.stat().st_size / 1024 / 1024
         diagnostics.info(f"Parsing compile_commands.json ({file_size_mb:.1f} MB)...")
         start_time = time.time()
 
         try:
-            # Use orjson if available (much faster for large files)
-            if HAS_ORJSON:
-                with open(compile_commands_file, 'rb') as f:
-                    data = orjson.loads(f.read())
-                diagnostics.debug("Using orjson for fast JSON parsing")
-            else:
-                with open(compile_commands_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                if file_size_mb > 5:
-                    diagnostics.info("Tip: Install orjson for 3-5x faster parsing of large compile_commands.json files")
+            # Use CompilationDatabase API to load compile_commands.json
+            # This is more efficient than manual JSON parsing
+            compdb = CompilationDatabase.fromDirectory(str(self.project_root))
 
             parse_time = time.time() - start_time
-            diagnostics.debug(f"JSON parsing completed in {parse_time:.2f}s")
-
-            if not isinstance(data, list):
-                diagnostics.error("compile_commands.json must contain a list of commands")
-                return False
+            diagnostics.debug(f"CompilationDatabase loading completed in {parse_time:.2f}s")
 
             # Process and cache the commands
             process_start = time.time()
-            self._parse_compile_commands(data)
+            self._parse_compile_commands_from_db(compdb)
             process_time = time.time() - process_start
             diagnostics.debug(f"Command processing completed in {process_time:.2f}s")
 
@@ -341,96 +330,139 @@ class CompileCommandsManager:
             diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
             return True
 
-        except json.JSONDecodeError as e:
-            diagnostics.error(f"Error parsing compile_commands.json: {e}")
-            return False
         except Exception as e:
             diagnostics.error(f"Error loading compile_commands.json: {e}")
             return False
 
-    def _parse_compile_commands(self, commands: List[Dict[str, Any]]) -> None:
-        """Parse compile commands and build file-to-command mapping."""
+    def _parse_compile_commands_from_db(self, compdb: CompilationDatabase) -> None:
+        """Parse compile commands from CompilationDatabase and build file-to-command mapping.
+
+        This method uses the CompilationDatabase API to get compile commands,
+        which handles command parsing internally without needing shlex.
+        """
         self.compile_commands.clear()
         self.file_to_command_map.clear()
 
+        # We still need to read the JSON to know which files are in the database
+        # since CompilationDatabase doesn't provide a method to list all files
+        compile_commands_file = self.project_root / self.compile_commands_path
 
-        for i, cmd in enumerate(commands):
-            if not isinstance(cmd, dict):
-                diagnostics.warning(f"Skipping invalid command at index {i}")
+        try:
+            # Read JSON to get file list (minimal parsing, just to get filenames)
+            with open(compile_commands_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if not isinstance(data, list):
+                diagnostics.error("compile_commands.json must contain a list of commands")
+                return
+
+            # Process each entry using CompilationDatabase API
+            for i, entry in enumerate(data):
+                if not isinstance(entry, dict):
+                    diagnostics.warning(f"Skipping invalid command at index {i}")
+                    continue
+
+                # Extract required fields
+                if 'file' not in entry:
+                    diagnostics.warning(f"Skipping command without 'file' field at index {i}")
+                    continue
+
+                file_path = entry['file']
+                directory = entry.get('directory', str(self.project_root))
+
+                # Normalize file path
+                normalized_path = self._normalize_path(file_path, directory)
+
+                # Get compile commands from the database for this file
+                # This returns a CompileCommands object (iterator of CompileCommand)
+                compile_cmds = compdb.getCompileCommands(normalized_path)
+
+                if compile_cmds is None or len(list(compile_cmds)) == 0:
+                    # Try with the original (non-normalized) path
+                    compile_cmds = compdb.getCompileCommands(file_path)
+
+                if compile_cmds is not None:
+                    # Get the first (usually only) compile command for this file
+                    for cmd in compile_cmds:
+                        # Get arguments from CompileCommand - this is already parsed!
+                        # The arguments property returns a list of strings
+                        raw_arguments = list(cmd.arguments)
+
+                        # Filter out compiler executable, -o, -c, and source files
+                        filtered_args = self._filter_arguments(raw_arguments)
+
+                        # Sanitize for libclang
+                        arguments = self._sanitize_args_for_libclang(filtered_args)
+
+                        # Store the command
+                        self.compile_commands[normalized_path] = {
+                            'arguments': arguments,
+                            'directory': cmd.directory,
+                            'command': '',  # Not needed since we have arguments
+                            'index': i
+                        }
+
+                        # Build mapping from file to command
+                        if normalized_path not in self.file_to_command_map:
+                            self.file_to_command_map[normalized_path] = []
+                        self.file_to_command_map[normalized_path].append(
+                            self.compile_commands[normalized_path]
+                        )
+
+                        # Usually only one command per file, use the first
+                        break
+
+        except Exception as e:
+            diagnostics.error(f"Error parsing compile commands from database: {e}")
+
+    def _filter_arguments(self, arguments: List[str]) -> List[str]:
+        """Filter out compiler executable, -o, -c, and source files from arguments.
+
+        Args:
+            arguments: Raw list of compilation arguments
+
+        Returns:
+            Filtered list of arguments suitable for libclang
+        """
+        filtered_args = []
+        i_arg = 0
+
+        # Check if first argument is a compiler
+        if arguments:
+            first_arg = arguments[0]
+            compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
+            basename = first_arg.split('/')[-1].split('\\')[-1].lower()
+            if basename.endswith('.exe'):
+                basename = basename[:-4]
+
+            # Skip compiler executable if present
+            if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
+                i_arg = 1
+
+        # Filter out -o, -c, and source files
+        while i_arg < len(arguments):
+            arg = arguments[i_arg]
+
+            if arg == '-o':
+                i_arg += 2  # Skip -o and output file
                 continue
 
-            # Extract required fields
-            if 'file' not in cmd:
-                diagnostics.warning(f"Skipping command without 'file' field at index {i}")
+            if arg == '-c':
+                i_arg += 1
                 continue
 
-            file_path = cmd['file']
-            directory = cmd.get('directory', str(self.project_root))
-            arguments = cmd.get('arguments', [])
-            command = cmd.get('command', '')
-
-            # Normalize file path
-            file_path = self._normalize_path(file_path, directory)
-
-            # Build arguments list from command string if needed
-            if not arguments and command:
-                arguments = self._parse_command_string(command)
-            elif arguments:
-                # If arguments were provided as a list, we still need to sanitize them
-                # First, filter out compiler executable, -o, -c, and source files
-                filtered_args = []
-                i_arg = 0
-
-                # Check if first argument is a compiler
-                if arguments:
-                    first_arg = arguments[0]
-                    compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
-                    basename = first_arg.split('/')[-1].split('\\')[-1].lower()
-                    if basename.endswith('.exe'):
-                        basename = basename[:-4]
-
-                    # Skip compiler executable if present
-                    if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
-                        i_arg = 1
-
-                # Filter out -o, -c, and source files
-                while i_arg < len(arguments):
-                    arg = arguments[i_arg]
-
-                    if arg == '-o':
-                        i_arg += 2  # Skip -o and output file
-                        continue
-
-                    if arg == '-c':
-                        i_arg += 1
-                        continue
-
-                    # Skip source files
-                    if not arg.startswith('-'):
-                        lower_arg = arg.lower()
-                        source_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.m', '.mm']
-                        if any(lower_arg.endswith(ext) for ext in source_extensions):
-                            i_arg += 1
-                            continue
-
-                    filtered_args.append(arg)
+            # Skip source files
+            if not arg.startswith('-'):
+                lower_arg = arg.lower()
+                source_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.m', '.mm']
+                if any(lower_arg.endswith(ext) for ext in source_extensions):
                     i_arg += 1
+                    continue
 
-                # Sanitize for libclang
-                arguments = self._sanitize_args_for_libclang(filtered_args)
+            filtered_args.append(arg)
+            i_arg += 1
 
-            # Store the command
-            self.compile_commands[file_path] = {
-                'arguments': arguments,
-                'directory': directory,
-                'command': command,
-                'index': i
-            }
-
-            # Build mapping from file to command (handle multiple entries for same file)
-            if file_path not in self.file_to_command_map:
-                self.file_to_command_map[file_path] = []
-            self.file_to_command_map[file_path].append(self.compile_commands[file_path])
+        return filtered_args
 
     def _normalize_path(self, file_path: str, directory: str) -> str:
         """Normalize file path to absolute path."""
@@ -541,92 +573,6 @@ class CompileCommandsManager:
             - ArgumentSanitizer class for rule engine implementation
         """
         return self.argument_sanitizer.sanitize(args)
-
-    def _parse_command_string(self, command: str) -> List[str]:
-        """Parse command string into arguments list.
-
-        The command string typically starts with the compiler executable path,
-        which should be stripped out since libclang only needs the compilation flags.
-        Also strips output file arguments (-o <file>), compile-only flag (-c),
-        and the source file argument.
-        """
-        import shlex
-        import os
-
-        try:
-            # Handle quoted arguments properly
-            args = shlex.split(command)  # TODO seems too slow, optimize for speed
-
-            # Filter out empty strings
-            args = [arg for arg in args if arg.strip()]
-
-            if not args:
-                return []
-
-            # Strip the first argument if it looks like a compiler executable
-            # This is necessary because libclang expects only compilation flags,
-            # not the compiler path itself
-            first_arg = args[0]
-
-            # Check if first argument is a compiler executable path or name
-            # Common patterns: gcc, g++, clang, clang++, cc, c++, or paths to them
-            compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
-
-            # Get the basename to check if it's a compiler
-            # Handle both Unix and Windows path separators
-            basename = first_arg.split('/')[-1].split('\\')[-1].lower()
-            # Remove .exe extension if present (case-insensitive)
-            if basename.endswith('.exe'):
-                basename = basename[:-4]
-
-            # If the first argument is a compiler, strip it
-            if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
-                # This looks like a compiler path, remove it
-                args = args[1:]
-
-            # Filter out arguments that libclang doesn't need:
-            # - Output file: -o <file>
-            # - Compile-only flag: -c
-            # - Source files (arguments that look like file paths, typically at the end)
-            filtered_args = []
-            i = 0
-            while i < len(args):
-                arg = args[i]
-
-                # Skip -o and its argument (output file)
-                if arg == '-o':
-                    # Skip both -o and the next argument (the output file path)
-                    i += 2
-                    continue
-
-                # Skip -c (compile-only flag)
-                if arg == '-c':
-                    i += 1
-                    continue
-
-                # Skip arguments that look like source files
-                # These are typically file paths with C/C++ extensions, not starting with -
-                if not arg.startswith('-'):
-                    # Check if it looks like a source file
-                    lower_arg = arg.lower()
-                    source_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.m', '.mm']
-                    if any(lower_arg.endswith(ext) for ext in source_extensions):
-                        # This is likely the source file being compiled, skip it
-                        i += 1
-                        continue
-
-                # Keep this argument
-                filtered_args.append(arg)
-                i += 1
-
-            # Sanitize the arguments for libclang
-            filtered_args = self._sanitize_args_for_libclang(filtered_args)
-
-            return filtered_args
-
-        except Exception as e:
-            diagnostics.warning(f"Failed to parse command string '{command}': {e}")
-            return []
 
     def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
         """
