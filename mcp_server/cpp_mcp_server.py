@@ -44,17 +44,17 @@ def find_and_configure_libclang():
     bundled_paths = []
     if system == "Windows":
         bundled_paths = [
-            os.path.join(parent_dir, "lib", "windows", "libclang.dll"),
-            os.path.join(parent_dir, "lib", "windows", "clang.dll"),
+            os.path.join(parent_dir, "lib", "windows", "lib", "libclang.dll"),
+            os.path.join(parent_dir, "lib", "windows", "lib", "clang.dll"),
         ]
     elif system == "Darwin":  # macOS
         bundled_paths = [
-            os.path.join(parent_dir, "lib", "macos", "libclang.dylib"),
+            os.path.join(parent_dir, "lib", "macos", "lib", "libclang.dylib"),
         ]
     else:  # Linux
         bundled_paths = [
-            os.path.join(parent_dir, "lib", "linux", "libclang.so.1"),
-            os.path.join(parent_dir, "lib", "linux", "libclang.so"),
+            os.path.join(parent_dir, "lib", "linux", "lib", "libclang.so.1"),
+            os.path.join(parent_dir, "lib", "linux", "lib", "libclang.so"),
         ]
     
     # Try bundled libraries first

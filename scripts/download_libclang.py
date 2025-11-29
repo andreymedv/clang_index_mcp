@@ -42,7 +42,10 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
     """Return the download configuration for the current platform."""
 
     system = (system_override or platform.system()).lower()
-    base_dir = Path("lib")
+    # Get the directory where the script itself is located
+    script_dir = Path(__file__).parent
+    # Set the base_dir to 'lib' in the parent directory of the script
+    base_dir = script_dir.parent / "lib"
 
     if system == "windows":
         return DownloadConfig(
@@ -93,6 +96,11 @@ def _ensure_directory(path: Path) -> None:
 
 def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
     """Copy libclang from extracted archive into the destination directory."""
+    overall_success = True
+
+    # --- Copy libclang shared libraries ---
+    lib_dest_dir = config.dest_dir / "lib"
+    _ensure_directory(lib_dest_dir)
 
     extracted_libs = []
     for relative_path in config.lib_paths:
@@ -101,62 +109,118 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
 
     if not extracted_libs:
         print("[X] Could not locate libclang in the downloaded archive")
-        return False
+        overall_success = False
+    else:
+        copied_libs = False
+        for src in extracted_libs:
+            target_name = src.name
+            target_path = lib_dest_dir / target_name
+            shutil.copy2(src, target_path)
+            print(f"[OK] Copied {target_name} to {target_path}")
+            copied_libs = True
 
-    _ensure_directory(config.dest_dir)
+            # For Linux we need libclang.so.1 as well as the full versioned .so
+            if config.system == "Linux" and target_name.startswith("libclang.so."):
+                symlink_target = lib_dest_dir / "libclang.so.1"
+                if not symlink_target.exists():
+                    try:
+                        os.symlink(target_path.name, symlink_target)
+                        print(f"[OK] Created symlink {symlink_target} -> {target_path.name}")
+                    except OSError:
+                        # Fall back to copying if symlinks are unavailable
+                        shutil.copy2(target_path, symlink_target)
+                        print(f"[OK] Copied duplicate {symlink_target}")
 
-    copied = False
-    for src in extracted_libs:
-        target_name = src.name
-        target_path = config.dest_dir / target_name
-        shutil.copy2(src, target_path)
-        print(f"[OK] Copied {target_name} to {target_path}")
-        copied = True
+        if not copied_libs:
+            print("[X] Failed to copy any libclang files")
+            overall_success = False
 
-        # For Linux we need libclang.so.1 as well as the full versioned .so
-        if config.system == "Linux" and target_name.startswith("libclang.so."):
-            symlink_target = config.dest_dir / "libclang.so.1"
-            if not symlink_target.exists():
-                try:
-                    os.symlink(target_path.name, symlink_target)
-                    print(f"[OK] Created symlink {symlink_target} -> {target_path.name}")
-                except OSError:
-                    # Fall back to copying if symlinks are unavailable
-                    shutil.copy2(target_path, symlink_target)
-                    print(f"[OK] Copied duplicate {symlink_target}")
+    # --- Copy include/c++ directory ---
+    include_cpp_src = None
+    # Find the 'include/c++' directory within the extracted archive
+    for path in temp_root.glob("**/include/c++"):
+        if path.is_dir():
+            include_cpp_src = path
+            break
 
-    if not copied:
-        print("[X] Failed to copy any libclang files")
-    return copied
+    if include_cpp_src:
+        include_cpp_dest = config.dest_dir / "include" / "c++"
+        print(f"Copying C++ headers from {include_cpp_src} to {include_cpp_dest}...")
+        try:
+            # Remove existing directory if it exists to ensure a clean copy
+            if include_cpp_dest.exists():
+                shutil.rmtree(include_cpp_dest)
+            shutil.copytree(include_cpp_src, include_cpp_dest)
+            print(f"[OK] Copied C++ headers to {include_cpp_dest}")
+        except Exception as e:
+            print(f"[X] Failed to copy C++ headers: {e}")
+            overall_success = False
+    else:
+        print("[X] Could not locate 'include/c++' directory in the downloaded archive.")
+        # This might not be a critical failure depending on usage, but we'll mark it as such for now.
+        overall_success = False
+
+    return overall_success
 
 
-def download_libclang(system_override: Optional[str] = None) -> bool:
+def download_libclang(
+    system_override: Optional[str] = None, save_archive_to: Optional[Path] = None
+) -> bool:
     """Download and extract a libclang build for the current platform."""
 
     config = get_download_config(system_override)
     print(f"Setting up libclang for {config.system}...")
     _ensure_directory(config.dest_dir)
 
-    expected_names = {
-        "Windows": ["libclang.dll"],
-        "macOS": ["libclang.dylib"],
-        "Linux": ["libclang.so", "libclang.so.1", "libclang.so.19"],
+    # The expected files now need to reflect the new subdirectory structure
+    expected_lib_files = {
+        "Windows": ["lib/libclang.dll"],
+        "macOS": ["lib/libclang.dylib"],
+        "Linux": ["lib/libclang.so", "lib/libclang.so.1", "lib/libclang.so.19"],
     }[config.system]
 
-    if _already_present(config.dest_dir, expected_names):
-        print("[OK] libclang already present, skipping download")
+    # Also check for the presence of the include/c++ directory
+    expected_include_dir = config.dest_dir / "include" / "c++"
+
+    # Check if all expected files/directories are already present
+    all_present = True
+    for filename in expected_lib_files:
+        if not (config.dest_dir / filename).exists():
+            all_present = False
+            break
+    if all_present and not expected_include_dir.exists():
+        all_present = False
+
+    if all_present:
+        print("[OK] libclang and headers already present, skipping download")
         return True
 
-    temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
-    print(f"Downloading LLVM archive from {config.url} ...")
-
-    try:
-        urllib.request.urlretrieve(config.url, temp_file)
-    except Exception as exc:
-        print(f"[X] Download failed: {exc}")
-        print("Please download the archive manually and extract libclang into:")
-        print(f"  {config.dest_dir}")
-        return False
+    # Determine the path for the downloaded archive
+    temp_file: Path
+    if save_archive_to:
+        temp_file = save_archive_to
+        _ensure_directory(temp_file.parent)
+        if temp_file.exists():
+            print(f"[OK] Archive already exists at {temp_file}, skipping download.")
+        else:
+            print(f"Downloading LLVM archive to {temp_file} from {config.url} ...")
+            try:
+                urllib.request.urlretrieve(config.url, temp_file)
+            except Exception as exc:
+                print(f"[X] Download failed: {exc}")
+                print("Please download the archive manually and extract libclang into:")
+                print(f"  {config.dest_dir}")
+                return False
+    else:
+        temp_file = Path(tempfile.gettempdir()) / "llvm-libclang.tar.xz"
+        print(f"Downloading LLVM archive to temporary file from {config.url} ...")
+        try:
+            urllib.request.urlretrieve(config.url, temp_file)
+        except Exception as exc:
+            print(f"[X] Download failed: {exc}")
+            print("Please download the archive manually and extract libclang into:")
+            print(f"  {config.dest_dir}")
+            return False
 
     print("[OK] Download complete, extracting...")
 
@@ -165,10 +229,12 @@ def download_libclang(system_override: Optional[str] = None) -> bool:
             tar.extractall(extract_dir)
             success = _copy_libclang(Path(extract_dir), config)
 
-    try:
-        temp_file.unlink()
-    except OSError:
-        pass
+    # Only delete the archive if it was a temporary file and not explicitly saved
+    if not save_archive_to:
+        try:
+            temp_file.unlink()
+        except OSError:
+            pass
 
     if success:
         print("[OK] libclang ready for use")
@@ -185,9 +251,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         choices=["windows", "linux", "darwin"],
         help="Override detected operating system",
     )
+    parser.add_argument(
+        "--save-archive-to",
+        type=Path,
+        help="Optional path to save the downloaded archive instead of a temporary file.",
+    )
     args = parser.parse_args(argv)
 
-    success = download_libclang(args.system)
+    success = download_libclang(args.system, args.save_archive_to)
     return 0 if success else 1
 
 
