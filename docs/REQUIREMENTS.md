@@ -46,6 +46,14 @@ This document captures the functional requirements for the Clang Index MCP Serve
 
 **REQ-1.2.4**: The system SHALL protect shared indexes with thread-safe locking mechanisms.
 
+**REQ-1.2.5**: The system SHALL use ProcessPoolExecutor by default to bypass Python's Global Interpreter Lock (GIL):
+- Provides true parallelism on multi-core systems (6-7x speedup on 4+ cores)
+- Each worker process has isolated memory space (no shared state)
+- Worker function (`_process_file_worker()`) defined at module level for pickling compatibility
+- Can be disabled via `CPP_ANALYZER_USE_THREADS=true` environment variable
+- Falls back to ThreadPoolExecutor when environment variable is set
+- Skips locking mechanisms in ProcessPoolExecutor mode (isolated memory makes locks unnecessary)
+
 ---
 
 ## 2. C++ Entity Extraction Requirements
@@ -487,13 +495,17 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-5.1.7**: When compile_commands.json is present and has entries, the system SHALL analyze ONLY the files explicitly listed in it, not additional files discovered by file scanning.
 
-**REQ-5.1.8**: The system SHALL parse the `command` field (string format) from compile_commands.json by:
-- Using shlex.split() for proper quoted argument handling
-- Stripping the compiler executable path (first argument if it matches compiler patterns)
-- Filtering out output file arguments (`-o` and the following path)
-- Filtering out the compile-only flag (`-c`)
-- Filtering out source file arguments (paths ending with .c, .cpp, .cxx, .cc, .c++, .m, .mm)
-- Passing only compilation flags (defines, includes, warnings, etc.) to libclang
+**REQ-5.1.8**: The system SHALL parse compile_commands.json using libclang's CompilationDatabase API by:
+- Loading the compilation database via `CompilationDatabase.fromDirectory()`
+- Retrieving parsed compile commands via `getCompileCommands()` for each file
+- Accessing pre-parsed arguments from the CompileCommand.arguments property
+- Applying argument filtering via `_filter_arguments()` method to:
+  - Strip the compiler executable path (first argument if it matches compiler patterns)
+  - Filter out output file arguments (`-o` and the following path)
+  - Filter out the compile-only flag (`-c`)
+  - Filter out source file arguments (paths ending with .c, .cpp, .cxx, .cc, .c++, .m, .mm)
+  - Pass only compilation flags (defines, includes, warnings, etc.) to libclang
+- Note: CompilationDatabase API handles command string parsing internally (no manual shlex parsing needed)
 
 **REQ-5.1.9**: The system SHALL recognize common compiler executable patterns when stripping:
 - Compiler names: gcc, g++, clang, clang++, cc, c++, cl, cl.exe (case-insensitive)
