@@ -28,6 +28,7 @@ from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
 from .dependency_graph import DependencyGraphBuilder
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 
 # Handle both package and script imports
 try:
@@ -41,6 +42,15 @@ try:
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
+
+
+class _NoOpLock:
+    """A no-op context manager that doesn't actually acquire any lock."""
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
 
 
 def _process_file_worker(args_tuple):
@@ -64,15 +74,19 @@ def _process_file_worker(args_tuple):
     analyzer = CppAnalyzer(project_root)
     analyzer.include_dependencies = include_dependencies
 
+    # Mark this instance as isolated (no shared memory, locks not needed)
+    # This is a worker process with its own memory space
+    analyzer._needs_locking = False
+
     # Parse the file
     success, was_cached = analyzer.index_file(file_path, force)
 
     # Extract symbols from this file
+    # No lock needed here since this process has isolated memory
     symbols = []
     if success:
-        with analyzer.index_lock:
-            if file_path in analyzer.file_index:
-                symbols = analyzer.file_index[file_path]
+        if file_path in analyzer.file_index:
+            symbols = analyzer.file_index[file_path]
 
     return (file_path, success, was_cached, symbols)
 
@@ -133,6 +147,7 @@ class CppAnalyzer:
 
         # Threading/Processing
         self.index_lock = threading.Lock()
+        self._no_op_lock = _NoOpLock()  # Reusable no-op lock for isolated processes
         self._thread_local = threading.local()
         cpu_count = os.cpu_count() or 1
         # Use cpu_count directly for CPU-bound parsing work
@@ -142,6 +157,12 @@ class CppAnalyzer:
         # Use ProcessPoolExecutor by default to bypass Python's GIL
         # Can be overridden via environment variable
         self.use_processes = os.environ.get('CPP_ANALYZER_USE_THREADS', '').lower() != 'true'
+
+        # Locking strategy:
+        # - True (default): Use locks for thread safety (ThreadPoolExecutor or shared instance)
+        # - False: Skip locks for performance (ProcessPoolExecutor worker with isolated memory)
+        # This flag is set to False by _process_file_worker for worker processes
+        self._needs_locking = True
 
         # Initialize cache manager with project identity
         self.cache_manager = CacheManager(self.project_identity)
@@ -373,6 +394,22 @@ class CppAnalyzer:
         except Exception as e:
             diagnostics.warning(f"Failed to save header tracking cache: {e}")
 
+    def _get_lock(self):
+        """
+        Return appropriate lock based on execution context.
+
+        Returns:
+            - self.index_lock: When locks are needed (ThreadPoolExecutor or shared instance)
+            - self._no_op_lock: When locks are unnecessary (ProcessPoolExecutor worker)
+
+        Performance optimization:
+        In ProcessPoolExecutor mode, each worker process has isolated memory,
+        so locking is unnecessary overhead. This method returns a no-op lock
+        to skip synchronization in that case while maintaining correctness
+        in ThreadPoolExecutor mode where memory is actually shared.
+        """
+        return self.index_lock if self._needs_locking else self._no_op_lock
+
     def _get_thread_index(self) -> Index:
         """Return a thread-local libclang Index instance."""
         index = getattr(self._thread_local, "index", None)
@@ -410,8 +447,8 @@ class CppAnalyzer:
 
         added_count = 0
 
-        # Single lock acquisition for all symbols
-        with self.index_lock:
+        # Single lock acquisition for all symbols (conditional based on execution mode)
+        with self._get_lock():
             # Add all collected symbols
             for info in symbols_buffer:
                 # USR-based deduplication: check if symbol already exists
@@ -897,8 +934,33 @@ class CppAnalyzer:
                     # Successfully cached - load symbols
                     cached_symbols = cache_data['symbols']
 
-                    # Apply cached symbols to indexes
-                    with self.index_lock:
+                    # Prepare index updates outside the lock to minimize lock duration
+                    # Build updates for class_index and function_index
+                    class_updates = defaultdict(list)
+                    function_updates = defaultdict(list)
+                    usr_updates = {}
+                    call_graph_updates = []
+
+                    for symbol in cached_symbols:
+                        if symbol.kind in ("class", "struct"):
+                            class_updates[symbol.name].append(symbol)
+                        else:
+                            function_updates[symbol.name].append(symbol)
+
+                        if symbol.usr:
+                            usr_updates[symbol.usr] = symbol
+
+                        # Collect call graph relationships
+                        if symbol.calls:
+                            for called_usr in symbol.calls:
+                                call_graph_updates.append((symbol.usr, called_usr))
+                        if symbol.called_by:
+                            for caller_usr in symbol.called_by:
+                                call_graph_updates.append((caller_usr, symbol.usr))
+
+                    # Apply all updates with a single lock acquisition
+                    # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
+                    with self._get_lock():
                         # Clear old entries for this file
                         if file_path in self.file_index:
                             for info in self.file_index[file_path]:
@@ -913,24 +975,24 @@ class CppAnalyzer:
 
                         # Add cached symbols
                         self.file_index[file_path] = cached_symbols
-                        for symbol in cached_symbols:
-                            if symbol.kind in ("class", "struct"):
-                                self.class_index[symbol.name].append(symbol)
-                            else:
-                                self.function_index[symbol.name].append(symbol)
 
-                            # Also update USR index
-                            if symbol.usr:
-                                self.usr_index[symbol.usr] = symbol
+                        # Apply class updates
+                        for name, symbols in class_updates.items():
+                            self.class_index[name].extend(symbols)
 
-                            # Restore call graph relationships
-                            if symbol.calls:
-                                for called_usr in symbol.calls:
-                                    self.call_graph_analyzer.add_call(symbol.usr, called_usr)
-                            if symbol.called_by:
-                                for caller_usr in symbol.called_by:
-                                    self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+                        # Apply function updates
+                        for name, symbols in function_updates.items():
+                            self.function_index[name].extend(symbols)
+
+                        # Apply USR updates
+                        self.usr_index.update(usr_updates)
+
+                        # Restore call graph relationships
+                        for caller_usr, called_usr in call_graph_updates:
+                            self.call_graph_analyzer.add_call(caller_usr, called_usr)
+
                         self.file_hashes[file_path] = current_hash
+
                     return (True, True)  # Successfully loaded from cache
 
         # Determine retry count for this attempt
@@ -1001,8 +1063,10 @@ class CppAnalyzer:
                 formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
                 diagnostics.debug(f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}")
 
-            # Clear old entries for this file
-            with self.index_lock:
+            # Clear old entries for this file before re-parsing
+            # This must be atomic to ensure index consistency
+            # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
+            with self._get_lock():
                 if file_path in self.file_index:
                     # Remove old entries from class and function indexes
                     for info in self.file_index[file_path]:
@@ -1014,9 +1078,9 @@ class CppAnalyzer:
                             self.function_index[info.name] = [
                                 i for i in self.function_index[info.name] if i.file != file_path
                             ]
-                    
+
                     self.file_index[file_path].clear()
-            
+
             # Collect symbols for this file
             collected_symbols = []
 
@@ -1033,23 +1097,27 @@ class CppAnalyzer:
                     f"({header_count} headers extracted, {skipped_count} headers skipped)"
                 )
 
-            # Get the symbols we just added for this file
-            with self.index_lock:
+            # Get the symbols we just added for this file (quick copy under lock)
+            # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
+            with self._get_lock():
                 if file_path in self.file_index:
                     collected_symbols = self.file_index[file_path].copy()
-                    
-                    # Populate call graph info in symbols before caching
-                    for symbol in collected_symbols:
-                        if symbol.usr and symbol.kind in ("function", "method"):
-                            # Add calls list
-                            # Get calls from call graph analyzer
-                            calls = self.call_graph_analyzer.find_callees(symbol.usr)
-                            if calls:
-                                symbol.calls = list(calls)
-                            # Add called_by list  
-                            callers = self.call_graph_analyzer.find_callers(symbol.usr)
-                            if callers:
-                                symbol.called_by = list(callers)
+                else:
+                    collected_symbols = []
+
+            # Populate call graph info OUTSIDE the lock to minimize lock duration
+            # Call graph queries can be expensive for large codebases
+            for symbol in collected_symbols:
+                if symbol.usr and symbol.kind in ("function", "method"):
+                    # Add calls list
+                    # Get calls from call graph analyzer
+                    calls = self.call_graph_analyzer.find_callees(symbol.usr)
+                    if calls:
+                        symbol.calls = list(calls)
+                    # Add called_by list
+                    callers = self.call_graph_analyzer.find_callers(symbol.usr)
+                    if callers:
+                        symbol.called_by = list(callers)
             
             # Save to per-file cache (mark as successfully parsed)
             self._save_file_cache(
@@ -1058,7 +1126,8 @@ class CppAnalyzer:
             )
 
             # Update tracking
-            with self.index_lock:
+            # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
+            with self._get_lock():
                 self.translation_units[file_path] = tu
                 self.file_hashes[file_path] = current_hash
 
