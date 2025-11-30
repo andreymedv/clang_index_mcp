@@ -213,14 +213,14 @@ class TestCompileCommandsManager(unittest.TestCase):
         expected = str((self.project_root / "src" / "main.cpp").resolve())
         self.assertEqual(normalized, expected)
     
-    def test_parse_command_string(self):
-        """Test parsing of command strings into arguments with filtering."""
+    def test_filter_arguments(self):
+        """Test filtering of argument lists."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
 
-        # Test simple command - should strip compiler, -c, and source file
-        command = "clang++ -std=c++17 -Iinclude -c main.cpp"
-        args = manager._parse_command_string(command)
+        # Test simple arguments - should strip compiler, -c, and source file
+        arguments = ["clang++", "-std=c++17", "-Iinclude", "-c", "main.cpp"]
+        args = manager._filter_arguments(arguments)
 
         # Should keep compilation flags
         self.assertIn('-std=c++17', args)
@@ -231,17 +231,17 @@ class TestCompileCommandsManager(unittest.TestCase):
         self.assertNotIn('-c', args)
         self.assertNotIn('main.cpp', args)
     
-    def test_parse_command_string_with_quotes(self):
-        """Test parsing of command strings with quoted arguments."""
+    def test_filter_arguments_with_defines(self):
+        """Test filtering of arguments with preprocessor defines."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
 
-        # Test command with quotes - quotes should be removed by shell parsing
-        command = 'clang++ -std=c++17 -I"include/path" -D"DEFINE=value" -c main.cpp'
-        args = manager._parse_command_string(command)
+        # Test arguments with defines (already parsed, no quotes)
+        arguments = ['clang++', '-std=c++17', '-Iinclude/path', '-DDEFINE=value', '-c', 'main.cpp']
+        args = manager._filter_arguments(arguments)
 
         self.assertIn('-std=c++17', args)
-        # Quotes are removed by shlex.split() as per shell parsing rules
+        # Arguments are already parsed by CompilationDatabase
         self.assertIn('-Iinclude/path', args)
         self.assertIn('-DDEFINE=value', args)
 
@@ -250,26 +250,27 @@ class TestCompileCommandsManager(unittest.TestCase):
         self.assertNotIn('-c', args)
         self.assertNotIn('main.cpp', args)
     
-    def test_parse_command_string_invalid(self):
-        """Test parsing of invalid command strings."""
+    def test_filter_arguments_empty_list(self):
+        """Test filtering of empty argument list."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
 
-        # Test invalid command (unbalanced quotes)
-        command = 'clang++ -std=c++17 -I"include/path -c main.cpp'
-        args = manager._parse_command_string(command)
+        # Test empty arguments list
+        arguments = []
+        args = manager._filter_arguments(arguments)
 
-        # Should return empty list for invalid command
+        # Should return empty list
         self.assertEqual(len(args), 0)
 
-    def test_parse_command_string_strips_output_file(self):
+    def test_filter_arguments_strips_output_file(self):
         """Test that -o flag and output file are stripped."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
 
-        # Test command with -o flag
-        command = "/usr/bin/c++ -std=c++17 -DNDEBUG -I/path/include -o build/output.o -c src/main.cpp"
-        args = manager._parse_command_string(command)
+        # Test arguments with -o flag
+        arguments = ["/usr/bin/c++", "-std=c++17", "-DNDEBUG", "-I/path/include",
+                    "-o", "build/output.o", "-c", "src/main.cpp"]
+        args = manager._filter_arguments(arguments)
 
         # Should keep compilation flags
         self.assertIn('-std=c++17', args)
@@ -283,35 +284,35 @@ class TestCompileCommandsManager(unittest.TestCase):
         self.assertNotIn('-c', args)
         self.assertNotIn('src/main.cpp', args)
 
-    def test_parse_command_string_recognizes_compiler_paths(self):
+    def test_filter_arguments_recognizes_compiler_paths(self):
         """Test that various compiler paths are recognized and stripped."""
         config = {'compile_commands_enabled': True}
         manager = CompileCommandsManager(self.project_root, config)
 
         # Test different compiler paths
-        # Note: CMake typically generates forward slashes even on Windows
+        # Arguments are already parsed by CompilationDatabase
         test_cases = [
-            "/usr/bin/gcc -std=c11 -DTEST",
-            "/Library/Developer/CommandLineTools/usr/bin/cc -std=c++17 -DTEST",
-            '"C:\\Program Files\\LLVM\\bin\\clang++.exe" -std=c++17 -DTEST',  # Windows path with spaces (must be quoted)
-            "C:/LLVM/bin/clang++.exe -std=c++17 -DTEST",  # Windows path with forward slashes (CMake style)
-            "gcc -std=c11 -DTEST",
-            "g++ -std=c++17 -DTEST",
-            "clang -std=c11 -DTEST",
-            "clang++ -std=c++17 -DTEST",
+            (["/usr/bin/gcc", "-std=c11", "-DTEST"], "Unix gcc path"),
+            (["/Library/Developer/CommandLineTools/usr/bin/cc", "-std=c++17", "-DTEST"], "macOS cc path"),
+            (["C:\\Program Files\\LLVM\\bin\\clang++.exe", "-std=c++17", "-DTEST"], "Windows path with spaces"),
+            (["C:/LLVM/bin/clang++.exe", "-std=c++17", "-DTEST"], "Windows path forward slashes"),
+            (["gcc", "-std=c11", "-DTEST"], "gcc"),
+            (["g++", "-std=c++17", "-DTEST"], "g++"),
+            (["clang", "-std=c11", "-DTEST"], "clang"),
+            (["clang++", "-std=c++17", "-DTEST"], "clang++"),
         ]
 
-        for command in test_cases:
-            args = manager._parse_command_string(command)
+        for arguments, desc in test_cases:
+            args = manager._filter_arguments(arguments)
 
             # Should keep flags
-            self.assertIn('-DTEST', args, f"Failed for command: {command}")
+            self.assertIn('-DTEST', args, f"Failed for {desc}")
 
             # Should not start with compiler name or path
             if len(args) > 0:
                 first_arg = args[0]
                 self.assertTrue(first_arg.startswith('-'),
-                              f"First arg should be a flag, got: {first_arg} for command: {command}")
+                              f"First arg should be a flag, got: {first_arg} for {desc}")
 
     def test_get_compile_args_success(self):
         """Test successful retrieval of compile arguments."""
