@@ -308,7 +308,7 @@ class CompileCommandsManager:
         try:
             # Use CompilationDatabase API to load compile_commands.json
             # This is more efficient than manual JSON parsing
-            compdb = CompilationDatabase.fromDirectory(str(self.project_root))
+            compdb = CompilationDatabase.fromDirectory(str(Path(compile_commands_file).parent))
 
             parse_time = time.time() - start_time
             diagnostics.debug(f"CompilationDatabase loading completed in {parse_time:.2f}s")
@@ -331,7 +331,7 @@ class CompileCommandsManager:
             return True
 
         except Exception as e:
-            diagnostics.error(f"Error loading compile_commands.json: {e}")
+            diagnostics.error(f"Error loading from {compile_commands_file}: {e}")
             return False
 
     def _parse_compile_commands_from_db(self, compdb: CompilationDatabase) -> None:
