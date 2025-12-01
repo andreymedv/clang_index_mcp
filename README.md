@@ -418,3 +418,22 @@ The server supports using `compile_commands.json` to provide accurate compilatio
    - Be explicit in prompts: Say "use the cpp-analyzer to..." when asking about C++ code
    - Add instructions to your project's `CLAUDE.md` file telling Claude to prefer the cpp-analyzer for C++ symbol searches
    - The cpp-analyzer is much faster than grep for finding classes, functions, and understanding code structure
+
+5. **Files fail to parse with TranslationUnitLoadError**
+   - Diagnose why a specific file fails to parse:
+     ```bash
+     python scripts/diagnose_parse_errors.py /path/to/project /path/to/file.cpp
+     ```
+   - Check if files are found in compile_commands.json:
+     ```bash
+     python scripts/test_compile_commands_lookup.py /path/to/project /path/to/file.cpp
+     ```
+   - Common causes:
+     - Path mismatch in compile_commands.json (e.g., generated in Docker with different username)
+     - Missing system headers or dependencies
+     - Incompatible compilation arguments
+     - File not included in compile_commands.json (falls back to hardcoded args)
+   - View all parse errors:
+     ```bash
+     python scripts/view_parse_errors.py /path/to/project
+     ```
