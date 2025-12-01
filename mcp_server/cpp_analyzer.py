@@ -38,7 +38,7 @@ except ImportError:
 
 try:
     import clang.cindex
-    from clang.cindex import Index, CursorKind, TranslationUnit, Config
+    from clang.cindex import Index, CursorKind, TranslationUnit, Config, TranslationUnitLoadError
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
@@ -1006,20 +1006,74 @@ class CppAnalyzer:
             # Create translation unit with detailed diagnostics
             # Note: We no longer skip function bodies to enable call graph analysis
             index = self._get_thread_index()
-            tu = index.parse(
-                file_path,
-                args=args,
-                options=TranslationUnit.PARSE_INCOMPLETE |
-                       TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-            )
 
+            # Try parsing with progressive fallback if initial attempt fails
+            tu = None
+            parse_options_attempts = [
+                # Attempt 1: Full detailed processing (best for analysis)
+                (TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
+                 "full detailed processing"),
+                # Attempt 2: Just incomplete (more compatible)
+                (TranslationUnit.PARSE_INCOMPLETE,
+                 "incomplete parsing"),
+                # Attempt 3: Minimal options (maximum compatibility)
+                (0,
+                 "minimal options"),
+            ]
+
+            last_error = None
+            for options, description in parse_options_attempts:
+                try:
+                    tu = index.parse(
+                        file_path,
+                        args=args,
+                        options=options
+                    )
+                    if tu:
+                        if description != "full detailed processing":
+                            diagnostics.debug(f"{file_path}: parsed with {description}")
+                        break
+                except TranslationUnitLoadError as e:
+                    last_error = e
+                    continue
 
             if not tu:
-                error_msg = "Failed to create translation unit (libclang returned None)"
-                diagnostics.error(f"Failed to parse {file_path}: {error_msg}")
+                # All parse attempts failed
+                if last_error:
+                    error_msg = f"TranslationUnitLoadError: {last_error}"
+                else:
+                    error_msg = "Failed to create translation unit (libclang returned None)"
+
+                # Provide helpful diagnostic information
+                diagnostics.error(f"Failed to parse {file_path}")
+                diagnostics.error(f"  Error: {error_msg}")
+                diagnostics.error(f"  Compilation args ({len(args)} total):")
+                # Log first 10 args to avoid overwhelming output
+                for i, arg in enumerate(args[:10]):
+                    diagnostics.error(f"    [{i}] {arg}")
+                if len(args) > 10:
+                    diagnostics.error(f"    ... and {len(args) - 10} more args")
+
+                # Check for common issues
+                hints = []
+                if any('-std=c++' in arg for arg in args):
+                    std_args = [arg for arg in args if '-std=c++' in arg]
+                    hints.append(f"C++ standard specified: {std_args}")
+                if not self.compile_commands_manager.clang_resource_dir:
+                    hints.append("Clang resource directory not detected - system headers may be missing")
+                if self.compile_commands_manager.is_file_supported(Path(file_path)):
+                    hints.append("Using args from compile_commands.json - check if they are libclang-compatible")
+                else:
+                    hints.append("Using fallback compilation args - compile_commands.json may be needed")
+
+                if hints:
+                    diagnostics.error("  Possible issues:")
+                    for hint in hints:
+                        diagnostics.error(f"    - {hint}")
 
                 # Log to centralized error log
-                parse_error = Exception(error_msg)
+                full_error_msg = f"{error_msg}\nArgs: {args}"
+                parse_error = Exception(full_error_msg)
                 self.cache_manager.log_parse_error(
                     file_path, parse_error, current_hash, compile_args_hash, retry_count
                 )
