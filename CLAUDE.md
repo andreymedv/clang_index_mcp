@@ -260,6 +260,25 @@ python scripts/cache_stats.py
 python scripts/diagnose_cache.py
 ```
 
+## Parse Error Diagnostics
+
+```bash
+# Diagnose why a specific file fails to parse
+python scripts/diagnose_parse_errors.py /path/to/project /path/to/file.cpp
+
+# Test if a file is found in compile_commands.json
+python scripts/test_compile_commands_lookup.py /path/to/project /path/to/file.cpp
+
+# View centralized parse error log
+python scripts/view_parse_errors.py /path/to/project
+```
+
+The `diagnose_parse_errors.py` script tests parsing with different libclang options and shows:
+- Compilation arguments being used
+- Which parse options work
+- Specific error messages from libclang
+- Recommendations for fixing issues
+
 ## Common Workflows
 
 ### Adding a New MCP Tool
@@ -275,14 +294,6 @@ python scripts/diagnose_cache.py
 3. Consider schema migration if changing SQLite schema (see mcp_server/schema_migrations.py)
 4. Run `make test` to verify no regressions
 5. Test with example project: `python -m mcp_server.cpp_mcp_server` + set examples/compile_commands_example/
-
-### Debugging Parse Errors
-```python
-# In cpp_analyzer.py, add libclang diagnostics:
-tu = index.parse(file_path, args=args)
-for diag in tu.diagnostics:
-    print(f"[{diag.severity}] {diag.spelling} at {diag.location}")
-```
 
 ### Cache Invalidation
 ```bash
@@ -340,12 +351,15 @@ mcp_server/
 └── migrations/                 # SQL schema migration files
 
 scripts/
-├── download_libclang.py        # Downloads libclang binaries
-├── test_installation.py        # Installation verification
-├── profile_analysis.py         # Performance profiling
-├── diagnose_gil.py             # GIL bottleneck detection
-├── cache_stats.py              # Cache statistics viewer
-└── diagnose_cache.py           # Cache health diagnostics
+├── download_libclang.py             # Downloads libclang binaries
+├── test_installation.py             # Installation verification
+├── profile_analysis.py              # Performance profiling
+├── diagnose_gil.py                  # GIL bottleneck detection
+├── cache_stats.py                   # Cache statistics viewer
+├── diagnose_cache.py                # Cache health diagnostics
+├── diagnose_parse_errors.py         # Parse error diagnostics (libclang options testing)
+├── test_compile_commands_lookup.py  # compile_commands.json lookup testing
+└── view_parse_errors.py             # View centralized parse error log
 
 examples/
 └── compile_commands_example/   # Example CMake project with compile_commands.json
