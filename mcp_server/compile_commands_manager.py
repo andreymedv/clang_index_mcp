@@ -43,9 +43,15 @@ except ImportError:
 class CompileCommandsManager:
     """Manages compilation commands from compile_commands.json files."""
 
-    def __init__(self, project_root: Path, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        project_root: Path,
+        config: Optional[Dict[str, Any]] = None,
+        cache_dir: Optional[Path] = None
+    ):
         self.project_root = project_root
         self.config = config or {}
+        self.cache_dir = cache_dir  # Optional cache directory from CacheManager
 
         # Configuration settings
         self.enabled = self.config.get('compile_commands_enabled', True)
@@ -85,11 +91,36 @@ class CompileCommandsManager:
             self._load_compile_commands()
 
     def _get_compile_commands_cache_path(self) -> Path:
-        """Get the cache file path for parsed compile commands."""
-        # Cache in .clang_index directory
-        cache_dir = self.project_root / ".clang_index"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        return cache_dir / "compile_commands.cache"
+        """Get the cache file path for parsed compile commands.
+
+        If cache_dir is provided (from CacheManager), stores cache in:
+            <cache_dir>/compile_commands/<hash>.cache
+
+        Where <hash> is derived from the absolute path of compile_commands.json
+        to support multiple build configurations.
+
+        If cache_dir is not provided, falls back to legacy location:
+            <project_root>/.clang_index/compile_commands.cache
+        """
+        if self.cache_dir:
+            # New location: .mcp_cache/<project>/compile_commands/<hash>.cache
+            compile_commands_file = self.project_root / self.compile_commands_path
+
+            # Hash the absolute path of compile_commands.json for uniqueness
+            cc_path_hash = hashlib.md5(
+                str(compile_commands_file.absolute()).encode()
+            ).hexdigest()[:16]
+
+            # Create compile_commands subdirectory
+            cc_cache_dir = self.cache_dir / "compile_commands"
+            cc_cache_dir.mkdir(parents=True, exist_ok=True)
+
+            return cc_cache_dir / f"{cc_path_hash}.cache"
+        else:
+            # Legacy location: <project_root>/.clang_index/compile_commands.cache
+            cache_dir = self.project_root / ".clang_index"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            return cache_dir / "compile_commands.cache"
 
     def _get_file_hash(self, file_path: Path) -> str:
         """Get MD5 hash of a file for cache validation."""
