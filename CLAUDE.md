@@ -171,7 +171,7 @@ make ie                         # install-editable
 
 **5. Compile Commands Integration**
 - Parses compile_commands.json for accurate per-file compilation arguments
-- Binary caching (.clang_index/compile_commands.cache) for 10-100x faster startup
+- Binary caching (.mcp_cache/<project>/compile_commands/<hash>.cache) for 10-100x faster startup
 - Optional orjson for 3-5x faster JSON parsing (pip install .[performance])
 - Fallback to hardcoded args if compile_commands.json not found
 - See mcp_server/compile_commands_manager.py
@@ -386,6 +386,6 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 5. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-6. **SQLite cache:** Lives in `.clang_index/` (multi-config support). Safe to delete for fresh indexing. WAL mode enables concurrent access.
+6. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access.
 
 7. **Test before committing:** Always run `make test` and `make check` before creating PRs.

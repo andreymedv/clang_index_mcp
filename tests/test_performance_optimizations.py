@@ -214,13 +214,23 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
     """Test binary caching for compile_commands.json"""
 
     def test_cache_path_creation(self):
-        """Cache path should be in .clang_index directory"""
+        """Cache path should be in compile_commands subdirectory"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            manager = CompileCommandsManager(Path(tmpdir), {})
+            # Test with cache_dir (new behavior)
+            cache_dir = Path(tmpdir) / ".mcp_cache" / "test_project"
+            manager = CompileCommandsManager(Path(tmpdir), {}, cache_dir=cache_dir)
             cache_path = manager._get_compile_commands_cache_path()
 
-            self.assertTrue(str(cache_path).endswith('compile_commands.cache'))
-            self.assertIn('.clang_index', str(cache_path))
+            self.assertTrue(str(cache_path).endswith('.cache'))
+            self.assertIn('compile_commands', str(cache_path))
+            self.assertIn('.mcp_cache', str(cache_path))
+
+            # Test without cache_dir (legacy fallback)
+            manager_legacy = CompileCommandsManager(Path(tmpdir), {})
+            cache_path_legacy = manager_legacy._get_compile_commands_cache_path()
+
+            self.assertTrue(str(cache_path_legacy).endswith('compile_commands.cache'))
+            self.assertIn('.clang_index', str(cache_path_legacy))
 
     def test_file_hash_calculation(self):
         """File hash should be calculated correctly"""
