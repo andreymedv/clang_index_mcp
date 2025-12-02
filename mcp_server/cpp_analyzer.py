@@ -182,9 +182,13 @@ class CppAnalyzer:
         self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
         self.cache_loaded = False  # Track whether cache was successfully loaded
 
-        # Initialize compile commands manager with config
+        # Initialize compile commands manager with config and cache directory
         compile_commands_config = self.config.get_compile_commands_config()
-        self.compile_commands_manager = CompileCommandsManager(self.project_root, compile_commands_config)
+        self.compile_commands_manager = CompileCommandsManager(
+            self.project_root,
+            compile_commands_config,
+            cache_dir=self.cache_manager.cache_dir
+        )
 
         # Initialize header processing tracker for first-win strategy
         self.header_tracker = HeaderProcessingTracker()

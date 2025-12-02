@@ -200,7 +200,7 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 ```
 
 **Notes**:
-- `cache_expiry_seconds`: This setting is deprecated. The new binary cache (`.clang_index/compile_commands.cache`) is hash-validated and doesn't use time-based expiry.
+- `cache_expiry_seconds`: This setting is deprecated. The new binary cache (`.mcp_cache/<project>/compile_commands/<hash>.cache`) is hash-validated and doesn't use time-based expiry.
 - `supported_extensions`: Only files with these extensions will be analyzed from `compile_commands.json`
 - `exclude_patterns`: Additional glob patterns to exclude files found in `compile_commands.json`
 

@@ -41,7 +41,7 @@ If ProcessPoolExecutor shows **1.5x+ speedup**, Python's GIL is limiting paralle
    ```
 
 2. **Use binary cache** (10-100x speedup on subsequent starts):
-   - Cache is automatic, stored in `.clang_index/compile_commands.cache`
+   - Cache is automatic, stored in `.mcp_cache/<project>/compile_commands/<hash>.cache`
    - First load: parses JSON, saves cache
    - Subsequent loads: loads from cache (~0.1s instead of seconds)
    - Cache auto-invalidates when `compile_commands.json` changes
