@@ -887,6 +887,21 @@ class CppAnalyzer:
                                    was_cached indicates if it was loaded from cache
         """
         file_path = os.path.abspath(file_path)
+
+        # Check if source file exists before attempting to parse
+        # This prevents expensive libclang parse attempts on non-existent files
+        if not Path(file_path).exists():
+            error_msg = f"Source file does not exist: {file_path}"
+            diagnostics.error(error_msg)
+
+            # Log to centralized error log for diagnostics
+            file_not_found_error = FileNotFoundError(error_msg)
+            self.cache_manager.log_parse_error(
+                file_path, file_not_found_error, "", None, 0
+            )
+
+            return (False, False)
+
         current_hash = self._get_file_hash(file_path)
 
         # Get compilation arguments to compute hash (needed for cache validation)
