@@ -113,7 +113,7 @@ class CppAnalyzerConfig:
                 # Configure diagnostics system from config
                 diagnostics.configure_from_config(config)
 
-                diagnostics.info(f"Configuration loaded from {config_source}: {config_file}")
+                diagnostics.debug(f"Configuration loaded from {config_source}: {config_file}")
                 return config
             except Exception as e:
                 diagnostics.error(f"Error loading config from {config_file}: {e}")
@@ -122,10 +122,8 @@ class CppAnalyzerConfig:
             # Configure diagnostics with defaults
             diagnostics.configure_from_config(config)
 
-            diagnostics.info("No config file found, using defaults")
-            diagnostics.info(f"You can create a config file at:")
-            diagnostics.info(f"  - Project: {self.project_root / self.CONFIG_FILENAME}")
-            diagnostics.info(f"  - Or set:  CPP_ANALYZER_CONFIG=<path>")
+            diagnostics.debug("No config file found, using defaults")
+            diagnostics.debug(f"You can create a config file at: {self.project_root / self.CONFIG_FILENAME}")
 
         return config
     
