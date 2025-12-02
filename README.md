@@ -136,7 +136,7 @@ The analyzer includes several automatic optimizations:
    - Can be disabled via `CPP_ANALYZER_USE_THREADS=true` environment variable
 
 2. **Binary Caching**
-   - Parsed `compile_commands.json` cached in `.clang_index/compile_commands.cache`
+   - Parsed `compile_commands.json` cached in `.mcp_cache/<project>/compile_commands/<hash>.cache`
    - 10-100x faster subsequent startups for large projects
    - Automatically invalidated when `compile_commands.json` changes
 
