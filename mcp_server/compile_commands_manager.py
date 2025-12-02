@@ -168,7 +168,7 @@ class CompileCommandsManager:
             self.file_to_command_map = cache_data.get('file_to_command_map', {})
             self.last_modified = compile_commands_file.stat().st_mtime
 
-            diagnostics.info(f"Loaded {len(self.compile_commands)} compile commands from cache (fast path)")
+            diagnostics.debug(f"Loaded {len(self.compile_commands)} compile commands from cache (fast path)")
             return True
 
         except Exception as e:
@@ -328,7 +328,7 @@ class CompileCommandsManager:
 
         # Try loading from cache first (fast path)
         if self._load_from_cache(compile_commands_file):
-            diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
+            diagnostics.debug(f"Compile commands will be used for accurate C++ parsing")
             return True
 
         # Cache miss - parse using CompilationDatabase API
@@ -358,7 +358,7 @@ class CompileCommandsManager:
 
             total_time = time.time() - start_time
             diagnostics.info(f"Successfully loaded {len(self.compile_commands)} compile commands in {total_time:.2f}s")
-            diagnostics.info(f"Compile commands will be used for accurate C++ parsing")
+            diagnostics.debug(f"Compile commands will be used for accurate C++ parsing")
             return True
 
         except Exception as e:
@@ -830,7 +830,7 @@ class CompileCommandsManager:
         # Reload the commands
         success = self._load_compile_commands()
         if success:
-            diagnostics.info("Refreshed compile_commands.json cache")
+            diagnostics.debug("Refreshed compile_commands.json cache")
 
         return success
 

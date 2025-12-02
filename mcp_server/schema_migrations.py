@@ -137,7 +137,7 @@ class SchemaMigration:
             )
 
         migration_file = migration_files[0]
-        diagnostics.info(f"Applying migration: {migration_file.name}")
+        diagnostics.debug(f"Applying migration: {migration_file.name}")
 
         try:
             # Read migration SQL
@@ -179,7 +179,7 @@ class SchemaMigration:
 
             # Check if we actually inserted it
             if cursor.rowcount > 0:
-                diagnostics.info(f"[OK] Migration {version} applied successfully")
+                diagnostics.debug(f"[OK] Migration {version} applied successfully")
             else:
                 diagnostics.debug(f"Migration {version} was applied by another thread")
 

@@ -209,19 +209,19 @@ class CppAnalyzer:
         # Restore or reset header tracking based on compile_commands.json version
         self._restore_or_reset_header_tracking()
 
-        diagnostics.info(f"CppAnalyzer initialized for project: {self.project_root}")
-        diagnostics.info(f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.use_processes else 'ThreadPool'} with {self.max_workers} workers")
+        diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
+        diagnostics.debug(f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.use_processes else 'ThreadPool'} with {self.max_workers} workers")
 
         # Print compile commands configuration status
         if self.compile_commands_manager.enabled:
             cc_path = self.project_root / compile_commands_config['compile_commands_path']
             if cc_path.exists():
                 # This message will be followed by actual load message from CompileCommandsManager
-                diagnostics.info(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}")
+                diagnostics.debug(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}")
             else:
-                diagnostics.info(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args")
+                diagnostics.debug(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args")
         else:
-            diagnostics.info("Compile commands disabled in configuration")
+            diagnostics.debug("Compile commands disabled in configuration")
 
     def close(self):
         """
@@ -342,10 +342,10 @@ class CppAnalyzer:
                 # Hash matches - restore header tracking state
                 processed_headers = cache_data.get("processed_headers", {})
                 self.header_tracker.restore_processed_headers(processed_headers)
-                diagnostics.info(f"Restored {len(processed_headers)} processed headers from cache")
+                diagnostics.debug(f"Restored {len(processed_headers)} processed headers from cache")
             else:
                 # Hash mismatch - compile_commands.json changed
-                diagnostics.info("compile_commands.json changed - resetting header tracking")
+                diagnostics.debug("compile_commands.json changed - resetting header tracking")
                 self.header_tracker.clear_all()
 
         except Exception as e:
@@ -625,7 +625,7 @@ class CppAnalyzer:
         if self.compile_commands_manager.enabled:
             compile_commands_files = self.compile_commands_manager.get_all_files()
             if compile_commands_files:
-                diagnostics.info(f"Using {len(compile_commands_files)} files from compile_commands.json")
+                diagnostics.debug(f"Using {len(compile_commands_files)} files from compile_commands.json")
                 return compile_commands_files
 
         # Fall back to scanning all C++ files
@@ -929,7 +929,7 @@ class CppAnalyzer:
                         return (False, True)  # Failed, but from cache (skip retry)
                     else:
                         # Retry the file
-                        diagnostics.info(
+                        diagnostics.debug(
                             f"Retrying {file_path} (attempt {retry_count + 1}/{self.max_parse_retries + 1}, "
                             f"last error: {cache_data['error_message']})"
                         )
@@ -1236,19 +1236,19 @@ class CppAnalyzer:
         if not force and self._load_cache():
             refreshed = self.refresh_if_needed()
             if refreshed > 0:
-                diagnostics.info(f"Using cached index (updated {refreshed} files)")
+                diagnostics.debug(f"Using cached index (updated {refreshed} files)")
             else:
-                diagnostics.info("Using cached index")
+                diagnostics.debug("Using cached index")
             return self.indexed_file_count
 
-        diagnostics.info(f"Finding C++ files (include_dependencies={include_dependencies})...")
+        diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
         files = self._find_cpp_files(include_dependencies=include_dependencies)
 
         if not files:
             diagnostics.warning("No C++ files found in project")
             return 0
 
-        diagnostics.info(f"Found {len(files)} C++ files to index")
+        diagnostics.debug(f"Found {len(files)} C++ files to index")
         
         # Show detailed progress
         indexed_count = 0
@@ -1601,7 +1601,7 @@ class CppAnalyzer:
         if self.compile_commands_manager.enabled:
             compile_commands_refreshed = self.compile_commands_manager.refresh_if_needed()
             if compile_commands_refreshed:
-                diagnostics.info("Compile commands refreshed")
+                diagnostics.debug("Compile commands refreshed")
 
         # Get currently existing files
         current_files = set(self._find_cpp_files(self.include_dependencies))
