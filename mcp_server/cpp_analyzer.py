@@ -348,8 +348,19 @@ class CppAnalyzer:
                 diagnostics.debug("compile_commands.json changed - resetting header tracking")
                 self.header_tracker.clear_all()
 
+        except (json.JSONDecodeError, IOError, OSError) as e:
+            # JSON corruption or file access errors - this can happen with concurrent writes
+            # in multi-process mode. Simply start fresh.
+            diagnostics.debug(f"Header tracking cache corrupted or inaccessible, starting fresh: {e}")
+            # Remove corrupted cache file
+            try:
+                tracker_cache_path.unlink(missing_ok=True)
+            except:
+                pass
+            # Start fresh
+            self.header_tracker.clear_all()
         except Exception as e:
-            diagnostics.warning(f"Failed to restore header tracking from cache: {e}")
+            diagnostics.warning(f"Unexpected error restoring header tracking from cache: {e}")
             # On error, start fresh
             self.header_tracker.clear_all()
 
@@ -862,8 +873,8 @@ class CppAnalyzer:
             except Exception as e:
                 diagnostics.warning(f"Error marking header {header} as completed: {e}")
 
-        # Save header tracker state to disk (implements REQ-10.5.4)
-        self._save_header_tracking()
+        # Note: Header tracking is saved once at the end of indexing to avoid
+        # race conditions in multi-process mode. See index_project() and refresh_if_needed()
 
         # Extract and store include dependencies for incremental analysis
         if self.dependency_graph is not None:
@@ -1431,10 +1442,11 @@ class CppAnalyzer:
         
         self.indexed_file_count = indexed_count
         self.last_index_time = time.time() - start_time
-        
+
         with self.index_lock:
-            class_count = len(self.class_index)
-            function_count = len(self.function_index)
+            # Count total symbols (not just unique names)
+            class_count = sum(len(infos) for infos in self.class_index.values())
+            function_count = sum(len(infos) for infos in self.function_index.values())
 
 
         # Print newline after progress to move to next line (only if using terminal progress)
@@ -1442,15 +1454,18 @@ class CppAnalyzer:
             print("", file=sys.stderr)
         diagnostics.info(f"Indexing complete in {self.last_index_time:.2f}s")
         diagnostics.info(f"Indexed {indexed_count}/{len(files)} files successfully ({cache_hits} from cache, {failed_count} failed)")
-        diagnostics.info(f"Found {class_count} class names, {function_count} function names")
+        diagnostics.info(f"Found {class_count} classes, {function_count} functions")
 
         if failed_count > 0:
             diagnostics.info(f"Note: {failed_count} files failed to parse - this is normal for complex projects")
-        
+
         # Save overall cache and progress summary
         self._save_cache()
         self._save_progress_summary(indexed_count, len(files), cache_hits, failed_count)
-        
+
+        # Save header tracking state (once at end to avoid race conditions in multi-process mode)
+        self._save_header_tracking()
+
         return indexed_count
     
     def _save_cache(self):
@@ -1553,14 +1568,18 @@ class CppAnalyzer:
     def _save_progress_summary(self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0):
         """Save a summary of indexing progress"""
         status = "complete" if indexed_count + failed_count == total_files else "interrupted"
+        # Count total symbols (not just unique names)
+        class_count = sum(len(infos) for infos in self.class_index.values())
+        function_count = sum(len(infos) for infos in self.function_index.values())
+
         self.cache_manager.save_progress(
             total_files,
             indexed_count,
             failed_count,
             cache_hits,
             self.last_index_time,
-            len(self.class_index),
-            len(self.function_index),
+            class_count,
+            function_count,
             status
         )
     
@@ -1583,9 +1602,13 @@ class CppAnalyzer:
     def get_stats(self) -> Dict[str, int]:
         """Get indexer statistics"""
         with self.index_lock:
+            # Count total symbols (not just unique names)
+            class_count = sum(len(infos) for infos in self.class_index.values())
+            function_count = sum(len(infos) for infos in self.function_index.values())
+
             stats = {
-                "class_count": len(self.class_index),
-                "function_count": len(self.function_index),
+                "class_count": class_count,
+                "function_count": function_count,
                 "file_count": self.indexed_file_count
             }
             
@@ -1657,6 +1680,8 @@ class CppAnalyzer:
         
         if refreshed > 0 or deleted > 0:
             self._save_cache()
+            # Save header tracking state after refresh
+            self._save_header_tracking()
             if deleted > 0:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
 
