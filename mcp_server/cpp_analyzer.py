@@ -1107,7 +1107,11 @@ class CppAnalyzer:
             # Extract and check libclang diagnostics for errors
             error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
 
-            # If there are fatal errors, consider this a parse failure
+            # Track if there were errors (for logging and cache metadata)
+            has_errors = bool(error_diagnostics)
+            cache_error_msg = None
+
+            # Log errors but continue processing (libclang provides usable partial AST)
             if error_diagnostics:
                 # Format error messages from libclang diagnostics
                 formatted_errors = self._format_diagnostics(error_diagnostics, max_count=5)
@@ -1122,14 +1126,9 @@ class CppAnalyzer:
                     file_path, parse_error, current_hash, compile_args_hash, retry_count
                 )
 
-                # Save failure to cache
-                self._save_file_cache(
-                    file_path, [], current_hash, compile_args_hash,
-                    success=False, error_message=cache_error_msg, retry_count=retry_count
-                )
-
-                diagnostics.debug(f"Failed to parse {file_path}: {cache_error_msg}")
-                return (False, False)
+                # Log as warning but continue processing
+                # libclang provides a usable partial AST even with errors
+                diagnostics.warning(f"{file_path}: Continuing despite {len(error_diagnostics)} error(s):\n{cache_error_msg}")
 
             # Log warnings at debug level but continue processing
             if warning_diagnostics:
@@ -1192,10 +1191,12 @@ class CppAnalyzer:
                     if callers:
                         symbol.called_by = list(callers)
             
-            # Save to per-file cache (mark as successfully parsed)
+            # Save to per-file cache (mark as successfully parsed, even if there were errors)
+            # Note: success=True means we got a usable TU and extracted symbols
+            # error_message will be set if there were parsing errors (partial parse)
             self._save_file_cache(
                 file_path, collected_symbols, current_hash, compile_args_hash,
-                success=True, error_message=None, retry_count=0
+                success=True, error_message=cache_error_msg, retry_count=0
             )
 
             # Update tracking
