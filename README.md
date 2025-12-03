@@ -32,6 +32,7 @@ Context-efficient C++ code analysis:
 - **Automatic Header Analysis**: When using `compile_commands.json`, project headers are automatically analyzed when included by source files
 - **Smart Deduplication**: Headers included by multiple source files are processed only once for optimal performance
 - **Incremental Analysis**: Detects changes and re-analyzes only affected files for fast refreshes (30-300x faster than full re-analysis)
+- **Error Recovery**: Leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors, providing partial results instead of complete failure
 
 ## Transport Protocols
 
@@ -419,8 +420,10 @@ The server supports using `compile_commands.json` to provide accurate compilatio
    - Add instructions to your project's `CLAUDE.md` file telling Claude to prefer the cpp-analyzer for C++ symbol searches
    - The cpp-analyzer is much faster than grep for finding classes, functions, and understanding code structure
 
-5. **Files fail to parse with TranslationUnitLoadError**
-   - Diagnose why a specific file fails to parse:
+5. **Parse warnings vs. fatal errors**
+   - **Note**: The analyzer now continues processing files with non-fatal parsing errors (syntax/semantic errors), extracting partial symbols. Only true fatal errors (TranslationUnitLoadError) cause file rejection.
+   - If you see warnings like "Continuing despite N error(s)", this is expected behavior - the analyzer extracts what it can from the partial AST.
+   - Diagnose why a specific file fails fatally:
      ```bash
      python scripts/diagnose_parse_errors.py /path/to/project /path/to/file.cpp
      ```
@@ -428,12 +431,11 @@ The server supports using `compile_commands.json` to provide accurate compilatio
      ```bash
      python scripts/test_compile_commands_lookup.py /path/to/project /path/to/file.cpp
      ```
-   - Common causes:
+   - Common causes of **fatal** errors:
      - Path mismatch in compile_commands.json (e.g., generated in Docker with different username)
-     - Missing system headers or dependencies
-     - Incompatible compilation arguments
-     - File not included in compile_commands.json (falls back to hardcoded args)
-   - View all parse errors:
+     - Missing source file
+     - Severely malformed file that prevents TU creation
+   - View all parse errors (including warnings):
      ```bash
      python scripts/view_parse_errors.py /path/to/project
      ```

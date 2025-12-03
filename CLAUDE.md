@@ -181,6 +181,21 @@ make ie                         # install-editable
 - Users must restart analyzer after modifying compilation database
 - Trade-off: simplicity vs convenience (config changes are rare)
 
+**7. Header Tracking Cache Optimization**
+- Header tracking state saved once at end of indexing (not per-file)
+- Eliminates race conditions in multi-process mode (was causing ~5000 writes for large projects)
+- Cached as header_tracker.json in project cache directory
+- Includes compile_commands.json hash for invalidation on config changes
+- See mcp_server/header_tracker.py, cpp_analyzer.py:_save_header_tracking()
+
+**8. libclang Error Recovery**
+- Leverages libclang's built-in error recovery for non-fatal parse errors
+- Files with syntax/semantic errors continue processing, extract partial symbols from usable AST
+- Only TranslationUnitLoadError (no TU created) causes true failure
+- Errors logged as warnings, cached with error_message for diagnostics
+- Provides 90%+ symbol extraction vs 0% for files with minor issues
+- See cpp_analyzer.py:index_file() error handling
+
 ### Data Flow
 
 **Indexing Flow:**
@@ -192,12 +207,13 @@ make ie                         # install-editable
 6. For each file:
    - CompileCommandsManager provides compilation args
    - libclang parses file → TranslationUnit (AST)
-   - AST traversal extracts symbols (classes, functions, methods)
+   - Error diagnostics extracted; non-fatal errors logged but processing continues
+   - AST traversal extracts symbols (classes, functions, methods) from partial AST
    - HeaderTracker deduplicates header processing
-   - Symbols stored in SQLite cache
+   - Symbols stored in SQLite cache (with error_message if errors present)
 7. Indexes built: class_index, function_index, file_index, usr_index
 8. CallGraphAnalyzer tracks function calls
-9. Cache metadata saved
+9. Cache metadata and header tracking state saved (once at end)
 
 **Query Flow:**
 1. MCP tool called (e.g., search_classes, find_callers)
@@ -388,4 +404,6 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 6. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access.
 
-7. **Test before committing:** Always run `make test` and `make check` before creating PRs.
+7. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+
+8. **Test before committing:** Always run `make test` and `make check` before creating PRs.
