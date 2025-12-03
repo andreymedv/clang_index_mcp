@@ -784,10 +784,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }
             
             # Add analyzer stats from enhanced Python analyzer
+            # Count total symbols, not just unique names
+            total_classes = sum(len(infos) for infos in analyzer.class_index.values())
+            total_functions = sum(len(infos) for infos in analyzer.function_index.values())
+
             status.update({
                 "parsed_files": len(analyzer.translation_units),
-                "indexed_classes": len(analyzer.class_index),
-                "indexed_functions": len(analyzer.function_index),
+                "indexed_classes": total_classes,
+                "indexed_functions": total_functions,
                 "project_files": len(analyzer.translation_units)  # Approximate count
             })
             return [TextContent(type="text", text=json.dumps(status, indent=2))]
