@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from .symbol_info import SymbolInfo
-from .schema_migrations import SchemaMigration
 
 # Handle both package and script imports
 try:
@@ -24,7 +23,7 @@ class SqliteCacheBackend:
     Provides high-performance symbol caching with:
     - FTS5 full-text search for fast name lookups
     - WAL mode for concurrent read access
-    - Automatic schema migrations
+    - Automatic database recreation on schema changes (development mode)
     - Transaction-based bulk operations
     - Platform-specific optimizations
 
@@ -33,9 +32,13 @@ class SqliteCacheBackend:
     - Name search (FTS5): < 5ms
     - Bulk insert: > 5000 symbols/sec
     - Memory usage: < 50MB
+
+    Note: During development, the database is automatically recreated when the
+    schema version changes. This simplifies development by avoiding migration
+    complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = 1
+    CURRENT_SCHEMA_VERSION = "4.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path):
         """
@@ -119,12 +122,57 @@ class SqliteCacheBackend:
         # Database should be on local filesystem
 
     def _init_database(self):
-        """Initialize database schema and configuration with retry logic."""
+        """Initialize database schema and configuration with retry logic.
+
+        During development, we simply recreate the database if the schema version
+        doesn't match. This avoids the complexity of maintaining migrations.
+        """
         max_retries = 10
         base_delay = 0.1  # 100ms initial delay
 
         for attempt in range(max_retries):
             try:
+                # Check if database exists and has the correct version
+                needs_recreate = False
+
+                if self.db_path.exists():
+                    try:
+                        # Try to get the current version
+                        cursor = self.conn.execute(
+                            "SELECT value FROM cache_metadata WHERE key = 'version'"
+                        )
+                        result = cursor.fetchone()
+                        if result:
+                            import json
+                            current_version = json.loads(result[0])
+                            if current_version != self.CURRENT_SCHEMA_VERSION:
+                                diagnostics.info(f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}")
+                                diagnostics.info("Recreating database with current schema")
+                                needs_recreate = True
+                        else:
+                            diagnostics.info("No version metadata found, recreating database")
+                            needs_recreate = True
+                    except (sqlite3.OperationalError, Exception):
+                        # Table doesn't exist or other error - recreate
+                        diagnostics.info("Invalid or corrupted database, recreating")
+                        needs_recreate = True
+
+                if needs_recreate:
+                    # Close connection and delete old database
+                    self._close()
+                    if self.db_path.exists():
+                        self.db_path.unlink()
+                        diagnostics.info(f"Deleted old database: {self.db_path}")
+
+                    # Also delete WAL and SHM files if they exist
+                    for ext in ['-wal', '-shm']:
+                        wal_file = Path(str(self.db_path) + ext)
+                        if wal_file.exists():
+                            wal_file.unlink()
+
+                    # Reconnect to create fresh database
+                    self._connect()
+
                 # Execute schema file
                 schema_path = Path(__file__).parent / "schema.sql"
 
@@ -138,21 +186,7 @@ class SqliteCacheBackend:
                 self.conn.executescript(schema_sql)
                 self.conn.commit()
 
-                # Check and apply schema migrations
-                migration = SchemaMigration(self.conn)
-
-                # Verify version compatibility
-                migration.check_version_compatibility()
-
-                # Apply pending migrations if needed
-                if migration.needs_migration():
-                    diagnostics.info("Database schema migration required")
-                    migration.migrate()
-                else:
-                    current_version = migration.get_current_version()
-                    diagnostics.debug(f"Database schema up-to-date (version {current_version})")
-
-                diagnostics.debug("SQLite database initialized successfully")
+                diagnostics.debug(f"SQLite database initialized successfully (schema v{self.CURRENT_SCHEMA_VERSION})")
                 return  # Success, exit the retry loop
 
             except sqlite3.OperationalError as e:
