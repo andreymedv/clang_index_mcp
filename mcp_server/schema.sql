@@ -1,5 +1,5 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 3.0
+-- Version: 4.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
 
 -- Enable optimizations
@@ -84,7 +84,10 @@ CREATE TABLE IF NOT EXISTS file_metadata (
     file_hash TEXT NOT NULL,           -- MD5 hash of file contents
     compile_args_hash TEXT,            -- Hash of compilation arguments
     indexed_at REAL NOT NULL,          -- When file was last indexed
-    symbol_count INTEGER DEFAULT 0     -- Number of symbols in file
+    symbol_count INTEGER DEFAULT 0,    -- Number of symbols in file
+    success BOOLEAN NOT NULL DEFAULT 1,-- Whether parsing succeeded
+    error_message TEXT DEFAULT NULL,   -- Error message if parsing failed
+    retry_count INTEGER NOT NULL DEFAULT 0  -- Number of retry attempts
 );
 
 CREATE INDEX IF NOT EXISTS idx_file_indexed ON file_metadata(indexed_at);
@@ -98,7 +101,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"3.0"', julianday('now')),
+    ('version', '"4.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
