@@ -441,7 +441,10 @@ class SqliteCacheBackend:
 
     def update_file_metadata(self, file_path: str, file_hash: str,
                             compile_args_hash: Optional[str] = None,
-                            symbol_count: int = 0) -> bool:
+                            symbol_count: int = 0,
+                            success: bool = True,
+                            error_message: Optional[str] = None,
+                            retry_count: int = 0) -> bool:
         """
         Update or insert file metadata.
 
@@ -450,6 +453,9 @@ class SqliteCacheBackend:
             file_hash: MD5 hash of file contents
             compile_args_hash: Hash of compilation arguments
             symbol_count: Number of symbols in file
+            success: Whether parsing succeeded
+            error_message: Error message if parsing failed
+            retry_count: Number of retry attempts
 
         Returns:
             True if successful, False otherwise
@@ -461,10 +467,12 @@ class SqliteCacheBackend:
                 self.conn.execute(
                     """
                     INSERT OR REPLACE INTO file_metadata
-                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
-                    VALUES (?, ?, ?, ?, ?)
+                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count,
+                     success, error_message, retry_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (file_path, file_hash, compile_args_hash, time.time(), symbol_count)
+                    (file_path, file_hash, compile_args_hash, time.time(), symbol_count,
+                     success, error_message, retry_count)
                 )
 
             return True
@@ -493,13 +501,25 @@ class SqliteCacheBackend:
 
             row = cursor.fetchone()
             if row:
-                return {
+                # Handle databases that may not have the new columns yet (before migration)
+                result = {
                     'file_path': row['file_path'],
                     'file_hash': row['file_hash'],
                     'compile_args_hash': row['compile_args_hash'],
                     'indexed_at': row['indexed_at'],
                     'symbol_count': row['symbol_count']
                 }
+                # Add new columns if they exist
+                try:
+                    result['success'] = bool(row['success'])
+                    result['error_message'] = row['error_message']
+                    result['retry_count'] = row['retry_count']
+                except (KeyError, IndexError):
+                    # Columns don't exist yet (pre-migration database)
+                    result['success'] = True
+                    result['error_message'] = None
+                    result['retry_count'] = 0
+                return result
 
             return None
 
@@ -1503,8 +1523,11 @@ class SqliteCacheBackend:
             if symbols:
                 self.save_symbols_batch(symbols)
 
-            # Update file metadata
-            self.update_file_metadata(file_path, file_hash, compile_args_hash, len(symbols))
+            # Update file metadata with success/failure information
+            self.update_file_metadata(
+                file_path, file_hash, compile_args_hash, len(symbols),
+                success, error_message, retry_count
+            )
 
             return True
 
@@ -1544,9 +1567,9 @@ class SqliteCacheBackend:
 
             return {
                 'symbols': symbols,
-                'success': True,  # SQLite cache doesn't track failures
-                'error_message': None,
-                'retry_count': 0
+                'success': metadata.get('success', True),
+                'error_message': metadata.get('error_message'),
+                'retry_count': metadata.get('retry_count', 0)
             }
 
         except Exception as e:

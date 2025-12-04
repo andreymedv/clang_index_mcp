@@ -350,8 +350,27 @@ class CacheManager:
         Returns:
             Dict with error statistics
         """
-        summary = self.error_tracker.get_error_summary()
+        # Get error tracker summary for cache backend errors
+        tracker_summary = self.error_tracker.get_error_summary()
+
+        # Also include parse errors from the JSONL log
+        parse_errors = self.get_parse_errors()
+
+        # Count unique files and error types from parse errors
+        unique_files = set()
+        error_types = {}
+        for error in parse_errors:
+            unique_files.add(error['file_path'])
+            error_type = error.get('error_type', 'Unknown')
+            error_types[error_type] = error_types.get(error_type, 0) + 1
+
+        # Combine both sources
+        summary = tracker_summary.copy()
         summary['backend_type'] = 'sqlite'
+        summary['total_errors'] = tracker_summary['total_errors'] + len(parse_errors)
+        summary['unique_files'] = len(unique_files)
+        summary['error_types'] = error_types
+
         return summary
 
     def reset_error_tracking(self):
