@@ -28,7 +28,7 @@ class SchemaMigration:
             migration.migrate()
     """
 
-    CURRENT_VERSION = 2  # Updated for file_dependencies table
+    CURRENT_VERSION = 3  # Updated for file_metadata failure tracking
 
     def __init__(self, conn: sqlite3.Connection):
         """

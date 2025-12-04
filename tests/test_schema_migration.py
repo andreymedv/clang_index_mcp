@@ -48,7 +48,7 @@ class TestSchemaMigration(unittest.TestCase):
 
         # Verify migration applied
         self.assertFalse(migration.needs_migration())
-        self.assertEqual(migration.get_current_version(), 2)
+        self.assertEqual(migration.get_current_version(), 3)
 
         # Verify file_dependencies table exists
         cursor = conn.execute("""
@@ -99,13 +99,13 @@ class TestSchemaMigration(unittest.TestCase):
         # First migration
         migration = SchemaMigration(conn)
         migration.migrate()
-        self.assertEqual(migration.get_current_version(), 2)
+        self.assertEqual(migration.get_current_version(), 3)
 
         # Second migration (should be no-op)
         migration2 = SchemaMigration(conn)
         self.assertFalse(migration2.needs_migration())
         migration2.migrate()  # Should not raise error
-        self.assertEqual(migration2.get_current_version(), 2)
+        self.assertEqual(migration2.get_current_version(), 3)
 
         conn.close()
 
@@ -211,12 +211,12 @@ class TestSchemaMigration(unittest.TestCase):
         # Get history
         history = migration.get_migration_history()
 
-        # Should have 2 entries: version 1 (initial) and version 2 (new migration)
-        self.assertEqual(len(history), 2)
+        # Should have 3 entries: version 1 (initial), version 2 (file_dependencies), and version 3 (failure tracking)
+        self.assertEqual(len(history), 3)
 
         # Check versions
         versions = [h[0] for h in history]
-        self.assertEqual(versions, [1, 2])
+        self.assertEqual(versions, [1, 2, 3])
 
         # Check that migration 2 has description
         migration_2 = [h for h in history if h[0] == 2][0]
