@@ -2,18 +2,25 @@
 """
 Console test script for C++ MCP Server
 Allows testing MCP server functionality with a real codebase
+
+Interrupt Handling:
+- Press Ctrl-C ONCE during indexing for clean shutdown
+- Pressing Ctrl-C multiple times will forcefully terminate worker processes
+  and may show stack traces (this is expected for forceful termination)
 """
 
 import sys
 import os
 import json
-import asyncio
 from pathlib import Path
 
 # Add parent directory to path to import the server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-async def test_mcp_server(project_path: str):
+# Global analyzer reference for cleanup
+_analyzer = None
+
+def test_mcp_server(project_path: str):
     """Test the MCP server with a real codebase"""
 
     # Import the analyzer
@@ -29,7 +36,9 @@ async def test_mcp_server(project_path: str):
         print(f"Error: Directory '{project_path}' does not exist")
         return
 
+    global _analyzer
     analyzer = CppAnalyzer(project_path)
+    _analyzer = analyzer
     print("[OK] Analyzer created")
 
     # 2. Analyze - Index the project
@@ -142,8 +151,22 @@ def main():
 
     project_path = sys.argv[1]
 
-    # Run the test
-    asyncio.run(test_mcp_server(project_path))
+    try:
+        # Run the test
+        test_mcp_server(project_path)
+    except KeyboardInterrupt:
+        # Handle Ctrl-C gracefully
+        print("\n\nInterrupted by user (Ctrl-C)", file=sys.stderr)
+        print("Cleaning up...", file=sys.stderr)
+    finally:
+        # Ensure analyzer is closed
+        global _analyzer
+        if _analyzer is not None:
+            try:
+                _analyzer.close()
+                print("Analyzer closed successfully", file=sys.stderr)
+            except Exception as e:
+                print(f"Error closing analyzer: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
