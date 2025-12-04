@@ -11,6 +11,8 @@ import sys
 import re
 import time
 import threading
+import signal
+import atexit
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple, Callable
@@ -1301,7 +1303,10 @@ class CppAnalyzer:
         else:
             diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
 
-        with executor_class(max_workers=self.max_workers) as executor:
+        executor = None
+        try:
+            executor = executor_class(max_workers=self.max_workers)
+
             if self.use_processes:
                 # ProcessPoolExecutor: use worker function that returns symbols
                 future_to_file = {
@@ -1440,7 +1445,26 @@ class CppAnalyzer:
                             diagnostics.debug(f"Progress callback failed: {e}")
 
                     last_report_time = current_time
-        
+
+        except KeyboardInterrupt:
+            # Gracefully handle Ctrl-C: shutdown executor and clean up
+            diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
+            if executor is not None:
+                # Cancel all pending futures
+                for future in future_to_file:
+                    future.cancel()
+                # Shutdown executor and wait for running tasks to complete
+                diagnostics.info(f"Waiting for {self.max_workers} worker processes to finish current files...")
+                executor.shutdown(wait=True)
+                diagnostics.info("All workers stopped")
+            raise
+        finally:
+            # Always ensure executor is properly shut down
+            if executor is not None:
+                # This will be called even after normal completion or exception
+                # shutdown() is idempotent, so safe to call multiple times
+                executor.shutdown(wait=True)
+
         self.indexed_file_count = indexed_count
         self.last_index_time = time.time() - start_time
 
