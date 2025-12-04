@@ -1448,9 +1448,9 @@ class SqliteCacheBackend:
 
             for symbol in all_symbols:
                 if symbol.kind in ('class', 'struct', 'union', 'enum'):
-                    class_index[symbol.name].append(symbol)
+                    class_index[symbol.name].append(symbol.to_dict())
                 elif symbol.kind in ('function', 'method', 'constructor', 'destructor'):
-                    function_index[symbol.name].append(symbol)
+                    function_index[symbol.name].append(symbol.to_dict())
 
             # Load file hashes
             file_hashes = self.load_all_file_hashes()
