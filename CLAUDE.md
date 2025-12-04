@@ -311,14 +311,47 @@ The `diagnose_parse_errors.py` script tests parsing with different libclang opti
 4. Run `make test` to verify no regressions
 5. Test with example project: `python -m mcp_server.cpp_mcp_server` + set examples/compile_commands_example/
 
-### Cache Invalidation
+### Cache Invalidation and Corruption Recovery
+
 ```bash
-# Clear all cache
+# Check for corrupted databases
+python scripts/fix_corrupted_cache.py
+
+# Check and fix specific project cache
+python scripts/fix_corrupted_cache.py /path/to/project
+
+# Manually clear all cache
 rm -rf .mcp_cache/
 
-# Clear specific project cache
+# Manually clear specific project cache
 rm -rf .mcp_cache/<project_hash>_*
 ```
+
+**Database Corruption:**
+If you see "database disk image is malformed" errors, the SQLite cache is corrupted. This can happen if indexing was interrupted improperly (e.g., SIGKILL, power loss). Use the `fix_corrupted_cache.py` script to diagnose and repair.
+
+### Interrupt Handling (Ctrl-C)
+
+**Proper usage:**
+- Press Ctrl-C **ONCE** during indexing for clean shutdown
+- Wait 1-2 seconds for executor to cancel pending work
+- Pressing Ctrl-C multiple times causes forceful termination with stack traces (expected)
+
+**Verification:**
+```bash
+# Test interrupt handling
+python scripts/test_interrupt_cleanup.py /path/to/project
+# Press Ctrl-C during indexing, then check: ps aux | grep python
+
+# Should see NO orphaned worker processes
+```
+
+**For detailed information:**
+See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide on:
+- Expected behavior on interrupt
+- Common issues and solutions
+- Implementation details
+- Debugging tips
 
 ## Testing Strategy
 
@@ -369,6 +402,9 @@ mcp_server/
 scripts/
 ├── download_libclang.py             # Downloads libclang binaries
 ├── test_installation.py             # Installation verification
+├── test_mcp_console.py              # Manual MCP server testing with real codebase
+├── test_interrupt_cleanup.py        # Test subprocess cleanup on Ctrl-C interrupt
+├── fix_corrupted_cache.py           # Diagnose and fix corrupted SQLite cache
 ├── profile_analysis.py              # Performance profiling
 ├── diagnose_gil.py                  # GIL bottleneck detection
 ├── cache_stats.py                   # Cache statistics viewer
