@@ -307,7 +307,11 @@ The `diagnose_parse_errors.py` script tests parsing with different libclang opti
 ### Modifying Symbol Extraction Logic
 1. Edit `cpp_analyzer.py` `_process_cursor()` (recursive AST walker)
 2. Update `symbol_info.py` if changing SymbolInfo structure
-3. Consider schema migration if changing SQLite schema (see mcp_server/schema_migrations.py)
+3. If changing SQLite schema:
+   - Update `mcp_server/schema.sql` with new columns/tables
+   - Increment schema version in schema.sql (e.g., "4.0" → "5.0")
+   - Update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`
+   - Database will automatically recreate on version mismatch (development mode)
 4. Run `make test` to verify no regressions
 5. Test with example project: `python -m mcp_server.cpp_mcp_server` + set examples/compile_commands_example/
 
@@ -378,8 +382,8 @@ mcp_server/
 ├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
-├── schema.sql                  # SQLite schema with FTS5 indexes
-├── schema_migrations.py        # Database schema migrations
+├── schema.sql                  # SQLite schema with FTS5 indexes (version 4.0)
+├── schema_migrations.py        # Schema migrations (deprecated, for legacy support only)
 ├── compile_commands_manager.py # compile_commands.json parsing & caching
 ├── incremental_analyzer.py     # Incremental analysis orchestration
 ├── change_scanner.py           # File change detection (MD5 hashing)
@@ -397,7 +401,7 @@ mcp_server/
 ├── argument_sanitizer.py       # Argument sanitization (security)
 ├── diagnostics.py              # Logging and diagnostics
 ├── http_server.py              # HTTP/SSE transport layer
-└── migrations/                 # SQL schema migration files
+└── migrations/                 # SQL migrations (deprecated, kept for tests only)
 
 scripts/
 ├── download_libclang.py             # Downloads libclang binaries
@@ -440,6 +444,8 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 6. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access.
 
-7. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+7. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
-8. **Test before committing:** Always run `make test` and `make check` before creating PRs.
+8. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+
+9. **Test before committing:** Always run `make test` and `make check` before creating PRs.
