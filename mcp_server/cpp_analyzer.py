@@ -2218,8 +2218,7 @@ class CppAnalyzer:
                 - files: Sorted list of file paths containing the symbol
                 - total_references: Approximate count of references
         """
-        await self._ensure_indexing_complete()
-
+        # Note: Indexing should be complete before calling this method
         files = set()
         total_refs = 0
         kind = None
