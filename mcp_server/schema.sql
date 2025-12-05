@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 4.0
+-- Version: 5.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v5.0: Added line ranges and header file location tracking (Phase 1: LLM Integration)
 
 -- Enable optimizations
 PRAGMA journal_mode = WAL;        -- Write-Ahead Logging for concurrency
@@ -37,6 +38,14 @@ CREATE TABLE IF NOT EXISTS symbols (
     calls TEXT DEFAULT '[]',           -- JSON array of USRs this function calls
     called_by TEXT DEFAULT '[]',       -- JSON array of USRs that call this
 
+    -- Line ranges (v5.0: Phase 1 LLM Integration)
+    start_line INTEGER,                -- First line of symbol definition
+    end_line INTEGER,                  -- Last line of symbol definition
+    header_file TEXT,                  -- Path to header file (if declaration separate)
+    header_line INTEGER,               -- Declaration line in header
+    header_start_line INTEGER,         -- Declaration start line
+    header_end_line INTEGER,           -- Declaration end line
+
     -- Metadata
     created_at REAL NOT NULL,          -- Unix timestamp
     updated_at REAL NOT NULL           -- Unix timestamp for incremental updates
@@ -53,6 +62,9 @@ CREATE INDEX IF NOT EXISTS idx_symbol_updated ON symbols(updated_at);
 
 -- Composite index for common query patterns
 CREATE INDEX IF NOT EXISTS idx_name_kind_project ON symbols(name, kind, is_project);
+
+-- Index for line range queries (v5.0)
+CREATE INDEX IF NOT EXISTS idx_symbols_range ON symbols(file, start_line, end_line);
 
 -- Full-text search index (FTS5)
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
@@ -101,7 +113,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"4.0"', julianday('now')),
+    ('version', '"5.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
