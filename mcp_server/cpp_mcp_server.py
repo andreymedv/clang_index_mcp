@@ -442,6 +442,30 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="get_files_containing_symbol",
+            description="Get list of all files that contain references to or define a symbol. **Phase 1: LLM Integration** - Enables targeted code search by narrowing down which files to examine. Returns the file paths where the symbol is defined and referenced, enabling efficient integration with filesystem and ripgrep MCP tools.\n\n**Use this when**: You need to find all files that use a class or function, want to perform targeted grep searches, or need to understand symbol usage scope across the project.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: symbol name, kind, list of file paths (sorted), and total reference count. File list includes definition file, header file (if separate), and files that reference/call the symbol.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol_name": {
+                        "type": "string",
+                        "description": "Name of the symbol (class, function, method) to find references for. Must be exact name (case-sensitive)."
+                    },
+                    "symbol_kind": {
+                        "type": "string",
+                        "enum": ["class", "function", "method"],
+                        "description": "Optional: Type of symbol to disambiguate if multiple symbols share the same name. Leave empty to search all symbol types."
+                    },
+                    "project_only": {
+                        "type": "boolean",
+                        "description": "When true (default), only includes project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). Set to false to include all files including dependencies.",
+                        "default": True
+                    }
+                },
+                "required": ["symbol_name"]
+            }
+        ),
+        Tool(
             name="get_call_path",
             description="Find execution paths through the call graph from a starting function to a target function using BFS. A call path is a sequence of function calls connecting two functions (e.g., main -> init -> setup -> loadConfig). Returns ALL possible paths up to max_depth, showing intermediate function chains.\n\nWARNING: In highly connected codebases, can return hundreds/thousands of paths. Use max_depth conservatively. Returns empty array if no path exists within max_depth.",
             inputSchema={
@@ -850,7 +874,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             class_name = arguments.get("class_name", "")
             results = analyzer.find_callees(function_name, class_name)
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
-        
+
+        elif name == "get_files_containing_symbol":
+            symbol_name = arguments["symbol_name"]
+            symbol_kind = arguments.get("symbol_kind")
+            project_only = arguments.get("project_only", True)
+            result = await analyzer.get_files_containing_symbol(symbol_name, symbol_kind, project_only)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
         elif name == "get_call_path":
             from_function = arguments["from_function"]
             to_function = arguments["to_function"]

@@ -2194,6 +2194,108 @@ class CppAnalyzer:
 
         return results
 
+    async def get_files_containing_symbol(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str] = None,
+        project_only: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Get all files that contain references to or define a symbol.
+
+        Phase 1: LLM Integration - Enables targeted code search by narrowing down
+        which files to examine with filesystem or ripgrep MCP tools.
+
+        Args:
+            symbol_name: Name of the symbol (exact match, case-sensitive)
+            symbol_kind: Optional filter: "class", "function", or "method"
+            project_only: If True, exclude dependency/system files
+
+        Returns:
+            Dictionary with:
+                - symbol: The symbol name searched
+                - kind: The symbol kind if found (class, function, method)
+                - files: Sorted list of file paths containing the symbol
+                - total_references: Approximate count of references
+        """
+        await self._ensure_indexing_complete()
+
+        files = set()
+        total_refs = 0
+        kind = None
+
+        with self.index_lock:
+            # 1. Find where symbol is defined (classes)
+            if symbol_kind in (None, "class"):
+                for qname, infos in self.class_index.items():
+                    for info in infos:
+                        if info.name == symbol_name:
+                            if not project_only or info.is_project:
+                                files.add(info.file)
+                                if info.header_file:
+                                    files.add(info.header_file)
+                                kind = info.kind
+                                break
+
+            # 2. Find where symbol is defined (functions/methods)
+            if symbol_kind in (None, "function", "method"):
+                for qname, infos in self.function_index.items():
+                    for info in infos:
+                        if info.name == symbol_name:
+                            if not project_only or info.is_project:
+                                files.add(info.file)
+                                if info.header_file:
+                                    files.add(info.header_file)
+                                if not kind:  # Don't override if already set
+                                    kind = info.kind
+                                # Don't break - could be overloaded
+
+            # 3. Find callers (for functions/methods)
+            if kind in ("function", "method") or (not kind and symbol_kind in (None, "function", "method")):
+                # Get USRs for all functions with this name
+                target_usrs = set()
+                for infos in self.function_index.values():
+                    for info in infos:
+                        if info.name == symbol_name and info.usr:
+                            if not project_only or info.is_project:
+                                target_usrs.add(info.usr)
+
+                # Find all callers of these functions
+                for usr in target_usrs:
+                    callers = self.call_graph_analyzer.find_callers(usr)
+                    for caller_usr in callers:
+                        if caller_usr in self.usr_index:
+                            caller_info = self.usr_index[caller_usr]
+                            if not project_only or caller_info.is_project:
+                                files.add(caller_info.file)
+                                total_refs += 1
+
+            # 4. For classes, find files that use the class (approximate via search)
+            # This catches instantiations, member access, etc. that aren't in call graph
+            if kind in ("class", "struct") or (not kind and symbol_kind in (None, "class")):
+                # Check file index for files that might reference the class
+                for file_path, symbols in self.file_index.items():
+                    if not project_only or self._is_project_file(file_path):
+                        # If file has the class definition or any methods of the class
+                        for symbol in symbols:
+                            if symbol.name == symbol_name or symbol.parent_class == symbol_name:
+                                files.add(file_path)
+                                break
+
+        # Filter and sort files
+        file_list = sorted(list(files))
+
+        # If no references found via call graph, use file count as estimate
+        if total_refs == 0:
+            total_refs = len(file_list)
+
+        return {
+            "symbol": symbol_name,
+            "kind": kind,
+            "files": file_list,
+            "total_references": total_refs
+        }
+
     def get_parse_errors(self, limit: Optional[int] = None,
                         file_path_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get parse errors from the error log (for developer analysis).
