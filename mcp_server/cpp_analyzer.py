@@ -246,7 +246,15 @@ class CppAnalyzer:
 
     def __del__(self):
         """Destructor to ensure resources are released on garbage collection."""
-        self.close()
+        # During Python shutdown, modules may be None. Suppress all errors.
+        try:
+            # Check if we're shutting down - skip cleanup if so
+            if sys is None or sys.meta_path is None:
+                return
+            self.close()
+        except (ImportError, AttributeError, TypeError):
+            # Suppress errors during shutdown - resources will be cleaned up by OS
+            pass
 
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
