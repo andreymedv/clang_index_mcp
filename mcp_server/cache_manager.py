@@ -131,7 +131,15 @@ class CacheManager:
 
     def __del__(self):
         """Destructor to ensure resources are released on garbage collection."""
-        self.close()
+        # During Python shutdown, modules may be None. Suppress all errors.
+        try:
+            # Check if we're shutting down - skip cleanup if so
+            if sys is None or sys.meta_path is None:
+                return
+            self.close()
+        except (ImportError, AttributeError, TypeError):
+            # Suppress errors during shutdown - resources will be cleaned up by OS
+            pass
 
     def _handle_backend_error(self, error: Exception, operation: str) -> bool:
         """
