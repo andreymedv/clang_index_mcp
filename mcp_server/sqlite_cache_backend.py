@@ -304,12 +304,12 @@ class SqliteCacheBackend:
             calls=json.loads(row['calls']) if row['calls'] else [],
             called_by=json.loads(row['called_by']) if row['called_by'] else [],
             # v5.0: Line ranges and header location
-            start_line=row.get('start_line'),
-            end_line=row.get('end_line'),
-            header_file=row.get('header_file'),
-            header_line=row.get('header_line'),
-            header_start_line=row.get('header_start_line'),
-            header_end_line=row.get('header_end_line')
+            start_line=row['start_line'] if 'start_line' in row.keys() else None,
+            end_line=row['end_line'] if 'end_line' in row.keys() else None,
+            header_file=row['header_file'] if 'header_file' in row.keys() else None,
+            header_line=row['header_line'] if 'header_line' in row.keys() else None,
+            header_start_line=row['header_start_line'] if 'header_start_line' in row.keys() else None,
+            header_end_line=row['header_end_line'] if 'header_end_line' in row.keys() else None
         )
 
     def save_symbol(self, symbol: SymbolInfo) -> bool:
@@ -1366,8 +1366,11 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        base_classes, calls, called_by,
+                        start_line, end_line, header_file, header_line,
+                        header_start_line, header_end_line,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol)
                 )
