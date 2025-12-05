@@ -1941,7 +1941,14 @@ class CppAnalyzer:
                                 "line": info.line,
                                 "column": info.column,
                                 "is_project": info.is_project,
-                                "base_classes": info.base_classes
+                                "base_classes": info.base_classes,
+                                # Phase 1: Line ranges
+                                "start_line": info.start_line,
+                                "end_line": info.end_line,
+                                "header_file": info.header_file,
+                                "header_line": info.header_line,
+                                "header_start_line": info.header_start_line,
+                                "header_end_line": info.header_end_line
                             })
         
         return derived_classes
