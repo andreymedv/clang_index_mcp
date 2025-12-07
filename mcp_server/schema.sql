@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 6.0
+-- Version: 7.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v7.0: Added brief and doc_comment fields for documentation extraction (Phase 2: LLM Integration)
 -- Changelog v6.0: Added is_definition field for definition-wins logic (Phase 1: Multiple Declarations)
 -- Changelog v5.0: Added line ranges and header file location tracking (Phase 1: LLM Integration)
 
@@ -49,6 +50,10 @@ CREATE TABLE IF NOT EXISTS symbols (
 
     -- Definition tracking (v6.0: Phase 1 Multiple Declarations)
     is_definition BOOLEAN NOT NULL DEFAULT 0,  -- True if cursor is a definition (has body)
+
+    -- Documentation (v7.0: Phase 2 LLM Integration)
+    brief TEXT,                        -- Brief description (first line of documentation)
+    doc_comment TEXT,                  -- Full documentation comment (up to 4000 chars)
 
     -- Metadata
     created_at REAL NOT NULL,          -- Unix timestamp
@@ -117,7 +122,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"6.0"', julianday('now')),
+    ('version', '"7.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
