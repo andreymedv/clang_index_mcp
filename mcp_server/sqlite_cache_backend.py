@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "4.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "6.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path):
         """
@@ -268,6 +268,13 @@ class SqliteCacheBackend:
             json.dumps(symbol.base_classes),
             json.dumps(symbol.calls),
             json.dumps(symbol.called_by),
+            symbol.start_line,      # v5.0: Line ranges
+            symbol.end_line,        # v5.0: Line ranges
+            symbol.header_file,     # v5.0: Header location
+            symbol.header_line,     # v5.0: Header location
+            symbol.header_start_line,  # v5.0: Header location
+            symbol.header_end_line,    # v5.0: Header location
+            symbol.is_definition,   # v6.0: Definition tracking
             now,  # created_at
             now   # updated_at
         )
@@ -296,7 +303,16 @@ class SqliteCacheBackend:
             base_classes=json.loads(row['base_classes']) if row['base_classes'] else [],
             usr=row['usr'] or '',
             calls=json.loads(row['calls']) if row['calls'] else [],
-            called_by=json.loads(row['called_by']) if row['called_by'] else []
+            called_by=json.loads(row['called_by']) if row['called_by'] else [],
+            # v5.0: Line ranges and header location
+            start_line=row['start_line'] if 'start_line' in row.keys() else None,
+            end_line=row['end_line'] if 'end_line' in row.keys() else None,
+            header_file=row['header_file'] if 'header_file' in row.keys() else None,
+            header_line=row['header_line'] if 'header_line' in row.keys() else None,
+            header_start_line=row['header_start_line'] if 'header_start_line' in row.keys() else None,
+            header_end_line=row['header_end_line'] if 'header_end_line' in row.keys() else None,
+            # v6.0: Definition tracking
+            is_definition=bool(row['is_definition']) if 'is_definition' in row.keys() else False
         )
 
     def save_symbol(self, symbol: SymbolInfo) -> bool:
@@ -318,8 +334,11 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        base_classes, calls, called_by,
+                        start_line, end_line, header_file, header_line,
+                        header_start_line, header_end_line, is_definition,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol)
                 )
@@ -355,8 +374,11 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        base_classes, calls, called_by,
+                        start_line, end_line, header_file, header_line,
+                        header_start_line, header_end_line, is_definition,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols]
                 )
@@ -1347,8 +1369,11 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        base_classes, calls, called_by,
+                        start_line, end_line, header_file, header_line,
+                        header_start_line, header_end_line, is_definition,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol)
                 )
