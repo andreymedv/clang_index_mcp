@@ -67,6 +67,13 @@ Expected symbol info:
 - FR-3.2: If cursor is a declaration and definition exists elsewhere, use definition as primary location
 - FR-3.3: Store declaration location in header fields
 - FR-3.4: For forward declarations with no definition, store declaration as primary location
+- FR-3.5: **Multiple Declarations Handling:** When multiple declarations of the same symbol exist:
+  - Use USR (Unified Symbol Resolution) to identify duplicate symbols
+  - **Definitions always replace declarations** (definition-wins strategy)
+  - When a definition is encountered for a symbol that has only declarations stored, replace with definition
+  - When multiple declarations exist with no definition, first declaration wins
+  - This ensures accurate line ranges point to actual implementation, not forward declarations
+- FR-3.6: **Deterministic Selection:** When both definition and declarations exist, always select definition regardless of processing order
 
 ### FR-4: Tool Output Updates
 
@@ -258,6 +265,43 @@ class SymbolInfo:
 
 **Handling:** Store declaration location as primary location. Header fields remain NULL.
 
+### EC-3a: Multiple Forward Declarations
+
+**Case:** Multiple forward declarations of the same class/function across different headers.
+
+```cpp
+// fwd1.h
+class Parser;
+
+// fwd2.h
+class Parser;
+```
+
+**Handling:**
+- First forward declaration encountered is stored
+- Subsequent forward declarations are silently skipped (same USR)
+- If a real definition is later encountered, it replaces the forward declaration
+- **Rationale:** Forward declarations contain no implementation - only the definition matters
+
+### EC-3b: Forward Declaration + Real Class Declaration
+
+**Case:** Forward declaration processed before actual class definition.
+
+```cpp
+// widget.h (processed first due to compile_commands order)
+class QString;  // IDE-suggested forward decl
+
+// QString.h (processed later)
+class QString { ... };  // Real class definition
+```
+
+**Handling:**
+- Forward declaration initially stored (single-line extent)
+- When real class definition encountered, **replaces** forward declaration (definition-wins)
+- Primary location updated to real class with full line ranges
+- Forward declaration location may be stored in header fields if appropriate
+- **Guaranteed:** Real class definitions always win over forward declarations
+
 ### EC-4: Inline Functions
 
 **Case:** Inline function defined in header.
@@ -289,6 +333,50 @@ createParser(
 **Case:** Symbol definition in system header (e.g., `/usr/include/`).
 
 **Handling:** Store full path. Filter using `project_only` flag in queries.
+
+### EC-8: Multiple Function Declarations (Bad Practice)
+
+**Case:** Function manually declared in multiple headers.
+
+```cpp
+// util.h
+void processData(int x);
+
+// helper.h
+void processData(int x);  // Manually redeclared
+
+// util.cpp
+void processData(int x) { ... }  // Definition
+```
+
+**Handling:**
+- First declaration initially stored
+- When definition in `.cpp` is encountered, **replaces** declaration (definition-wins)
+- Primary location points to definition with full implementation
+- First declaration location may be stored in header fields
+- Second declaration silently ignored (same USR, already have definition)
+- **Rationale:** Definition contains the actual code - declarations are just signatures
+
+### EC-9: Extern Variable Declarations
+
+**Case:** Global variable declared as `extern` in multiple headers.
+
+```cpp
+// config.h
+extern int g_config_value;
+
+// globals.h
+extern int g_config_value;  // Redeclared
+
+// config.cpp
+int g_config_value = 42;  // Definition
+```
+
+**Handling:**
+- First `extern` declaration stored
+- Definition in `.cpp` **replaces** `extern` declaration (definition-wins)
+- Primary location points to actual definition
+- **Note:** Variable handling depends on whether variables are indexed (may be out of scope)
 
 ## Testing Requirements
 

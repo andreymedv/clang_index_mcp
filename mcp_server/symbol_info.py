@@ -32,6 +32,9 @@ class SymbolInfo:
     header_start_line: Optional[int] = None  # Declaration start line
     header_end_line: Optional[int] = None    # Declaration end line
 
+    # Internal field for definition-wins logic (not persisted)
+    is_definition: bool = False  # True if this cursor is a definition (has body)
+
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
         return {

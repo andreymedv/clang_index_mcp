@@ -454,6 +454,50 @@ class CppAnalyzer:
             self._init_thread_local_buffers()
         return self._thread_local.collected_symbols, self._thread_local.collected_calls
 
+    def _remove_symbol_from_indexes(self, symbol: SymbolInfo):
+        """
+        Remove a symbol from all indexes.
+
+        Used by definition-wins logic to replace declarations with definitions.
+
+        Args:
+            symbol: SymbolInfo to remove from indexes
+        """
+        # Remove from class_index or function_index
+        if symbol.kind in ("class", "struct"):
+            if symbol.name in self.class_index:
+                try:
+                    self.class_index[symbol.name].remove(symbol)
+                    # Remove empty lists
+                    if not self.class_index[symbol.name]:
+                        del self.class_index[symbol.name]
+                except ValueError:
+                    # Symbol not in list (shouldn't happen, but be defensive)
+                    pass
+        else:
+            if symbol.name in self.function_index:
+                try:
+                    self.function_index[symbol.name].remove(symbol)
+                    # Remove empty lists
+                    if not self.function_index[symbol.name]:
+                        del self.function_index[symbol.name]
+                except ValueError:
+                    pass
+
+        # Remove from usr_index
+        if symbol.usr and symbol.usr in self.usr_index:
+            del self.usr_index[symbol.usr]
+
+        # Remove from file_index
+        if symbol.file and symbol.file in self.file_index:
+            try:
+                self.file_index[symbol.file].remove(symbol)
+                # Remove empty lists
+                if not self.file_index[symbol.file]:
+                    del self.file_index[symbol.file]
+            except ValueError:
+                pass
+
     def _bulk_write_symbols(self):
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
@@ -476,12 +520,27 @@ class CppAnalyzer:
         with self._get_lock():
             # Add all collected symbols
             for info in symbols_buffer:
-                # USR-based deduplication: check if symbol already exists
+                # USR-based deduplication with definition-wins logic (Phase 1)
                 if info.usr and info.usr in self.usr_index:
-                    # Symbol already exists (from another file/thread)
-                    continue
+                    existing_symbol = self.usr_index[info.usr]
 
-                # New symbol - add to all indexes
+                    # Definition-wins: If new symbol is a definition and existing is not, replace
+                    if info.is_definition and not existing_symbol.is_definition:
+                        diagnostics.debug(
+                            f"Definition-wins: Replacing declaration of {info.name} with definition "
+                            f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
+                        )
+
+                        # Remove existing symbol from all indexes
+                        self._remove_symbol_from_indexes(existing_symbol)
+
+                        # Add new definition to all indexes (fall through to add logic below)
+                        # Note: Don't increment added_count as we're replacing, not adding
+                    else:
+                        # Keep existing symbol (either both are declarations, or existing is already a definition)
+                        continue
+
+                # New symbol or replacement - add to all indexes
                 if info.kind in ("class", "struct"):
                     self.class_index[info.name].append(info)
                 else:
@@ -838,7 +897,9 @@ class CppAnalyzer:
                     header_file=loc_info['header_file'],
                     header_line=loc_info['header_line'],
                     header_start_line=loc_info['header_start_line'],
-                    header_end_line=loc_info['header_end_line']
+                    header_end_line=loc_info['header_end_line'],
+                    # Phase 1: Definition-wins logic
+                    is_definition=cursor.is_definition()
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
@@ -879,7 +940,9 @@ class CppAnalyzer:
                     header_file=loc_info['header_file'],
                     header_line=loc_info['header_line'],
                     header_start_line=loc_info['header_start_line'],
-                    header_end_line=loc_info['header_end_line']
+                    header_end_line=loc_info['header_end_line'],
+                    # Phase 1: Definition-wins logic
+                    is_definition=cursor.is_definition()
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
