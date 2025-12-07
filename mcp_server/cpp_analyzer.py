@@ -830,6 +830,63 @@ class CppAnalyzer:
 
         return result
 
+    def _extract_documentation(self, cursor) -> dict:
+        """
+        Extract documentation from cursor comments.
+
+        Phase 2: LLM Integration - Documentation extraction for symbol understanding
+
+        Args:
+            cursor: libclang cursor
+
+        Returns:
+            Dictionary with:
+                - brief: Brief description (first line, max 200 chars)
+                - doc_comment: Full documentation comment (max 4000 chars)
+        """
+        result = {
+            'brief': None,
+            'doc_comment': None
+        }
+
+        try:
+            # Extract brief comment (first line/sentence)
+            brief_comment = cursor.brief_comment
+            if brief_comment:
+                brief = brief_comment.strip()
+                # Truncate if too long
+                if len(brief) > 200:
+                    brief = brief[:200]
+                result['brief'] = brief
+
+            # Extract full documentation comment
+            raw_comment = cursor.raw_comment
+            if raw_comment:
+                doc_comment = raw_comment.strip()
+                # Truncate if too long
+                if len(doc_comment) > 4000:
+                    doc_comment = doc_comment[:4000] + "..."
+                result['doc_comment'] = doc_comment
+
+                # If no brief but have raw comment, extract first meaningful line
+                if not result['brief'] and doc_comment:
+                    lines = doc_comment.split('\n')
+                    for line in lines:
+                        # Skip comment markers and empty lines
+                        cleaned = line.strip().lstrip('/*!/').lstrip('*').strip()
+                        if cleaned and not cleaned.startswith('@'):
+                            # Found first meaningful line
+                            if len(cleaned) > 200:
+                                cleaned = cleaned[:200]
+                            result['brief'] = cleaned
+                            break
+
+        except Exception as e:
+            # Documentation extraction is best-effort, failures are not critical
+            diagnostics.debug(f"Could not extract documentation for {cursor.spelling}: {e}")
+
+        return result
+
     def _process_cursor(self, cursor, should_extract_from_file=None, parent_class: str = "", parent_function_usr: str = ""):
         """
         Process a cursor and its children, extracting symbols based on file filter.
@@ -881,6 +938,9 @@ class CppAnalyzer:
                 # Extract line range and location info (Phase 1: LLM Integration)
                 loc_info = self._extract_line_range_info(cursor)
 
+                # Extract documentation (Phase 2: LLM Integration)
+                doc_info = self._extract_documentation(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
@@ -899,7 +959,10 @@ class CppAnalyzer:
                     header_start_line=loc_info['header_start_line'],
                     header_end_line=loc_info['header_end_line'],
                     # Phase 1: Definition-wins logic
-                    is_definition=cursor.is_definition()
+                    is_definition=cursor.is_definition(),
+                    # Phase 2: Documentation
+                    brief=doc_info['brief'],
+                    doc_comment=doc_info['doc_comment']
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
@@ -924,6 +987,9 @@ class CppAnalyzer:
                 # Extract line range and location info (Phase 1: LLM Integration)
                 loc_info = self._extract_line_range_info(cursor)
 
+                # Extract documentation (Phase 2: LLM Integration)
+                doc_info = self._extract_documentation(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
@@ -942,7 +1008,10 @@ class CppAnalyzer:
                     header_start_line=loc_info['header_start_line'],
                     header_end_line=loc_info['header_end_line'],
                     # Phase 1: Definition-wins logic
-                    is_definition=cursor.is_definition()
+                    is_definition=cursor.is_definition(),
+                    # Phase 2: Documentation
+                    brief=doc_info['brief'],
+                    doc_comment=doc_info['doc_comment']
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
