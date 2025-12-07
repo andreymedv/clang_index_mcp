@@ -177,7 +177,7 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes. Supports regex patterns.",
+            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes, start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line. Supports regex patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -196,7 +196,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_functions",
-            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project. Searches both standalone functions and class methods. Supports regex patterns.",
+            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project, start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line. Searches both standalone functions and class methods. Supports regex patterns.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -219,7 +219,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location. **Note**: Member variables/fields (members) are not currently indexed and will be an empty list. **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line), members (currently empty), is_project. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
+            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location, line ranges. **Note**: Member variables/fields (members) are not currently indexed and will be an empty list. **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line, each with line ranges), members (currently empty), is_project, start_line, end_line (class body range), header_file (if declared in header), header_start_line, header_end_line. Returns plain text error 'Class <name> not found' if not found. Returns first match if multiple classes have same name.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -251,7 +251,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_symbols",
-            description="Unified search across multiple C++ symbol types (classes, structs, functions, methods) using a single pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a dictionary with two keys: 'classes' (array of class/struct results) and 'functions' (array of function/method results). Each result includes name, kind, file location, line number, and other metadata. This is a convenient alternative to calling search_classes and search_functions separately. Use symbol_types to filter which categories are populated.",
+            description="Unified search across multiple C++ symbol types (classes, structs, functions, methods) using a single pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a dictionary with two keys: 'classes' (array of class/struct results) and 'functions' (array of function/method results). Each result includes name, kind, file location, line number, complete line ranges (start_line, end_line), header location (header_file, header_start_line, header_end_line), and other metadata. This is a convenient alternative to calling search_classes and search_functions separately. Use symbol_types to filter which categories are populated.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -278,7 +278,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_in_file",
-            description="Search for C++ symbols (classes, functions, methods) within a specific source file. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns only symbols defined in that file, with locations and basic information.",
+            description="Search for C++ symbols (classes, functions, methods) within a specific source file. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns only symbols defined in that file, with locations (file, line, column, start_line, end_line, header_file, header_start_line, header_end_line) and basic information.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -386,7 +386,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_derived_classes",
-            description="[WARNING] IMPORTANT: This returns ONLY DIRECT children (one level), NOT all descendants. If user asks for 'all classes that inherit from X' or 'all subclasses', use get_class_hierarchy instead for complete transitive closure.\n\nGet a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only). Returns classes where the specified class appears in their direct base_classes list. Example: if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. Returns list with: name, kind, file, line, column, is_project, base_classes. Supports filtering by project_only.",
+            description="[WARNING] IMPORTANT: This returns ONLY DIRECT children (one level), NOT all descendants. If user asks for 'all classes that inherit from X' or 'all subclasses', use get_class_hierarchy instead for complete transitive closure.\n\nGet a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only). Returns classes where the specified class appears in their direct base_classes list. Example: if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. Returns list with: name, kind, file, line, column, is_project, base_classes, start_line, end_line (complete line range), header_file, header_start_line, header_end_line. Supports filtering by project_only.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -405,7 +405,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callers",
-            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns list with: name, kind, file, line, column, signature, parent_class, is_project.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLER FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: 1) Use this tool to get caller function names/files, 2) Then read those files or use text search to find the specific lines where the target function is invoked.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), or call graph visualization.",
+            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns list with: name, kind, file, line, column, signature, parent_class, is_project, start_line, end_line (caller function body range), header_file, header_start_line, header_end_line.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLER FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: 1) Use this tool to get caller function names/files, 2) Use start_line/end_line to read the function body, 3) Search within that range for the call.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), or call graph visualization.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -424,7 +424,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callees",
-            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns list with: name, kind, file, line, column, signature, parent_class, is_project.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLEE FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: read the source function's file to see where these callees are invoked.\n\nUse this for: understanding dependencies (what does this function depend on), analyzing code flow, or mapping execution paths.",
+            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns list with: name, kind, file, line, column, signature, parent_class, is_project, start_line, end_line (callee function body range), header_file, header_start_line, header_end_line.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLEE FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: read the source function's file and search within its body for these callee invocations.\n\nUse this for: understanding dependencies (what does this function depend on), analyzing code flow, or mapping execution paths.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -439,6 +439,30 @@ async def list_tools() -> List[Tool]:
                     }
                 },
                 "required": ["function_name"]
+            }
+        ),
+        Tool(
+            name="get_files_containing_symbol",
+            description="Get list of all files that contain references to or define a symbol. **Phase 1: LLM Integration** - Enables targeted code search by narrowing down which files to examine. Returns the file paths where the symbol is defined and referenced, enabling efficient integration with filesystem and ripgrep MCP tools.\n\n**Use this when**: You need to find all files that use a class or function, want to perform targeted grep searches, or need to understand symbol usage scope across the project.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: symbol name, kind, list of file paths (sorted), and total reference count. File list includes definition file, header file (if separate), and files that reference/call the symbol.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol_name": {
+                        "type": "string",
+                        "description": "Name of the symbol (class, function, method) to find references for. Must be exact name (case-sensitive)."
+                    },
+                    "symbol_kind": {
+                        "type": "string",
+                        "enum": ["class", "function", "method"],
+                        "description": "Optional: Type of symbol to disambiguate if multiple symbols share the same name. Leave empty to search all symbol types."
+                    },
+                    "project_only": {
+                        "type": "boolean",
+                        "description": "When true (default), only includes project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). Set to false to include all files including dependencies.",
+                        "default": True
+                    }
+                },
+                "required": ["symbol_name"]
             }
         ),
         Tool(
@@ -850,7 +874,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             class_name = arguments.get("class_name", "")
             results = analyzer.find_callees(function_name, class_name)
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
-        
+
+        elif name == "get_files_containing_symbol":
+            symbol_name = arguments["symbol_name"]
+            symbol_kind = arguments.get("symbol_kind")
+            project_only = arguments.get("project_only", True)
+            result = await analyzer.get_files_containing_symbol(symbol_name, symbol_kind, project_only)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
         elif name == "get_call_path":
             from_function = arguments["from_function"]
             to_function = arguments["to_function"]
