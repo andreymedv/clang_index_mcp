@@ -9,6 +9,9 @@ mcp_env/
 .claude/
 .mcp.json
 
+# IDE files
+.idea/
+
 # Python build artifacts
 __pycache__/
 *.py[cod]
