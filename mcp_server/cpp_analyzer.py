@@ -454,6 +454,50 @@ class CppAnalyzer:
             self._init_thread_local_buffers()
         return self._thread_local.collected_symbols, self._thread_local.collected_calls
 
+    def _remove_symbol_from_indexes(self, symbol: SymbolInfo):
+        """
+        Remove a symbol from all indexes.
+
+        Used by definition-wins logic to replace declarations with definitions.
+
+        Args:
+            symbol: SymbolInfo to remove from indexes
+        """
+        # Remove from class_index or function_index
+        if symbol.kind in ("class", "struct"):
+            if symbol.name in self.class_index:
+                try:
+                    self.class_index[symbol.name].remove(symbol)
+                    # Remove empty lists
+                    if not self.class_index[symbol.name]:
+                        del self.class_index[symbol.name]
+                except ValueError:
+                    # Symbol not in list (shouldn't happen, but be defensive)
+                    pass
+        else:
+            if symbol.name in self.function_index:
+                try:
+                    self.function_index[symbol.name].remove(symbol)
+                    # Remove empty lists
+                    if not self.function_index[symbol.name]:
+                        del self.function_index[symbol.name]
+                except ValueError:
+                    pass
+
+        # Remove from usr_index
+        if symbol.usr and symbol.usr in self.usr_index:
+            del self.usr_index[symbol.usr]
+
+        # Remove from file_index
+        if symbol.file and symbol.file in self.file_index:
+            try:
+                self.file_index[symbol.file].remove(symbol)
+                # Remove empty lists
+                if not self.file_index[symbol.file]:
+                    del self.file_index[symbol.file]
+            except ValueError:
+                pass
+
     def _bulk_write_symbols(self):
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
@@ -476,12 +520,27 @@ class CppAnalyzer:
         with self._get_lock():
             # Add all collected symbols
             for info in symbols_buffer:
-                # USR-based deduplication: check if symbol already exists
+                # USR-based deduplication with definition-wins logic (Phase 1)
                 if info.usr and info.usr in self.usr_index:
-                    # Symbol already exists (from another file/thread)
-                    continue
+                    existing_symbol = self.usr_index[info.usr]
 
-                # New symbol - add to all indexes
+                    # Definition-wins: If new symbol is a definition and existing is not, replace
+                    if info.is_definition and not existing_symbol.is_definition:
+                        diagnostics.debug(
+                            f"Definition-wins: Replacing declaration of {info.name} with definition "
+                            f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
+                        )
+
+                        # Remove existing symbol from all indexes
+                        self._remove_symbol_from_indexes(existing_symbol)
+
+                        # Add new definition to all indexes (fall through to add logic below)
+                        # Note: Don't increment added_count as we're replacing, not adding
+                    else:
+                        # Keep existing symbol (either both are declarations, or existing is already a definition)
+                        continue
+
+                # New symbol or replacement - add to all indexes
                 if info.kind in ("class", "struct"):
                     self.class_index[info.name].append(info)
                 else:
@@ -666,7 +725,111 @@ class CppAnalyzer:
                     base_type = base_type[6:]
                 base_classes.append(base_type)
         return base_classes
-    
+
+    def _extract_line_range_info(self, cursor) -> dict:
+        """
+        Extract line range and location information from a cursor.
+        Handles declaration/definition split for header/source files.
+
+        Phase 1: LLM Integration - Critical bridging data
+
+        Args:
+            cursor: libclang cursor
+
+        Returns:
+            Dictionary with:
+                - file: Primary location file path
+                - line: Primary location line
+                - column: Primary location column
+                - start_line: Start line of symbol extent
+                - end_line: End line of symbol extent
+                - header_file: Header file path (if declaration separate from definition)
+                - header_line: Header declaration line
+                - header_start_line: Header declaration start line
+                - header_end_line: Header declaration end line
+        """
+        location = cursor.location
+        result = {
+            'file': str(location.file.name) if location.file else "",
+            'line': location.line,
+            'column': location.column,
+            'start_line': None,
+            'end_line': None,
+            'header_file': None,
+            'header_line': None,
+            'header_start_line': None,
+            'header_end_line': None
+        }
+
+        # Extract line range from extent
+        try:
+            extent = cursor.extent
+            if extent and extent.start.file and extent.end.file:
+                result['start_line'] = extent.start.line
+                result['end_line'] = extent.end.line
+        except Exception as e:
+            # If extent extraction fails, fall back to single line
+            diagnostics.debug(f"Could not extract extent for {cursor.spelling}: {e}")
+            result['start_line'] = location.line
+            result['end_line'] = location.line
+
+        # Check for declaration/definition split
+        try:
+            # cursor.is_definition() tells us if this cursor IS a definition
+            # cursor.get_definition() gets the definition cursor if this is a declaration
+            definition_cursor = cursor.get_definition()
+
+            if definition_cursor and definition_cursor != cursor:
+                # This cursor is a declaration, definition exists elsewhere
+                decl_location = cursor.location
+                def_location = definition_cursor.location
+
+                if decl_location.file and def_location.file:
+                    decl_file = str(decl_location.file.name)
+                    def_file = str(def_location.file.name)
+
+                    # Check if declaration is in a header file
+                    is_decl_header = decl_file.endswith(('.h', '.hpp', '.hxx', '.hh'))
+                    is_def_header = def_file.endswith(('.h', '.hpp', '.hxx', '.hh'))
+
+                    if is_decl_header and not is_def_header:
+                        # Declaration in header, definition in source
+                        # Store declaration as header info
+                        result['header_file'] = decl_file
+                        result['header_line'] = decl_location.line
+                        try:
+                            decl_extent = cursor.extent
+                            if decl_extent and decl_extent.start.file:
+                                result['header_start_line'] = decl_extent.start.line
+                                result['header_end_line'] = decl_extent.end.line
+                        except Exception:
+                            result['header_start_line'] = decl_location.line
+                            result['header_end_line'] = decl_location.line
+
+                        # Update primary location to definition
+                        result['file'] = def_file
+                        result['line'] = def_location.line
+                        result['column'] = def_location.column
+                        try:
+                            def_extent = definition_cursor.extent
+                            if def_extent and def_extent.start.file:
+                                result['start_line'] = def_extent.start.line
+                                result['end_line'] = def_extent.end.line
+                        except Exception:
+                            result['start_line'] = def_location.line
+                            result['end_line'] = def_location.line
+                    elif is_def_header and is_decl_header:
+                        # Both in headers (e.g., template, inline)
+                        # Primary location stays as declaration
+                        # No separate header info needed
+                        pass
+
+        except Exception as e:
+            # Declaration/definition tracking is best-effort
+            diagnostics.debug(f"Could not track declaration/definition for {cursor.spelling}: {e}")
+
+        return result
+
     def _process_cursor(self, cursor, should_extract_from_file=None, parent_class: str = "", parent_function_usr: str = ""):
         """
         Process a cursor and its children, extracting symbols based on file filter.
@@ -715,16 +878,28 @@ class CppAnalyzer:
                 # Get base classes
                 base_classes = self._get_base_classes(cursor)
 
+                # Extract line range and location info (Phase 1: LLM Integration)
+                loc_info = self._extract_line_range_info(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
-                    file=cursor.location.file.name if cursor.location.file else "",
-                    line=cursor.location.line,
-                    column=cursor.location.column,
-                    is_project=self._is_project_file(cursor.location.file.name) if cursor.location.file else False,
+                    file=loc_info['file'],
+                    line=loc_info['line'],
+                    column=loc_info['column'],
+                    is_project=self._is_project_file(loc_info['file']) if loc_info['file'] else False,
                     parent_class="",  # Classes don't have parent classes in this context
                     base_classes=base_classes,
-                    usr=cursor.get_usr() if cursor.get_usr() else ""
+                    usr=cursor.get_usr() if cursor.get_usr() else "",
+                    # Phase 1: Line ranges
+                    start_line=loc_info['start_line'],
+                    end_line=loc_info['end_line'],
+                    header_file=loc_info['header_file'],
+                    header_line=loc_info['header_line'],
+                    header_start_line=loc_info['header_start_line'],
+                    header_end_line=loc_info['header_end_line'],
+                    # Phase 1: Definition-wins logic
+                    is_definition=cursor.is_definition()
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
@@ -746,16 +921,28 @@ class CppAnalyzer:
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
 
+                # Extract line range and location info (Phase 1: LLM Integration)
+                loc_info = self._extract_line_range_info(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
-                    file=cursor.location.file.name if cursor.location.file else "",
-                    line=cursor.location.line,
-                    column=cursor.location.column,
+                    file=loc_info['file'],
+                    line=loc_info['line'],
+                    column=loc_info['column'],
                     signature=signature,
-                    is_project=self._is_project_file(cursor.location.file.name) if cursor.location.file else False,
+                    is_project=self._is_project_file(loc_info['file']) if loc_info['file'] else False,
                     parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
-                    usr=function_usr
+                    usr=function_usr,
+                    # Phase 1: Line ranges
+                    start_line=loc_info['start_line'],
+                    end_line=loc_info['end_line'],
+                    header_file=loc_info['header_file'],
+                    header_line=loc_info['header_line'],
+                    header_start_line=loc_info['header_start_line'],
+                    header_end_line=loc_info['header_end_line'],
+                    # Phase 1: Definition-wins logic
+                    is_definition=cursor.is_definition()
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
@@ -1817,7 +2004,14 @@ class CppAnalyzer:
                                 "line": info.line,
                                 "column": info.column,
                                 "is_project": info.is_project,
-                                "base_classes": info.base_classes
+                                "base_classes": info.base_classes,
+                                # Phase 1: Line ranges
+                                "start_line": info.start_line,
+                                "end_line": info.end_line,
+                                "header_file": info.header_file,
+                                "header_line": info.header_line,
+                                "header_start_line": info.header_start_line,
+                                "header_end_line": info.header_end_line
                             })
         
         return derived_classes
@@ -2062,6 +2256,107 @@ class CppAnalyzer:
                 results.append(item)
 
         return results
+
+    async def get_files_containing_symbol(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str] = None,
+        project_only: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Get all files that contain references to or define a symbol.
+
+        Phase 1: LLM Integration - Enables targeted code search by narrowing down
+        which files to examine with filesystem or ripgrep MCP tools.
+
+        Args:
+            symbol_name: Name of the symbol (exact match, case-sensitive)
+            symbol_kind: Optional filter: "class", "function", or "method"
+            project_only: If True, exclude dependency/system files
+
+        Returns:
+            Dictionary with:
+                - symbol: The symbol name searched
+                - kind: The symbol kind if found (class, function, method)
+                - files: Sorted list of file paths containing the symbol
+                - total_references: Approximate count of references
+        """
+        # Note: Indexing should be complete before calling this method
+        files = set()
+        total_refs = 0
+        kind = None
+
+        with self.index_lock:
+            # 1. Find where symbol is defined (classes)
+            if symbol_kind in (None, "class"):
+                for qname, infos in self.class_index.items():
+                    for info in infos:
+                        if info.name == symbol_name:
+                            if not project_only or info.is_project:
+                                files.add(info.file)
+                                if info.header_file:
+                                    files.add(info.header_file)
+                                kind = info.kind
+                                break
+
+            # 2. Find where symbol is defined (functions/methods)
+            if symbol_kind in (None, "function", "method"):
+                for qname, infos in self.function_index.items():
+                    for info in infos:
+                        if info.name == symbol_name:
+                            if not project_only or info.is_project:
+                                files.add(info.file)
+                                if info.header_file:
+                                    files.add(info.header_file)
+                                if not kind:  # Don't override if already set
+                                    kind = info.kind
+                                # Don't break - could be overloaded
+
+            # 3. Find callers (for functions/methods)
+            if kind in ("function", "method") or (not kind and symbol_kind in (None, "function", "method")):
+                # Get USRs for all functions with this name
+                target_usrs = set()
+                for infos in self.function_index.values():
+                    for info in infos:
+                        if info.name == symbol_name and info.usr:
+                            if not project_only or info.is_project:
+                                target_usrs.add(info.usr)
+
+                # Find all callers of these functions
+                for usr in target_usrs:
+                    callers = self.call_graph_analyzer.find_callers(usr)
+                    for caller_usr in callers:
+                        if caller_usr in self.usr_index:
+                            caller_info = self.usr_index[caller_usr]
+                            if not project_only or caller_info.is_project:
+                                files.add(caller_info.file)
+                                total_refs += 1
+
+            # 4. For classes, find files that use the class (approximate via search)
+            # This catches instantiations, member access, etc. that aren't in call graph
+            if kind in ("class", "struct") or (not kind and symbol_kind in (None, "class")):
+                # Check file index for files that might reference the class
+                for file_path, symbols in self.file_index.items():
+                    if not project_only or self._is_project_file(file_path):
+                        # If file has the class definition or any methods of the class
+                        for symbol in symbols:
+                            if symbol.name == symbol_name or symbol.parent_class == symbol_name:
+                                files.add(file_path)
+                                break
+
+        # Filter and sort files
+        file_list = sorted(list(files))
+
+        # If no references found via call graph, use file count as estimate
+        if total_refs == 0:
+            total_refs = len(file_list)
+
+        return {
+            "symbol": symbol_name,
+            "kind": kind,
+            "files": file_list,
+            "total_references": total_refs
+        }
 
     def get_parse_errors(self, limit: Optional[int] = None,
                         file_path_filter: Optional[str] = None) -> List[Dict[str, Any]]:

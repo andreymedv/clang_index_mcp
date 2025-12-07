@@ -37,7 +37,14 @@ class SearchEngine:
                             "file": info.file,
                             "line": info.line,
                             "is_project": info.is_project,
-                            "base_classes": info.base_classes
+                            "base_classes": info.base_classes,
+                            # Phase 1: Line ranges
+                            "start_line": info.start_line,
+                            "end_line": info.end_line,
+                            "header_file": info.header_file,
+                            "header_line": info.header_line,
+                            "header_start_line": info.header_start_line,
+                            "header_end_line": info.header_end_line
                         })
         
         return results
@@ -66,7 +73,14 @@ class SearchEngine:
                             "line": info.line,
                             "signature": info.signature,
                             "is_project": info.is_project,
-                            "parent_class": info.parent_class
+                            "parent_class": info.parent_class,
+                            # Phase 1: Line ranges
+                            "start_line": info.start_line,
+                            "end_line": info.end_line,
+                            "header_file": info.header_file,
+                            "header_line": info.header_line,
+                            "header_start_line": info.header_start_line,
+                            "header_end_line": info.header_end_line
                         })
         
         return results
@@ -110,9 +124,15 @@ class SearchEngine:
                         "name": func_info.name,
                         "signature": func_info.signature,
                         "access": func_info.access,
-                        "line": func_info.line
+                        "line": func_info.line,
+                        # Phase 1: Line ranges for methods
+                        "start_line": func_info.start_line,
+                        "end_line": func_info.end_line,
+                        "header_line": func_info.header_line,
+                        "header_start_line": func_info.header_start_line,
+                        "header_end_line": func_info.header_end_line
                     })
-        
+
         return {
             "name": info.name,
             "kind": info.kind,
@@ -121,7 +141,14 @@ class SearchEngine:
             "base_classes": info.base_classes,
             "methods": sorted(methods, key=lambda x: x["line"]),
             "members": [],  # TODO: Implement member variable indexing
-            "is_project": info.is_project
+            "is_project": info.is_project,
+            # Phase 1: Line ranges for class
+            "start_line": info.start_line,
+            "end_line": info.end_line,
+            "header_file": info.header_file,
+            "header_line": info.header_line,
+            "header_start_line": info.header_start_line,
+            "header_end_line": info.header_end_line
         }
     
     def get_function_signature(self, function_name: str, 
