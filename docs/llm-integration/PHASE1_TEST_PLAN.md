@@ -632,6 +632,199 @@ namespace {
     assert internal.end_line == 5
 ```
 
+### EC-6: Multiple Forward Declarations (Definition-Wins)
+
+```python
+def test_multiple_forward_declarations(tmp_path):
+    """Test multiple forward declarations - first wins if no definition."""
+    header1 = '''
+// fwd1.h
+class Parser;  // Line 2
+'''
+
+    header2 = '''
+// fwd2.h
+class Parser;  // Line 2
+'''
+
+    result = index_project(tmp_path, headers=[header1, header2])
+
+    # Should store first forward declaration encountered
+    parser_info = result['classes']['Parser']
+    assert parser_info.start_line == 2
+    assert parser_info.end_line == 2
+    # File will be either fwd1.h or fwd2.h depending on processing order
+    assert 'fwd' in parser_info.file
+```
+
+### EC-7: Forward Declaration + Real Class (Definition-Wins)
+
+```python
+def test_forward_decl_then_real_class_definition_wins(tmp_path):
+    """Test that real class definition replaces forward declaration."""
+    # Scenario: Forward decl processed first, then real class
+    forward_header = '''
+// forward.h
+class QString;  // Line 2 - IDE-suggested forward decl
+'''
+
+    real_header = '''
+// QString.h
+class QString {  // Lines 2-5
+    int length;
+};
+'''
+
+    # Process forward header first by naming it alphabetically first
+    result = index_project(tmp_path, headers=[
+        ('a_forward.h', forward_header),
+        ('z_QString.h', real_header)
+    ])
+
+    parser_info = result['classes']['QString']
+
+    # Definition should win - stored location is the real class
+    assert 'QString.h' in parser_info.file
+    assert parser_info.start_line == 2
+    assert parser_info.end_line == 5  # Full class, not single line
+
+    # Forward declaration location may be in header fields
+    if parser_info.header_file:
+        assert 'forward.h' in parser_info.header_file
+
+
+def test_real_class_then_forward_decl_definition_wins(tmp_path):
+    """Test that definition is kept even if forward decl comes later."""
+    real_header = '''
+// QString.h
+class QString {  // Lines 2-5
+    int length;
+};
+'''
+
+    forward_header = '''
+// forward.h
+class QString;  // Line 2
+'''
+
+    # Process real class first
+    result = index_project(tmp_path, headers=[
+        ('a_QString.h', real_header),
+        ('z_forward.h', forward_header)
+    ])
+
+    parser_info = result['classes']['QString']
+
+    # Definition should be kept
+    assert 'QString.h' in parser_info.file
+    assert parser_info.start_line == 2
+    assert parser_info.end_line == 5  # Full class
+```
+
+### EC-8: Multiple Function Declarations (Definition-Wins)
+
+```python
+def test_multiple_function_declarations_definition_wins(tmp_path):
+    """Test function declared in multiple headers - definition wins."""
+    header1 = '''
+// util.h
+void processData(int x);  // Line 2
+'''
+
+    header2 = '''
+// helper.h
+void processData(int x);  // Line 2 - manually redeclared
+'''
+
+    source = '''
+// util.cpp
+void processData(int x) {  // Lines 2-4
+    // implementation
+}
+'''
+
+    result = index_project(tmp_path,
+                          headers=[header1, header2],
+                          sources=[source])
+
+    func_info = result['functions']['processData']
+
+    # Definition should win
+    assert 'util.cpp' in func_info.file
+    assert func_info.start_line == 2
+    assert func_info.end_line == 4  # Full function body
+
+    # One of the headers should be tracked as declaration
+    if func_info.header_file:
+        assert '.h' in func_info.header_file
+
+
+def test_declaration_replaced_when_definition_found(tmp_path):
+    """Test that declaration is replaced when definition is encountered."""
+    # Process files in specific order: declaration first, then definition
+    header = '''
+// api.h
+int calculate(int a, int b);  // Line 2
+'''
+
+    source = '''
+// api.cpp
+int calculate(int a, int b) {  // Lines 2-4
+    return a + b;
+}
+'''
+
+    # Create analyzer and index header first
+    analyzer = CppAnalyzer()
+    analyzer.set_project_directory(str(tmp_path))
+
+    # Index header
+    analyzer.index_file(tmp_path / "api.h", header)
+
+    # Check that declaration is initially stored
+    func_info = analyzer.function_index['calculate'][0]
+    assert 'api.h' in func_info.file
+    assert func_info.end_line == 2  # Declaration only
+
+    # Now index source with definition
+    analyzer.index_file(tmp_path / "api.cpp", source)
+
+    # Definition should replace declaration
+    func_info = analyzer.function_index['calculate'][0]
+    assert 'api.cpp' in func_info.file
+    assert func_info.start_line == 2
+    assert func_info.end_line == 4  # Full function body
+```
+
+### EC-9: Processing Order Independence (Determinism Test)
+
+```python
+def test_processing_order_independence_definition_always_wins(tmp_path):
+    """Test that definition wins regardless of processing order."""
+    forward = '''
+// fwd.h
+class Data;
+'''
+
+    definition = '''
+// data.h
+class Data {
+    int value;
+};
+'''
+
+    # Test both processing orders
+    for order in [('fwd.h', forward), ('data.h', definition)],  \
+                 [('data.h', definition), ('fwd.h', forward)]:
+        result = index_project(tmp_path, headers=order)
+        data_info = result['classes']['Data']
+
+        # Definition should always win, regardless of order
+        assert 'data.h' in data_info.file
+        assert data_info.end_line > data_info.start_line  # Multi-line class
+        assert data_info.end_line >= 3  # Not a forward declaration
+```
+
 ## Performance Tests
 
 ### PT-1: Indexing Performance
