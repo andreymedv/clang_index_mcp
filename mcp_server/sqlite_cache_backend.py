@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "6.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "7.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path):
         """
@@ -275,6 +275,8 @@ class SqliteCacheBackend:
             symbol.header_start_line,  # v5.0: Header location
             symbol.header_end_line,    # v5.0: Header location
             symbol.is_definition,   # v6.0: Definition tracking
+            symbol.brief,           # v7.0: Documentation
+            symbol.doc_comment,     # v7.0: Documentation
             now,  # created_at
             now   # updated_at
         )
@@ -312,7 +314,10 @@ class SqliteCacheBackend:
             header_start_line=row['header_start_line'] if 'header_start_line' in row.keys() else None,
             header_end_line=row['header_end_line'] if 'header_end_line' in row.keys() else None,
             # v6.0: Definition tracking
-            is_definition=bool(row['is_definition']) if 'is_definition' in row.keys() else False
+            is_definition=bool(row['is_definition']) if 'is_definition' in row.keys() else False,
+            # v7.0: Documentation
+            brief=row['brief'] if 'brief' in row.keys() else None,
+            doc_comment=row['doc_comment'] if 'doc_comment' in row.keys() else None
         )
 
     def save_symbol(self, symbol: SymbolInfo) -> bool:
@@ -337,8 +342,9 @@ class SqliteCacheBackend:
                         base_classes, calls, called_by,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
+                        brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol)
                 )
@@ -377,8 +383,9 @@ class SqliteCacheBackend:
                         base_classes, calls, called_by,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
+                        brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols]
                 )

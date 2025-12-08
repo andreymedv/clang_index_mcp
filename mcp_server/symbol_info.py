@@ -32,6 +32,10 @@ class SymbolInfo:
     header_start_line: Optional[int] = None  # Declaration start line
     header_end_line: Optional[int] = None    # Declaration end line
 
+    # Documentation (Phase 2: LLM Integration)
+    brief: Optional[str] = None         # Brief description (first line of documentation)
+    doc_comment: Optional[str] = None   # Full documentation comment
+
     # Internal field for definition-wins logic (not persisted)
     is_definition: bool = False  # True if this cursor is a definition (has body)
 
@@ -58,5 +62,8 @@ class SymbolInfo:
             "header_file": self.header_file,
             "header_line": self.header_line,
             "header_start_line": self.header_start_line,
-            "header_end_line": self.header_end_line
+            "header_end_line": self.header_end_line,
+            # Documentation (Phase 2)
+            "brief": self.brief,
+            "doc_comment": self.doc_comment
         }
