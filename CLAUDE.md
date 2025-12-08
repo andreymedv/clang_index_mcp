@@ -8,6 +8,9 @@ This is a Model Context Protocol (MCP) server that provides semantic C++ code an
 
 **Key Features:**
 - 16 MCP tools for C++ code analysis (search_classes, search_functions, get_class_info, call graph analysis, etc.)
+- **Documentation extraction (Phase 2):** Extract brief and full documentation comments from C++ code
+  - Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments
+  - Returns documentation in MCP tool responses for LLM consumption
 - Incremental analysis with intelligent change detection (30-300x faster re-indexing)
 - SQLite-backed symbol cache with FTS5 full-text search
 - Multi-process parallel parsing with GIL bypass for 6-7x speedup
@@ -236,8 +239,9 @@ make ie                         # install-editable
 - **MCP Tools Definition:** mcp_server/cpp_mcp_server.py:176-461 (`list_tools()`)
 - **Core Analyzer:** mcp_server/cpp_analyzer.py (CppAnalyzer class)
 - **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
+- **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
 - **Parallel Worker:** mcp_server/cpp_analyzer.py:55-90 (`_process_file_worker()`)
-- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql
+- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v7.0 with brief/doc_comment fields)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py
 - **Compile Commands:** mcp_server/compile_commands_manager.py
@@ -434,18 +438,20 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 1. **When analyzing C++ code in a project:** Prefer using the cpp-analyzer MCP tools (if server is running) over grep/glob. The analyzer understands C++ semantics (classes, inheritance, call graphs) which grep cannot.
 
-2. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
+2. **Documentation extraction (Phase 2):** MCP tools (`search_classes`, `search_functions`, `get_class_info`) now return `brief` and `doc_comment` fields extracted from C++ documentation comments. This allows LLMs to understand symbol purpose without reading source files. Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Documentation is truncated at 4000 characters with "..." suffix if longer.
 
-3. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
+3. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
 
-4. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
+4. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
 
-5. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
+5. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 
-6. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access.
+6. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-7. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
+7. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 7.0** includes documentation fields (brief, doc_comment).
 
-8. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+8. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
-9. **Test before committing:** Always run `make test` and `make check` before creating PRs.
+9. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+
+10. **Test before committing:** Always run `make test` and `make check` before creating PRs.
