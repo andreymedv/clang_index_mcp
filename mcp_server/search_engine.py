@@ -44,7 +44,10 @@ class SearchEngine:
                             "header_file": info.header_file,
                             "header_line": info.header_line,
                             "header_start_line": info.header_start_line,
-                            "header_end_line": info.header_end_line
+                            "header_end_line": info.header_end_line,
+                            # Phase 2: Documentation
+                            "brief": info.brief,
+                            "doc_comment": info.doc_comment
                         })
         
         return results
@@ -80,7 +83,10 @@ class SearchEngine:
                             "header_file": info.header_file,
                             "header_line": info.header_line,
                             "header_start_line": info.header_start_line,
-                            "header_end_line": info.header_end_line
+                            "header_end_line": info.header_end_line,
+                            # Phase 2: Documentation
+                            "brief": info.brief,
+                            "doc_comment": info.doc_comment
                         })
         
         return results
@@ -130,7 +136,10 @@ class SearchEngine:
                         "end_line": func_info.end_line,
                         "header_line": func_info.header_line,
                         "header_start_line": func_info.header_start_line,
-                        "header_end_line": func_info.header_end_line
+                        "header_end_line": func_info.header_end_line,
+                        # Phase 2: Documentation for methods
+                        "brief": func_info.brief,
+                        "doc_comment": func_info.doc_comment
                     })
 
         return {
@@ -148,7 +157,10 @@ class SearchEngine:
             "header_file": info.header_file,
             "header_line": info.header_line,
             "header_start_line": info.header_start_line,
-            "header_end_line": info.header_end_line
+            "header_end_line": info.header_end_line,
+            # Phase 2: Documentation for class
+            "brief": info.brief,
+            "doc_comment": info.doc_comment
         }
     
     def get_function_signature(self, function_name: str, 
