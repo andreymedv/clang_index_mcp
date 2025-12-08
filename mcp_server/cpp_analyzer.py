@@ -863,9 +863,9 @@ class CppAnalyzer:
             raw_comment = cursor.raw_comment
             if raw_comment:
                 doc_comment = raw_comment.strip()
-                # Truncate if too long
+                # Truncate if too long (max 4000 chars including "..." suffix)
                 if len(doc_comment) > 4000:
-                    doc_comment = doc_comment[:4000] + "..."
+                    doc_comment = doc_comment[:3997] + "..."
                 result['doc_comment'] = doc_comment
 
                 # If no brief but have raw comment, extract first meaningful line
