@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "7.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "8.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path):
         """
@@ -1660,6 +1660,9 @@ class SqliteCacheBackend:
             # Delete symbols
             self.delete_symbols_by_file(file_path)
 
+            # Delete call sites
+            self.delete_call_sites_by_file(file_path)
+
             # Delete file metadata
             self._ensure_connected()
             with self.conn:
@@ -1670,3 +1673,168 @@ class SqliteCacheBackend:
         except Exception as e:
             diagnostics.error(f"Failed to remove file cache for {file_path}: {e}")
             return False
+
+    # Phase 3: Call Sites Methods (v8.0)
+
+    def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
+        """
+        Batch insert call sites using transaction.
+
+        Args:
+            call_sites: List of dicts with keys:
+                - caller_usr: USR of calling function
+                - callee_usr: USR of called function
+                - file: Source file containing call
+                - line: Line number of call
+                - column: Column number (optional)
+
+        Returns:
+            Number of call sites successfully saved
+        """
+        if not call_sites:
+            return 0
+
+        try:
+            self._ensure_connected()
+
+            current_time = time.time()
+
+            # Prepare tuples for batch insert
+            values = [
+                (
+                    cs['caller_usr'],
+                    cs['callee_usr'],
+                    cs['file'],
+                    cs['line'],
+                    cs.get('column'),
+                    current_time
+                )
+                for cs in call_sites
+            ]
+
+            # Batch insert in a single transaction
+            with self.conn:
+                self.conn.executemany(
+                    """
+                    INSERT INTO call_sites (
+                        caller_usr, callee_usr, file, line, column, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    values
+                )
+
+            return len(call_sites)
+
+        except Exception as e:
+            diagnostics.error(f"Failed to batch save {len(call_sites)} call sites: {e}")
+            return 0
+
+    def get_call_sites_for_caller(self, caller_usr: str) -> List[Dict[str, Any]]:
+        """
+        Get all call sites from a specific caller function.
+
+        Args:
+            caller_usr: USR of the calling function
+
+        Returns:
+            List of call site dicts with keys: callee_usr, file, line, column
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                """
+                SELECT callee_usr, file, line, column
+                FROM call_sites
+                WHERE caller_usr = ?
+                ORDER BY file, line
+                """,
+                (caller_usr,)
+            )
+
+            return [
+                {
+                    'callee_usr': row['callee_usr'],
+                    'file': row['file'],
+                    'line': row['line'],
+                    'column': row['column']
+                }
+                for row in cursor.fetchall()
+            ]
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get call sites for caller {caller_usr}: {e}")
+            return []
+
+    def get_call_sites_for_callee(self, callee_usr: str) -> List[Dict[str, Any]]:
+        """
+        Get all call sites to a specific callee function.
+
+        Args:
+            callee_usr: USR of the called function
+
+        Returns:
+            List of call site dicts with keys: caller_usr, file, line, column
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                """
+                SELECT caller_usr, file, line, column
+                FROM call_sites
+                WHERE callee_usr = ?
+                ORDER BY file, line
+                """,
+                (callee_usr,)
+            )
+
+            return [
+                {
+                    'caller_usr': row['caller_usr'],
+                    'file': row['file'],
+                    'line': row['line'],
+                    'column': row['column']
+                }
+                for row in cursor.fetchall()
+            ]
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get call sites for callee {callee_usr}: {e}")
+            return []
+
+    def delete_call_sites_by_file(self, file_path: str) -> int:
+        """
+        Delete all call sites from a specific file.
+
+        Args:
+            file_path: Path to file whose call sites should be deleted
+
+        Returns:
+            Number of call sites deleted
+        """
+        try:
+            self._ensure_connected()
+
+            # Get count before deletion
+            cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM call_sites WHERE file = ?",
+                (file_path,)
+            )
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                return 0
+
+            # Delete call sites
+            with self.conn:
+                self.conn.execute(
+                    "DELETE FROM call_sites WHERE file = ?",
+                    (file_path,)
+                )
+
+            return count
+
+        except Exception as e:
+            diagnostics.error(f"Failed to delete call sites for file {file_path}: {e}")
+            return 0
