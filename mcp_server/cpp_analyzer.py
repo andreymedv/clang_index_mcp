@@ -2213,15 +2213,28 @@ class CppAnalyzer:
             "derived_classes": derived_hierarchies
         }
     
-    def find_callers(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
-        """Find all functions that call the specified function"""
-        results = []
-        
+    def find_callers(self, function_name: str, class_name: str = "", include_call_sites: bool = True) -> Dict[str, Any]:
+        """
+        Find all functions that call the specified function.
+
+        Args:
+            function_name: Name of the target function
+            class_name: Optional class name to disambiguate methods
+            include_call_sites: Whether to include call site locations (Phase 3)
+
+        Returns:
+            Dictionary with:
+                - callers: List of caller function info (backward compatible)
+                - call_sites: List of call site locations (Phase 3, if include_call_sites=True)
+        """
+        callers_list = []
+        call_sites_list = []
+
         # Find the target function(s)
-        target_functions = self.search_functions(f"^{re.escape(function_name)}$", 
-                                               project_only=False, 
+        target_functions = self.search_functions(f"^{re.escape(function_name)}$",
+                                               project_only=False,
                                                class_name=class_name)
-        
+
         # Collect USRs of target functions
         target_usrs = set()
         for func in target_functions:
@@ -2229,14 +2242,14 @@ class CppAnalyzer:
             for symbol in self.function_index.get(func['name'], []):
                 if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
                     target_usrs.add(symbol.usr)
-        
+
         # Find all callers
         for usr in target_usrs:
             callers = self.call_graph_analyzer.find_callers(usr)
             for caller_usr in callers:
                 if caller_usr in self.usr_index:
                     caller_info = self.usr_index[caller_usr]
-                    results.append({
+                    callers_list.append({
                         "name": caller_info.name,
                         "kind": caller_info.kind,
                         "file": caller_info.file,
@@ -2244,11 +2257,89 @@ class CppAnalyzer:
                         "column": caller_info.column,
                         "signature": caller_info.signature,
                         "parent_class": caller_info.parent_class,
-                        "is_project": caller_info.is_project
+                        "is_project": caller_info.is_project,
+                        "start_line": caller_info.start_line,
+                        "end_line": caller_info.end_line
                     })
-        
-        return results
-    
+
+            # Phase 3: Get call sites with line-level precision
+            if include_call_sites:
+                call_sites = self.call_graph_analyzer.get_call_sites_for_callee(usr)
+                for call_site in call_sites:
+                    # Get caller info for each call site
+                    if call_site.caller_usr in self.usr_index:
+                        caller_info = self.usr_index[call_site.caller_usr]
+                        call_sites_list.append({
+                            "file": call_site.file,
+                            "line": call_site.line,
+                            "column": call_site.column,
+                            "caller": caller_info.name,
+                            "caller_file": caller_info.file,
+                            "caller_signature": caller_info.signature
+                        })
+
+        # Return dictionary with both callers and call_sites
+        result = {
+            "function": function_name,
+            "callers": callers_list
+        }
+
+        if include_call_sites:
+            # Sort call sites by file, then line
+            call_sites_list.sort(key=lambda cs: (cs['file'], cs['line']))
+            result["call_sites"] = call_sites_list
+            result["total_call_sites"] = len(call_sites_list)
+
+        return result
+
+    def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
+        """
+        Get all call sites FROM a specific function with line-level precision (Phase 3).
+
+        Args:
+            function_name: Name of the source function
+            class_name: Optional class name to disambiguate methods
+
+        Returns:
+            List of call site dictionaries with exact file:line:column locations
+        """
+        call_sites_list = []
+
+        # Find the source function(s)
+        source_functions = self.search_functions(f"^{re.escape(function_name)}$",
+                                                project_only=False,
+                                                class_name=class_name)
+
+        # Collect USRs of source functions
+        source_usrs = set()
+        for func in source_functions:
+            # Find the full symbol info with USR
+            for symbol in self.function_index.get(func['name'], []):
+                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+                    source_usrs.add(symbol.usr)
+
+        # Get call sites for each source function
+        for usr in source_usrs:
+            call_sites = self.call_graph_analyzer.get_call_sites_for_caller(usr)
+            for call_site in call_sites:
+                # Get target function info
+                if call_site.callee_usr in self.usr_index:
+                    target_info = self.usr_index[call_site.callee_usr]
+                    call_sites_list.append({
+                        "target": target_info.name,
+                        "target_signature": target_info.signature,
+                        "target_file": target_info.file,
+                        "target_kind": target_info.kind,
+                        "file": call_site.file,
+                        "line": call_site.line,
+                        "column": call_site.column
+                    })
+
+        # Sort by file, then line
+        call_sites_list.sort(key=lambda cs: (cs['file'], cs['line']))
+
+        return call_sites_list
+
     def find_callees(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
         """Find all functions called by the specified function"""
         results = []
