@@ -556,9 +556,20 @@ class CppAnalyzer:
 
                 added_count += 1
 
-            # Add all collected call relationships
-            for caller_usr, called_usr in calls_buffer:
-                self.call_graph_analyzer.add_call(caller_usr, called_usr)
+            # Add all collected call relationships (Phase 3: now includes location)
+            for call_info in calls_buffer:
+                if len(call_info) == 5:
+                    # Phase 3 format: (caller_usr, callee_usr, file, line, column)
+                    caller_usr, called_usr, call_file, call_line, call_column = call_info
+                    self.call_graph_analyzer.add_call(
+                        caller_usr, called_usr, call_file, call_line, call_column
+                    )
+                elif len(call_info) == 2:
+                    # Legacy format for compatibility: (caller_usr, callee_usr)
+                    caller_usr, called_usr = call_info
+                    self.call_graph_analyzer.add_call(caller_usr, called_usr)
+                else:
+                    diagnostics.warning(f"Unexpected call_info format: {call_info}")
 
         # Clear buffers for next use
         symbols_buffer.clear()
@@ -1030,8 +1041,21 @@ class CppAnalyzer:
             referenced = cursor.referenced
             if referenced and referenced.get_usr():
                 called_usr = referenced.get_usr()
-                # Collect call relationship in thread-local buffer (no lock needed)
-                calls_buffer.append((parent_function_usr, called_usr))
+
+                # Phase 3: Extract call site location information
+                location = cursor.location
+                call_file = location.file.name if location.file else None
+                call_line = location.line if location.line else None
+                call_column = location.column if location.column else None
+
+                # Collect call relationship with location in thread-local buffer
+                calls_buffer.append((
+                    parent_function_usr,
+                    called_usr,
+                    call_file,
+                    call_line,
+                    call_column
+                ))
 
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
@@ -1778,6 +1802,14 @@ class CppAnalyzer:
             compile_commands_path=cc_path if cc_path.exists() else None,
             compile_commands_mtime=cc_mtime
         )
+
+        # Phase 3: Save call sites to database
+        call_sites = self.call_graph_analyzer.get_all_call_sites()
+        if call_sites:
+            diagnostics.debug(f"Saving {len(call_sites)} call sites to database")
+            saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
+            if saved_count != len(call_sites):
+                diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
     
     def _load_cache(self) -> bool:
         """Load index from cache file"""
