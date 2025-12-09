@@ -59,6 +59,9 @@ class SqliteCacheBackend:
     def _connect(self):
         """Open database connection with optimized settings."""
         try:
+            # Ensure parent directory exists
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
             # Configure for concurrent access
             self.conn = sqlite3.connect(
                 str(self.db_path),
@@ -1379,8 +1382,9 @@ class SqliteCacheBackend:
                         base_classes, calls, called_by,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
+                        brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol)
                 )
