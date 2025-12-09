@@ -54,6 +54,35 @@ def session_temp_dir():
 # Function-scoped Fixtures (Created for each test function)
 # ============================================================================
 
+@pytest.fixture(autouse=True)
+def cleanup_cache_dirs(request):
+    """
+    Automatically clean up cache directories after each test.
+
+    This fixture runs for every test (autouse=True) and ensures that
+    .mcp_cache/ directories created during tests are properly cleaned up,
+    preventing cache pollution between tests.
+    """
+    # Get initial set of cache dirs before test runs
+    project_root = Path(__file__).parent.parent
+    cache_base = project_root / ".mcp_cache"
+    initial_cache_dirs = set()
+    if cache_base.exists():
+        initial_cache_dirs = set(cache_base.iterdir())
+
+    # Run the test
+    yield
+
+    # Clean up cache directories created during the test
+    if cache_base.exists():
+        for cache_dir in cache_base.iterdir():
+            if cache_dir not in initial_cache_dirs:
+                try:
+                    shutil.rmtree(cache_dir, ignore_errors=False)
+                except Exception:
+                    pass  # Ignore cleanup errors
+
+
 @pytest.fixture
 def temp_dir():
     """
@@ -124,7 +153,7 @@ def analyzer(temp_project_dir):
     Yields:
         CppAnalyzer: Analyzer instance pointing to temp project
 
-    Cleanup: Project directory automatically removed after test
+    Cleanup: Project directory and cache automatically removed after test
 
     Example:
         def test_indexing(analyzer):
@@ -136,7 +165,17 @@ def analyzer(temp_project_dir):
     """
     analyzer_instance = CppAnalyzer(str(temp_project_dir))
     yield analyzer_instance
-    # Cleanup is handled by temp_project_dir fixture
+    # Close analyzer and clean up cache
+    if hasattr(analyzer_instance, 'cache_manager'):
+        analyzer_instance.cache_manager.close()
+    # Clean up cache directory
+    project_root = Path(__file__).parent.parent
+    cache_base = project_root / ".mcp_cache"
+    if cache_base.exists():
+        # Clean up all cache directories related to this temp project
+        project_name = Path(temp_project_dir).name
+        for cache_dir in cache_base.glob(f"{project_name}_*"):
+            shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -192,6 +231,17 @@ void globalFunction();
     analyzer_instance.index_project()
 
     yield analyzer_instance
+    # Close analyzer and clean up cache
+    if hasattr(analyzer_instance, 'cache_manager'):
+        analyzer_instance.cache_manager.close()
+    # Clean up cache directory
+    project_root = Path(__file__).parent.parent
+    cache_base = project_root / ".mcp_cache"
+    if cache_base.exists():
+        # Clean up all cache directories related to this temp project
+        project_name = Path(temp_project_dir).name
+        for cache_dir in cache_base.glob(f"{project_name}_*"):
+            shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 # ============================================================================
