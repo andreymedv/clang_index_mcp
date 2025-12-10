@@ -277,7 +277,11 @@ void unrelatedFunction() {
         analyzer.index_project()
 
         # Find callers of helperFunction
-        callers = analyzer.find_callers("helperFunction")
+        result = analyzer.find_callers("helperFunction")
+
+        # Phase 3: find_callers now returns dict with 'callers' key
+        assert isinstance(result, dict), "find_callers should return dict (Phase 3)"
+        callers = result['callers']
 
         # Verify callers were found
         caller_names = [c['name'] for c in callers]
