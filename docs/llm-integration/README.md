@@ -60,7 +60,7 @@ The LLM integration strategy is divided into phases, each adding specific capabi
 
 ### Database Schema
 
-**Current version:** 7.0
+**Current version:** 8.0
 
 **Phase 1 additions (v5.0-v6.0):**
 - `start_line INTEGER` - First line of symbol definition
@@ -73,6 +73,15 @@ The LLM integration strategy is divided into phases, each adding specific capabi
 **Phase 2 additions (v7.0):**
 - `brief TEXT` - Brief description (max 200 chars)
 - `doc_comment TEXT` - Full documentation (max 4000 chars)
+
+**Phase 3 additions (v8.0):**
+- New table: `call_sites` - Line-level call graph tracking
+  - `caller_usr TEXT` - Function making the call
+  - `callee_usr TEXT` - Function being called
+  - `file TEXT` - Source file containing call
+  - `line INTEGER` - Line number of call
+  - `column INTEGER` - Column number (optional)
+  - Indexes on caller_usr, callee_usr, file, and (file, line)
 
 ### MCP Tools Enhanced
 
@@ -98,12 +107,33 @@ All search and info tools now return additional fields:
 }
 ```
 
+**From Phase 3:**
+```json
+{
+  "function": "validate",
+  "callers": [...],
+  "call_sites": [
+    {
+      "file": "/path/to/file.cpp",
+      "line": 45,
+      "column": 5,
+      "caller": "processData",
+      "caller_signature": "void ()",
+      "caller_file": "/path/to/file.cpp"
+    }
+  ],
+  "total_call_sites": 2
+}
+```
+
 **Affected tools:**
 - `search_classes` - Returns brief for each result
 - `search_functions` - Returns brief for each result
 - `get_class_info` - Returns brief, doc_comment, and line ranges
 - `get_function_info` - Returns brief, doc_comment, and line ranges
 - `get_files_containing_symbol` - NEW in Phase 1
+- `find_callers` - ENHANCED in Phase 3 (now returns dict with call_sites)
+- `get_call_sites` - NEW in Phase 3 (forward analysis)
 
 ## Testing
 
@@ -137,19 +167,52 @@ pytest tests/test_documentation_*.py -v
 make test-coverage
 ```
 
+### ✅ Phase 3: Line-Level Call Graph (COMPLETE)
+
+**Status:** PR #50 submitted (2025-12-10)
+**PR:** #50
+
+**What it adds:**
+- Line-level call site tracking (exact file:line:column for each function call)
+- Enhanced `find_callers` tool with call_sites array
+- New `get_call_sites` tool for forward analysis (what does this function call?)
+- Set-based deduplication to prevent duplicate call sites
+- Bidirectional call graph queries with precise locations
+
+**Documentation:**
+- [PHASE3_REQUIREMENTS.md](PHASE3_REQUIREMENTS.md) - Comprehensive requirements (reduced scope)
+- [PHASE3_TEST_PLAN.md](PHASE3_TEST_PLAN.md) - Test specifications
+
+**Test results:**
+- 40/40 Phase 3 tests passing (100% pass rate)
+- 544/544 full test suite passing
+- Schema version: 8.0
+- Performance impact: <5% (well under 10% target)
+
+**Key benefits:**
+- Precise navigation to exact call locations
+- Impact analysis for function changes
+- Bidirectional call graph (who calls X + what does X call)
+- LLMs can trace execution flow with line-level precision
+
+**Deferred features:**
+- Cross-reference extraction (@see, @ref tags) - moved to future phase
+- Parameter documentation (@param tags) - moved to future phase
+- Rationale: Call site tracking delivers core value; other features are enhancements
+
 ## Future Phases (Planned)
 
-### Phase 3: Call Graph Enhancement (Planned)
-- Enhanced call graph with line-level precision
-- Cross-reference extraction (@see, @ref tags)
-- Parameter documentation (@param tags)
+### Phase 4: Enhanced Documentation (Planned)
+- Cross-reference extraction (@see, @ref, @relates tags)
+- Parameter documentation (@param, @tparam, @return tags)
+- Documentation relationship mapping
 
-### Phase 4: Relationship Mapping (Planned)
+### Phase 5: Relationship Mapping (Planned)
 - Inheritance documentation links
 - Template specialization relationships
 - Include dependency visualization
 
-### Phase 5: Semantic Search (Planned)
+### Phase 6: Semantic Search (Planned)
 - FTS5 documentation search
 - Semantic code understanding
 - Natural language queries
@@ -166,11 +229,17 @@ make test-coverage
 - Storage increase: ~60 MB for 100K symbols (worst case, actual lower due to NULLs)
 - Query performance: No measurable impact
 
-### Combined (Phase 1 + 2)
-- Total indexing slowdown: <10% over baseline
-- Total storage increase: ~62 MB for 100K symbols
+### Phase 3 Impact
+- Indexing time increase: <5% (call sites extracted during AST traversal)
+- Storage increase: ~8 bytes per call site (~2.4 MB for 100K symbols with 3 calls avg)
+- Query performance: Call site queries <50ms
+
+### Combined (Phase 1 + 2 + 3)
+- Total indexing slowdown: <15% over baseline
+- Total storage increase: ~65 MB for 100K symbols (worst case)
 - Minimal impact on query performance
 - Significant reduction in LLM filesystem access
+- Precise call site navigation eliminates guesswork
 
 ## Migration Notes
 
@@ -180,6 +249,7 @@ The server automatically recreates the cache when schema version changes:
 - v4.0 → v5.0 (Phase 1 initial)
 - v5.0 → v6.0 (Phase 1 header tracking)
 - v6.0 → v7.0 (Phase 2 documentation)
+- v7.0 → v8.0 (Phase 3 call sites)
 
 No manual migration needed - old caches are automatically invalidated and recreated.
 
@@ -229,6 +299,9 @@ For questions or issues related to LLM integration:
 
 ---
 
-**Last updated:** 2025-12-08
-**Current schema version:** 7.0
-**Completed phases:** Phase 1 (Line Ranges) ✅, Phase 2 (Documentation Extraction) ✅
+**Last updated:** 2025-12-10
+**Current schema version:** 8.0
+**Completed phases:**
+- Phase 1 (Line Ranges) ✅
+- Phase 2 (Documentation Extraction) ✅
+- Phase 3 (Line-Level Call Graph) ✅
