@@ -405,7 +405,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callers",
-            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis to identify caller functions. Returns list with: name, kind, file, line, column, signature, parent_class, is_project, start_line, end_line (caller function body range), header_file, header_start_line, header_end_line.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLER FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: 1) Use this tool to get caller function names/files, 2) Use start_line/end_line to read the function body, 3) Search within that range for the call.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), or call graph visualization.",
+            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis with LINE-LEVEL PRECISION (Phase 3).\n\nReturns:\n- callers: List of caller function info (name, kind, file, line where function is defined, signature, parent_class, is_project, start_line, end_line of function body)\n- call_sites: Array of EXACT call locations with file, line, column where each call occurs, caller name/signature (NEW in Phase 3)\n- total_call_sites: Count of all call sites found\n\nThe call_sites array provides LINE-LEVEL PRECISION - you get the exact file:line:column where each call occurs, eliminating the need to search within function bodies. Each call site includes the calling function's name and signature for context.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), call graph visualization, or finding exact usage locations.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -435,6 +435,25 @@ async def list_tools() -> List[Tool]:
                     "class_name": {
                         "type": "string",
                         "description": "If the source is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
+                        "default": ""
+                    }
+                },
+                "required": ["function_name"]
+            }
+        ),
+        Tool(
+            name="get_call_sites",
+            description="Get all function calls made FROM a specific source function with LINE-LEVEL PRECISION (Phase 3). Returns exact file:line:column for each function call within the source function's body.\n\nReturns array of call sites, each with:\n- target: Name of called function\n- target_signature: Full signature of called function\n- file: Source file containing the call\n- line: Exact line number of call\n- column: Column position of call\n- target_file: File where called function is defined\n\nThis tool shows WHAT a function calls (forward analysis) with precise locations. Inverse of find_callers which shows what calls a function (backward analysis).\n\nUse this for: understanding function dependencies with exact call locations, analyzing code flow, finding specific call statements, or refactoring call sites.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "function_name": {
+                        "type": "string",
+                        "description": "Name of the source function to analyze (the function doing the calling)"
+                    },
+                    "class_name": {
+                        "type": "string",
+                        "description": "If the source is a class method, specify the class name to disambiguate. Leave empty for standalone functions.",
                         "default": ""
                     }
                 },
@@ -873,6 +892,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
             results = analyzer.find_callees(function_name, class_name)
+            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+
+        elif name == "get_call_sites":
+            function_name = arguments["function_name"]
+            class_name = arguments.get("class_name", "")
+            results = analyzer.get_call_sites(function_name, class_name)
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
         elif name == "get_files_containing_symbol":
