@@ -210,9 +210,12 @@ void main() {
         assert isinstance(callees, list)
 
         # Get callers (functions that call process)
-        callers = analyzer.find_callers("process")
-        assert callers is not None
-        assert isinstance(callers, list)
+        result = analyzer.find_callers("process")
+        assert result is not None
+        # Phase 3: find_callers now returns dict with 'callers' key
+        assert isinstance(result, dict)
+        assert 'callers' in result
+        assert isinstance(result['callers'], list)
 
     def test_regex_validation_in_search(self, temp_project_dir):
         """Test that ReDoS patterns are rejected in search"""
