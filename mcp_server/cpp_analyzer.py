@@ -66,8 +66,9 @@ def _process_file_worker(args_tuple):
         args_tuple: (project_root, file_path, force, include_dependencies)
 
     Returns:
-        (file_path, success, was_cached, symbols)
+        (file_path, success, was_cached, symbols, call_sites)
         where symbols is a list of SymbolInfo objects or empty list on failure
+        and call_sites is a list of call site dicts (Phase 3)
     """
     project_root, file_path, force, include_dependencies = args_tuple
 
@@ -86,11 +87,21 @@ def _process_file_worker(args_tuple):
     # Extract symbols from this file
     # No lock needed here since this process has isolated memory
     symbols = []
+    call_sites = []  # Phase 3
     if success:
         if file_path in analyzer.file_index:
             symbols = analyzer.file_index[file_path]
 
-    return (file_path, success, was_cached, symbols)
+        # Phase 3: Extract call sites collected during this file's parsing
+        call_sites = analyzer.call_graph_analyzer.get_all_call_sites()
+
+        # Debug
+        if call_sites:
+            diagnostics.debug(f"Worker extracted {len(call_sites)} call sites from {file_path}")
+        diagnostics.debug(f"Worker call_graph entries: {len(analyzer.call_graph_analyzer.call_graph)}")
+        diagnostics.debug(f"Worker call_sites count: {len(analyzer.call_graph_analyzer.call_sites)}")
+
+    return (file_path, success, was_cached, symbols, call_sites)
 
 
 class CppAnalyzer:
@@ -556,9 +567,24 @@ class CppAnalyzer:
 
                 added_count += 1
 
-            # Add all collected call relationships
-            for caller_usr, called_usr in calls_buffer:
-                self.call_graph_analyzer.add_call(caller_usr, called_usr)
+            # Add all collected call relationships (Phase 3: now includes location)
+            if calls_buffer:
+                diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
+                if calls_buffer:
+                    diagnostics.debug(f"First call format: {calls_buffer[0] if calls_buffer else 'empty'}")
+            for call_info in calls_buffer:
+                if len(call_info) == 5:
+                    # Phase 3 format: (caller_usr, callee_usr, file, line, column)
+                    caller_usr, called_usr, call_file, call_line, call_column = call_info
+                    self.call_graph_analyzer.add_call(
+                        caller_usr, called_usr, call_file, call_line, call_column
+                    )
+                elif len(call_info) == 2:
+                    # Legacy format for compatibility: (caller_usr, callee_usr)
+                    caller_usr, called_usr = call_info
+                    self.call_graph_analyzer.add_call(caller_usr, called_usr)
+                else:
+                    diagnostics.warning(f"Unexpected call_info format: {call_info}")
 
         # Clear buffers for next use
         symbols_buffer.clear()
@@ -1030,8 +1056,21 @@ class CppAnalyzer:
             referenced = cursor.referenced
             if referenced and referenced.get_usr():
                 called_usr = referenced.get_usr()
-                # Collect call relationship in thread-local buffer (no lock needed)
-                calls_buffer.append((parent_function_usr, called_usr))
+
+                # Phase 3: Extract call site location information
+                location = cursor.location
+                call_file = location.file.name if location.file else None
+                call_line = location.line if location.line else None
+                call_column = location.column if location.column else None
+
+                # Collect call relationship with location in thread-local buffer
+                calls_buffer.append((
+                    parent_function_usr,
+                    called_usr,
+                    call_file,
+                    call_line,
+                    call_column
+                ))
 
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
@@ -1592,8 +1631,8 @@ class CppAnalyzer:
                     result = future.result()
 
                     if self.use_processes:
-                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols)
-                        _, success, was_cached, symbols = result
+                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites)
+                        _, success, was_cached, symbols, call_sites = result
 
                         # Merge symbols into main process indexes
                         if success and symbols:
@@ -1622,6 +1661,18 @@ class CppAnalyzer:
                                     if symbol.called_by:
                                         for caller_usr in symbol.called_by:
                                             self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+
+                                # Phase 3: Restore call sites from worker
+                                if call_sites:
+                                    diagnostics.debug(f"Restoring {len(call_sites)} call sites from {file_path}")
+                                for cs_dict in call_sites:
+                                    self.call_graph_analyzer.add_call(
+                                        cs_dict['caller_usr'],
+                                        cs_dict['callee_usr'],
+                                        cs_dict['file'],
+                                        cs_dict['line'],
+                                        cs_dict.get('column')
+                                    )
 
                                 # Update file hash tracking
                                 file_hash = self._get_file_hash(file_path)
@@ -1778,6 +1829,14 @@ class CppAnalyzer:
             compile_commands_path=cc_path if cc_path.exists() else None,
             compile_commands_mtime=cc_mtime
         )
+
+        # Phase 3: Save call sites to database
+        call_sites = self.call_graph_analyzer.get_all_call_sites()
+        if call_sites:
+            diagnostics.debug(f"Saving {len(call_sites)} call sites to database")
+            saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
+            if saved_count != len(call_sites):
+                diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
     
     def _load_cache(self) -> bool:
         """Load index from cache file"""
@@ -1844,6 +1903,12 @@ class CppAnalyzer:
             
             # Rebuild call graph from all symbols
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+
+            # Phase 3: Restore call sites from database
+            call_sites_data = self.cache_manager.backend.load_all_call_sites()
+            if call_sites_data:
+                self.call_graph_analyzer.restore_call_sites(call_sites_data)
+                diagnostics.debug(f"Restored {len(call_sites_data)} call sites from database")
 
             diagnostics.debug(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions")
             self.cache_loaded = True
@@ -2181,15 +2246,28 @@ class CppAnalyzer:
             "derived_classes": derived_hierarchies
         }
     
-    def find_callers(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
-        """Find all functions that call the specified function"""
-        results = []
-        
+    def find_callers(self, function_name: str, class_name: str = "", include_call_sites: bool = True) -> Dict[str, Any]:
+        """
+        Find all functions that call the specified function.
+
+        Args:
+            function_name: Name of the target function
+            class_name: Optional class name to disambiguate methods
+            include_call_sites: Whether to include call site locations (Phase 3)
+
+        Returns:
+            Dictionary with:
+                - callers: List of caller function info (backward compatible)
+                - call_sites: List of call site locations (Phase 3, if include_call_sites=True)
+        """
+        callers_list = []
+        call_sites_list = []
+
         # Find the target function(s)
-        target_functions = self.search_functions(f"^{re.escape(function_name)}$", 
-                                               project_only=False, 
+        target_functions = self.search_functions(f"^{re.escape(function_name)}$",
+                                               project_only=False,
                                                class_name=class_name)
-        
+
         # Collect USRs of target functions
         target_usrs = set()
         for func in target_functions:
@@ -2197,14 +2275,14 @@ class CppAnalyzer:
             for symbol in self.function_index.get(func['name'], []):
                 if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
                     target_usrs.add(symbol.usr)
-        
+
         # Find all callers
         for usr in target_usrs:
             callers = self.call_graph_analyzer.find_callers(usr)
             for caller_usr in callers:
                 if caller_usr in self.usr_index:
                     caller_info = self.usr_index[caller_usr]
-                    results.append({
+                    callers_list.append({
                         "name": caller_info.name,
                         "kind": caller_info.kind,
                         "file": caller_info.file,
@@ -2212,11 +2290,89 @@ class CppAnalyzer:
                         "column": caller_info.column,
                         "signature": caller_info.signature,
                         "parent_class": caller_info.parent_class,
-                        "is_project": caller_info.is_project
+                        "is_project": caller_info.is_project,
+                        "start_line": caller_info.start_line,
+                        "end_line": caller_info.end_line
                     })
-        
-        return results
-    
+
+            # Phase 3: Get call sites with line-level precision
+            if include_call_sites:
+                call_sites = self.call_graph_analyzer.get_call_sites_for_callee(usr)
+                for call_site in call_sites:
+                    # Get caller info for each call site
+                    if call_site.caller_usr in self.usr_index:
+                        caller_info = self.usr_index[call_site.caller_usr]
+                        call_sites_list.append({
+                            "file": call_site.file,
+                            "line": call_site.line,
+                            "column": call_site.column,
+                            "caller": caller_info.name,
+                            "caller_file": caller_info.file,
+                            "caller_signature": caller_info.signature
+                        })
+
+        # Return dictionary with both callers and call_sites
+        result = {
+            "function": function_name,
+            "callers": callers_list
+        }
+
+        if include_call_sites:
+            # Sort call sites by file, then line
+            call_sites_list.sort(key=lambda cs: (cs['file'], cs['line']))
+            result["call_sites"] = call_sites_list
+            result["total_call_sites"] = len(call_sites_list)
+
+        return result
+
+    def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
+        """
+        Get all call sites FROM a specific function with line-level precision (Phase 3).
+
+        Args:
+            function_name: Name of the source function
+            class_name: Optional class name to disambiguate methods
+
+        Returns:
+            List of call site dictionaries with exact file:line:column locations
+        """
+        call_sites_list = []
+
+        # Find the source function(s)
+        source_functions = self.search_functions(f"^{re.escape(function_name)}$",
+                                                project_only=False,
+                                                class_name=class_name)
+
+        # Collect USRs of source functions
+        source_usrs = set()
+        for func in source_functions:
+            # Find the full symbol info with USR
+            for symbol in self.function_index.get(func['name'], []):
+                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+                    source_usrs.add(symbol.usr)
+
+        # Get call sites for each source function
+        for usr in source_usrs:
+            call_sites = self.call_graph_analyzer.get_call_sites_for_caller(usr)
+            for call_site in call_sites:
+                # Get target function info
+                if call_site.callee_usr in self.usr_index:
+                    target_info = self.usr_index[call_site.callee_usr]
+                    call_sites_list.append({
+                        "target": target_info.name,
+                        "target_signature": target_info.signature,
+                        "target_file": target_info.file,
+                        "target_kind": target_info.kind,
+                        "file": call_site.file,
+                        "line": call_site.line,
+                        "column": call_site.column
+                    })
+
+        # Sort by file, then line
+        call_sites_list.sort(key=lambda cs: (cs['file'], cs['line']))
+
+        return call_sites_list
+
     def find_callees(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
         """Find all functions called by the specified function"""
         results = []

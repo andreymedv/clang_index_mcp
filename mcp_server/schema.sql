@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 7.0
+-- Version: 8.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v8.0: Added call_sites, cross_references, parameter_docs tables for call graph enhancement (Phase 3: LLM Integration)
 -- Changelog v7.0: Added brief and doc_comment fields for documentation extraction (Phase 2: LLM Integration)
 -- Changelog v6.0: Added is_definition field for definition-wins logic (Phase 1: Multiple Declarations)
 -- Changelog v5.0: Added line ranges and header file location tracking (Phase 1: LLM Integration)
@@ -122,7 +123,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"7.0"', julianday('now')),
+    ('version', '"8.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
@@ -171,3 +172,25 @@ CREATE INDEX IF NOT EXISTS idx_dep_source ON file_dependencies(source_file);
 CREATE INDEX IF NOT EXISTS idx_dep_included ON file_dependencies(included_file);
 CREATE INDEX IF NOT EXISTS idx_dep_direct ON file_dependencies(is_direct);
 CREATE INDEX IF NOT EXISTS idx_dep_detected ON file_dependencies(detected_at);
+
+-- Phase 3: Call Graph Enhancement Tables (v8.0)
+
+-- Call sites table: Tracks exact line/column where function calls occur
+-- Enables line-level precision for call graph analysis
+CREATE TABLE IF NOT EXISTS call_sites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    caller_usr TEXT NOT NULL,              -- USR of calling function
+    callee_usr TEXT NOT NULL,              -- USR of called function
+    file TEXT NOT NULL,                    -- Source file containing call
+    line INTEGER NOT NULL,                 -- Line number of call
+    column INTEGER,                        -- Column number (optional)
+    created_at REAL NOT NULL,              -- When call site was indexed
+    FOREIGN KEY (caller_usr) REFERENCES symbols(usr) ON DELETE CASCADE,
+    FOREIGN KEY (callee_usr) REFERENCES symbols(usr) ON DELETE CASCADE
+);
+
+-- Indexes for fast call site queries
+CREATE INDEX IF NOT EXISTS idx_call_sites_caller ON call_sites(caller_usr);
+CREATE INDEX IF NOT EXISTS idx_call_sites_callee ON call_sites(callee_usr);
+CREATE INDEX IF NOT EXISTS idx_call_sites_file ON call_sites(file);
+CREATE INDEX IF NOT EXISTS idx_call_sites_line ON call_sites(file, line);
