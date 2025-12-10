@@ -946,9 +946,6 @@ class CppAnalyzer:
         # Get cursor kind, handling unknown kinds from version mismatches
         try:
             kind = cursor.kind
-            # Debug: Log CALL_EXPR encounters
-            if kind == CursorKind.CALL_EXPR:
-                print(f"DEBUG: Found CALL_EXPR, parent_fn={bool(parent_function_usr)}", flush=True)
         except ValueError as e:
             # This can happen when libclang library supports newer C++ features
             # but Python bindings have outdated cursor kind enums
@@ -1065,9 +1062,6 @@ class CppAnalyzer:
                 call_file = location.file.name if location.file else None
                 call_line = location.line if location.line else None
                 call_column = location.column if location.column else None
-
-                # Debug
-                print(f"DEBUG CALL_EXPR: {parent_function_usr[:30]}... calls {called_usr[:30]}... at {call_line}", flush=True)
 
                 # Collect call relationship with location in thread-local buffer
                 calls_buffer.append((
