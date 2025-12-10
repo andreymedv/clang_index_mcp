@@ -1838,3 +1838,36 @@ class SqliteCacheBackend:
         except Exception as e:
             diagnostics.error(f"Failed to delete call sites for file {file_path}: {e}")
             return 0
+
+    def load_all_call_sites(self) -> List[Dict[str, Any]]:
+        """
+        Load all call sites from the database.
+
+        Returns:
+            List of call site dicts with keys: caller_usr, callee_usr, file, line, column
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                """
+                SELECT caller_usr, callee_usr, file, line, column
+                FROM call_sites
+                ORDER BY file, line
+                """
+            )
+
+            return [
+                {
+                    'caller_usr': row['caller_usr'],
+                    'callee_usr': row['callee_usr'],
+                    'file': row['file'],
+                    'line': row['line'],
+                    'column': row['column']
+                }
+                for row in cursor.fetchall()
+            ]
+
+        except Exception as e:
+            diagnostics.error(f"Failed to load call sites from database: {e}")
+            return []

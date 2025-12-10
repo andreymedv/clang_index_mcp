@@ -66,8 +66,9 @@ def _process_file_worker(args_tuple):
         args_tuple: (project_root, file_path, force, include_dependencies)
 
     Returns:
-        (file_path, success, was_cached, symbols)
+        (file_path, success, was_cached, symbols, call_sites)
         where symbols is a list of SymbolInfo objects or empty list on failure
+        and call_sites is a list of call site dicts (Phase 3)
     """
     project_root, file_path, force, include_dependencies = args_tuple
 
@@ -86,11 +87,21 @@ def _process_file_worker(args_tuple):
     # Extract symbols from this file
     # No lock needed here since this process has isolated memory
     symbols = []
+    call_sites = []  # Phase 3
     if success:
         if file_path in analyzer.file_index:
             symbols = analyzer.file_index[file_path]
 
-    return (file_path, success, was_cached, symbols)
+        # Phase 3: Extract call sites collected during this file's parsing
+        call_sites = analyzer.call_graph_analyzer.get_all_call_sites()
+
+        # Debug
+        if call_sites:
+            diagnostics.debug(f"Worker extracted {len(call_sites)} call sites from {file_path}")
+        diagnostics.debug(f"Worker call_graph entries: {len(analyzer.call_graph_analyzer.call_graph)}")
+        diagnostics.debug(f"Worker call_sites count: {len(analyzer.call_graph_analyzer.call_sites)}")
+
+    return (file_path, success, was_cached, symbols, call_sites)
 
 
 class CppAnalyzer:
@@ -557,6 +568,10 @@ class CppAnalyzer:
                 added_count += 1
 
             # Add all collected call relationships (Phase 3: now includes location)
+            if calls_buffer:
+                diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
+                if calls_buffer:
+                    diagnostics.debug(f"First call format: {calls_buffer[0] if calls_buffer else 'empty'}")
             for call_info in calls_buffer:
                 if len(call_info) == 5:
                     # Phase 3 format: (caller_usr, callee_usr, file, line, column)
@@ -931,6 +946,9 @@ class CppAnalyzer:
         # Get cursor kind, handling unknown kinds from version mismatches
         try:
             kind = cursor.kind
+            # Debug: Log CALL_EXPR encounters
+            if kind == CursorKind.CALL_EXPR:
+                print(f"DEBUG: Found CALL_EXPR, parent_fn={bool(parent_function_usr)}", flush=True)
         except ValueError as e:
             # This can happen when libclang library supports newer C++ features
             # but Python bindings have outdated cursor kind enums
@@ -1047,6 +1065,9 @@ class CppAnalyzer:
                 call_file = location.file.name if location.file else None
                 call_line = location.line if location.line else None
                 call_column = location.column if location.column else None
+
+                # Debug
+                print(f"DEBUG CALL_EXPR: {parent_function_usr[:30]}... calls {called_usr[:30]}... at {call_line}", flush=True)
 
                 # Collect call relationship with location in thread-local buffer
                 calls_buffer.append((
@@ -1616,8 +1637,8 @@ class CppAnalyzer:
                     result = future.result()
 
                     if self.use_processes:
-                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols)
-                        _, success, was_cached, symbols = result
+                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites)
+                        _, success, was_cached, symbols, call_sites = result
 
                         # Merge symbols into main process indexes
                         if success and symbols:
@@ -1646,6 +1667,18 @@ class CppAnalyzer:
                                     if symbol.called_by:
                                         for caller_usr in symbol.called_by:
                                             self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+
+                                # Phase 3: Restore call sites from worker
+                                if call_sites:
+                                    diagnostics.debug(f"Restoring {len(call_sites)} call sites from {file_path}")
+                                for cs_dict in call_sites:
+                                    self.call_graph_analyzer.add_call(
+                                        cs_dict['caller_usr'],
+                                        cs_dict['callee_usr'],
+                                        cs_dict['file'],
+                                        cs_dict['line'],
+                                        cs_dict.get('column')
+                                    )
 
                                 # Update file hash tracking
                                 file_hash = self._get_file_hash(file_path)
@@ -1876,6 +1909,12 @@ class CppAnalyzer:
             
             # Rebuild call graph from all symbols
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+
+            # Phase 3: Restore call sites from database
+            call_sites_data = self.cache_manager.backend.load_all_call_sites()
+            if call_sites_data:
+                self.call_graph_analyzer.restore_call_sites(call_sites_data)
+                diagnostics.debug(f"Restored {len(call_sites_data)} call sites from database")
 
             diagnostics.debug(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions")
             self.cache_loaded = True
