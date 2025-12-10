@@ -49,7 +49,7 @@ class CallGraphAnalyzer:
         self.reverse_call_graph: Dict[str, Set[str]] = defaultdict(set)  # Function USR -> Set of caller USRs
 
         # Phase 3: Line-level call site tracking
-        self.call_sites: List[CallSite] = []  # All call sites with location info
+        self.call_sites: Set[CallSite] = set()  # All call sites with location info (using set to avoid duplicates)
     
     def add_call(self, caller_usr: str, callee_usr: str, file: Optional[str] = None,
                  line: Optional[int] = None, column: Optional[int] = None):
@@ -70,7 +70,7 @@ class CallGraphAnalyzer:
             # Phase 3: Store call site with location if provided
             if file and line:
                 call_site = CallSite(caller_usr, callee_usr, file, line, column)
-                self.call_sites.append(call_site)
+                self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
     
     def clear(self):
         """Clear all call graph data"""
@@ -107,7 +107,24 @@ class CallGraphAnalyzer:
             if symbol.usr and symbol.calls:
                 for called_usr in symbol.calls:
                     self.add_call(symbol.usr, called_usr)
-    
+
+    def restore_call_sites(self, call_sites_data: List[Dict[str, Any]]):
+        """
+        Restore call sites from database-loaded dictionaries.
+
+        Args:
+            call_sites_data: List of dicts with keys: caller_usr, callee_usr, file, line, column
+        """
+        for cs_dict in call_sites_data:
+            call_site = CallSite(
+                caller_usr=cs_dict['caller_usr'],
+                callee_usr=cs_dict['callee_usr'],
+                file=cs_dict['file'],
+                line=cs_dict['line'],
+                column=cs_dict.get('column')
+            )
+            self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
+
     def find_callers(self, function_usr: str) -> Set[str]:
         """Find all functions that call the specified function"""
         return self.reverse_call_graph.get(function_usr, set())
@@ -173,7 +190,8 @@ class CallGraphAnalyzer:
         Returns:
             List of CallSite objects for this caller
         """
-        return [cs for cs in self.call_sites if cs.caller_usr == caller_usr]
+        return sorted([cs for cs in self.call_sites if cs.caller_usr == caller_usr],
+                     key=lambda cs: (cs.file, cs.line))
 
     def get_call_sites_for_callee(self, callee_usr: str) -> List[CallSite]:
         """
@@ -185,13 +203,15 @@ class CallGraphAnalyzer:
         Returns:
             List of CallSite objects for this callee
         """
-        return [cs for cs in self.call_sites if cs.callee_usr == callee_usr]
+        return sorted([cs for cs in self.call_sites if cs.callee_usr == callee_usr],
+                     key=lambda cs: (cs.file, cs.line))
 
     def get_all_call_sites(self) -> List[Dict[str, Any]]:
         """
         Get all call sites as dictionaries for storage.
 
         Returns:
-            List of call site dictionaries
+            List of call site dictionaries (sorted by file and line)
         """
-        return [cs.to_dict() for cs in self.call_sites]
+        sorted_call_sites = sorted(self.call_sites, key=lambda cs: (cs.file, cs.line))
+        return [cs.to_dict() for cs in sorted_call_sites]
