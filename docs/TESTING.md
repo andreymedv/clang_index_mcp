@@ -13,6 +13,8 @@ This document describes how to set up the test environment, run tests, and inter
 - [Writing Tests](#writing-tests)
 - [Troubleshooting](#troubleshooting)
 
+> **Platform-specific notes:** For macOS-specific testing issues, see [TESTING_MACOS.md](TESTING_MACOS.md).
+
 ---
 
 ## Quick Start
