@@ -203,7 +203,8 @@ make test-coverage
 ## Future Phases (Potential)
 
 ### Relationship Mapping (Potential)
-- Inheritance documentation links
+These features would extract relationships from C++ code structure (not documentation):
+- Enhanced inheritance graph (bidirectional relationships, virtual method overrides)
 - Template specialization relationships
 - Include dependency visualization
 
