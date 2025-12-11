@@ -195,27 +195,25 @@ make test-coverage
 - Bidirectional call graph (who calls X + what does X call)
 - LLMs can trace execution flow with line-level precision
 
-**Deferred features:**
-- Cross-reference extraction (@see, @ref tags) - moved to future phase
-- Parameter documentation (@param tags) - moved to future phase
-- Rationale: Call site tracking delivers core value; other features are enhancements
+**Originally planned but removed from scope:**
+- Cross-reference extraction (@see, @ref tags) - **removed from roadmap**
+- Parameter documentation (@param tags) - **removed from roadmap**
+- Rationale: These features assume comprehensive Doxygen documentation, which is uncommon in real-world codebases. Phase 3.1 delivers the core value for call graph analysis.
 
-## Future Phases (Planned)
+## Future Phases (Potential)
 
-### Phase 4: Enhanced Documentation (Planned)
-- Cross-reference extraction (@see, @ref, @relates tags)
-- Parameter documentation (@param, @tparam, @return tags)
-- Documentation relationship mapping
-
-### Phase 5: Relationship Mapping (Planned)
-- Inheritance documentation links
+### Relationship Mapping (Potential)
+These features would extract relationships from C++ code structure (not documentation):
+- Enhanced inheritance graph (bidirectional relationships, virtual method overrides)
 - Template specialization relationships
 - Include dependency visualization
 
-### Phase 6: Semantic Search (Planned)
+### Semantic Search (Potential)
 - FTS5 documentation search
 - Semantic code understanding
 - Natural language queries
+
+**Note:** Parameter documentation (@param tags) and cross-reference extraction (@see, @ref tags) have been **removed from the roadmap**. These features assume comprehensive Doxygen-style documentation, which is uncommon in real-world codebases. The current phases (1-3) already provide substantial value without requiring additional documentation standards.
 
 ## Performance Impact
 
