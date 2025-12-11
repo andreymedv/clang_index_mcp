@@ -1,4 +1,6 @@
-# Testing Guide
+# Testing Guide (Quick Reference)
+
+> **Note:** For comprehensive testing documentation, see [TESTING.md](TESTING.md). This is a quick reference guide covering common testing commands and workflows.
 
 This guide covers all testing features for the Clang Index MCP project.
 
