@@ -588,9 +588,9 @@ The removed sub-phases (cross-references and parameter documentation) are enhanc
 **Not included in Phase 3:**
 - Cross-reference extraction (@see, @ref, @relates tags) - **REMOVED FROM ROADMAP**
 - Parameter documentation (@param, @tparam, @return tags) - **REMOVED FROM ROADMAP**
-- Inheritance-based cross-references (Future - if needed)
-- Template specialization relationships (Future - if needed)
-- Include dependency visualization (Future - if needed)
+- Enhanced inheritance graph from code (bidirectional relationships, virtual overrides) - (Future - if needed)
+- Template specialization relationships from code - (Future - if needed)
+- Include dependency visualization - (Future - if needed)
 - Semantic code search (Future - if needed)
 - Data flow analysis (Future)
 - Control flow graphs (Future)
