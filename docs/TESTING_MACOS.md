@@ -1,5 +1,7 @@
 # macOS Testing Notes
 
+> **Note:** This document covers macOS-specific testing issues. For general testing documentation, see [TESTING.md](TESTING.md).
+
 ## libclang Configuration on macOS
 
 On macOS (especially M1/M2 systems), the HTTP and SSE transport tests may fail with:
