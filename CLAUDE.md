@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **Purpose:** Development guide for AI assistants working on this codebase. For user-facing documentation, see [README.md](README.md).
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -241,7 +243,7 @@ make ie                         # install-editable
 - **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
 - **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
 - **Parallel Worker:** mcp_server/cpp_analyzer.py:55-90 (`_process_file_worker()`)
-- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v7.0 with brief/doc_comment fields)
+- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v8.0 with brief/doc_comment fields and call_sites table)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py
 - **Compile Commands:** mcp_server/compile_commands_manager.py
@@ -386,7 +388,7 @@ mcp_server/
 ├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
-├── schema.sql                  # SQLite schema with FTS5 indexes (version 4.0)
+├── schema.sql                  # SQLite schema with FTS5 indexes (version 8.0)
 ├── schema_migrations.py        # Schema migrations (deprecated, for legacy support only)
 ├── compile_commands_manager.py # compile_commands.json parsing & caching
 ├── incremental_analyzer.py     # Incremental analysis orchestration
@@ -448,7 +450,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 6. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-7. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 7.0** includes documentation fields (brief, doc_comment).
+7. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 8.0** includes documentation fields (brief, doc_comment) and call_sites table for line-level call graph tracking.
 
 8. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 

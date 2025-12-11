@@ -261,8 +261,8 @@ All new fields are optional (NULL allowed):
 ## References
 
 ### Project Documentation
-- [CLAUDE.md](/CLAUDE.md) - Main project documentation with Phase 1 & 2 details
-- [REQUIREMENTS.md](/docs/REQUIREMENTS.md) - Original requirements
+- [CLAUDE.md](/CLAUDE.md) - Main project documentation with Phase 1-3 details
+- [REQUIREMENTS.md](/docs/archived/REQUIREMENTS.md) - Original requirements (archived)
 - [INCREMENTAL_ANALYSIS_DESIGN.md](/docs/INCREMENTAL_ANALYSIS_DESIGN.md) - Incremental analysis architecture
 
 ### Implementation Files
