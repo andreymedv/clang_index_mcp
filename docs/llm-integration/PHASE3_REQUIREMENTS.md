@@ -5,11 +5,16 @@
 Phase 3 adds **enhanced call graph capabilities** to provide line-level precision for function calls, extract cross-references from documentation, and capture parameter-specific documentation. This enables LLMs to understand code relationships more precisely and trace execution flow at a granular level.
 
 **Key Features:**
-1. **Line-Level Call Graph**: Track exact line numbers where function calls occur
-2. **Cross-Reference Extraction**: Extract @see, @ref, @relates Doxygen tags
-3. **Parameter Documentation**: Extract @param, @tparam, @return documentation
-4. **Enhanced Find Callers**: Return call sites with line numbers and context
-5. **Documentation Relationships**: Link symbols via documentation cross-references
+1. **Line-Level Call Graph**: Track exact line numbers where function calls occur ✅ IMPLEMENTED
+2. **Enhanced Find Callers**: Return call sites with line numbers and context ✅ IMPLEMENTED
+3. **Bidirectional Call Graph**: Both find_callers and get_call_sites tools ✅ IMPLEMENTED
+
+**Features removed from Phase 3 scope:**
+- ~~Cross-Reference Extraction~~: Extract @see, @ref, @relates Doxygen tags - **REMOVED FROM ROADMAP**
+- ~~Parameter Documentation~~: Extract @param, @tparam, @return documentation - **REMOVED FROM ROADMAP**
+- ~~Documentation Relationships~~: Link symbols via documentation cross-references - **REMOVED FROM ROADMAP**
+
+**Rationale:** These features assume comprehensive Doxygen documentation, which most real-world codebases lack.
 
 ## Functional Requirements
 
@@ -581,12 +586,16 @@ The removed sub-phases (cross-references and parameter documentation) are enhanc
 ## Out of Scope
 
 **Not included in Phase 3:**
-- Inheritance-based cross-references (Phase 4)
-- Template specialization relationships (Phase 4)
-- Include dependency visualization (Phase 4)
-- Semantic code search (Phase 5)
+- Cross-reference extraction (@see, @ref, @relates tags) - **REMOVED FROM ROADMAP**
+- Parameter documentation (@param, @tparam, @return tags) - **REMOVED FROM ROADMAP**
+- Inheritance-based cross-references (Future - if needed)
+- Template specialization relationships (Future - if needed)
+- Include dependency visualization (Future - if needed)
+- Semantic code search (Future - if needed)
 - Data flow analysis (Future)
 - Control flow graphs (Future)
+
+**Rationale for removal:** Parameter docs and cross-reference features assume comprehensive Doxygen-style documentation. In practice, most codebases lack consistent documentation comments, making these features low-value. The current implementation (Phases 1-3) provides substantial value without requiring documentation standards.
 
 ## References
 
