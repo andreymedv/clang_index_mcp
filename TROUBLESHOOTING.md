@@ -79,13 +79,13 @@ If all files are failing with "Error parsing translation unit", follow these ste
 
 ### Step 1: Pull Latest Changes
 ```bash
-cd /Users/andrey/repos/clang_index_mcp
-git pull origin claude/mcp-compile-commands-support-01G3N5zhaQbrphNoYJ4aQBBh
+cd /path/to/clang_index_mcp
+git pull origin main
 ```
 
 ### Step 2: Run Diagnostic Script
 ```bash
-python scripts/diagnose_compile_commands.py /Users/andrey/repos/llama.cpp
+python scripts/diagnose_compile_commands.py /path/to/your-project
 ```
 
 Check the output:
@@ -97,7 +97,7 @@ Check the output:
 If arguments look correct but parsing still fails, get detailed libclang error messages:
 
 ```bash
-python scripts/view_parse_errors.py /Users/andrey/repos/llama.cpp --summary
+python scripts/view_parse_errors.py /path/to/your-project --summary
 ```
 
 Look for actual error messages from libclang (not just "Error parsing translation unit").
@@ -110,13 +110,13 @@ Create a test script to see libclang's actual diagnostics:
 #!/usr/bin/env python3
 import sys
 from pathlib import Path
-sys.path.insert(0, '/Users/andrey/repos/clang_index_mcp')
+sys.path.insert(0, '/path/to/clang_index_mcp')
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 import clang.cindex
 
 # Create analyzer
-analyzer = CppAnalyzer('/Users/andrey/repos/llama.cpp')
+analyzer = CppAnalyzer('/path/to/your-project')
 
 # Get first file from compile_commands
 files = analyzer.compile_commands_manager.get_all_files()
