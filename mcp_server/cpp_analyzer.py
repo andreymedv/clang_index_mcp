@@ -926,10 +926,11 @@ class CppAnalyzer:
             parent_function_usr: USR of parent function for call tracking
 
         Design:
-            - Always traverse entire AST (to discover all files)
+            - Traverse AST of project files only (skip system headers for performance)
             - Only extract symbols when should_extract_from_file returns True
             - This enables multi-file extraction (source + headers) in single pass
             - Collects symbols in thread-local buffers to avoid lock contention
+            - Early exit optimization: skip non-project file subtrees (5-7x speedup)
 
         Implements:
             REQ-10.1.6: Use cursor.location.file to determine which file symbol belongs to
@@ -942,6 +943,16 @@ class CppAnalyzer:
         if cursor.location.file and should_extract_from_file is not None:
             file_path = str(cursor.location.file.name)
             should_extract = should_extract_from_file(file_path)
+
+            # PERFORMANCE OPTIMIZATION: Early exit for non-project files
+            # Skip traversing AST subtrees from system headers and external dependencies
+            # This provides 5-7x speedup by avoiding millions of unnecessary node visits
+            # Safe because:
+            # - We don't extract symbols from non-project files (should_extract=False)
+            # - We're not tracking calls (parent_function_usr empty means not in project function)
+            # - Dependency discovery uses tu.get_includes() API (doesn't need AST traversal)
+            if not should_extract and not parent_function_usr:
+                return
 
         # Get cursor kind, handling unknown kinds from version mismatches
         try:

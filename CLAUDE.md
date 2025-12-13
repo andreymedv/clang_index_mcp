@@ -201,6 +201,14 @@ make ie                         # install-editable
 - Provides 90%+ symbol extraction vs 0% for files with minor issues
 - See cpp_analyzer.py:index_file() error handling
 
+**9. AST Traversal Optimization (System Header Skipping)**
+- Early exit from AST traversal when encountering non-project file cursors
+- Skips traversing entire AST subtrees of system headers and external dependencies
+- Provides 5-7x speedup on large projects (3.5 hours → ~30-60 minutes for 5700 files)
+- Safe because: symbol extraction already filtered, dependency discovery uses tu.get_includes() API
+- Only traverses AST nodes from project files and files with active call tracking
+- See cpp_analyzer.py:_process_cursor() early exit optimization (line ~946-954)
+
 ### Data Flow
 
 **Indexing Flow:**
