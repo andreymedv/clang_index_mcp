@@ -702,23 +702,41 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if not allowed:
                 return [TextContent(type="text", text=policy_message)]
 
+        # Get event loop for running synchronous operations in executor
+        loop = asyncio.get_event_loop()
+
         if name == "search_classes":
             project_only = arguments.get("project_only", True)
-            results = analyzer.search_classes(arguments["pattern"], project_only)
+            pattern = arguments["pattern"]
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.search_classes(pattern, project_only)
+            )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_classes")
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-        
+
         elif name == "search_functions":
             project_only = arguments.get("project_only", True)
             class_name = arguments.get("class_name", None)
-            results = analyzer.search_functions(arguments["pattern"], project_only, class_name)
+            pattern = arguments["pattern"]
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.search_functions(pattern, project_only, class_name)
+            )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_functions")
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-        
+
         elif name == "get_class_info":
-            result = analyzer.get_class_info(arguments["class_name"])
+            class_name = arguments["class_name"]
+            # Run synchronous method in executor to avoid blocking event loop
+            result = await loop.run_in_executor(
+                None,
+                lambda: analyzer.get_class_info(class_name)
+            )
             # Wrap with metadata (even if not found)
             enhanced_result = EnhancedQueryResult.create_from_state(result, state_manager, "get_class_info")
             if result:
@@ -726,26 +744,40 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             else:
                 # Include metadata even for "not found" case
                 return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-        
+
         elif name == "get_function_signature":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", None)
-            results = analyzer.get_function_signature(function_name, class_name)
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.get_function_signature(function_name, class_name)
+            )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "get_function_signature")
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-        
+
         elif name == "search_symbols":
             pattern = arguments["pattern"]
             project_only = arguments.get("project_only", True)
             symbol_types = arguments.get("symbol_types", None)
-            results = analyzer.search_symbols(pattern, project_only, symbol_types)
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.search_symbols(pattern, project_only, symbol_types)
+            )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_symbols")
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-        
+
         elif name == "find_in_file":
-            results = analyzer.find_in_file(arguments["file_path"], arguments["pattern"])
+            file_path = arguments["file_path"]
+            pattern = arguments["pattern"]
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.find_in_file(file_path, pattern)
+            )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "find_in_file")
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
@@ -756,7 +788,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
             # Force full re-analysis overrides incremental setting
             if force_full:
-                modified_count = analyzer.refresh_if_needed()
+                # Run synchronous method in executor to avoid blocking event loop
+                modified_count = await loop.run_in_executor(
+                    None,
+                    analyzer.refresh_if_needed
+                )
                 return [TextContent(
                     type="text",
                     text=f"Full refresh complete. Re-analyzed {modified_count} files."
@@ -767,7 +803,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 try:
                     from mcp_server.incremental_analyzer import IncrementalAnalyzer
                     incremental_analyzer = IncrementalAnalyzer(analyzer)
-                    result = incremental_analyzer.perform_incremental_analysis()
+                    # Run synchronous method in executor to avoid blocking event loop
+                    result = await loop.run_in_executor(
+                        None,
+                        incremental_analyzer.perform_incremental_analysis
+                    )
 
                     # Build detailed response
                     response = {
@@ -798,7 +838,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 except Exception as e:
                     diagnostics.error(f"Incremental analysis failed: {e}")
                     # Fallback to full refresh
-                    modified_count = analyzer.refresh_if_needed()
+                    # Run synchronous method in executor to avoid blocking event loop
+                    modified_count = await loop.run_in_executor(
+                        None,
+                        analyzer.refresh_if_needed
+                    )
                     return [TextContent(
                         type="text",
                         text=f"Incremental analysis failed, performed full refresh. "
@@ -807,7 +851,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
             # Non-incremental (full) refresh
             else:
-                modified_count = analyzer.refresh_if_needed()
+                # Run synchronous method in executor to avoid blocking event loop
+                modified_count = await loop.run_in_executor(
+                    None,
+                    analyzer.refresh_if_needed
+                )
                 return [TextContent(
                     type="text",
                     text=f"Full refresh complete. Re-analyzed {modified_count} files."
@@ -851,8 +899,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if state_manager.is_fully_indexed():
                 return [TextContent(type="text", text="Indexing already complete.")]
 
-            # Wait for indexed event
-            completed = state_manager.wait_for_indexed(timeout)
+            # Wait for indexed event asynchronously to avoid blocking event loop
+            completed = await loop.run_in_executor(
+                None,
+                lambda: state_manager.wait_for_indexed(timeout)
+            )
 
             if completed:
                 progress = state_manager.get_progress()
@@ -870,34 +921,54 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
         elif name == "get_class_hierarchy":
             class_name = arguments["class_name"]
-            hierarchy = analyzer.get_class_hierarchy(class_name)
+            # Run synchronous method in executor to avoid blocking event loop
+            hierarchy = await loop.run_in_executor(
+                None,
+                lambda: analyzer.get_class_hierarchy(class_name)
+            )
             if hierarchy:
                 return [TextContent(type="text", text=json.dumps(hierarchy, indent=2))]
             else:
                 return [TextContent(type="text", text=f"Class '{class_name}' not found")]
-        
+
         elif name == "get_derived_classes":
             class_name = arguments["class_name"]
             project_only = arguments.get("project_only", True)
-            derived = analyzer.get_derived_classes(class_name, project_only)
+            # Run synchronous method in executor to avoid blocking event loop
+            derived = await loop.run_in_executor(
+                None,
+                lambda: analyzer.get_derived_classes(class_name, project_only)
+            )
             return [TextContent(type="text", text=json.dumps(derived, indent=2))]
-        
+
         elif name == "find_callers":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
-            results = analyzer.find_callers(function_name, class_name)
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.find_callers(function_name, class_name)
+            )
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
-        
+
         elif name == "find_callees":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
-            results = analyzer.find_callees(function_name, class_name)
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.find_callees(function_name, class_name)
+            )
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
         elif name == "get_call_sites":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
-            results = analyzer.get_call_sites(function_name, class_name)
+            # Run synchronous method in executor to avoid blocking event loop
+            results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.get_call_sites(function_name, class_name)
+            )
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
         elif name == "get_files_containing_symbol":
@@ -911,7 +982,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             from_function = arguments["from_function"]
             to_function = arguments["to_function"]
             max_depth = arguments.get("max_depth", 10)
-            paths = analyzer.get_call_path(from_function, to_function, max_depth)
+            # Run synchronous method in executor to avoid blocking event loop
+            paths = await loop.run_in_executor(
+                None,
+                lambda: analyzer.get_call_path(from_function, to_function, max_depth)
+            )
             return [TextContent(type="text", text=json.dumps(paths, indent=2))]
         
         else:
