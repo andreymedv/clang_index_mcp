@@ -1,8 +1,9 @@
 """
-Test header_file filtering for search_classes and search_functions
+Test file_name filtering for search_classes and search_functions
 
-Tests the new header_file parameter that filters results to only
-symbols defined in a specific header file.
+Tests the file_name parameter that filters results to only
+symbols defined in files matching the specified name.
+Works with any file type (.h, .cpp, .cc, etc.).
 """
 
 import pytest
@@ -19,10 +20,10 @@ from mcp_server.cpp_analyzer import CppAnalyzer
 
 
 @pytest.mark.base_functionality
-class TestHeaderFileFilter:
-    """Test header_file parameter filtering"""
+class TestFileNameFilter:
+    """Test file_name parameter filtering"""
 
-    def test_search_classes_with_header_file_filter(self, temp_project_dir):
+    def test_search_classes_with_file_name_filter(self, temp_project_dir):
         """Test filtering classes by header file"""
         # Create a header file with a class
         (temp_project_dir / "src" / "MyClass.h").write_text("""
@@ -78,7 +79,7 @@ public:
         assert len(all_results) >= 3, "Should find at least MyClass, AnotherClass, OtherClass"
 
         # Search for classes in MyClass.h only
-        myclass_results = analyzer.search_classes(".*", header_file="MyClass.h")
+        myclass_results = analyzer.search_classes(".*", file_name="MyClass.h")
         assert len(myclass_results) == 2, f"Should find exactly 2 classes in MyClass.h, found {len(myclass_results)}"
 
         # Verify only classes from MyClass.h are returned
@@ -93,7 +94,7 @@ public:
             assert result['file'].endswith("MyClass.h"), f"Result file should be MyClass.h, got {result['file']}"
 
     def test_search_classes_with_partial_path(self, temp_project_dir):
-        """Test header_file filter with partial paths"""
+        """Test file_name filter with partial paths"""
         # Create a nested directory structure
         (temp_project_dir / "src" / "utils").mkdir(parents=True, exist_ok=True)
         (temp_project_dir / "src" / "utils" / "Helper.h").write_text("""
@@ -116,16 +117,16 @@ public:
         assert indexed_count > 0
 
         # Filter by full filename only
-        helper_results = analyzer.search_classes(".*", header_file="Helper.h")
+        helper_results = analyzer.search_classes(".*", file_name="Helper.h")
         assert len(helper_results) == 1
         assert helper_results[0]['name'] == "HelperClass"
 
         # Filter by partial path
-        utils_results = analyzer.search_classes(".*", header_file="utils/Helper.h")
+        utils_results = analyzer.search_classes(".*", file_name="utils/Helper.h")
         assert len(utils_results) == 1
         assert utils_results[0]['name'] == "HelperClass"
 
-    def test_search_functions_with_header_file_filter(self, temp_project_dir):
+    def test_search_functions_with_file_name_filter(self, temp_project_dir):
         """Test filtering functions by header file"""
         # Create a header file with function declarations
         (temp_project_dir / "src" / "functions.h").write_text("""
@@ -169,7 +170,7 @@ int divide(int a, int b) { return a / b; }
         all_names = [r['name'] for r in all_results]
 
         # Search for functions in functions.h only
-        functions_h_results = analyzer.search_functions(".*", header_file="functions.h")
+        functions_h_results = analyzer.search_functions(".*", file_name="functions.h")
         functions_h_names = [r['name'] for r in functions_h_results]
 
         # Verify only functions from functions.h are returned
@@ -183,7 +184,7 @@ int divide(int a, int b) { return a / b; }
                 f"Result should be from functions.h, got {result['file']}"
 
     def test_search_classes_no_filter_returns_all(self, temp_project_dir):
-        """Test that omitting header_file returns all classes"""
+        """Test that omitting file_name returns all classes"""
         # Create multiple files
         (temp_project_dir / "src" / "A.h").write_text("class A {};")
         (temp_project_dir / "src" / "B.h").write_text("class B {};")
@@ -202,7 +203,7 @@ int divide(int a, int b) { return a / b; }
         assert "B" in class_names
         assert "C" in class_names
 
-    def test_header_file_filter_case_sensitivity(self, temp_project_dir):
+    def test_file_name_filter_case_sensitivity(self, temp_project_dir):
         """Test that header_file matching is case-sensitive on Linux"""
         # Create files with different cases
         (temp_project_dir / "src" / "MyClass.h").write_text("class MyClass {};")
@@ -212,18 +213,18 @@ int divide(int a, int b) { return a / b; }
         analyzer.index_project()
 
         # Search with correct case
-        correct_results = analyzer.search_classes(".*", header_file="MyClass.h")
+        correct_results = analyzer.search_classes(".*", file_name="MyClass.h")
         assert len(correct_results) == 1
 
         # On case-sensitive filesystems, wrong case should not match
         # (This test may behave differently on Windows/macOS)
         import platform
         if platform.system() == "Linux":
-            wrong_results = analyzer.search_classes(".*", header_file="myclass.h")
+            wrong_results = analyzer.search_classes(".*", file_name="myclass.h")
             assert len(wrong_results) == 0, "Case-sensitive match should fail on Linux"
 
     def test_search_functions_with_class_name_and_header_file(self, temp_project_dir):
-        """Test combining class_name and header_file filters"""
+        """Test combining class_name and file_name filters"""
         # Create header with multiple classes
         (temp_project_dir / "src" / "Multi.h").write_text("""
 class ClassA {
@@ -253,7 +254,7 @@ public:
         analyzer.index_project()
 
         # Search for commonMethod in Multi.h only
-        results = analyzer.search_functions("commonMethod", header_file="Multi.h")
+        results = analyzer.search_functions("commonMethod", file_name="Multi.h")
         assert len(results) == 2, "Should find commonMethod in both ClassA and ClassB"
         class_names = [r['parent_class'] for r in results]
         assert "ClassA" in class_names
@@ -261,12 +262,12 @@ public:
         assert "ClassC" not in class_names
 
         # Search for commonMethod in Multi.h AND ClassA only
-        results = analyzer.search_functions("commonMethod", class_name="ClassA", header_file="Multi.h")
+        results = analyzer.search_functions("commonMethod", class_name="ClassA", file_name="Multi.h")
         assert len(results) == 1, "Should find only ClassA::commonMethod"
         assert results[0]['parent_class'] == "ClassA"
         assert results[0]['file'].endswith("Multi.h")
 
-    def test_header_file_filter_with_cpp_source_files(self, temp_project_dir):
+    def test_file_name_filter_with_cpp_source_files(self, temp_project_dir):
         """Test that header_file parameter works with .cpp source files too"""
         # Create source file with class
         (temp_project_dir / "src" / "source.cpp").write_text("""
@@ -291,23 +292,23 @@ public:
         analyzer.index_project()
 
         # Filter by .cpp file
-        cpp_results = analyzer.search_classes(".*", header_file="source.cpp")
+        cpp_results = analyzer.search_classes(".*", file_name="source.cpp")
         assert len(cpp_results) == 1
         assert cpp_results[0]['name'] == "SourceClass"
         assert cpp_results[0]['file'].endswith("source.cpp")
 
         # Filter by .h file
-        h_results = analyzer.search_classes(".*", header_file="header.h")
+        h_results = analyzer.search_classes(".*", file_name="header.h")
         assert len(h_results) == 1
         assert h_results[0]['name'] == "HeaderClass"
         assert h_results[0]['file'].endswith("header.h")
 
         # Verify functions work too
-        func_results = analyzer.search_functions("standaloneFunction", header_file="source.cpp")
+        func_results = analyzer.search_functions("standaloneFunction", file_name="source.cpp")
         assert len(func_results) == 1
         assert func_results[0]['name'] == "standaloneFunction"
 
-    def test_header_file_filter_returns_empty_for_nonexistent_file(self, temp_project_dir):
+    def test_file_name_filter_returns_empty_for_nonexistent_file(self, temp_project_dir):
         """Test that filtering by nonexistent file returns empty results"""
         (temp_project_dir / "src" / "Real.h").write_text("class RealClass {};")
 
@@ -316,11 +317,11 @@ public:
         analyzer.index_project()
 
         # Search for file that doesn't exist
-        results = analyzer.search_classes(".*", header_file="NonExistent.h")
+        results = analyzer.search_classes(".*", file_name="NonExistent.h")
         assert len(results) == 0, "Should return empty list for nonexistent file"
 
-    def test_header_file_filter_with_pattern_matching(self, temp_project_dir):
-        """Test header_file filter combined with pattern matching"""
+    def test_file_name_filter_with_pattern_matching(self, temp_project_dir):
+        """Test file_name filter combined with pattern matching"""
         (temp_project_dir / "src" / "Test.h").write_text("""
 class TestClassOne {};
 class TestClassTwo {};
@@ -336,7 +337,7 @@ class TestClassThree {};
         analyzer.index_project()
 
         # Search for TestClass* in Test.h only
-        results = analyzer.search_classes("TestClass.*", header_file="Test.h")
+        results = analyzer.search_classes("TestClass.*", file_name="Test.h")
         assert len(results) == 2
         names = [r['name'] for r in results]
         assert "TestClassOne" in names
@@ -344,12 +345,12 @@ class TestClassThree {};
         assert "TestClassThree" not in names
 
         # Verify OtherClass is excluded by pattern
-        results = analyzer.search_classes("Other.*", header_file="Test.h")
+        results = analyzer.search_classes("Other.*", file_name="Test.h")
         assert len(results) == 1
         assert results[0]['name'] == "OtherClass"
 
-    def test_header_file_filter_with_absolute_path(self, temp_project_dir):
-        """Test header_file filter with absolute path"""
+    def test_file_name_filter_with_absolute_path(self, temp_project_dir):
+        """Test file_name filter with absolute path"""
         (temp_project_dir / "src" / "Abs.h").write_text("class AbsClass {};")
 
         # Index
@@ -360,12 +361,12 @@ class TestClassThree {};
         abs_path = str(temp_project_dir / "src" / "Abs.h")
 
         # Search with absolute path
-        results = analyzer.search_classes(".*", header_file=abs_path)
+        results = analyzer.search_classes(".*", file_name=abs_path)
         assert len(results) == 1
         assert results[0]['name'] == "AbsClass"
 
-    def test_header_file_filter_none_behaves_as_no_filter(self, temp_project_dir):
-        """Test that header_file=None behaves same as omitting parameter"""
+    def test_file_name_filter_none_behaves_as_no_filter(self, temp_project_dir):
+        """Test that file_name=None behaves same as omitting parameter"""
         (temp_project_dir / "src" / "A.h").write_text("class A {};")
         (temp_project_dir / "src" / "B.h").write_text("class B {};")
 
@@ -377,7 +378,7 @@ class TestClassThree {};
         results_no_param = analyzer.search_classes(".*")
 
         # Search with None
-        results_none = analyzer.search_classes(".*", header_file=None)
+        results_none = analyzer.search_classes(".*", file_name=None)
 
         # Should return same results
         assert len(results_no_param) == len(results_none)
@@ -385,8 +386,8 @@ class TestClassThree {};
         names_none = sorted([r['name'] for r in results_none])
         assert names_no_param == names_none
 
-    def test_header_file_filter_with_duplicate_basenames(self, temp_project_dir):
-        """Test header_file filter when multiple files have same basename"""
+    def test_file_name_filter_with_duplicate_basenames(self, temp_project_dir):
+        """Test file_name filter when multiple files have same basename"""
         # Create files with same basename in different directories
         (temp_project_dir / "src" / "module1").mkdir(parents=True, exist_ok=True)
         (temp_project_dir / "src" / "module2").mkdir(parents=True, exist_ok=True)
@@ -399,22 +400,22 @@ class TestClassThree {};
         analyzer.index_project()
 
         # Search by basename only - should match both
-        results = analyzer.search_classes(".*", header_file="Common.h")
+        results = analyzer.search_classes(".*", file_name="Common.h")
         assert len(results) == 2, "Should match both Common.h files"
         names = sorted([r['name'] for r in results])
         assert names == ["Module1Class", "Module2Class"]
 
         # Search by partial path - should match only one
-        results = analyzer.search_classes(".*", header_file="module1/Common.h")
+        results = analyzer.search_classes(".*", file_name="module1/Common.h")
         assert len(results) == 1
         assert results[0]['name'] == "Module1Class"
 
-        results = analyzer.search_classes(".*", header_file="module2/Common.h")
+        results = analyzer.search_classes(".*", file_name="module2/Common.h")
         assert len(results) == 1
         assert results[0]['name'] == "Module2Class"
 
     def test_search_functions_standalone_vs_methods(self, temp_project_dir):
-        """Test header_file filter with both standalone functions and methods"""
+        """Test file_name filter with both standalone functions and methods"""
         (temp_project_dir / "src" / "Mixed.h").write_text("""
 // Standalone function
 void standaloneFunc();
@@ -434,7 +435,7 @@ void otherFunc();
         analyzer.index_project()
 
         # Search all functions in Mixed.h
-        results = analyzer.search_functions(".*", header_file="Mixed.h")
+        results = analyzer.search_functions(".*", file_name="Mixed.h")
         names = [r['name'] for r in results]
 
         # Should find both standalone and method
@@ -455,11 +456,11 @@ void otherFunc();
         analyzer.index_project()
 
         # Search with empty string - endswith("") always returns True
-        results = analyzer.search_classes(".*", header_file="")
+        results = analyzer.search_classes(".*", file_name="")
         assert len(results) == 2, "Empty string should match all files"
 
-    def test_header_file_filter_with_project_only_false(self, temp_project_dir):
-        """Test header_file filter combined with project_only=False"""
+    def test_file_name_filter_with_project_only_false(self, temp_project_dir):
+        """Test file_name filter combined with project_only=False"""
         # Create project file
         (temp_project_dir / "src" / "Project.h").write_text("class ProjectClass {};")
 
@@ -467,9 +468,9 @@ void otherFunc();
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        # Search with project_only=False and header_file filter
+        # Search with project_only=False and file_name filter
         # Should still filter by file even when including non-project files
-        results = analyzer.search_classes(".*", project_only=False, header_file="Project.h")
+        results = analyzer.search_classes(".*", project_only=False, file_name="Project.h")
 
         # Should only find classes from Project.h
         for result in results:
@@ -490,7 +491,7 @@ class Class5 {};
         analyzer.index_project()
 
         # Search for all classes in Many.h
-        results = analyzer.search_classes(".*", header_file="Many.h")
+        results = analyzer.search_classes(".*", file_name="Many.h")
         assert len(results) == 5, "Should find all 5 classes"
 
         names = sorted([r['name'] for r in results])

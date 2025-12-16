@@ -23,7 +23,7 @@ class SearchEngine:
         self.usr_index = usr_index
 
     def search_classes(
-        self, pattern: str, project_only: bool = True, header_file: Optional[str] = None
+        self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Search for classes matching a pattern"""
         # Validate pattern for ReDoS prevention
@@ -36,11 +36,11 @@ class SearchEngine:
             if regex.search(name):
                 for info in infos:
                     if not project_only or info.is_project:
-                        # Filter by header file if specified
-                        if header_file:
-                            # Match if the file path ends with the specified header_file
+                        # Filter by file name if specified
+                        if file_name:
+                            # Match if the file path ends with the specified file_name
                             # This supports full paths, relative paths, or just filenames
-                            if not info.file.endswith(header_file):
+                            if not info.file.endswith(file_name):
                                 continue
 
                         results.append(
@@ -71,7 +71,7 @@ class SearchEngine:
         pattern: str,
         project_only: bool = True,
         class_name: Optional[str] = None,
-        header_file: Optional[str] = None,
+        file_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search for functions matching a pattern"""
         # Validate pattern for ReDoS prevention
@@ -88,11 +88,11 @@ class SearchEngine:
                         if class_name and info.parent_class != class_name:
                             continue
 
-                        # Filter by header file if specified
-                        if header_file:
-                            # Match if the file path ends with the specified header_file
+                        # Filter by file name if specified
+                        if file_name:
+                            # Match if the file path ends with the specified file_name
                             # This supports full paths, relative paths, or just filenames
-                            if not info.file.endswith(header_file):
+                            if not info.file.endswith(file_name):
                                 continue
 
                         results.append(
