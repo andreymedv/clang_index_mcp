@@ -37,11 +37,15 @@ class TestTransportSelection:
 
     def test_invalid_transport(self):
         """Test that invalid transport option is rejected."""
+        import os
+        env = os.environ.copy()
+        env["MCP_DISABLE_SESSION_RESUME"] = "true"
         result = subprocess.run(
             ["python3", "-m", "mcp_server.cpp_mcp_server", "--transport", "invalid"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            env=env
         )
 
         assert result.returncode != 0
@@ -53,12 +57,18 @@ class TestStdioTransport:
 
     def test_stdio_default(self):
         """Test that server starts with default stdio transport."""
+        import os
+        # Disable session resume to avoid loading large projects during tests
+        env = os.environ.copy()
+        env["MCP_DISABLE_SESSION_RESUME"] = "true"
+
         # Start server process
         proc = subprocess.Popen(
             ["python3", "-m", "mcp_server.cpp_mcp_server"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env
         )
 
         try:
@@ -86,12 +96,18 @@ class TestStdioTransport:
 
     def test_stdio_explicit(self):
         """Test that server starts with explicit stdio transport."""
+        import os
+        # Disable session resume to avoid loading large projects during tests
+        env = os.environ.copy()
+        env["MCP_DISABLE_SESSION_RESUME"] = "true"
+
         # Start server process
         proc = subprocess.Popen(
             ["python3", "-m", "mcp_server.cpp_mcp_server", "--transport", "stdio"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env
         )
 
         try:
@@ -124,6 +140,11 @@ class TestHTTPTransportIntegration:
 
     async def test_http_server_start(self):
         """Test that HTTP server starts and responds."""
+        import os
+        # Disable session resume to avoid loading large projects during tests
+        env = os.environ.copy()
+        env["MCP_DISABLE_SESSION_RESUME"] = "true"
+
         # Start server in subprocess
         proc = subprocess.Popen(
             [
@@ -134,6 +155,7 @@ class TestHTTPTransportIntegration:
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env
         )
 
         # Wait for server to start
@@ -175,6 +197,11 @@ class TestSSETransportIntegration:
 
     async def test_sse_server_start(self):
         """Test that SSE server starts and responds."""
+        import os
+        # Disable session resume to avoid loading large projects during tests
+        env = os.environ.copy()
+        env["MCP_DISABLE_SESSION_RESUME"] = "true"
+
         # Start server in subprocess
         proc = subprocess.Popen(
             [
@@ -185,6 +212,7 @@ class TestSSETransportIntegration:
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env
         )
 
         # Wait for server to start

@@ -65,16 +65,16 @@ class SqliteCacheBackend:
             # Configure for concurrent access
             self.conn = sqlite3.connect(
                 str(self.db_path),
-                timeout=30.0,              # Wait up to 30s for locks
-                isolation_level=None,      # Autocommit off, manual transactions
-                check_same_thread=False    # Allow multi-threaded access
+                timeout=30.0,  # Wait up to 30s for locks
+                isolation_level=None,  # Autocommit off, manual transactions
+                check_same_thread=False,  # Allow multi-threaded access
             )
 
             # Enable row factory for dict-like access
             self.conn.row_factory = sqlite3.Row
 
             # Set busy handler for lock retry with exponential backoff (if available)
-            if hasattr(self.conn, 'set_busy_handler'):
+            if hasattr(self.conn, "set_busy_handler"):
                 self.conn.set_busy_handler(self._busy_handler)
             else:
                 diagnostics.debug("set_busy_handler not available, using timeout only")
@@ -111,10 +111,10 @@ class SqliteCacheBackend:
         # Get platform
         platform = sys.platform
 
-        if platform == 'win32':
+        if platform == "win32":
             # Windows: WAL mode works well
             diagnostics.debug("SQLite configured for Windows")
-        elif platform == 'darwin':
+        elif platform == "darwin":
             # macOS: Standard configuration
             diagnostics.debug("SQLite configured for macOS")
         else:
@@ -147,9 +147,12 @@ class SqliteCacheBackend:
                         result = cursor.fetchone()
                         if result:
                             import json
+
                             current_version = json.loads(result[0])
                             if current_version != self.CURRENT_SCHEMA_VERSION:
-                                diagnostics.info(f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}")
+                                diagnostics.info(
+                                    f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
+                                )
                                 diagnostics.info("Recreating database with current schema")
                                 needs_recreate = True
                         else:
@@ -164,14 +167,22 @@ class SqliteCacheBackend:
                     # Close connection and delete old database
                     self._close()
                     if self.db_path.exists():
-                        self.db_path.unlink()
-                        diagnostics.info(f"Deleted old database: {self.db_path}")
+                        try:
+                            self.db_path.unlink()
+                            diagnostics.info(f"Deleted old database: {self.db_path}")
+                        except FileNotFoundError:
+                            # Race condition: another thread already deleted it
+                            pass
 
                     # Also delete WAL and SHM files if they exist
-                    for ext in ['-wal', '-shm']:
+                    for ext in ["-wal", "-shm"]:
                         wal_file = Path(str(self.db_path) + ext)
                         if wal_file.exists():
-                            wal_file.unlink()
+                            try:
+                                wal_file.unlink()
+                            except FileNotFoundError:
+                                # Race condition: another thread already deleted it
+                                pass
 
                     # Reconnect to create fresh database
                     self._connect()
@@ -182,22 +193,27 @@ class SqliteCacheBackend:
                 if not schema_path.exists():
                     raise FileNotFoundError(f"Schema file not found: {schema_path}")
 
-                with open(schema_path, 'r') as f:
+                with open(schema_path, "r") as f:
                     schema_sql = f.read()
 
                 # Execute schema (creates tables, indexes, triggers)
                 self.conn.executescript(schema_sql)
                 self.conn.commit()
 
-                diagnostics.debug(f"SQLite database initialized successfully (schema v{self.CURRENT_SCHEMA_VERSION})")
+                diagnostics.debug(
+                    f"SQLite database initialized successfully (schema v{self.CURRENT_SCHEMA_VERSION})"
+                )
                 return  # Success, exit the retry loop
 
             except sqlite3.OperationalError as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
                     # Exponential backoff with jitter
                     import random
-                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.1)
-                    diagnostics.debug(f"Database locked during init, retry {attempt + 1}/{max_retries} after {delay:.2f}s")
+
+                    delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
+                    diagnostics.debug(
+                        f"Database locked during init, retry {attempt + 1}/{max_retries} after {delay:.2f}s"
+                    )
                     time.sleep(delay)
                     continue
                 else:
@@ -271,17 +287,17 @@ class SqliteCacheBackend:
             json.dumps(symbol.base_classes),
             json.dumps(symbol.calls),
             json.dumps(symbol.called_by),
-            symbol.start_line,      # v5.0: Line ranges
-            symbol.end_line,        # v5.0: Line ranges
-            symbol.header_file,     # v5.0: Header location
-            symbol.header_line,     # v5.0: Header location
+            symbol.start_line,  # v5.0: Line ranges
+            symbol.end_line,  # v5.0: Line ranges
+            symbol.header_file,  # v5.0: Header location
+            symbol.header_line,  # v5.0: Header location
             symbol.header_start_line,  # v5.0: Header location
-            symbol.header_end_line,    # v5.0: Header location
-            symbol.is_definition,   # v6.0: Definition tracking
-            symbol.brief,           # v7.0: Documentation
-            symbol.doc_comment,     # v7.0: Documentation
+            symbol.header_end_line,  # v5.0: Header location
+            symbol.is_definition,  # v6.0: Definition tracking
+            symbol.brief,  # v7.0: Documentation
+            symbol.doc_comment,  # v7.0: Documentation
             now,  # created_at
-            now   # updated_at
+            now,  # updated_at
         )
 
     def _row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
@@ -295,32 +311,34 @@ class SqliteCacheBackend:
             SymbolInfo object
         """
         return SymbolInfo(
-            name=row['name'],
-            kind=row['kind'],
-            file=row['file'],
-            line=row['line'],
-            column=row['column'],
-            signature=row['signature'] or '',
-            is_project=bool(row['is_project']),
-            namespace=row['namespace'] or '',
-            access=row['access'] or 'public',
-            parent_class=row['parent_class'] or '',
-            base_classes=json.loads(row['base_classes']) if row['base_classes'] else [],
-            usr=row['usr'] or '',
-            calls=json.loads(row['calls']) if row['calls'] else [],
-            called_by=json.loads(row['called_by']) if row['called_by'] else [],
+            name=row["name"],
+            kind=row["kind"],
+            file=row["file"],
+            line=row["line"],
+            column=row["column"],
+            signature=row["signature"] or "",
+            is_project=bool(row["is_project"]),
+            namespace=row["namespace"] or "",
+            access=row["access"] or "public",
+            parent_class=row["parent_class"] or "",
+            base_classes=json.loads(row["base_classes"]) if row["base_classes"] else [],
+            usr=row["usr"] or "",
+            calls=json.loads(row["calls"]) if row["calls"] else [],
+            called_by=json.loads(row["called_by"]) if row["called_by"] else [],
             # v5.0: Line ranges and header location
-            start_line=row['start_line'] if 'start_line' in row.keys() else None,
-            end_line=row['end_line'] if 'end_line' in row.keys() else None,
-            header_file=row['header_file'] if 'header_file' in row.keys() else None,
-            header_line=row['header_line'] if 'header_line' in row.keys() else None,
-            header_start_line=row['header_start_line'] if 'header_start_line' in row.keys() else None,
-            header_end_line=row['header_end_line'] if 'header_end_line' in row.keys() else None,
+            start_line=row["start_line"] if "start_line" in row.keys() else None,
+            end_line=row["end_line"] if "end_line" in row.keys() else None,
+            header_file=row["header_file"] if "header_file" in row.keys() else None,
+            header_line=row["header_line"] if "header_line" in row.keys() else None,
+            header_start_line=(
+                row["header_start_line"] if "header_start_line" in row.keys() else None
+            ),
+            header_end_line=row["header_end_line"] if "header_end_line" in row.keys() else None,
             # v6.0: Definition tracking
-            is_definition=bool(row['is_definition']) if 'is_definition' in row.keys() else False,
+            is_definition=bool(row["is_definition"]) if "is_definition" in row.keys() else False,
             # v7.0: Documentation
-            brief=row['brief'] if 'brief' in row.keys() else None,
-            doc_comment=row['doc_comment'] if 'doc_comment' in row.keys() else None
+            brief=row["brief"] if "brief" in row.keys() else None,
+            doc_comment=row["doc_comment"] if "doc_comment" in row.keys() else None,
         )
 
     def save_symbol(self, symbol: SymbolInfo) -> bool:
@@ -349,7 +367,7 @@ class SqliteCacheBackend:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    self._symbol_to_tuple(symbol)
+                    self._symbol_to_tuple(symbol),
                 )
 
             return True
@@ -390,7 +408,7 @@ class SqliteCacheBackend:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [self._symbol_to_tuple(s) for s in symbols]
+                    [self._symbol_to_tuple(s) for s in symbols],
                 )
 
             return len(symbols)
@@ -412,10 +430,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
-                "SELECT * FROM symbols WHERE usr = ?",
-                (usr,)
-            )
+            cursor = self.conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
 
             row = cursor.fetchone()
             if row:
@@ -440,10 +455,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
-                "SELECT * FROM symbols WHERE name = ?",
-                (name,)
-            )
+            cursor = self.conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
 
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
@@ -482,10 +494,7 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Get count before deletion
-            cursor = self.conn.execute(
-                "SELECT COUNT(*) FROM symbols WHERE file = ?",
-                (file_path,)
-            )
+            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
             count = cursor.fetchone()[0]
 
             if count == 0:
@@ -493,10 +502,7 @@ class SqliteCacheBackend:
 
             # Delete symbols
             with self.conn:
-                self.conn.execute(
-                    "DELETE FROM symbols WHERE file = ?",
-                    (file_path,)
-                )
+                self.conn.execute("DELETE FROM symbols WHERE file = ?", (file_path,))
 
             diagnostics.debug(f"Deleted {count} symbols from {file_path}")
             return count
@@ -505,12 +511,16 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to delete symbols for file {file_path}: {e}")
             return 0
 
-    def update_file_metadata(self, file_path: str, file_hash: str,
-                            compile_args_hash: Optional[str] = None,
-                            symbol_count: int = 0,
-                            success: bool = True,
-                            error_message: Optional[str] = None,
-                            retry_count: int = 0) -> bool:
+    def update_file_metadata(
+        self,
+        file_path: str,
+        file_hash: str,
+        compile_args_hash: Optional[str] = None,
+        symbol_count: int = 0,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        retry_count: int = 0,
+    ) -> bool:
         """
         Update or insert file metadata.
 
@@ -537,8 +547,16 @@ class SqliteCacheBackend:
                      success, error_message, retry_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (file_path, file_hash, compile_args_hash, time.time(), symbol_count,
-                     success, error_message, retry_count)
+                    (
+                        file_path,
+                        file_hash,
+                        compile_args_hash,
+                        time.time(),
+                        symbol_count,
+                        success,
+                        error_message,
+                        retry_count,
+                    ),
                 )
 
             return True
@@ -561,30 +579,29 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             cursor = self.conn.execute(
-                "SELECT * FROM file_metadata WHERE file_path = ?",
-                (file_path,)
+                "SELECT * FROM file_metadata WHERE file_path = ?", (file_path,)
             )
 
             row = cursor.fetchone()
             if row:
                 # Handle databases that may not have the new columns yet (before migration)
                 result = {
-                    'file_path': row['file_path'],
-                    'file_hash': row['file_hash'],
-                    'compile_args_hash': row['compile_args_hash'],
-                    'indexed_at': row['indexed_at'],
-                    'symbol_count': row['symbol_count']
+                    "file_path": row["file_path"],
+                    "file_hash": row["file_hash"],
+                    "compile_args_hash": row["compile_args_hash"],
+                    "indexed_at": row["indexed_at"],
+                    "symbol_count": row["symbol_count"],
                 }
                 # Add new columns if they exist
                 try:
-                    result['success'] = bool(row['success'])
-                    result['error_message'] = row['error_message']
-                    result['retry_count'] = row['retry_count']
+                    result["success"] = bool(row["success"])
+                    result["error_message"] = row["error_message"]
+                    result["retry_count"] = row["retry_count"]
                 except (KeyError, IndexError):
                     # Columns don't exist yet (pre-migration database)
-                    result['success'] = True
-                    result['error_message'] = None
-                    result['retry_count'] = 0
+                    result["success"] = True
+                    result["error_message"] = None
+                    result["retry_count"] = 0
                 return result
 
             return None
@@ -603,11 +620,9 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
-                "SELECT file_path, file_hash FROM file_metadata"
-            )
+            cursor = self.conn.execute("SELECT file_path, file_hash FROM file_metadata")
 
-            return {row['file_path']: row['file_hash'] for row in cursor.fetchall()}
+            return {row["file_path"]: row["file_hash"] for row in cursor.fetchall()}
 
         except Exception as e:
             diagnostics.error(f"Failed to load file hashes: {e}")
@@ -633,7 +648,7 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
                     VALUES (?, ?, ?)
                     """,
-                    (key, value, time.time())
+                    (key, value, time.time()),
                 )
 
             return True
@@ -655,20 +670,18 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
-                "SELECT value FROM cache_metadata WHERE key = ?",
-                (key,)
-            )
+            cursor = self.conn.execute("SELECT value FROM cache_metadata WHERE key = ?", (key,))
 
             row = cursor.fetchone()
-            return row['value'] if row else None
+            return row["value"] if row else None
 
         except Exception as e:
             diagnostics.error(f"Failed to get cache metadata {key}: {e}")
             return None
 
-    def search_symbols_fts(self, pattern: str, kind: Optional[str] = None,
-                           project_only: bool = True) -> List[SymbolInfo]:
+    def search_symbols_fts(
+        self, pattern: str, kind: Optional[str] = None, project_only: bool = True
+    ) -> List[SymbolInfo]:
         """
         Fast full-text search using FTS5.
 
@@ -716,8 +729,9 @@ class SqliteCacheBackend:
             # Fall back to regex search
             return self.search_symbols_regex(pattern, kind, project_only)
 
-    def search_symbols_regex(self, pattern: str, kind: Optional[str] = None,
-                             project_only: bool = True) -> List[SymbolInfo]:
+    def search_symbols_regex(
+        self, pattern: str, kind: Optional[str] = None, project_only: bool = True
+    ) -> List[SymbolInfo]:
         """
         Regex search (fallback for complex patterns).
 
@@ -765,10 +779,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
-                "SELECT * FROM symbols WHERE file = ?",
-                (file_path,)
-            )
+            cursor = self.conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
 
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
@@ -817,40 +828,44 @@ class SqliteCacheBackend:
 
             # Total symbol count
             cursor = self.conn.execute("SELECT COUNT(*) FROM symbols")
-            stats['total_symbols'] = cursor.fetchone()[0]
+            stats["total_symbols"] = cursor.fetchone()[0]
 
             # Count by kind
-            cursor = self.conn.execute("""
+            cursor = self.conn.execute(
+                """
                 SELECT kind, COUNT(*) as count
                 FROM symbols
                 GROUP BY kind
                 ORDER BY count DESC
-            """)
-            stats['by_kind'] = {row['kind']: row['count'] for row in cursor.fetchall()}
+            """
+            )
+            stats["by_kind"] = {row["kind"]: row["count"] for row in cursor.fetchall()}
 
             # Project vs dependencies
-            cursor = self.conn.execute("""
+            cursor = self.conn.execute(
+                """
                 SELECT is_project, COUNT(*) as count
                 FROM symbols
                 GROUP BY is_project
-            """)
+            """
+            )
             for row in cursor.fetchall():
-                if row['is_project']:
-                    stats['project_symbols'] = row['count']
+                if row["is_project"]:
+                    stats["project_symbols"] = row["count"]
                 else:
-                    stats['dependency_symbols'] = row['count']
+                    stats["dependency_symbols"] = row["count"]
 
             # File count
             cursor = self.conn.execute("SELECT COUNT(*) FROM file_metadata")
-            stats['total_files'] = cursor.fetchone()[0]
+            stats["total_files"] = cursor.fetchone()[0]
 
             # Database size
             cursor = self.conn.execute("PRAGMA page_count")
             page_count = cursor.fetchone()[0]
             cursor = self.conn.execute("PRAGMA page_size")
             page_size = cursor.fetchone()[0]
-            stats['db_size_bytes'] = page_count * page_size
-            stats['db_size_mb'] = stats['db_size_bytes'] / (1024 * 1024)
+            stats["db_size_bytes"] = page_count * page_size
+            stats["db_size_mb"] = stats["db_size_bytes"] / (1024 * 1024)
 
             return stats
 
@@ -871,7 +886,7 @@ class SqliteCacheBackend:
             cursor = self.conn.execute("PRAGMA integrity_check")
             result = cursor.fetchone()[0]
 
-            if result == 'ok':
+            if result == "ok":
                 diagnostics.debug("Database integrity check: OK")
                 return True
             else:
@@ -904,7 +919,7 @@ class SqliteCacheBackend:
 
             # Get size before vacuum
             stats_before = self.get_symbol_stats()
-            size_before_mb = stats_before.get('db_size_mb', 0)
+            size_before_mb = stats_before.get("db_size_mb", 0)
 
             diagnostics.info(f"Running VACUUM (database size: {size_before_mb:.2f} MB)...")
             start_time = time.time()
@@ -916,7 +931,7 @@ class SqliteCacheBackend:
 
             # Get size after vacuum
             stats_after = self.get_symbol_stats()
-            size_after_mb = stats_after.get('db_size_mb', 0)
+            size_after_mb = stats_after.get("db_size_mb", 0)
             space_saved = size_before_mb - size_after_mb
 
             diagnostics.info(
@@ -991,8 +1006,9 @@ class SqliteCacheBackend:
             diagnostics.error(f"ANALYZE failed: {e}")
             return False
 
-    def auto_maintenance(self, vacuum_threshold_mb: float = 100.0,
-                        vacuum_min_waste_mb: float = 10.0) -> Dict[str, Any]:
+    def auto_maintenance(
+        self, vacuum_threshold_mb: float = 100.0, vacuum_min_waste_mb: float = 10.0
+    ) -> Dict[str, Any]:
         """
         Run automatic maintenance based on database health.
 
@@ -1013,27 +1029,27 @@ class SqliteCacheBackend:
         try:
             diagnostics.info("Running auto-maintenance...")
             results = {
-                'analyze': False,
-                'optimize': False,
-                'vacuum': False,
-                'vacuum_skipped_reason': None
+                "analyze": False,
+                "optimize": False,
+                "vacuum": False,
+                "vacuum_skipped_reason": None,
             }
 
             # Always run ANALYZE (fast)
-            results['analyze'] = self.analyze()
+            results["analyze"] = self.analyze()
 
             # Always run OPTIMIZE (relatively fast, improves search)
-            results['optimize'] = self.optimize()
+            results["optimize"] = self.optimize()
 
             # Conditionally run VACUUM
             stats = self.get_symbol_stats()
-            db_size_mb = stats.get('db_size_mb', 0)
+            db_size_mb = stats.get("db_size_mb", 0)
 
             if db_size_mb < vacuum_threshold_mb:
-                results['vacuum_skipped_reason'] = (
+                results["vacuum_skipped_reason"] = (
                     f"Database too small ({db_size_mb:.2f} MB < {vacuum_threshold_mb} MB)"
                 )
-                diagnostics.info(results['vacuum_skipped_reason'])
+                diagnostics.info(results["vacuum_skipped_reason"])
             else:
                 # Estimate wasted space (rough heuristic)
                 # Get page count and freelist count
@@ -1048,19 +1064,19 @@ class SqliteCacheBackend:
                     diagnostics.info(
                         f"Running VACUUM (DB: {db_size_mb:.2f} MB, waste: {waste_mb:.2f} MB)"
                     )
-                    results['vacuum'] = self.vacuum()
+                    results["vacuum"] = self.vacuum()
                 else:
-                    results['vacuum_skipped_reason'] = (
+                    results["vacuum_skipped_reason"] = (
                         f"Insufficient waste ({waste_mb:.2f} MB < {vacuum_min_waste_mb} MB)"
                     )
-                    diagnostics.info(results['vacuum_skipped_reason'])
+                    diagnostics.info(results["vacuum_skipped_reason"])
 
             diagnostics.info(f"Auto-maintenance complete: {results}")
             return results
 
         except Exception as e:
             diagnostics.error(f"Auto-maintenance failed: {e}")
-            return {'error': str(e)}
+            return {"error": str(e)}
 
     # =========================================================================
     # Health Check Methods
@@ -1092,7 +1108,7 @@ class SqliteCacheBackend:
             results = [row[0] for row in cursor.fetchall()]
             elapsed = time.time() - start_time
 
-            if results == ['ok']:
+            if results == ["ok"]:
                 message = f"Integrity check passed in {elapsed:.2f}s"
                 diagnostics.info(message)
                 return True, message
@@ -1118,47 +1134,32 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            health = {
-                'status': 'unknown',
-                'checks': {},
-                'warnings': [],
-                'errors': []
-            }
+            health = {"status": "unknown", "checks": {}, "warnings": [], "errors": []}
 
             # 1. Integrity check
             is_healthy, message = self.check_integrity(full=False)
-            health['checks']['integrity'] = {
-                'passed': is_healthy,
-                'message': message
-            }
+            health["checks"]["integrity"] = {"passed": is_healthy, "message": message}
             if not is_healthy:
-                health['errors'].append(f"Integrity: {message}")
+                health["errors"].append(f"Integrity: {message}")
 
             # 2. Database size check
             stats = self.get_symbol_stats()
-            db_size_mb = stats.get('db_size_mb', 0)
-            health['checks']['size'] = {
-                'db_size_mb': db_size_mb,
-                'status': 'ok'
-            }
+            db_size_mb = stats.get("db_size_mb", 0)
+            health["checks"]["size"] = {"db_size_mb": db_size_mb, "status": "ok"}
 
             # Warn if database is very large (> 500 MB)
             if db_size_mb > 500:
                 warning = f"Database is very large ({db_size_mb:.2f} MB)"
-                health['warnings'].append(warning)
-                health['checks']['size']['status'] = 'warning'
+                health["warnings"].append(warning)
+                health["checks"]["size"]["status"] = "warning"
 
             # 3. FTS5 index health
             try:
                 cursor = self.conn.execute("SELECT COUNT(*) FROM symbols_fts")
                 fts_count = cursor.fetchone()[0]
-                symbol_count = stats.get('total_symbols', 0)
+                symbol_count = stats.get("total_symbols", 0)
 
-                fts_health = {
-                    'fts_count': fts_count,
-                    'symbol_count': symbol_count,
-                    'status': 'ok'
-                }
+                fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
 
                 # FTS count should match symbol count
                 if fts_count != symbol_count:
@@ -1166,14 +1167,14 @@ class SqliteCacheBackend:
                         f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
                         "Consider running optimize()."
                     )
-                    health['warnings'].append(warning)
-                    fts_health['status'] = 'warning'
+                    health["warnings"].append(warning)
+                    fts_health["status"] = "warning"
 
-                health['checks']['fts_index'] = fts_health
+                health["checks"]["fts_index"] = fts_health
 
             except Exception as e:
-                health['errors'].append(f"FTS5 check failed: {e}")
-                health['checks']['fts_index'] = {'status': 'error', 'error': str(e)}
+                health["errors"].append(f"FTS5 check failed: {e}")
+                health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
 
             # 4. WAL mode check
             try:
@@ -1181,38 +1182,37 @@ class SqliteCacheBackend:
                 journal_mode = cursor.fetchone()[0].lower()
 
                 wal_health = {
-                    'journal_mode': journal_mode,
-                    'status': 'ok' if journal_mode == 'wal' else 'warning'
+                    "journal_mode": journal_mode,
+                    "status": "ok" if journal_mode == "wal" else "warning",
                 }
 
-                if journal_mode != 'wal':
-                    warning = f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
-                    health['warnings'].append(warning)
+                if journal_mode != "wal":
+                    warning = (
+                        f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
+                    )
+                    health["warnings"].append(warning)
 
-                health['checks']['wal_mode'] = wal_health
+                health["checks"]["wal_mode"] = wal_health
 
             except Exception as e:
-                health['errors'].append(f"WAL check failed: {e}")
+                health["errors"].append(f"WAL check failed: {e}")
 
             # 5. Table statistics
-            health['checks']['tables'] = self._get_table_sizes()
+            health["checks"]["tables"] = self._get_table_sizes()
 
             # Determine overall status
-            if health['errors']:
-                health['status'] = 'error'
-            elif health['warnings']:
-                health['status'] = 'warning'
+            if health["errors"]:
+                health["status"] = "error"
+            elif health["warnings"]:
+                health["status"] = "warning"
             else:
-                health['status'] = 'healthy'
+                health["status"] = "healthy"
 
             return health
 
         except Exception as e:
             diagnostics.error(f"Failed to get health status: {e}")
-            return {
-                'status': 'error',
-                'errors': [str(e)]
-            }
+            return {"status": "error", "errors": [str(e)]}
 
     def _get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -1236,16 +1236,10 @@ class SqliteCacheBackend:
                     cursor = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}")
                     row_count = cursor.fetchone()[0]
 
-                    tables[table_name] = {
-                        'row_count': row_count,
-                        'status': 'ok'
-                    }
+                    tables[table_name] = {"row_count": row_count, "status": "ok"}
 
                 except Exception as e:
-                    tables[table_name] = {
-                        'error': str(e),
-                        'status': 'error'
-                    }
+                    tables[table_name] = {"error": str(e), "status": "error"}
 
             return tables
 
@@ -1270,43 +1264,46 @@ class SqliteCacheBackend:
             stats.update(symbol_stats)
 
             # File statistics
-            cursor = self.conn.execute("""
+            cursor = self.conn.execute(
+                """
                 SELECT
                     COUNT(*) as total_files,
                     SUM(symbol_count) as total_symbols_from_files,
                     AVG(symbol_count) as avg_symbols_per_file,
                     MAX(symbol_count) as max_symbols_in_file
                 FROM file_metadata
-            """)
+            """
+            )
             row = cursor.fetchone()
-            stats['file_stats'] = {
-                'total_files': row[0] or 0,
-                'total_symbols_from_files': row[1] or 0,
-                'avg_symbols_per_file': round(row[2], 2) if row[2] else 0,
-                'max_symbols_in_file': row[3] or 0
+            stats["file_stats"] = {
+                "total_files": row[0] or 0,
+                "total_symbols_from_files": row[1] or 0,
+                "avg_symbols_per_file": round(row[2], 2) if row[2] else 0,
+                "max_symbols_in_file": row[3] or 0,
             }
 
             # Top files by symbol count
-            cursor = self.conn.execute("""
+            cursor = self.conn.execute(
+                """
                 SELECT file_path, symbol_count
                 FROM file_metadata
                 ORDER BY symbol_count DESC
                 LIMIT 10
-            """)
-            stats['top_files'] = [
-                {'file': row[0], 'symbol_count': row[1]}
-                for row in cursor.fetchall()
+            """
+            )
+            stats["top_files"] = [
+                {"file": row[0], "symbol_count": row[1]} for row in cursor.fetchall()
             ]
 
             # Cache metadata
             cursor = self.conn.execute("SELECT key, value FROM cache_metadata")
-            stats['metadata'] = {row[0]: row[1] for row in cursor.fetchall()}
+            stats["metadata"] = {row[0]: row[1] for row in cursor.fetchall()}
 
             # Performance metrics
-            stats['performance'] = {
-                'db_path': str(self.db_path),
-                'connection_timeout': self._connection_timeout,
-                'last_access_age_seconds': time.time() - self._last_access
+            stats["performance"] = {
+                "db_path": str(self.db_path),
+                "connection_timeout": self._connection_timeout,
+                "last_access_age_seconds": time.time() - self._last_access,
             }
 
             return stats
@@ -1315,7 +1312,7 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to get cache stats: {e}")
             return {}
 
-    def monitor_performance(self, operation: str = 'search') -> Dict[str, float]:
+    def monitor_performance(self, operation: str = "search") -> Dict[str, float]:
         """
         Monitor database performance with sample queries.
 
@@ -1330,24 +1327,22 @@ class SqliteCacheBackend:
 
             metrics = {}
 
-            if operation == 'search':
+            if operation == "search":
                 # Test FTS5 search performance
                 start = time.time()
                 cursor = self.conn.execute(
                     "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test*'"
                 )
                 cursor.fetchone()
-                metrics['fts_search_ms'] = (time.time() - start) * 1000
+                metrics["fts_search_ms"] = (time.time() - start) * 1000
 
                 # Test regular search
                 start = time.time()
-                cursor = self.conn.execute(
-                    "SELECT COUNT(*) FROM symbols WHERE name LIKE 'test%'"
-                )
+                cursor = self.conn.execute("SELECT COUNT(*) FROM symbols WHERE name LIKE 'test%'")
                 cursor.fetchone()
-                metrics['like_search_ms'] = (time.time() - start) * 1000
+                metrics["like_search_ms"] = (time.time() - start) * 1000
 
-            elif operation == 'load':
+            elif operation == "load":
                 # Test symbol load by USR
                 # Get a random USR first
                 cursor = self.conn.execute("SELECT usr FROM symbols LIMIT 1")
@@ -1357,18 +1352,19 @@ class SqliteCacheBackend:
                     start = time.time()
                     cursor = self.conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
                     cursor.fetchone()
-                    metrics['load_by_usr_ms'] = (time.time() - start) * 1000
+                    metrics["load_by_usr_ms"] = (time.time() - start) * 1000
 
-            elif operation == 'write':
+            elif operation == "write":
                 # Test write performance (rollback to avoid changes)
                 from .symbol_info import SymbolInfo
+
                 test_symbol = SymbolInfo(
                     name="PerfTestSymbol",
                     kind="function",
                     file="/test/perf.cpp",
                     line=1,
                     column=1,
-                    usr="perf_test_usr"
+                    usr="perf_test_usr",
                 )
 
                 start = time.time()
@@ -1386,10 +1382,10 @@ class SqliteCacheBackend:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    self._symbol_to_tuple(test_symbol)
+                    self._symbol_to_tuple(test_symbol),
                 )
                 self.conn.execute("ROLLBACK TO perf_test")
-                metrics['write_symbol_ms'] = (time.time() - start) * 1000
+                metrics["write_symbol_ms"] = (time.time() - start) * 1000
 
             return metrics
 
@@ -1401,13 +1397,18 @@ class SqliteCacheBackend:
     # CacheBackend Protocol Adapter Methods
     # =========================================================================
 
-    def save_cache(self, class_index: Dict[str, List], function_index: Dict[str, List],
-                   file_hashes: Dict[str, str], indexed_file_count: int,
-                   include_dependencies: bool = False,
-                   config_file_path: Optional[Path] = None,
-                   config_file_mtime: Optional[float] = None,
-                   compile_commands_path: Optional[Path] = None,
-                   compile_commands_mtime: Optional[float] = None) -> bool:
+    def save_cache(
+        self,
+        class_index: Dict[str, List],
+        function_index: Dict[str, List],
+        file_hashes: Dict[str, str],
+        indexed_file_count: int,
+        include_dependencies: bool = False,
+        config_file_path: Optional[Path] = None,
+        config_file_mtime: Optional[float] = None,
+        compile_commands_path: Optional[Path] = None,
+        compile_commands_mtime: Optional[float] = None,
+    ) -> bool:
         """
         Save indexes to SQLite cache (CacheBackend protocol method).
 
@@ -1463,11 +1464,14 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to save cache: {e}")
             return False
 
-    def load_cache(self, include_dependencies: bool = False,
-                   config_file_path: Optional[Path] = None,
-                   config_file_mtime: Optional[float] = None,
-                   compile_commands_path: Optional[Path] = None,
-                   compile_commands_mtime: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    def load_cache(
+        self,
+        include_dependencies: bool = False,
+        config_file_path: Optional[Path] = None,
+        config_file_mtime: Optional[float] = None,
+        compile_commands_path: Optional[Path] = None,
+        compile_commands_mtime: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         Load cache from SQLite if valid (CacheBackend protocol method).
 
@@ -1494,7 +1498,9 @@ class SqliteCacheBackend:
 
             # Check cache metadata for compatibility
             if cached_deps != str(include_dependencies):
-                diagnostics.info(f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}")
+                diagnostics.info(
+                    f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}"
+                )
                 return None
 
             # Check config file changes
@@ -1533,13 +1539,14 @@ class SqliteCacheBackend:
 
             # Build indexes by name
             from collections import defaultdict
+
             class_index = defaultdict(list)
             function_index = defaultdict(list)
 
             for symbol in all_symbols:
-                if symbol.kind in ('class', 'struct', 'union', 'enum'):
+                if symbol.kind in ("class", "struct", "union", "enum"):
                     class_index[symbol.name].append(symbol.to_dict())
-                elif symbol.kind in ('function', 'method', 'constructor', 'destructor'):
+                elif symbol.kind in ("function", "method", "constructor", "destructor"):
                     function_index[symbol.name].append(symbol.to_dict())
 
             # Load file hashes
@@ -1553,23 +1560,31 @@ class SqliteCacheBackend:
                 "include_dependencies": include_dependencies,
                 "config_file_path": str(config_file_path) if config_file_path else None,
                 "config_file_mtime": config_file_mtime,
-                "compile_commands_path": str(compile_commands_path) if compile_commands_path else None,
+                "compile_commands_path": (
+                    str(compile_commands_path) if compile_commands_path else None
+                ),
                 "compile_commands_mtime": compile_commands_mtime,
                 "class_index": dict(class_index),
                 "function_index": dict(function_index),
                 "file_hashes": file_hashes,
                 "indexed_file_count": int(indexed_count) if indexed_count else 0,
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
         except Exception as e:
             diagnostics.error(f"Failed to load cache: {e}")
             return None
 
-    def save_file_cache(self, file_path: str, symbols: List,
-                       file_hash: str, compile_args_hash: Optional[str] = None,
-                       success: bool = True, error_message: Optional[str] = None,
-                       retry_count: int = 0) -> bool:
+    def save_file_cache(
+        self,
+        file_path: str,
+        symbols: List,
+        file_hash: str,
+        compile_args_hash: Optional[str] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        retry_count: int = 0,
+    ) -> bool:
         """
         Save parsed symbols for a single file (CacheBackend protocol method).
 
@@ -1595,8 +1610,13 @@ class SqliteCacheBackend:
 
             # Update file metadata with success/failure information
             self.update_file_metadata(
-                file_path, file_hash, compile_args_hash, len(symbols),
-                success, error_message, retry_count
+                file_path,
+                file_hash,
+                compile_args_hash,
+                len(symbols),
+                success,
+                error_message,
+                retry_count,
             )
 
             return True
@@ -1605,8 +1625,9 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to save file cache for {file_path}: {e}")
             return False
 
-    def load_file_cache(self, file_path: str, current_hash: str,
-                       compile_args_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def load_file_cache(
+        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Load cached data for a file if hash matches (CacheBackend protocol method).
 
@@ -1625,21 +1646,21 @@ class SqliteCacheBackend:
                 return None
 
             # Check file hash
-            if metadata['file_hash'] != current_hash:
+            if metadata["file_hash"] != current_hash:
                 return None
 
             # Check compile args hash
-            if compile_args_hash and metadata.get('compile_args_hash') != compile_args_hash:
+            if compile_args_hash and metadata.get("compile_args_hash") != compile_args_hash:
                 return None
 
             # Load symbols for this file
             symbols = self.search_symbols_by_file(file_path)
 
             return {
-                'symbols': symbols,
-                'success': metadata.get('success', True),
-                'error_message': metadata.get('error_message'),
-                'retry_count': metadata.get('retry_count', 0)
+                "symbols": symbols,
+                "success": metadata.get("success", True),
+                "error_message": metadata.get("error_message"),
+                "retry_count": metadata.get("retry_count", 0),
             }
 
         except Exception as e:
@@ -1702,12 +1723,12 @@ class SqliteCacheBackend:
             # Prepare tuples for batch insert
             values = [
                 (
-                    cs['caller_usr'],
-                    cs['callee_usr'],
-                    cs['file'],
-                    cs['line'],
-                    cs.get('column'),
-                    current_time
+                    cs["caller_usr"],
+                    cs["callee_usr"],
+                    cs["file"],
+                    cs["line"],
+                    cs.get("column"),
+                    current_time,
                 )
                 for cs in call_sites
             ]
@@ -1720,7 +1741,7 @@ class SqliteCacheBackend:
                         caller_usr, callee_usr, file, line, column, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    values
+                    values,
                 )
 
             return len(call_sites)
@@ -1749,15 +1770,15 @@ class SqliteCacheBackend:
                 WHERE caller_usr = ?
                 ORDER BY file, line
                 """,
-                (caller_usr,)
+                (caller_usr,),
             )
 
             return [
                 {
-                    'callee_usr': row['callee_usr'],
-                    'file': row['file'],
-                    'line': row['line'],
-                    'column': row['column']
+                    "callee_usr": row["callee_usr"],
+                    "file": row["file"],
+                    "line": row["line"],
+                    "column": row["column"],
                 }
                 for row in cursor.fetchall()
             ]
@@ -1786,15 +1807,15 @@ class SqliteCacheBackend:
                 WHERE callee_usr = ?
                 ORDER BY file, line
                 """,
-                (callee_usr,)
+                (callee_usr,),
             )
 
             return [
                 {
-                    'caller_usr': row['caller_usr'],
-                    'file': row['file'],
-                    'line': row['line'],
-                    'column': row['column']
+                    "caller_usr": row["caller_usr"],
+                    "file": row["file"],
+                    "line": row["line"],
+                    "column": row["column"],
                 }
                 for row in cursor.fetchall()
             ]
@@ -1818,8 +1839,7 @@ class SqliteCacheBackend:
 
             # Get count before deletion
             cursor = self.conn.execute(
-                "SELECT COUNT(*) FROM call_sites WHERE file = ?",
-                (file_path,)
+                "SELECT COUNT(*) FROM call_sites WHERE file = ?", (file_path,)
             )
             count = cursor.fetchone()[0]
 
@@ -1828,10 +1848,7 @@ class SqliteCacheBackend:
 
             # Delete call sites
             with self.conn:
-                self.conn.execute(
-                    "DELETE FROM call_sites WHERE file = ?",
-                    (file_path,)
-                )
+                self.conn.execute("DELETE FROM call_sites WHERE file = ?", (file_path,))
 
             return count
 
@@ -1859,11 +1876,11 @@ class SqliteCacheBackend:
 
             return [
                 {
-                    'caller_usr': row['caller_usr'],
-                    'callee_usr': row['callee_usr'],
-                    'file': row['file'],
-                    'line': row['line'],
-                    'column': row['column']
+                    "caller_usr": row["caller_usr"],
+                    "callee_usr": row["callee_usr"],
+                    "file": row["file"],
+                    "line": row["line"],
+                    "column": row["column"],
                 }
                 for row in cursor.fetchall()
             ]
