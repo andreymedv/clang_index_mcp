@@ -70,6 +70,7 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.file_scanner = Mock()
         self.analyzer.header_tracker = Mock()
         self.analyzer.compile_commands_hash = ""
+        self.analyzer.file_hashes = {}  # FIX: Add file_hashes for fallback checking
 
         # Mock config
         self.analyzer.config.get_compile_commands_config.return_value = {

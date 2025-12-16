@@ -165,6 +165,10 @@ state_manager = AnalyzerStateManager()
 # Background indexer for async indexing
 background_indexer = None
 
+# Session manager for persistence across restarts
+from .session_manager import SessionManager
+session_manager = SessionManager()
+
 # Track if analyzer has been initialized with a valid project
 # TODO Phase 3: This boolean will be replaced by state_manager checks in async mode
 analyzer_initialized = False
@@ -643,31 +647,46 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # The task will run independently while the MCP server continues to handle requests
             async def run_background_indexing():
                 try:
-                    # Perform initial indexing
+                    # FAST PATH: Check if cache exists and is valid
+                    # If so, load directly without calling index_project
+                    loop = asyncio.get_event_loop()
+                    cache_valid = await loop.run_in_executor(
+                        None,
+                        analyzer._load_cache
+                    )
+
+                    if cache_valid:
+                        # Cache loaded successfully - skip indexing
+                        diagnostics.info(
+                            f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
+                            f"{len(analyzer.function_index)} functions indexed"
+                        )
+                        state_manager.transition_to(AnalyzerState.INDEXED)
+
+                        # Mark as initialized immediately
+                        global analyzer_initialized
+                        analyzer_initialized = True
+
+                        diagnostics.info("Server ready (loaded from cache) - use 'refresh_project' to detect file changes")
+                        return
+
+                    # SLOW PATH: Cache not valid, need to index from scratch
+                    diagnostics.info("No valid cache found, starting full indexing...")
                     await background_indexer.start_indexing(force=False, include_dependencies=True)
 
-                    # If auto_refresh enabled and cache was loaded, perform incremental analysis
-                    if auto_refresh and hasattr(analyzer, 'cache_loaded') and analyzer.cache_loaded:
-                        try:
-                            from mcp_server.incremental_analyzer import IncrementalAnalyzer
-                            incremental = IncrementalAnalyzer(analyzer)
-                            result = incremental.perform_incremental_analysis()
-                            diagnostics.info(
-                                f"Auto-refresh complete: {result.files_analyzed} files analyzed, "
-                                f"{result.files_removed} files removed"
-                            )
-                        except Exception as e:
-                            diagnostics.warning(f"Auto-refresh failed: {e}")
-
                     # Indexing complete - mark as initialized
-                    global analyzer_initialized
                     analyzer_initialized = True
+
                 except Exception as e:
-                    # Error already logged and state transitioned by start_indexing
+                    diagnostics.error(f"Background indexing failed: {e}")
+                    state_manager.transition_to(AnalyzerState.ERROR)
                     pass
 
             # Create background task (non-blocking)
             asyncio.create_task(run_background_indexing())
+
+            # Save session for auto-resume on restart
+            session_manager.save_session(project_path, config_file)
 
             # Build response message
             config_msg = f" with config '{config_file}'" if config_file else ""
@@ -998,6 +1017,40 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 async def main():
     """Main entry point for the MCP server."""
     import argparse
+
+    # Auto-resume last session if available
+    global analyzer, analyzer_initialized, background_indexer
+    saved_session = session_manager.load_session()
+    if saved_session:
+        project_path = saved_session['project_path']
+        config_file = saved_session.get('config_file')
+
+        diagnostics.info(f"Auto-resuming last session: {project_path}")
+
+        try:
+            # Initialize analyzer with saved project
+            state_manager.transition_to(AnalyzerState.INITIALIZING)
+            analyzer = CppAnalyzer(project_path, config_file=config_file)
+            background_indexer = BackgroundIndexer(analyzer, state_manager)
+
+            # Try to load cache immediately (fast path)
+            cache_loaded = analyzer._load_cache()
+            if cache_loaded:
+                diagnostics.info(
+                    f"Session restored from cache: {len(analyzer.class_index)} classes, "
+                    f"{len(analyzer.function_index)} functions"
+                )
+                state_manager.transition_to(AnalyzerState.INDEXED)
+                analyzer_initialized = True
+            else:
+                diagnostics.info("No valid cache for saved session, will need to re-index")
+                state_manager.transition_to(AnalyzerState.UNINITIALIZED)
+
+        except Exception as e:
+            diagnostics.warning(f"Failed to resume session: {e}")
+            analyzer = None
+            analyzer_initialized = False
+            state_manager.transition_to(AnalyzerState.UNINITIALIZED)
 
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
