@@ -30,16 +30,17 @@ from mcp.types import (
     TextContent,
 )
 
+
 def find_and_configure_libclang():
     """Find and configure libclang library"""
     import platform
     import glob
-    
+
     system = platform.system()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # Go up one directory to find lib folder (since we're in mcp_server subfolder)
     parent_dir = os.path.dirname(script_dir)
-    
+
     # First, try bundled libraries (self-contained)
     bundled_paths = []
     if system == "Windows":
@@ -56,7 +57,7 @@ def find_and_configure_libclang():
             os.path.join(parent_dir, "lib", "linux", "lib", "libclang.so.1"),
             os.path.join(parent_dir, "lib", "linux", "lib", "libclang.so"),
         ]
-    
+
     # Try bundled libraries first
     for path in bundled_paths:
         if os.path.exists(path):
@@ -65,7 +66,7 @@ def find_and_configure_libclang():
             return True
 
     diagnostics.info("No bundled libclang found, searching system...")
-    
+
     # Fallback to system-installed libraries
     if system == "Windows":
         system_paths = [
@@ -78,27 +79,29 @@ def find_and_configure_libclang():
             # Conda paths
             r"C:\ProgramData\Anaconda3\Library\bin\libclang.dll",
         ]
-        
+
         # Try to find in system PATH
         import shutil
+
         llvm_config = shutil.which("llvm-config")
         if llvm_config:
             try:
                 import subprocess
+
                 result = subprocess.run([llvm_config, "--libdir"], capture_output=True, text=True)
                 if result.returncode == 0:
                     lib_dir = result.stdout.strip()
                     system_paths.insert(0, os.path.join(lib_dir, "libclang.dll"))
             except:
                 pass
-    
+
     elif system == "Darwin":  # macOS
         system_paths = [
             "/usr/local/lib/libclang.dylib",
             "/opt/homebrew/lib/libclang.dylib",
             "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib",
         ]
-    
+
     else:  # Linux
         system_paths = [
             "/usr/lib/llvm-*/lib/libclang.so.1",
@@ -106,7 +109,7 @@ def find_and_configure_libclang():
             "/usr/lib/libclang.so.1",
             "/usr/lib/libclang.so",
         ]
-    
+
     # Try each system path
     for path_pattern in system_paths:
         if "*" in path_pattern:
@@ -118,13 +121,14 @@ def find_and_configure_libclang():
                 continue
         else:
             path = path_pattern
-        
+
         if os.path.exists(path):
             diagnostics.info(f"Found system libclang at: {path}")
             Config.set_library_file(path)
             return True
 
     return False
+
 
 # Try to find and configure libclang
 if not find_and_configure_libclang():
@@ -141,20 +145,28 @@ try:
     from mcp_server.cpp_analyzer import CppAnalyzer
     from mcp_server.compile_commands_manager import CompileCommandsManager
     from mcp_server.state_manager import (
-        AnalyzerStateManager, AnalyzerState, IndexingProgress,
-        BackgroundIndexer, EnhancedQueryResult, QueryBehaviorPolicy
+        AnalyzerStateManager,
+        AnalyzerState,
+        IndexingProgress,
+        BackgroundIndexer,
+        EnhancedQueryResult,
+        QueryBehaviorPolicy,
     )
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer
     from compile_commands_manager import CompileCommandsManager
     from state_manager import (
-        AnalyzerStateManager, AnalyzerState, IndexingProgress,
-        BackgroundIndexer, EnhancedQueryResult, QueryBehaviorPolicy
+        AnalyzerStateManager,
+        AnalyzerState,
+        IndexingProgress,
+        BackgroundIndexer,
+        EnhancedQueryResult,
+        QueryBehaviorPolicy,
     )
 
 # Initialize analyzer
-PROJECT_ROOT = os.environ.get('CPP_PROJECT_ROOT', None)
+PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
 
 # Initialize analyzer as None - will be set when project directory is specified
 analyzer = None
@@ -167,6 +179,7 @@ background_indexer = None
 
 # Session manager for persistence across restarts
 from .session_manager import SessionManager
+
 session_manager = SessionManager()
 
 # Track if analyzer has been initialized with a valid project
@@ -175,6 +188,7 @@ analyzer_initialized = False
 
 # MCP Server
 server = Server("cpp-analyzer")
+
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
@@ -187,16 +201,20 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Class/struct name pattern to search for. Supports regular expressions (e.g., 'My.*Class' matches MyBaseClass, MyDerivedClass, etc.)"
+                        "description": "Class/struct name pattern to search for. Supports regular expressions (e.g., 'My.*Class' matches MyBaseClass, MyDerivedClass, etc.)",
                     },
                     "project_only": {
                         "type": "boolean",
                         "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
+                    "file_name": {
+                        "type": "string",
+                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                    },
                 },
-                "required": ["pattern"]
-            }
+                "required": ["pattern"],
+            },
         ),
         Tool(
             name="search_functions",
@@ -206,20 +224,24 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Function/method name pattern to search for. Supports regular expressions (e.g., 'get.*' matches getWidth, getValue, etc.)"
+                        "description": "Function/method name pattern to search for. Supports regular expressions (e.g., 'get.*' matches getWidth, getValue, etc.)",
                     },
                     "project_only": {
                         "type": "boolean",
                         "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
-                        "default": True
+                        "default": True,
                     },
                     "class_name": {
                         "type": "string",
-                        "description": "Optional: Only populate if user specifically mentions a class (e.g., 'find save method in Database class'). Limits search to only methods belonging to this specific class. **Leave empty** (which is typical) to search all functions and methods across the codebase."
-                    }
+                        "description": "Optional: Only populate if user specifically mentions a class (e.g., 'find save method in Database class'). Limits search to only methods belonging to this specific class. **Leave empty** (which is typical) to search all functions and methods across the codebase.",
+                    },
+                    "file_name": {
+                        "type": "string",
+                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                    },
                 },
-                "required": ["pattern"]
-            }
+                "required": ["pattern"],
+            },
         ),
         Tool(
             name="get_class_info",
@@ -229,11 +251,11 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "class_name": {
                         "type": "string",
-                        "description": "Exact name of the class to analyze (case-sensitive, must match exactly)"
+                        "description": "Exact name of the class to analyze (case-sensitive, must match exactly)",
                     }
                 },
-                "required": ["class_name"]
-            }
+                "required": ["class_name"],
+            },
         ),
         Tool(
             name="get_function_signature",
@@ -243,15 +265,15 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Exact name of the function/method to look up (case-sensitive). Will return signature strings for all overloads if multiple exist."
+                        "description": "Exact name of the function/method to look up (case-sensitive). Will return signature strings for all overloads if multiple exist.",
                     },
                     "class_name": {
                         "type": "string",
-                        "description": "If specified, only returns method signatures from this specific class, ignoring standalone functions and methods from other classes. Leave empty to get signatures for all matching functions across the codebase."
-                    }
+                        "description": "If specified, only returns method signatures from this specific class, ignoring standalone functions and methods from other classes. Leave empty to get signatures for all matching functions across the codebase.",
+                    },
                 },
-                "required": ["function_name"]
-            }
+                "required": ["function_name"],
+            },
         ),
         Tool(
             name="search_symbols",
@@ -261,24 +283,24 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for. Supports regular expressions. Searches across all symbol types unless filtered by symbol_types parameter."
+                        "description": "Symbol name pattern to search for. Supports regular expressions. Searches across all symbol types unless filtered by symbol_types parameter.",
                     },
                     "project_only": {
                         "type": "boolean",
                         "description": "When true (default), only searches project source files and excludes external dependencies. Set to false to include third-party libraries and system headers.",
-                        "default": True
+                        "default": True,
                     },
                     "symbol_types": {
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": ["class", "struct", "function", "method"]
+                            "enum": ["class", "struct", "function", "method"],
                         },
-                        "description": "Filter results to specific symbol types. Options: 'class' (class definitions), 'struct' (struct definitions), 'function' (standalone functions), 'method' (class member functions). If omitted, both 'classes' and 'functions' arrays will be populated."
-                    }
+                        "description": "Filter results to specific symbol types. Options: 'class' (class definitions), 'struct' (struct definitions), 'function' (standalone functions), 'method' (class member functions). If omitted, both 'classes' and 'functions' arrays will be populated.",
+                    },
                 },
-                "required": ["pattern"]
-            }
+                "required": ["pattern"],
+            },
         ),
         Tool(
             name="find_in_file",
@@ -288,15 +310,15 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the file. Accepts multiple formats: absolute path (/full/path/to/file.cpp), relative to project root (src/main.cpp), or even partial path (main.cpp). The matcher uses both exact absolute path resolution and 'endswith' matching, so shorter paths work if they uniquely identify the file."
+                        "description": "Path to the file. Accepts multiple formats: absolute path (/full/path/to/file.cpp), relative to project root (src/main.cpp), or even partial path (main.cpp). The matcher uses both exact absolute path resolution and 'endswith' matching, so shorter paths work if they uniquely identify the file.",
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for within the file. Supports regular expressions."
-                    }
+                        "description": "Symbol name pattern to search for within the file. Supports regular expressions.",
+                    },
                 },
-                "required": ["file_path", "pattern"]
-            }
+                "required": ["file_path", "pattern"],
+            },
         ),
         Tool(
             name="set_project_directory",
@@ -306,20 +328,20 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "project_path": {
                         "type": "string",
-                        "description": "Absolute path to the root directory of your C++ project. Must be a valid, existing directory. All subsequent analysis operations will be performed on this project."
+                        "description": "Absolute path to the root directory of your C++ project. Must be a valid, existing directory. All subsequent analysis operations will be performed on this project.",
                     },
                     "config_file": {
                         "type": "string",
-                        "description": "Optional: Path to configuration file (.cpp-analyzer-config.json). When provided, creates a unique cache for this project+config combination, enabling multiple configurations for the same source directory."
+                        "description": "Optional: Path to configuration file (.cpp-analyzer-config.json). When provided, creates a unique cache for this project+config combination, enabling multiple configurations for the same source directory.",
                     },
                     "auto_refresh": {
                         "type": "boolean",
                         "description": "When true (default), automatically performs incremental analysis on cache load to detect and re-analyze changed files. Set to false to skip automatic refresh and use cached data as-is.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": ["project_path"]
-            }
+                "required": ["project_path"],
+            },
         ),
         Tool(
             name="refresh_project",
@@ -330,34 +352,26 @@ async def list_tools() -> List[Tool]:
                     "incremental": {
                         "type": "boolean",
                         "description": "When true (default), performs incremental analysis by detecting changes and re-analyzing only affected files. When false, performs full re-analysis of all files.",
-                        "default": True
+                        "default": True,
                     },
                     "force_full": {
                         "type": "boolean",
                         "description": "When true, forces full re-analysis of all files regardless of incremental setting. Use after major configuration changes or to rebuild index from scratch.",
-                        "default": False
-                    }
+                        "default": False,
+                    },
                 },
-                "required": []
-            }
+                "required": [],
+            },
         ),
         Tool(
             name="get_server_status",
             description="Get diagnostic information about the MCP server state and index statistics. Returns JSON with: analyzer type, enabled features (call_graph, usr_tracking, compile_commands), file counts (parsed, indexed classes/functions). Use to verify server is working, check if indexing is complete, or debug configuration issues.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="get_indexing_status",
             description="Get real-time status of project indexing. Returns state (uninitialized/initializing/indexing/indexed/refreshing/error), progress information (files indexed/total, completion percentage, current file, ETA), and whether tools will return complete or partial results. Use this to check if indexing is complete before running queries on large projects, or to monitor indexing progress.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="wait_for_indexing",
@@ -368,11 +382,11 @@ async def list_tools() -> List[Tool]:
                     "timeout": {
                         "type": "number",
                         "description": "Maximum time to wait in seconds (default: 60.0). Set higher for large projects.",
-                        "default": 60.0
+                        "default": 60.0,
                     }
                 },
-                "required": []
-            }
+                "required": [],
+            },
         ),
         Tool(
             name="get_class_hierarchy",
@@ -382,11 +396,11 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "class_name": {
                         "type": "string",
-                        "description": "Name of the class to analyze. The result will show this class's complete inheritance hierarchy in both directions (ancestors and descendants)."
+                        "description": "Name of the class to analyze. The result will show this class's complete inheritance hierarchy in both directions (ancestors and descendants).",
                     }
                 },
-                "required": ["class_name"]
-            }
+                "required": ["class_name"],
+            },
         ),
         Tool(
             name="get_derived_classes",
@@ -396,16 +410,16 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "class_name": {
                         "type": "string",
-                        "description": "Name of the base class for which to find direct derived classes (immediate children only, one level down in inheritance tree)"
+                        "description": "Name of the base class for which to find direct derived classes (immediate children only, one level down in inheritance tree)",
                     },
                     "project_only": {
                         "type": "boolean",
                         "description": "When true (default), only includes derived classes from project source files, excluding those from external dependencies and libraries. Set to false to include all derived classes from all indexed files.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": ["class_name"]
-            }
+                "required": ["class_name"],
+            },
         ),
         Tool(
             name="find_callers",
@@ -415,16 +429,16 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the target function/method to find callers for (the function being called)"
+                        "description": "Name of the target function/method to find callers for (the function being called)",
                     },
                     "class_name": {
                         "type": "string",
                         "description": "If the target is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
-                        "default": ""
-                    }
+                        "default": "",
+                    },
                 },
-                "required": ["function_name"]
-            }
+                "required": ["function_name"],
+            },
         ),
         Tool(
             name="find_callees",
@@ -434,16 +448,16 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the source function/method to analyze (the function doing the calling)"
+                        "description": "Name of the source function/method to analyze (the function doing the calling)",
                     },
                     "class_name": {
                         "type": "string",
                         "description": "If the source is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
-                        "default": ""
-                    }
+                        "default": "",
+                    },
                 },
-                "required": ["function_name"]
-            }
+                "required": ["function_name"],
+            },
         ),
         Tool(
             name="get_call_sites",
@@ -453,16 +467,16 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the source function to analyze (the function doing the calling)"
+                        "description": "Name of the source function to analyze (the function doing the calling)",
                     },
                     "class_name": {
                         "type": "string",
                         "description": "If the source is a class method, specify the class name to disambiguate. Leave empty for standalone functions.",
-                        "default": ""
-                    }
+                        "default": "",
+                    },
                 },
-                "required": ["function_name"]
-            }
+                "required": ["function_name"],
+            },
         ),
         Tool(
             name="get_files_containing_symbol",
@@ -472,21 +486,21 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "symbol_name": {
                         "type": "string",
-                        "description": "Name of the symbol (class, function, method) to find references for. Must be exact name (case-sensitive)."
+                        "description": "Name of the symbol (class, function, method) to find references for. Must be exact name (case-sensitive).",
                     },
                     "symbol_kind": {
                         "type": "string",
                         "enum": ["class", "function", "method"],
-                        "description": "Optional: Type of symbol to disambiguate if multiple symbols share the same name. Leave empty to search all symbol types."
+                        "description": "Optional: Type of symbol to disambiguate if multiple symbols share the same name. Leave empty to search all symbol types.",
                     },
                     "project_only": {
                         "type": "boolean",
                         "description": "When true (default), only includes project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). Set to false to include all files including dependencies.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": ["symbol_name"]
-            }
+                "required": ["symbol_name"],
+            },
         ),
         Tool(
             name="get_call_path",
@@ -496,22 +510,23 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "from_function": {
                         "type": "string",
-                        "description": "Name of the starting/source function (where the execution path begins)"
+                        "description": "Name of the starting/source function (where the execution path begins)",
                     },
                     "to_function": {
                         "type": "string",
-                        "description": "Name of the target/destination function (where the execution path should end)"
+                        "description": "Name of the target/destination function (where the execution path should end)",
                     },
                     "max_depth": {
                         "type": "integer",
                         "description": "Maximum number of intermediate function calls to search through (default: 10). Higher values find longer paths but exponentially increase computation time and result count in highly connected graphs. Keep this low (5-15) for large codebases.",
-                        "default": 10
-                    }
+                        "default": 10,
+                    },
                 },
-                "required": ["from_function", "to_function"]
-            }
-        )
+                "required": ["from_function", "to_function"],
+            },
+        ),
     ]
+
 
 def check_query_policy(tool_name: str) -> tuple[bool, str]:
     """
@@ -540,7 +555,9 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
         policy = QueryBehaviorPolicy(policy_str)
     except ValueError:
         # Invalid policy, default to allow_partial
-        diagnostics.warning(f"Invalid query_behavior_policy: {policy_str}, defaulting to allow_partial")
+        diagnostics.warning(
+            f"Invalid query_behavior_policy: {policy_str}, defaulting to allow_partial"
+        )
         policy = QueryBehaviorPolicy.ALLOW_PARTIAL
 
     # Check policy
@@ -575,7 +592,11 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
             return (True, "")
         else:
             # Timeout - still return block message
-            return (False, message + "\n\nTimeout waiting for indexing (30s). Try again later or use 'get_indexing_status'.")
+            return (
+                False,
+                message
+                + "\n\nTimeout waiting for indexing (30s). Try again later or use 'get_indexing_status'.",
+            )
 
     elif policy == QueryBehaviorPolicy.REJECT:
         # Reject query with error
@@ -603,6 +624,7 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
     # Default: allow
     return (True, "")
 
+
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
@@ -612,28 +634,57 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             auto_refresh = arguments.get("auto_refresh", True)
 
             if not isinstance(project_path, str) or not project_path.strip():
-                return [TextContent(type="text", text="Error: 'project_path' must be a non-empty string")]
+                return [
+                    TextContent(
+                        type="text", text="Error: 'project_path' must be a non-empty string"
+                    )
+                ]
 
             if project_path != project_path.strip():
-                return [TextContent(type="text", text="Error: 'project_path' may not include leading or trailing whitespace")]
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: 'project_path' may not include leading or trailing whitespace",
+                    )
+                ]
 
             project_path = project_path.strip()
 
             if not os.path.isabs(project_path):
-                return [TextContent(type="text", text=f"Error: '{project_path}' is not an absolute path")]
+                return [
+                    TextContent(
+                        type="text", text=f"Error: '{project_path}' is not an absolute path"
+                    )
+                ]
 
             if not os.path.isdir(project_path):
-                return [TextContent(type="text", text=f"Error: Directory '{project_path}' does not exist")]
+                return [
+                    TextContent(
+                        type="text", text=f"Error: Directory '{project_path}' does not exist"
+                    )
+                ]
 
             # Validate config_file if provided
             if config_file:
                 if not isinstance(config_file, str) or not config_file.strip():
-                    return [TextContent(type="text", text="Error: 'config_file' must be a non-empty string")]
+                    return [
+                        TextContent(
+                            type="text", text="Error: 'config_file' must be a non-empty string"
+                        )
+                    ]
                 config_file = config_file.strip()
                 if not os.path.isabs(config_file):
-                    return [TextContent(type="text", text=f"Error: '{config_file}' is not an absolute path")]
+                    return [
+                        TextContent(
+                            type="text", text=f"Error: '{config_file}' is not an absolute path"
+                        )
+                    ]
                 if not os.path.isfile(config_file):
-                    return [TextContent(type="text", text=f"Error: Config file '{config_file}' does not exist")]
+                    return [
+                        TextContent(
+                            type="text", text=f"Error: Config file '{config_file}' does not exist"
+                        )
+                    ]
 
             # Re-initialize analyzer with new path and config
             global analyzer, analyzer_initialized, state_manager, background_indexer
@@ -650,10 +701,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     # FAST PATH: Check if cache exists and is valid
                     # If so, load directly without calling index_project
                     loop = asyncio.get_event_loop()
-                    cache_valid = await loop.run_in_executor(
-                        None,
-                        analyzer._load_cache
-                    )
+                    cache_valid = await loop.run_in_executor(None, analyzer._load_cache)
 
                     if cache_valid:
                         # Cache loaded successfully - skip indexing
@@ -667,7 +715,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         global analyzer_initialized
                         analyzer_initialized = True
 
-                        diagnostics.info("Server ready (loaded from cache) - use 'refresh_project' to detect file changes")
+                        diagnostics.info(
+                            "Server ready (loaded from cache) - use 'refresh_project' to detect file changes"
+                        )
                         return
 
                     # SLOW PATH: Cache not valid, need to index from scratch
@@ -690,29 +740,45 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
             # Build response message
             config_msg = f" with config '{config_file}'" if config_file else ""
-            auto_refresh_msg = " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
+            auto_refresh_msg = (
+                " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
+            )
 
             # Return immediately - indexing continues in background
-            return [TextContent(
-                type="text",
-                text=f"Set project directory to: {project_path}{config_msg}\n"
-                     f"Indexing started in background.{auto_refresh_msg}\n"
-                     f"Use 'get_indexing_status' to check progress.\n"
-                     f"Tools are available but will return partial results until indexing completes."
-            )]
-        
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Set project directory to: {project_path}{config_msg}\n"
+                    f"Indexing started in background.{auto_refresh_msg}\n"
+                    f"Use 'get_indexing_status' to check progress.\n"
+                    f"Tools are available but will return partial results until indexing completes.",
+                )
+            ]
+
         # Check if analyzer is initialized for all other commands
         # Phase 3: Allow queries during indexing (partial results)
         # Tools can execute in INDEXING, INDEXED, or REFRESHING states
         if analyzer is None or not state_manager.is_ready_for_queries():
-            return [TextContent(type="text", text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.")]
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.",
+                )
+            ]
 
         # Define tools that are subject to query behavior policy
         query_tools = {
-            "search_classes", "search_functions", "get_class_info",
-            "get_function_signature", "search_symbols", "find_in_file",
-            "get_class_hierarchy", "get_derived_classes",
-            "find_callers", "find_callees", "get_call_path"
+            "search_classes",
+            "search_functions",
+            "get_class_info",
+            "get_function_signature",
+            "search_symbols",
+            "find_in_file",
+            "get_class_hierarchy",
+            "get_derived_classes",
+            "find_callers",
+            "find_callees",
+            "get_call_path",
         }
 
         # Check query behavior policy for query tools (but not management tools)
@@ -727,53 +793,62 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         if name == "search_classes":
             project_only = arguments.get("project_only", True)
             pattern = arguments["pattern"]
+            file_name = arguments.get("file_name", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.search_classes(pattern, project_only)
+                None, lambda: analyzer.search_classes(pattern, project_only, file_name)
             )
             # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_classes")
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                results, state_manager, "search_classes"
+            )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_functions":
             project_only = arguments.get("project_only", True)
             class_name = arguments.get("class_name", None)
+            file_name = arguments.get("file_name", None)
             pattern = arguments["pattern"]
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.search_functions(pattern, project_only, class_name)
+                lambda: analyzer.search_functions(pattern, project_only, class_name, file_name),
             )
             # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_functions")
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                results, state_manager, "search_functions"
+            )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "get_class_info":
             class_name = arguments["class_name"]
             # Run synchronous method in executor to avoid blocking event loop
-            result = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_class_info(class_name)
-            )
+            result = await loop.run_in_executor(None, lambda: analyzer.get_class_info(class_name))
             # Wrap with metadata (even if not found)
-            enhanced_result = EnhancedQueryResult.create_from_state(result, state_manager, "get_class_info")
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                result, state_manager, "get_class_info"
+            )
             if result:
-                return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+                return [
+                    TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))
+                ]
             else:
                 # Include metadata even for "not found" case
-                return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+                return [
+                    TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))
+                ]
 
         elif name == "get_function_signature":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_function_signature(function_name, class_name)
+                None, lambda: analyzer.get_function_signature(function_name, class_name)
             )
             # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "get_function_signature")
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                results, state_manager, "get_function_signature"
+            )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_symbols":
@@ -782,11 +857,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             symbol_types = arguments.get("symbol_types", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.search_symbols(pattern, project_only, symbol_types)
+                None, lambda: analyzer.search_symbols(pattern, project_only, symbol_types)
             )
             # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "search_symbols")
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                results, state_manager, "search_symbols"
+            )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "find_in_file":
@@ -794,13 +870,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             pattern = arguments["pattern"]
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.find_in_file(file_path, pattern)
+                None, lambda: analyzer.find_in_file(file_path, pattern)
             )
             # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(results, state_manager, "find_in_file")
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                results, state_manager, "find_in_file"
+            )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-        
+
         elif name == "refresh_project":
             incremental = arguments.get("incremental", True)
             force_full = arguments.get("force_full", False)
@@ -808,24 +885,23 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Force full re-analysis overrides incremental setting
             if force_full:
                 # Run synchronous method in executor to avoid blocking event loop
-                modified_count = await loop.run_in_executor(
-                    None,
-                    analyzer.refresh_if_needed
-                )
-                return [TextContent(
-                    type="text",
-                    text=f"Full refresh complete. Re-analyzed {modified_count} files."
-                )]
+                modified_count = await loop.run_in_executor(None, analyzer.refresh_if_needed)
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Full refresh complete. Re-analyzed {modified_count} files.",
+                    )
+                ]
 
             # Incremental analysis using IncrementalAnalyzer
             if incremental:
                 try:
                     from mcp_server.incremental_analyzer import IncrementalAnalyzer
+
                     incremental_analyzer = IncrementalAnalyzer(analyzer)
                     # Run synchronous method in executor to avoid blocking event loop
                     result = await loop.run_in_executor(
-                        None,
-                        incremental_analyzer.perform_incremental_analysis
+                        None, incremental_analyzer.perform_incremental_analysis
                     )
 
                     # Build detailed response
@@ -840,8 +916,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             "modified_files": len(result.changes.modified_files),
                             "modified_headers": len(result.changes.modified_headers),
                             "removed_files": len(result.changes.removed_files),
-                            "total_changes": result.changes.get_total_changes()
-                        }
+                            "total_changes": result.changes.get_total_changes(),
+                        },
                     }
 
                     if result.changes.is_empty():
@@ -858,52 +934,52 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     diagnostics.error(f"Incremental analysis failed: {e}")
                     # Fallback to full refresh
                     # Run synchronous method in executor to avoid blocking event loop
-                    modified_count = await loop.run_in_executor(
-                        None,
-                        analyzer.refresh_if_needed
-                    )
-                    return [TextContent(
-                        type="text",
-                        text=f"Incremental analysis failed, performed full refresh. "
-                             f"Re-analyzed {modified_count} files.\nError: {str(e)}"
-                    )]
+                    modified_count = await loop.run_in_executor(None, analyzer.refresh_if_needed)
+                    return [
+                        TextContent(
+                            type="text",
+                            text=f"Incremental analysis failed, performed full refresh. "
+                            f"Re-analyzed {modified_count} files.\nError: {str(e)}",
+                        )
+                    ]
 
             # Non-incremental (full) refresh
             else:
                 # Run synchronous method in executor to avoid blocking event loop
-                modified_count = await loop.run_in_executor(
-                    None,
-                    analyzer.refresh_if_needed
-                )
-                return [TextContent(
-                    type="text",
-                    text=f"Full refresh complete. Re-analyzed {modified_count} files."
-                )]
-        
+                modified_count = await loop.run_in_executor(None, analyzer.refresh_if_needed)
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Full refresh complete. Re-analyzed {modified_count} files.",
+                    )
+                ]
+
         elif name == "get_server_status":
             # Determine analyzer type
             analyzer_type = "python_enhanced"
-            
+
             status = {
                 "analyzer_type": analyzer_type,
                 "call_graph_enabled": True,
                 "usr_tracking_enabled": True,
                 "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
                 "compile_commands_path": analyzer.compile_commands_manager.compile_commands_path,
-                "compile_commands_cache_enabled": analyzer.compile_commands_manager.cache_enabled
+                "compile_commands_cache_enabled": analyzer.compile_commands_manager.cache_enabled,
             }
-            
+
             # Add analyzer stats from enhanced Python analyzer
             # Count total symbols, not just unique names
             total_classes = sum(len(infos) for infos in analyzer.class_index.values())
             total_functions = sum(len(infos) for infos in analyzer.function_index.values())
 
-            status.update({
-                "parsed_files": len(analyzer.translation_units),
-                "indexed_classes": total_classes,
-                "indexed_functions": total_functions,
-                "project_files": len(analyzer.translation_units)  # Approximate count
-            })
+            status.update(
+                {
+                    "parsed_files": len(analyzer.translation_units),
+                    "indexed_classes": total_classes,
+                    "indexed_functions": total_functions,
+                    "project_files": len(analyzer.translation_units),  # Approximate count
+                }
+            )
             return [TextContent(type="text", text=json.dumps(status, indent=2))]
 
         elif name == "get_indexing_status":
@@ -920,30 +996,32 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
             # Wait for indexed event asynchronously to avoid blocking event loop
             completed = await loop.run_in_executor(
-                None,
-                lambda: state_manager.wait_for_indexed(timeout)
+                None, lambda: state_manager.wait_for_indexed(timeout)
             )
 
             if completed:
                 progress = state_manager.get_progress()
                 indexed_count = progress.indexed_files if progress else 0
                 failed_count = progress.failed_files if progress else 0
-                return [TextContent(
-                    type="text",
-                    text=f"Indexing complete! Indexed {indexed_count} files successfully ({failed_count} failed)."
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Indexing complete! Indexed {indexed_count} files successfully ({failed_count} failed).",
+                    )
+                ]
             else:
-                return [TextContent(
-                    type="text",
-                    text=f"Timeout waiting for indexing (waited {timeout}s). Use 'get_indexing_status' to check progress."
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Timeout waiting for indexing (waited {timeout}s). Use 'get_indexing_status' to check progress.",
+                    )
+                ]
 
         elif name == "get_class_hierarchy":
             class_name = arguments["class_name"]
             # Run synchronous method in executor to avoid blocking event loop
             hierarchy = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_class_hierarchy(class_name)
+                None, lambda: analyzer.get_class_hierarchy(class_name)
             )
             if hierarchy:
                 return [TextContent(type="text", text=json.dumps(hierarchy, indent=2))]
@@ -955,8 +1033,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             project_only = arguments.get("project_only", True)
             # Run synchronous method in executor to avoid blocking event loop
             derived = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_derived_classes(class_name, project_only)
+                None, lambda: analyzer.get_derived_classes(class_name, project_only)
             )
             return [TextContent(type="text", text=json.dumps(derived, indent=2))]
 
@@ -965,8 +1042,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             class_name = arguments.get("class_name", "")
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.find_callers(function_name, class_name)
+                None, lambda: analyzer.find_callers(function_name, class_name)
             )
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
@@ -975,8 +1051,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             class_name = arguments.get("class_name", "")
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.find_callees(function_name, class_name)
+                None, lambda: analyzer.find_callees(function_name, class_name)
             )
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
@@ -985,8 +1060,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             class_name = arguments.get("class_name", "")
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_call_sites(function_name, class_name)
+                None, lambda: analyzer.get_call_sites(function_name, class_name)
             )
             return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
@@ -994,7 +1068,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             symbol_name = arguments["symbol_name"]
             symbol_kind = arguments.get("symbol_kind")
             project_only = arguments.get("project_only", True)
-            result = await analyzer.get_files_containing_symbol(symbol_name, symbol_kind, project_only)
+            result = await analyzer.get_files_containing_symbol(
+                symbol_name, symbol_kind, project_only
+            )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "get_call_path":
@@ -1003,27 +1079,28 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             max_depth = arguments.get("max_depth", 10)
             # Run synchronous method in executor to avoid blocking event loop
             paths = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_call_path(from_function, to_function, max_depth)
+                None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
             )
             return [TextContent(type="text", text=json.dumps(paths, indent=2))]
-        
+
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
-    
+
     except Exception as e:
         return [TextContent(type="text", text=f"Error: {str(e)}")]
+
 
 async def main():
     """Main entry point for the MCP server."""
     import argparse
 
-    # Auto-resume last session if available
+    # Auto-resume last session if available (unless disabled for tests)
     global analyzer, analyzer_initialized, background_indexer
-    saved_session = session_manager.load_session()
+    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
+    saved_session = None if disable_auto_resume else session_manager.load_session()
     if saved_session:
-        project_path = saved_session['project_path']
-        config_file = saved_session.get('config_file')
+        project_path = saved_session["project_path"]
+        config_file = saved_session.get("config_file")
 
         diagnostics.info(f"Auto-resuming last session: {project_path}")
 
@@ -1066,7 +1143,7 @@ Examples:
   %(prog)s                                    # Run with stdio transport
   %(prog)s --transport http --port 8000      # Run HTTP server on port 8000
   %(prog)s --transport sse --port 8080       # Run SSE server on port 8080
-        """
+        """,
     )
 
     parser.add_argument(
@@ -1074,21 +1151,18 @@ Examples:
         type=str,
         choices=["stdio", "http", "sse"],
         default="stdio",
-        help="Transport protocol to use (default: stdio)"
+        help="Transport protocol to use (default: stdio)",
     )
 
     parser.add_argument(
         "--host",
         type=str,
         default="127.0.0.1",
-        help="Host address for HTTP/SSE server (default: 127.0.0.1)"
+        help="Host address for HTTP/SSE server (default: 127.0.0.1)",
     )
 
     parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Port number for HTTP/SSE server (default: 8000)"
+        "--port", type=int, default=8000, help="Port number for HTTP/SSE server (default: 8000)"
     )
 
     args = parser.parse_args()
