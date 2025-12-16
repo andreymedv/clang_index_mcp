@@ -2036,11 +2036,11 @@ class CppAnalyzer:
         )
 
     def search_classes(
-        self, pattern: str, project_only: bool = True, header_file: Optional[str] = None
+        self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Search for classes matching pattern"""
         try:
-            return self.search_engine.search_classes(pattern, project_only, header_file)
+            return self.search_engine.search_classes(pattern, project_only, file_name)
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
@@ -2050,12 +2050,12 @@ class CppAnalyzer:
         pattern: str,
         project_only: bool = True,
         class_name: Optional[str] = None,
-        header_file: Optional[str] = None,
+        file_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search for functions matching pattern, optionally within a specific class"""
         try:
             return self.search_engine.search_functions(
-                pattern, project_only, class_name, header_file
+                pattern, project_only, class_name, file_name
             )
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")

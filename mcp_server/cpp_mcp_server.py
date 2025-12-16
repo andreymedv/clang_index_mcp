@@ -208,9 +208,9 @@ async def list_tools() -> List[Tool]:
                         "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
                         "default": True,
                     },
-                    "header_file": {
+                    "file_name": {
                         "type": "string",
-                        "description": "Optional: Filter results to only classes defined in a specific header file. Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
                     },
                 },
                 "required": ["pattern"],
@@ -235,9 +235,9 @@ async def list_tools() -> List[Tool]:
                         "type": "string",
                         "description": "Optional: Only populate if user specifically mentions a class (e.g., 'find save method in Database class'). Limits search to only methods belonging to this specific class. **Leave empty** (which is typical) to search all functions and methods across the codebase.",
                     },
-                    "header_file": {
+                    "file_name": {
                         "type": "string",
-                        "description": "Optional: Filter results to only functions/methods defined in a specific header file. Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
                     },
                 },
                 "required": ["pattern"],
@@ -793,10 +793,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         if name == "search_classes":
             project_only = arguments.get("project_only", True)
             pattern = arguments["pattern"]
-            header_file = arguments.get("header_file", None)
+            file_name = arguments.get("file_name", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None, lambda: analyzer.search_classes(pattern, project_only, header_file)
+                None, lambda: analyzer.search_classes(pattern, project_only, file_name)
             )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(
@@ -807,12 +807,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "search_functions":
             project_only = arguments.get("project_only", True)
             class_name = arguments.get("class_name", None)
-            header_file = arguments.get("header_file", None)
+            file_name = arguments.get("file_name", None)
             pattern = arguments["pattern"]
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.search_functions(pattern, project_only, class_name, header_file),
+                lambda: analyzer.search_functions(pattern, project_only, class_name, file_name),
             )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(
