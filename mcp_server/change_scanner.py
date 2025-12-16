@@ -239,25 +239,40 @@ class ChangeScanner:
             ChangeType indicating the type of change
 
         Algorithm:
-            1. Query cache manager for file metadata
-            2. If not in cache → ADDED
-            3. If in cache, compare MD5 hash
-            4. Hash mismatch → MODIFIED
-            5. Hash match → UNCHANGED
+            1. Query cache manager for file metadata (database)
+            2. If not in database, fallback to in-memory file_hashes
+            3. If not in cache at all → ADDED
+            4. If in cache, compare MD5 hash
+            5. Hash mismatch → MODIFIED
+            6. Hash match → UNCHANGED
         """
-        # Try to get file metadata from cache
+        # Try to get file metadata from database first
         try:
             metadata = self.analyzer.cache_manager.backend.get_file_metadata(file_path)
         except Exception as e:
             diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
-            # Assume new file if can't get metadata
-            return ChangeType.ADDED
+            metadata = None
 
+        # CRITICAL FIX: Fallback to in-memory file_hashes if not in database
+        # This happens after cache load when database is empty but file_hashes is populated
         if not metadata:
-            # Not in cache = new file
-            return ChangeType.ADDED
+            if file_path in self.analyzer.file_hashes:
+                # File is in memory cache, check if content changed
+                cached_hash = self.analyzer.file_hashes[file_path]
+                try:
+                    current_hash = self.analyzer._get_file_hash(file_path)
+                    if current_hash != cached_hash:
+                        return ChangeType.MODIFIED
+                    else:
+                        return ChangeType.UNCHANGED
+                except Exception as e:
+                    diagnostics.warning(f"Error checking hash for {file_path}: {e}")
+                    return ChangeType.MODIFIED
+            else:
+                # Not in database OR in-memory cache = new file
+                return ChangeType.ADDED
 
-        # File in cache, check if content changed
+        # File in database cache, check if content changed
         try:
             current_hash = self.analyzer._get_file_hash(file_path)
             cached_hash = metadata.get('file_hash', '')
