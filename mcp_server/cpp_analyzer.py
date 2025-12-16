@@ -48,6 +48,7 @@ except ImportError:
 
 class _NoOpLock:
     """A no-op context manager that doesn't actually acquire any lock."""
+
     def __enter__(self):
         return self
 
@@ -98,8 +99,12 @@ def _process_file_worker(args_tuple):
         # Debug
         if call_sites:
             diagnostics.debug(f"Worker extracted {len(call_sites)} call sites from {file_path}")
-        diagnostics.debug(f"Worker call_graph entries: {len(analyzer.call_graph_analyzer.call_graph)}")
-        diagnostics.debug(f"Worker call_sites count: {len(analyzer.call_graph_analyzer.call_sites)}")
+        diagnostics.debug(
+            f"Worker call_graph entries: {len(analyzer.call_graph_analyzer.call_graph)}"
+        )
+        diagnostics.debug(
+            f"Worker call_sites count: {len(analyzer.call_graph_analyzer.call_sites)}"
+        )
 
     return (file_path, success, was_cached, symbols, call_sites)
 
@@ -148,10 +153,7 @@ class CppAnalyzer:
 
         # Initialize search engine
         self.search_engine = SearchEngine(
-            self.class_index,
-            self.function_index,
-            self.file_index,
-            self.usr_index
+            self.class_index, self.function_index, self.file_index, self.usr_index
         )
 
         # Track indexed files
@@ -169,7 +171,7 @@ class CppAnalyzer:
 
         # Use ProcessPoolExecutor by default to bypass Python's GIL
         # Can be overridden via environment variable
-        self.use_processes = os.environ.get('CPP_ANALYZER_USE_THREADS', '').lower() != 'true'
+        self.use_processes = os.environ.get("CPP_ANALYZER_USE_THREADS", "").lower() != "true"
 
         # Locking strategy:
         # - True (default): Use locks for thread safety (ThreadPoolExecutor or shared instance)
@@ -180,14 +182,14 @@ class CppAnalyzer:
         # Initialize cache manager with project identity
         self.cache_manager = CacheManager(self.project_identity)
         self.file_scanner = FileScanner(self.project_root)
-        
+
         # Apply configuration to file scanner
         self.file_scanner.EXCLUDE_DIRS = set(self.config.get_exclude_directories())
         self.file_scanner.DEPENDENCY_DIRS = set(self.config.get_dependency_directories())
-        
+
         # Keep cache_dir for compatibility
         self.cache_dir = self.cache_manager.cache_dir
-        
+
         # Statistics
         self.last_index_time = 0
         self.indexed_file_count = 0
@@ -198,9 +200,7 @@ class CppAnalyzer:
         # Initialize compile commands manager with config and cache directory
         compile_commands_config = self.config.get_compile_commands_config()
         self.compile_commands_manager = CompileCommandsManager(
-            self.project_root,
-            compile_commands_config,
-            cache_dir=self.cache_manager.cache_dir
+            self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
         )
 
         # Initialize header processing tracker for first-win strategy
@@ -209,7 +209,7 @@ class CppAnalyzer:
         # Initialize dependency graph builder for incremental analysis
         # Note: Only initialize if using SQLite backend (has conn attribute)
         self.dependency_graph = None
-        if hasattr(self.cache_manager.backend, 'conn'):
+        if hasattr(self.cache_manager.backend, "conn"):
             self.dependency_graph = DependencyGraphBuilder(self.cache_manager.backend.conn)
             diagnostics.debug("Dependency graph builder initialized")
         else:
@@ -223,16 +223,22 @@ class CppAnalyzer:
         self._restore_or_reset_header_tracking()
 
         diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
-        diagnostics.debug(f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.use_processes else 'ThreadPool'} with {self.max_workers} workers")
+        diagnostics.debug(
+            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.use_processes else 'ThreadPool'} with {self.max_workers} workers"
+        )
 
         # Print compile commands configuration status
         if self.compile_commands_manager.enabled:
-            cc_path = self.project_root / compile_commands_config['compile_commands_path']
+            cc_path = self.project_root / compile_commands_config["compile_commands_path"]
             if cc_path.exists():
                 # This message will be followed by actual load message from CompileCommandsManager
-                diagnostics.debug(f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}")
+                diagnostics.debug(
+                    f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}"
+                )
             else:
-                diagnostics.debug(f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args")
+                diagnostics.debug(
+                    f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args"
+                )
         else:
             diagnostics.debug("Compile commands disabled in configuration")
 
@@ -243,7 +249,7 @@ class CppAnalyzer:
         This should be called when the CppAnalyzer is no longer needed
         to properly close database connections and avoid resource leaks.
         """
-        if hasattr(self, 'cache_manager') and self.cache_manager is not None:
+        if hasattr(self, "cache_manager") and self.cache_manager is not None:
             self.cache_manager.close()
 
     def __enter__(self):
@@ -320,14 +326,14 @@ class CppAnalyzer:
 
         # Get compile_commands.json path from configuration
         compile_commands_config = self.config.get_compile_commands_config()
-        cc_path = self.project_root / compile_commands_config['compile_commands_path']
+        cc_path = self.project_root / compile_commands_config["compile_commands_path"]
 
         if not cc_path.exists():
             self.compile_commands_hash = ""
             return
 
         try:
-            with open(cc_path, 'rb') as f:
+            with open(cc_path, "rb") as f:
                 self.compile_commands_hash = hashlib.md5(f.read()).hexdigest()
         except Exception as e:
             diagnostics.warning(f"Failed to calculate compile_commands.json hash: {e}")
@@ -354,7 +360,7 @@ class CppAnalyzer:
             return
 
         try:
-            with open(tracker_cache_path, 'r') as f:
+            with open(tracker_cache_path, "r") as f:
                 cache_data = json.load(f)
 
             cached_cc_hash = cache_data.get("compile_commands_hash", "")
@@ -372,7 +378,9 @@ class CppAnalyzer:
         except (json.JSONDecodeError, IOError, OSError) as e:
             # JSON corruption or file access errors - this can happen with concurrent writes
             # in multi-process mode. Simply start fresh.
-            diagnostics.debug(f"Header tracking cache corrupted or inaccessible, starting fresh: {e}")
+            diagnostics.debug(
+                f"Header tracking cache corrupted or inaccessible, starting fresh: {e}"
+            )
             # Remove corrupted cache file
             try:
                 tracker_cache_path.unlink(missing_ok=True)
@@ -413,15 +421,15 @@ class CppAnalyzer:
                 "version": "1.0",
                 "compile_commands_hash": self.compile_commands_hash,
                 "processed_headers": processed_headers,
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
             # Ensure cache directory exists
             tracker_cache_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Write to file (atomic write via temp file)
-            temp_path = tracker_cache_path.with_suffix('.tmp')
-            with open(temp_path, 'w') as f:
+            temp_path = tracker_cache_path.with_suffix(".tmp")
+            with open(temp_path, "w") as f:
                 json.dump(cache_data, f, indent=2)
 
             # Atomic rename
@@ -461,7 +469,7 @@ class CppAnalyzer:
 
     def _get_thread_local_buffers(self):
         """Get thread-local buffers, initializing if needed."""
-        if not hasattr(self._thread_local, 'collected_symbols'):
+        if not hasattr(self._thread_local, "collected_symbols"):
             self._init_thread_local_buffers()
         return self._thread_local.collected_symbols, self._thread_local.collected_calls
 
@@ -571,7 +579,9 @@ class CppAnalyzer:
             if calls_buffer:
                 diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
                 if calls_buffer:
-                    diagnostics.debug(f"First call format: {calls_buffer[0] if calls_buffer else 'empty'}")
+                    diagnostics.debug(
+                        f"First call format: {calls_buffer[0] if calls_buffer else 'empty'}"
+                    )
             for call_info in calls_buffer:
                 if len(call_info) == 5:
                     # Phase 3 format: (caller_usr, callee_usr, file, line, column)
@@ -619,13 +629,13 @@ class CppAnalyzer:
 
         # Check for common system header patterns
         system_patterns = [
-            '/usr/include/',
-            '/usr/local/include/',
-            'lib/clang/',  # Clang builtin headers (e.g., arm_acle.h, arm_neon.h)
-            '/Library/Developer/CommandLineTools/usr/lib/clang/',  # macOS
-            '/Library/Developer/CommandLineTools/SDKs/',  # macOS SDK
-            'C:\\Program Files',  # Windows system
-            '/opt/homebrew/',  # macOS Homebrew
+            "/usr/include/",
+            "/usr/local/include/",
+            "lib/clang/",  # Clang builtin headers (e.g., arm_acle.h, arm_neon.h)
+            "/Library/Developer/CommandLineTools/usr/lib/clang/",  # macOS
+            "/Library/Developer/CommandLineTools/SDKs/",  # macOS SDK
+            "C:\\Program Files",  # Windows system
+            "/opt/homebrew/",  # macOS Homebrew
         ]
 
         return any(pattern in file_path for pattern in system_patterns)
@@ -642,7 +652,7 @@ class CppAnalyzer:
         error_diagnostics = []
         warning_diagnostics = []
 
-        if tu and hasattr(tu, 'diagnostics'):
+        if tu and hasattr(tu, "diagnostics"):
             for diag in tu.diagnostics:
                 severity = diag.severity
                 # Severity levels: Ignored=0, Note=1, Warning=2, Error=3, Fatal=4
@@ -693,34 +703,41 @@ class CppAnalyzer:
 
         return "\n".join(messages)
 
-    def _save_file_cache(self, file_path: str, symbols: List[SymbolInfo], file_hash: str,
-                        compile_args_hash: Optional[str] = None, success: bool = True,
-                        error_message: Optional[str] = None, retry_count: int = 0):
+    def _save_file_cache(
+        self,
+        file_path: str,
+        symbols: List[SymbolInfo],
+        file_hash: str,
+        compile_args_hash: Optional[str] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        retry_count: int = 0,
+    ):
         """Save parsed symbols for a single file to cache"""
         self.cache_manager.save_file_cache(
-            file_path, symbols, file_hash, compile_args_hash,
-            success, error_message, retry_count
+            file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
         )
 
-    def _load_file_cache(self, file_path: str, current_hash: str,
-                        compile_args_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def _load_file_cache(
+        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Load cached data for a file if still valid
 
         Returns:
             Dict with 'symbols', 'success', 'error_message', 'retry_count' or None
         """
         return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
-    
+
     def _is_project_file(self, file_path: str) -> bool:
         """Check if file is part of the project (not a dependency)"""
         return self.file_scanner.is_project_file(file_path)
-    
+
     def _should_skip_file(self, file_path: str) -> bool:
         """Check if file should be skipped"""
         # Update file scanner with current dependencies setting
         self.file_scanner.include_dependencies = self.include_dependencies
         return self.file_scanner.should_skip_file(file_path)
-    
+
     def _find_cpp_files(self, include_dependencies: bool = False) -> List[str]:
         """Find all C++ files in the project
 
@@ -731,14 +748,16 @@ class CppAnalyzer:
         if self.compile_commands_manager.enabled:
             compile_commands_files = self.compile_commands_manager.get_all_files()
             if compile_commands_files:
-                diagnostics.debug(f"Using {len(compile_commands_files)} files from compile_commands.json")
+                diagnostics.debug(
+                    f"Using {len(compile_commands_files)} files from compile_commands.json"
+                )
                 return compile_commands_files
 
         # Fall back to scanning all C++ files
         # Update file scanner with dependencies setting
         self.file_scanner.include_dependencies = include_dependencies
         return self.file_scanner.find_cpp_files()
-    
+
     def _get_base_classes(self, cursor) -> List[str]:
         """Extract base class names from a class cursor"""
         base_classes = []
@@ -776,28 +795,28 @@ class CppAnalyzer:
         """
         location = cursor.location
         result = {
-            'file': str(location.file.name) if location.file else "",
-            'line': location.line,
-            'column': location.column,
-            'start_line': None,
-            'end_line': None,
-            'header_file': None,
-            'header_line': None,
-            'header_start_line': None,
-            'header_end_line': None
+            "file": str(location.file.name) if location.file else "",
+            "line": location.line,
+            "column": location.column,
+            "start_line": None,
+            "end_line": None,
+            "header_file": None,
+            "header_line": None,
+            "header_start_line": None,
+            "header_end_line": None,
         }
 
         # Extract line range from extent
         try:
             extent = cursor.extent
             if extent and extent.start.file and extent.end.file:
-                result['start_line'] = extent.start.line
-                result['end_line'] = extent.end.line
+                result["start_line"] = extent.start.line
+                result["end_line"] = extent.end.line
         except Exception as e:
             # If extent extraction fails, fall back to single line
             diagnostics.debug(f"Could not extract extent for {cursor.spelling}: {e}")
-            result['start_line'] = location.line
-            result['end_line'] = location.line
+            result["start_line"] = location.line
+            result["end_line"] = location.line
 
         # Check for declaration/definition split
         try:
@@ -815,35 +834,35 @@ class CppAnalyzer:
                     def_file = str(def_location.file.name)
 
                     # Check if declaration is in a header file
-                    is_decl_header = decl_file.endswith(('.h', '.hpp', '.hxx', '.hh'))
-                    is_def_header = def_file.endswith(('.h', '.hpp', '.hxx', '.hh'))
+                    is_decl_header = decl_file.endswith((".h", ".hpp", ".hxx", ".hh"))
+                    is_def_header = def_file.endswith((".h", ".hpp", ".hxx", ".hh"))
 
                     if is_decl_header and not is_def_header:
                         # Declaration in header, definition in source
                         # Store declaration as header info
-                        result['header_file'] = decl_file
-                        result['header_line'] = decl_location.line
+                        result["header_file"] = decl_file
+                        result["header_line"] = decl_location.line
                         try:
                             decl_extent = cursor.extent
                             if decl_extent and decl_extent.start.file:
-                                result['header_start_line'] = decl_extent.start.line
-                                result['header_end_line'] = decl_extent.end.line
+                                result["header_start_line"] = decl_extent.start.line
+                                result["header_end_line"] = decl_extent.end.line
                         except Exception:
-                            result['header_start_line'] = decl_location.line
-                            result['header_end_line'] = decl_location.line
+                            result["header_start_line"] = decl_location.line
+                            result["header_end_line"] = decl_location.line
 
                         # Update primary location to definition
-                        result['file'] = def_file
-                        result['line'] = def_location.line
-                        result['column'] = def_location.column
+                        result["file"] = def_file
+                        result["line"] = def_location.line
+                        result["column"] = def_location.column
                         try:
                             def_extent = definition_cursor.extent
                             if def_extent and def_extent.start.file:
-                                result['start_line'] = def_extent.start.line
-                                result['end_line'] = def_extent.end.line
+                                result["start_line"] = def_extent.start.line
+                                result["end_line"] = def_extent.end.line
                         except Exception:
-                            result['start_line'] = def_location.line
-                            result['end_line'] = def_location.line
+                            result["start_line"] = def_location.line
+                            result["end_line"] = def_location.line
                     elif is_def_header and is_decl_header:
                         # Both in headers (e.g., template, inline)
                         # Primary location stays as declaration
@@ -870,10 +889,7 @@ class CppAnalyzer:
                 - brief: Brief description (first line, max 200 chars)
                 - doc_comment: Full documentation comment (max 4000 chars)
         """
-        result = {
-            'brief': None,
-            'doc_comment': None
-        }
+        result = {"brief": None, "doc_comment": None}
 
         try:
             # Extract brief comment (first line/sentence)
@@ -883,7 +899,7 @@ class CppAnalyzer:
                 # Truncate if too long
                 if len(brief) > 200:
                     brief = brief[:200]
-                result['brief'] = brief
+                result["brief"] = brief
 
             # Extract full documentation comment
             raw_comment = cursor.raw_comment
@@ -892,19 +908,19 @@ class CppAnalyzer:
                 # Truncate if too long (max 4000 chars including "..." suffix)
                 if len(doc_comment) > 4000:
                     doc_comment = doc_comment[:3997] + "..."
-                result['doc_comment'] = doc_comment
+                result["doc_comment"] = doc_comment
 
                 # If no brief but have raw comment, extract first meaningful line
-                if not result['brief'] and doc_comment:
-                    lines = doc_comment.split('\n')
+                if not result["brief"] and doc_comment:
+                    lines = doc_comment.split("\n")
                     for line in lines:
                         # Skip comment markers and empty lines
-                        cleaned = line.strip().lstrip('/*!/').lstrip('*').strip()
-                        if cleaned and not cleaned.startswith('@'):
+                        cleaned = line.strip().lstrip("/*!/").lstrip("*").strip()
+                        if cleaned and not cleaned.startswith("@"):
                             # Found first meaningful line
                             if len(cleaned) > 200:
                                 cleaned = cleaned[:200]
-                            result['brief'] = cleaned
+                            result["brief"] = cleaned
                             break
 
         except Exception as e:
@@ -913,7 +929,13 @@ class CppAnalyzer:
 
         return result
 
-    def _process_cursor(self, cursor, should_extract_from_file=None, parent_class: str = "", parent_function_usr: str = ""):
+    def _process_cursor(
+        self,
+        cursor,
+        should_extract_from_file=None,
+        parent_class: str = "",
+        parent_function_usr: str = "",
+    ):
         """
         Process a cursor and its children, extracting symbols based on file filter.
 
@@ -963,7 +985,9 @@ class CppAnalyzer:
             # Just skip this cursor and continue with children
             diagnostics.debug(f"Skipping cursor with unknown kind: {e}")
             for child in cursor.get_children():
-                self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
+                self._process_cursor(
+                    child, should_extract_from_file, parent_class, parent_function_usr
+                )
             return
 
         # Process classes and structs (only if should extract)
@@ -981,25 +1005,27 @@ class CppAnalyzer:
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
-                    file=loc_info['file'],
-                    line=loc_info['line'],
-                    column=loc_info['column'],
-                    is_project=self._is_project_file(loc_info['file']) if loc_info['file'] else False,
+                    file=loc_info["file"],
+                    line=loc_info["line"],
+                    column=loc_info["column"],
+                    is_project=(
+                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
+                    ),
                     parent_class="",  # Classes don't have parent classes in this context
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else "",
                     # Phase 1: Line ranges
-                    start_line=loc_info['start_line'],
-                    end_line=loc_info['end_line'],
-                    header_file=loc_info['header_file'],
-                    header_line=loc_info['header_line'],
-                    header_start_line=loc_info['header_start_line'],
-                    header_end_line=loc_info['header_end_line'],
+                    start_line=loc_info["start_line"],
+                    end_line=loc_info["end_line"],
+                    header_file=loc_info["header_file"],
+                    header_line=loc_info["header_line"],
+                    header_start_line=loc_info["header_start_line"],
+                    header_end_line=loc_info["header_end_line"],
                     # Phase 1: Definition-wins logic
                     is_definition=cursor.is_definition(),
                     # Phase 2: Documentation
-                    brief=doc_info['brief'],
-                    doc_comment=doc_info['doc_comment']
+                    brief=doc_info["brief"],
+                    doc_comment=doc_info["doc_comment"],
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
@@ -1008,7 +1034,12 @@ class CppAnalyzer:
             # Always process children (even if we didn't extract this symbol)
             # Children might be in different files
             for child in cursor.get_children():
-                self._process_cursor(child, should_extract_from_file, cursor.spelling if should_extract else parent_class, parent_function_usr)
+                self._process_cursor(
+                    child,
+                    should_extract_from_file,
+                    cursor.spelling if should_extract else parent_class,
+                    parent_function_usr,
+                )
             return  # Don't process children again below
 
         # Process functions and methods (only if should extract)
@@ -1030,25 +1061,27 @@ class CppAnalyzer:
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
-                    file=loc_info['file'],
-                    line=loc_info['line'],
-                    column=loc_info['column'],
+                    file=loc_info["file"],
+                    line=loc_info["line"],
+                    column=loc_info["column"],
                     signature=signature,
-                    is_project=self._is_project_file(loc_info['file']) if loc_info['file'] else False,
+                    is_project=(
+                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
+                    ),
                     parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
                     usr=function_usr,
                     # Phase 1: Line ranges
-                    start_line=loc_info['start_line'],
-                    end_line=loc_info['end_line'],
-                    header_file=loc_info['header_file'],
-                    header_line=loc_info['header_line'],
-                    header_start_line=loc_info['header_start_line'],
-                    header_end_line=loc_info['header_end_line'],
+                    start_line=loc_info["start_line"],
+                    end_line=loc_info["end_line"],
+                    header_file=loc_info["header_file"],
+                    header_line=loc_info["header_line"],
+                    header_start_line=loc_info["header_start_line"],
+                    header_end_line=loc_info["header_end_line"],
                     # Phase 1: Definition-wins logic
                     is_definition=cursor.is_definition(),
                     # Phase 2: Documentation
-                    brief=doc_info['brief'],
-                    doc_comment=doc_info['doc_comment']
+                    brief=doc_info["brief"],
+                    doc_comment=doc_info["doc_comment"],
                 )
 
                 # Collect symbol in thread-local buffer (no lock needed)
@@ -1056,9 +1089,13 @@ class CppAnalyzer:
 
             # Always process children (for call tracking and nested symbols)
             # Use function_usr only if we extracted this function
-            current_function_usr = cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+            current_function_usr = (
+                cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+            )
             for child in cursor.get_children():
-                self._process_cursor(child, should_extract_from_file, parent_class, current_function_usr)
+                self._process_cursor(
+                    child, should_extract_from_file, parent_class, current_function_usr
+                )
             return  # Don't process children again below
 
         # Process function calls within function bodies
@@ -1075,13 +1112,9 @@ class CppAnalyzer:
                 call_column = location.column if location.column else None
 
                 # Collect call relationship with location in thread-local buffer
-                calls_buffer.append((
-                    parent_function_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column
-                ))
+                calls_buffer.append(
+                    (parent_function_usr, called_usr, call_file, call_line, call_column)
+                )
 
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
@@ -1203,7 +1236,7 @@ class CppAnalyzer:
         return {
             "source_file": source_file,
             "processed": list(processed_files),
-            "skipped": list(skipped_headers)
+            "skipped": list(skipped_headers),
         }
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
@@ -1223,9 +1256,7 @@ class CppAnalyzer:
 
             # Log to centralized error log for diagnostics
             file_not_found_error = FileNotFoundError(error_msg)
-            self.cache_manager.log_parse_error(
-                file_path, file_not_found_error, "", None, 0
-            )
+            self.cache_manager.log_parse_error(file_path, file_not_found_error, "", None, 0)
 
             return (False, False)
 
@@ -1240,16 +1271,16 @@ class CppAnalyzer:
             # Add vcpkg includes if available
             vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
             if vcpkg_include.exists():
-                args.append(f'-I{vcpkg_include}')
+                args.append(f"-I{vcpkg_include}")
 
             # Add common vcpkg paths
             vcpkg_paths = [
                 "C:/vcpkg/installed/x64-windows/include",
-                "C:/dev/vcpkg/installed/x64-windows/include"
+                "C:/dev/vcpkg/installed/x64-windows/include",
             ]
             for path in vcpkg_paths:
                 if Path(path).exists():
-                    args.append(f'-I{path}')
+                    args.append(f"-I{path}")
                     break
 
         # Compute hash of compilation arguments for cache validation
@@ -1260,8 +1291,8 @@ class CppAnalyzer:
             cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
             if cache_data is not None:
                 # Check if this file previously failed and if we should retry
-                if not cache_data['success']:
-                    retry_count = cache_data['retry_count']
+                if not cache_data["success"]:
+                    retry_count = cache_data["retry_count"]
                     if retry_count >= self.max_parse_retries:
                         # File has failed too many times, skip it
                         diagnostics.debug(
@@ -1278,7 +1309,7 @@ class CppAnalyzer:
                         # Continue to parsing below (will increment retry_count on failure)
                 else:
                     # Successfully cached - load symbols
-                    cached_symbols = cache_data['symbols']
+                    cached_symbols = cache_data["symbols"]
 
                     # Prepare index updates outside the lock to minimize lock duration
                     # Build updates for class_index and function_index
@@ -1312,11 +1343,15 @@ class CppAnalyzer:
                             for info in self.file_index[file_path]:
                                 if info.kind in ("class", "struct"):
                                     self.class_index[info.name] = [
-                                        i for i in self.class_index[info.name] if i.file != file_path
+                                        i
+                                        for i in self.class_index[info.name]
+                                        if i.file != file_path
                                     ]
                                 else:
                                     self.function_index[info.name] = [
-                                        i for i in self.function_index[info.name] if i.file != file_path
+                                        i
+                                        for i in self.function_index[info.name]
+                                        if i.file != file_path
                                     ]
 
                         # Add cached symbols
@@ -1345,8 +1380,8 @@ class CppAnalyzer:
         retry_count = 0
         if not force:
             cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
-            if cache_data is not None and not cache_data['success']:
-                retry_count = cache_data['retry_count'] + 1  # Increment for this retry
+            if cache_data is not None and not cache_data["success"]:
+                retry_count = cache_data["retry_count"] + 1  # Increment for this retry
 
         try:
             # Create translation unit with detailed diagnostics
@@ -1357,24 +1392,21 @@ class CppAnalyzer:
             tu = None
             parse_options_attempts = [
                 # Attempt 1: Full detailed processing (best for analysis)
-                (TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
-                 "full detailed processing"),
+                (
+                    TranslationUnit.PARSE_INCOMPLETE
+                    | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
+                    "full detailed processing",
+                ),
                 # Attempt 2: Just incomplete (more compatible)
-                (TranslationUnit.PARSE_INCOMPLETE,
-                 "incomplete parsing"),
+                (TranslationUnit.PARSE_INCOMPLETE, "incomplete parsing"),
                 # Attempt 3: Minimal options (maximum compatibility)
-                (0,
-                 "minimal options"),
+                (0, "minimal options"),
             ]
 
             last_error = None
             for options, description in parse_options_attempts:
                 try:
-                    tu = index.parse(
-                        file_path,
-                        args=args,
-                        options=options
-                    )
+                    tu = index.parse(file_path, args=args, options=options)
                     if tu:
                         if description != "full detailed processing":
                             diagnostics.debug(f"{file_path}: parsed with {description}")
@@ -1402,15 +1434,21 @@ class CppAnalyzer:
 
                 # Check for common issues
                 hints = []
-                if any('-std=c++' in arg for arg in args):
-                    std_args = [arg for arg in args if '-std=c++' in arg]
+                if any("-std=c++" in arg for arg in args):
+                    std_args = [arg for arg in args if "-std=c++" in arg]
                     hints.append(f"C++ standard specified: {std_args}")
                 if not self.compile_commands_manager.clang_resource_dir:
-                    hints.append("Clang resource directory not detected - system headers may be missing")
+                    hints.append(
+                        "Clang resource directory not detected - system headers may be missing"
+                    )
                 if self.compile_commands_manager.is_file_supported(Path(file_path)):
-                    hints.append("Using args from compile_commands.json - check if they are libclang-compatible")
+                    hints.append(
+                        "Using args from compile_commands.json - check if they are libclang-compatible"
+                    )
                 else:
-                    hints.append("Using fallback compilation args - compile_commands.json may be needed")
+                    hints.append(
+                        "Using fallback compilation args - compile_commands.json may be needed"
+                    )
 
                 if hints:
                     diagnostics.error("  Possible issues:")
@@ -1426,8 +1464,13 @@ class CppAnalyzer:
 
                 # Save failure to cache
                 self._save_file_cache(
-                    file_path, [], current_hash, compile_args_hash,
-                    success=False, error_message=error_msg[:200], retry_count=retry_count
+                    file_path,
+                    [],
+                    current_hash,
+                    compile_args_hash,
+                    success=False,
+                    error_message=error_msg[:200],
+                    retry_count=retry_count,
                 )
                 return (False, False)
 
@@ -1442,7 +1485,9 @@ class CppAnalyzer:
             if error_diagnostics:
                 # Format error messages from libclang diagnostics
                 formatted_errors = self._format_diagnostics(error_diagnostics, max_count=5)
-                full_error_msg = f"libclang parsing errors ({len(error_diagnostics)} total):\n{formatted_errors}"
+                full_error_msg = (
+                    f"libclang parsing errors ({len(error_diagnostics)} total):\n{formatted_errors}"
+                )
 
                 # Truncate for cache
                 cache_error_msg = full_error_msg[:200]
@@ -1455,12 +1500,16 @@ class CppAnalyzer:
 
                 # Log as warning but continue processing
                 # libclang provides a usable partial AST even with errors
-                diagnostics.warning(f"{file_path}: Continuing despite {len(error_diagnostics)} error(s):\n{cache_error_msg}")
+                diagnostics.warning(
+                    f"{file_path}: Continuing despite {len(error_diagnostics)} error(s):\n{cache_error_msg}"
+                )
 
             # Log warnings at debug level but continue processing
             if warning_diagnostics:
                 formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
-                diagnostics.debug(f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}")
+                diagnostics.debug(
+                    f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}"
+                )
 
             # Clear old entries for this file before re-parsing
             # This must be atomic to ensure index consistency
@@ -1487,8 +1536,8 @@ class CppAnalyzer:
             extraction_result = self._index_translation_unit(tu, file_path)
 
             # Log header extraction results
-            processed_count = len(extraction_result['processed'])
-            skipped_count = len(extraction_result['skipped'])
+            processed_count = len(extraction_result["processed"])
+            skipped_count = len(extraction_result["skipped"])
             if processed_count > 1:  # More than just the source file
                 header_count = processed_count - 1
                 diagnostics.debug(
@@ -1517,13 +1566,18 @@ class CppAnalyzer:
                     callers = self.call_graph_analyzer.find_callers(symbol.usr)
                     if callers:
                         symbol.called_by = list(callers)
-            
+
             # Save to per-file cache (mark as successfully parsed, even if there were errors)
             # Note: success=True means we got a usable TU and extracted symbols
             # error_message will be set if there were parsing errors (partial parse)
             self._save_file_cache(
-                file_path, collected_symbols, current_hash, compile_args_hash,
-                success=True, error_message=cache_error_msg, retry_count=0
+                file_path,
+                collected_symbols,
+                current_hash,
+                compile_args_hash,
+                success=True,
+                error_message=cache_error_msg,
+                retry_count=0,
             )
 
             # Update tracking
@@ -1545,8 +1599,13 @@ class CppAnalyzer:
 
             # Save failure to cache so we don't keep retrying indefinitely
             self._save_file_cache(
-                file_path, [], current_hash, compile_args_hash,
-                success=False, error_message=error_msg, retry_count=retry_count
+                file_path,
+                [],
+                current_hash,
+                compile_args_hash,
+                success=False,
+                error_message=error_msg,
+                retry_count=retry_count,
             )
 
             diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
@@ -1556,7 +1615,7 @@ class CppAnalyzer:
         self,
         force: bool = False,
         include_dependencies: bool = True,
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
     ) -> int:
         """
         Index all C++ files in the project
@@ -1592,20 +1651,23 @@ class CppAnalyzer:
             return 0
 
         diagnostics.debug(f"Found {len(files)} C++ files to index")
-        
+
         # Show detailed progress
         indexed_count = 0
         cache_hits = 0
         failed_count = 0
         last_report_time = time.time()
-        
+
         # Check if stderr is a terminal (for proper progress display)
         # In MCP context or when output is redirected, use less frequent reporting
         # Check multiple conditions to detect non-interactive environments
-        is_terminal = (hasattr(sys.stderr, 'isatty') and sys.stderr.isatty() and 
-                      not os.environ.get('MCP_SESSION_ID') and
-                      not os.environ.get('CLAUDE_CODE_SESSION'))
-        
+        is_terminal = (
+            hasattr(sys.stderr, "isatty")
+            and sys.stderr.isatty()
+            and not os.environ.get("MCP_SESSION_ID")
+            and not os.environ.get("CLAUDE_CODE_SESSION")
+        )
+
         # No special test mode needed - we'll handle Windows console properly
 
         # Choose executor based on configuration
@@ -1613,7 +1675,9 @@ class CppAnalyzer:
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
 
         if self.use_processes:
-            diagnostics.debug(f"Using ProcessPoolExecutor with {self.max_workers} workers (GIL bypass)")
+            diagnostics.debug(
+                f"Using ProcessPoolExecutor with {self.max_workers} workers (GIL bypass)"
+            )
         else:
             diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
 
@@ -1624,15 +1688,23 @@ class CppAnalyzer:
             if self.use_processes:
                 # ProcessPoolExecutor: use worker function that returns symbols
                 future_to_file = {
-                    executor.submit(_process_file_worker,
-                                  (str(self.project_root), os.path.abspath(file_path),
-                                   force, include_dependencies)): os.path.abspath(file_path)
+                    executor.submit(
+                        _process_file_worker,
+                        (
+                            str(self.project_root),
+                            os.path.abspath(file_path),
+                            force,
+                            include_dependencies,
+                        ),
+                    ): os.path.abspath(file_path)
                     for file_path in files
                 }
             else:
                 # ThreadPoolExecutor: use index_file method directly
                 future_to_file = {
-                    executor.submit(self.index_file, os.path.abspath(file_path), force): os.path.abspath(file_path)
+                    executor.submit(
+                        self.index_file, os.path.abspath(file_path), force
+                    ): os.path.abspath(file_path)
                     for file_path in files
                 }
 
@@ -1668,21 +1740,27 @@ class CppAnalyzer:
                                     # Restore call graph
                                     if symbol.calls:
                                         for called_usr in symbol.calls:
-                                            self.call_graph_analyzer.add_call(symbol.usr, called_usr)
+                                            self.call_graph_analyzer.add_call(
+                                                symbol.usr, called_usr
+                                            )
                                     if symbol.called_by:
                                         for caller_usr in symbol.called_by:
-                                            self.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+                                            self.call_graph_analyzer.add_call(
+                                                caller_usr, symbol.usr
+                                            )
 
                                 # Phase 3: Restore call sites from worker
                                 if call_sites:
-                                    diagnostics.debug(f"Restoring {len(call_sites)} call sites from {file_path}")
+                                    diagnostics.debug(
+                                        f"Restoring {len(call_sites)} call sites from {file_path}"
+                                    )
                                 for cs_dict in call_sites:
                                     self.call_graph_analyzer.add_call(
-                                        cs_dict['caller_usr'],
-                                        cs_dict['callee_usr'],
-                                        cs_dict['file'],
-                                        cs_dict['line'],
-                                        cs_dict.get('column')
+                                        cs_dict["caller_usr"],
+                                        cs_dict["callee_usr"],
+                                        cs_dict["file"],
+                                        cs_dict["line"],
+                                        cs_dict.get("column"),
                                     )
 
                                 # Update file hash tracking
@@ -1710,16 +1788,16 @@ class CppAnalyzer:
 
                 if is_terminal:
                     should_report = (
-                        (processed <= 5) or
-                        (processed % 5 == 0) or
-                        ((current_time - last_report_time) > 2.0) or
-                        (processed == len(files))
+                        (processed <= 5)
+                        or (processed % 5 == 0)
+                        or ((current_time - last_report_time) > 2.0)
+                        or (processed == len(files))
                     )
                 else:
                     should_report = (
-                        (processed % 50 == 0) or
-                        ((current_time - last_report_time) > 5.0) or
-                        (processed == len(files))
+                        (processed % 50 == 0)
+                        or ((current_time - last_report_time) > 5.0)
+                        or (processed == len(files))
                     )
 
                 if should_report:
@@ -1735,7 +1813,7 @@ class CppAnalyzer:
                             f"Success: {indexed_count} - Failed: {failed_count} - "
                             f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s"
                         )
-                        print(f"\033[2K\r{progress_str}", end='', file=sys.stderr, flush=True)
+                        print(f"\033[2K\r{progress_str}", end="", file=sys.stderr, flush=True)
                     else:
                         print(
                             f"Progress: {processed}/{len(files)} files ({100 * processed // len(files)}%) - "
@@ -1762,7 +1840,7 @@ class CppAnalyzer:
                                 cache_hits=cache_hits,
                                 current_file=file_path if processed < len(files) else None,
                                 start_time=datetime.fromtimestamp(start_time),
-                                estimated_completion=estimated_completion
+                                estimated_completion=estimated_completion,
                             )
 
                             progress_callback(progress)
@@ -1780,7 +1858,9 @@ class CppAnalyzer:
                 for future in future_to_file:
                     future.cancel()
                 # Shutdown executor and wait for running tasks to complete
-                diagnostics.info(f"Waiting for {self.max_workers} worker processes to finish current files...")
+                diagnostics.info(
+                    f"Waiting for {self.max_workers} worker processes to finish current files..."
+                )
                 executor.shutdown(wait=True)
                 diagnostics.info("All workers stopped")
             raise
@@ -1799,16 +1879,19 @@ class CppAnalyzer:
             class_count = sum(len(infos) for infos in self.class_index.values())
             function_count = sum(len(infos) for infos in self.function_index.values())
 
-
         # Print newline after progress to move to next line (only if using terminal progress)
         if is_terminal:
             print("", file=sys.stderr)
         diagnostics.info(f"Indexing complete in {self.last_index_time:.2f}s")
-        diagnostics.info(f"Indexed {indexed_count}/{len(files)} files successfully ({cache_hits} from cache, {failed_count} failed)")
+        diagnostics.info(
+            f"Indexed {indexed_count}/{len(files)} files successfully ({cache_hits} from cache, {failed_count} failed)"
+        )
         diagnostics.info(f"Found {class_count} classes, {function_count} functions")
 
         if failed_count > 0:
-            diagnostics.info(f"Note: {failed_count} files failed to parse - this is normal for complex projects")
+            diagnostics.info(
+                f"Note: {failed_count} files failed to parse - this is normal for complex projects"
+            )
 
         # Save overall cache and progress summary
         self._save_cache()
@@ -1818,7 +1901,7 @@ class CppAnalyzer:
         self._save_header_tracking()
 
         return indexed_count
-    
+
     def _save_cache(self):
         """Save index to cache file"""
         # Get current config file info
@@ -1838,7 +1921,7 @@ class CppAnalyzer:
             config_file_path=config_path,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_path if cc_path.exists() else None,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Phase 3: Save call sites to database
@@ -1848,7 +1931,7 @@ class CppAnalyzer:
             saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
             if saved_count != len(call_sites):
                 diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
-    
+
     def _load_cache(self) -> bool:
         """Load index from cache file"""
         # Get current config file info
@@ -1864,12 +1947,12 @@ class CppAnalyzer:
             config_file_path=config_path,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_path if cc_path.exists() else None,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
         if not cache_data:
             self.cache_loaded = False
             return False
-        
+
         try:
             # Load indexes
             self.class_index.clear()
@@ -1897,7 +1980,7 @@ class CppAnalyzer:
             # Rebuild USR index and call graphs from loaded data
             self.usr_index.clear()
             self.call_graph_analyzer.clear()
-            
+
             # Rebuild from all loaded symbols
             all_symbols = []
             for class_list in self.class_index.values():
@@ -1905,13 +1988,13 @@ class CppAnalyzer:
                     if symbol.usr:
                         self.usr_index[symbol.usr] = symbol
                         all_symbols.append(symbol)
-                        
+
             for func_list in self.function_index.values():
                 for symbol in func_list:
                     if symbol.usr:
                         self.usr_index[symbol.usr] = symbol
                         all_symbols.append(symbol)
-            
+
             # Rebuild call graph from all symbols
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
 
@@ -1921,7 +2004,9 @@ class CppAnalyzer:
                 self.call_graph_analyzer.restore_call_sites(call_sites_data)
                 diagnostics.debug(f"Restored {len(call_sites_data)} call sites from database")
 
-            diagnostics.debug(f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions")
+            diagnostics.debug(
+                f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions"
+            )
             self.cache_loaded = True
             return True
 
@@ -1929,8 +2014,10 @@ class CppAnalyzer:
             diagnostics.error(f"Error loading cache: {e}")
             self.cache_loaded = False
             return False
-    
-    def _save_progress_summary(self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0):
+
+    def _save_progress_summary(
+        self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0
+    ):
         """Save a summary of indexing progress"""
         status = "complete" if indexed_count + failed_count == total_files else "interrupted"
         # Count total symbols (not just unique names)
@@ -1945,25 +2032,35 @@ class CppAnalyzer:
             self.last_index_time,
             class_count,
             function_count,
-            status
+            status,
         )
-    
-    def search_classes(self, pattern: str, project_only: bool = True) -> List[Dict[str, Any]]:
+
+    def search_classes(
+        self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Search for classes matching pattern"""
         try:
-            return self.search_engine.search_classes(pattern, project_only)
+            return self.search_engine.search_classes(pattern, project_only, file_name)
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
 
-    def search_functions(self, pattern: str, project_only: bool = True, class_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search_functions(
+        self,
+        pattern: str,
+        project_only: bool = True,
+        class_name: Optional[str] = None,
+        file_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """Search for functions matching pattern, optionally within a specific class"""
         try:
-            return self.search_engine.search_functions(pattern, project_only, class_name)
+            return self.search_engine.search_functions(
+                pattern, project_only, class_name, file_name
+            )
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
-    
+
     def get_stats(self) -> Dict[str, int]:
         """Get indexer statistics"""
         with self.index_lock:
@@ -1974,27 +2071,29 @@ class CppAnalyzer:
             stats = {
                 "class_count": class_count,
                 "function_count": function_count,
-                "file_count": self.indexed_file_count
+                "file_count": self.indexed_file_count,
             }
-            
+
             # Add compile commands statistics if enabled
             if self.compile_commands_manager.enabled:
                 compile_stats = self.compile_commands_manager.get_stats()
-                stats.update({
-                    "compile_commands_enabled": compile_stats['enabled'],
-                    "compile_commands_count": compile_stats['compile_commands_count'],
-                    "compile_commands_file_mapping_count": compile_stats['file_mapping_count']
-                })
-            
+                stats.update(
+                    {
+                        "compile_commands_enabled": compile_stats["enabled"],
+                        "compile_commands_count": compile_stats["compile_commands_count"],
+                        "compile_commands_file_mapping_count": compile_stats["file_mapping_count"],
+                    }
+                )
+
             return stats
-    
+
     def get_compile_commands_stats(self) -> Dict[str, Any]:
         """Get compile commands statistics"""
         if not self.compile_commands_manager.enabled:
             return {"enabled": False}
-        
+
         return self.compile_commands_manager.get_stats()
-    
+
     def refresh_if_needed(self) -> int:
         """Refresh index for changed files and remove deleted files"""
         refreshed = 0
@@ -2009,10 +2108,10 @@ class CppAnalyzer:
         # Get currently existing files
         current_files = set(self._find_cpp_files(self.include_dependencies))
         tracked_files = set(self.file_hashes.keys())
-        
+
         # Find deleted files
         deleted_files = tracked_files - current_files
-        
+
         # Remove deleted files from all indexes
         for file_path in deleted_files:
             self._remove_file_from_indexes(file_path)
@@ -2024,25 +2123,25 @@ class CppAnalyzer:
             # Clean up per-file cache
             self.cache_manager.remove_file_cache(file_path)
             deleted += 1
-        
+
         # Check existing tracked files for modifications
         for file_path in list(self.file_hashes.keys()):
             if not os.path.exists(file_path):
                 continue  # Skip files that no longer exist (should have been caught above)
-                
+
             current_hash = self._get_file_hash(file_path)
             if current_hash != self.file_hashes.get(file_path):
                 success, _ = self.index_file(file_path, force=True)
                 if success:
                     refreshed += 1
-        
+
         # Check for new files
         new_files = current_files - tracked_files
         for file_path in new_files:
             success, _ = self.index_file(file_path, force=False)
             if success:
                 refreshed += 1
-        
+
         if refreshed > 0 or deleted > 0:
             self._save_cache()
             # Save header tracking state after refresh
@@ -2054,57 +2153,61 @@ class CppAnalyzer:
         self.indexed_file_count = len(self.file_hashes)
 
         return refreshed
-    
+
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
         with self.index_lock:
             # Get all symbols that were in this file
             symbols_to_remove = self.file_index.get(file_path, [])
-            
+
             # Remove from class_index
             for symbol in symbols_to_remove:
                 if symbol.kind in ("class", "struct"):
                     if symbol.name in self.class_index:
                         self.class_index[symbol.name] = [
-                            info for info in self.class_index[symbol.name] 
-                            if info.file != file_path
+                            info for info in self.class_index[symbol.name] if info.file != file_path
                         ]
                         # Remove empty entries
                         if not self.class_index[symbol.name]:
                             del self.class_index[symbol.name]
-                
+
                 # Remove from function_index
                 elif symbol.kind in ("function", "method"):
                     if symbol.name in self.function_index:
                         self.function_index[symbol.name] = [
-                            info for info in self.function_index[symbol.name] 
+                            info
+                            for info in self.function_index[symbol.name]
                             if info.file != file_path
                         ]
                         # Remove empty entries
                         if not self.function_index[symbol.name]:
                             del self.function_index[symbol.name]
-                
+
                 # Remove from usr_index
                 if symbol.usr and symbol.usr in self.usr_index:
                     del self.usr_index[symbol.usr]
-                
+
                 # Remove from call graph
                 if symbol.usr:
                     self.call_graph_analyzer.remove_symbol(symbol.usr)
-            
+
             # Remove from file_index
             if file_path in self.file_index:
                 del self.file_index[file_path]
-    
+
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific class"""
         return self.search_engine.get_class_info(class_name)
-    
-    def get_function_signature(self, function_name: str, class_name: Optional[str] = None) -> List[str]:
+
+    def get_function_signature(
+        self, function_name: str, class_name: Optional[str] = None
+    ) -> List[str]:
         """Get signature details for functions with given name, optionally within a specific class"""
         return self.search_engine.get_function_signature(function_name, class_name)
-    
-    def search_symbols(self, pattern: str, project_only: bool = True, symbol_types: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
+
+    def search_symbols(
+        self, pattern: str, project_only: bool = True, symbol_types: Optional[List[str]] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Search for all symbols (classes and functions) matching pattern.
 
@@ -2122,45 +2225,49 @@ class CppAnalyzer:
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
-    
-    def get_derived_classes(self, class_name: str, project_only: bool = True) -> List[Dict[str, Any]]:
+
+    def get_derived_classes(
+        self, class_name: str, project_only: bool = True
+    ) -> List[Dict[str, Any]]:
         """
         Get all classes that derive from the given class.
-        
+
         Args:
             class_name: Name of the base class
             project_only: Only include project classes (exclude dependencies)
-        
+
         Returns:
             List of classes that inherit from the given class
         """
         derived_classes = []
-        
+
         with self.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
                     if not project_only or info.is_project:
                         # Check if this class inherits from the target class
                         if class_name in info.base_classes:
-                            derived_classes.append({
-                                "name": info.name,
-                                "kind": info.kind,
-                                "file": info.file,
-                                "line": info.line,
-                                "column": info.column,
-                                "is_project": info.is_project,
-                                "base_classes": info.base_classes,
-                                # Phase 1: Line ranges
-                                "start_line": info.start_line,
-                                "end_line": info.end_line,
-                                "header_file": info.header_file,
-                                "header_line": info.header_line,
-                                "header_start_line": info.header_start_line,
-                                "header_end_line": info.header_end_line
-                            })
-        
+                            derived_classes.append(
+                                {
+                                    "name": info.name,
+                                    "kind": info.kind,
+                                    "file": info.file,
+                                    "line": info.line,
+                                    "column": info.column,
+                                    "is_project": info.is_project,
+                                    "base_classes": info.base_classes,
+                                    # Phase 1: Line ranges
+                                    "start_line": info.start_line,
+                                    "end_line": info.end_line,
+                                    "header_file": info.header_file,
+                                    "header_line": info.header_line,
+                                    "header_start_line": info.header_start_line,
+                                    "header_end_line": info.header_end_line,
+                                }
+                            )
+
         return derived_classes
-    
+
     def get_class_hierarchy(self, class_name: str) -> Dict[str, Any]:
         """
         Get the complete inheritance hierarchy for a class.
@@ -2181,19 +2288,19 @@ class CppAnalyzer:
         class_info = self.get_class_info(class_name)
         if not class_info:
             return {"error": f"Class '{class_name}' not found"}
-        
+
         # Get direct base classes from the class info
         base_classes = []
         with self.index_lock:
             for infos in self.class_index.get(class_name, []):
                 base_classes.extend(infos.base_classes)
-        
+
         # Remove duplicates
         base_classes = list(set(base_classes))
-        
+
         # Get derived classes
         derived_classes = self.get_derived_classes(class_name)
-        
+
         # Build the hierarchy
         hierarchy = {
             "name": class_name,
@@ -2201,63 +2308,63 @@ class CppAnalyzer:
             "base_classes": base_classes,
             "derived_classes": derived_classes,
             "base_hierarchy": self._get_base_hierarchy(class_name),
-            "derived_hierarchy": self._get_derived_hierarchy(class_name)
+            "derived_hierarchy": self._get_derived_hierarchy(class_name),
         }
 
         return hierarchy
-    
-    def _get_base_hierarchy(self, class_name: str, visited: Optional[Set[str]] = None) -> Dict[str, Any]:
+
+    def _get_base_hierarchy(
+        self, class_name: str, visited: Optional[Set[str]] = None
+    ) -> Dict[str, Any]:
         """Recursively get base class hierarchy"""
         if visited is None:
             visited = set()
-        
+
         if class_name in visited:
             return {"name": class_name, "circular_reference": True}
-        
+
         visited.add(class_name)
-        
+
         # Get base classes for this class
         base_classes = []
         with self.index_lock:
             for infos in self.class_index.get(class_name, []):
                 base_classes.extend(infos.base_classes)
-        
+
         base_classes = list(set(base_classes))
-        
+
         # Recursively get hierarchy for each base class
         base_hierarchies = []
         for base in base_classes:
             base_hierarchies.append(self._get_base_hierarchy(base, visited.copy()))
-        
-        return {
-            "name": class_name,
-            "base_classes": base_hierarchies
-        }
-    
-    def _get_derived_hierarchy(self, class_name: str, visited: Optional[Set[str]] = None) -> Dict[str, Any]:
+
+        return {"name": class_name, "base_classes": base_hierarchies}
+
+    def _get_derived_hierarchy(
+        self, class_name: str, visited: Optional[Set[str]] = None
+    ) -> Dict[str, Any]:
         """Recursively get derived class hierarchy"""
         if visited is None:
             visited = set()
-        
+
         if class_name in visited:
             return {"name": class_name, "circular_reference": True}
-        
+
         visited.add(class_name)
-        
+
         # Get derived classes
         derived = self.get_derived_classes(class_name, project_only=False)
-        
+
         # Recursively get hierarchy for each derived class
         derived_hierarchies = []
         for d in derived:
             derived_hierarchies.append(self._get_derived_hierarchy(d["name"], visited.copy()))
-        
-        return {
-            "name": class_name,
-            "derived_classes": derived_hierarchies
-        }
-    
-    def find_callers(self, function_name: str, class_name: str = "", include_call_sites: bool = True) -> Dict[str, Any]:
+
+        return {"name": class_name, "derived_classes": derived_hierarchies}
+
+    def find_callers(
+        self, function_name: str, class_name: str = "", include_call_sites: bool = True
+    ) -> Dict[str, Any]:
         """
         Find all functions that call the specified function.
 
@@ -2275,16 +2382,16 @@ class CppAnalyzer:
         call_sites_list = []
 
         # Find the target function(s)
-        target_functions = self.search_functions(f"^{re.escape(function_name)}$",
-                                               project_only=False,
-                                               class_name=class_name)
+        target_functions = self.search_functions(
+            f"^{re.escape(function_name)}$", project_only=False, class_name=class_name
+        )
 
         # Collect USRs of target functions
         target_usrs = set()
         for func in target_functions:
             # Find the full symbol info with USR
-            for symbol in self.function_index.get(func['name'], []):
-                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+            for symbol in self.function_index.get(func["name"], []):
+                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
                     target_usrs.add(symbol.usr)
 
         # Find all callers
@@ -2293,18 +2400,20 @@ class CppAnalyzer:
             for caller_usr in callers:
                 if caller_usr in self.usr_index:
                     caller_info = self.usr_index[caller_usr]
-                    callers_list.append({
-                        "name": caller_info.name,
-                        "kind": caller_info.kind,
-                        "file": caller_info.file,
-                        "line": caller_info.line,
-                        "column": caller_info.column,
-                        "signature": caller_info.signature,
-                        "parent_class": caller_info.parent_class,
-                        "is_project": caller_info.is_project,
-                        "start_line": caller_info.start_line,
-                        "end_line": caller_info.end_line
-                    })
+                    callers_list.append(
+                        {
+                            "name": caller_info.name,
+                            "kind": caller_info.kind,
+                            "file": caller_info.file,
+                            "line": caller_info.line,
+                            "column": caller_info.column,
+                            "signature": caller_info.signature,
+                            "parent_class": caller_info.parent_class,
+                            "is_project": caller_info.is_project,
+                            "start_line": caller_info.start_line,
+                            "end_line": caller_info.end_line,
+                        }
+                    )
 
             # Phase 3: Get call sites with line-level precision
             if include_call_sites:
@@ -2313,24 +2422,23 @@ class CppAnalyzer:
                     # Get caller info for each call site
                     if call_site.caller_usr in self.usr_index:
                         caller_info = self.usr_index[call_site.caller_usr]
-                        call_sites_list.append({
-                            "file": call_site.file,
-                            "line": call_site.line,
-                            "column": call_site.column,
-                            "caller": caller_info.name,
-                            "caller_file": caller_info.file,
-                            "caller_signature": caller_info.signature
-                        })
+                        call_sites_list.append(
+                            {
+                                "file": call_site.file,
+                                "line": call_site.line,
+                                "column": call_site.column,
+                                "caller": caller_info.name,
+                                "caller_file": caller_info.file,
+                                "caller_signature": caller_info.signature,
+                            }
+                        )
 
         # Return dictionary with both callers and call_sites
-        result = {
-            "function": function_name,
-            "callers": callers_list
-        }
+        result = {"function": function_name, "callers": callers_list}
 
         if include_call_sites:
             # Sort call sites by file, then line
-            call_sites_list.sort(key=lambda cs: (cs['file'], cs['line']))
+            call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
             result["call_sites"] = call_sites_list
             result["total_call_sites"] = len(call_sites_list)
 
@@ -2350,16 +2458,16 @@ class CppAnalyzer:
         call_sites_list = []
 
         # Find the source function(s)
-        source_functions = self.search_functions(f"^{re.escape(function_name)}$",
-                                                project_only=False,
-                                                class_name=class_name)
+        source_functions = self.search_functions(
+            f"^{re.escape(function_name)}$", project_only=False, class_name=class_name
+        )
 
         # Collect USRs of source functions
         source_usrs = set()
         for func in source_functions:
             # Find the full symbol info with USR
-            for symbol in self.function_index.get(func['name'], []):
-                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+            for symbol in self.function_index.get(func["name"], []):
+                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
                     source_usrs.add(symbol.usr)
 
         # Get call sites for each source function
@@ -2369,79 +2477,85 @@ class CppAnalyzer:
                 # Get target function info
                 if call_site.callee_usr in self.usr_index:
                     target_info = self.usr_index[call_site.callee_usr]
-                    call_sites_list.append({
-                        "target": target_info.name,
-                        "target_signature": target_info.signature,
-                        "target_file": target_info.file,
-                        "target_kind": target_info.kind,
-                        "file": call_site.file,
-                        "line": call_site.line,
-                        "column": call_site.column
-                    })
+                    call_sites_list.append(
+                        {
+                            "target": target_info.name,
+                            "target_signature": target_info.signature,
+                            "target_file": target_info.file,
+                            "target_kind": target_info.kind,
+                            "file": call_site.file,
+                            "line": call_site.line,
+                            "column": call_site.column,
+                        }
+                    )
 
         # Sort by file, then line
-        call_sites_list.sort(key=lambda cs: (cs['file'], cs['line']))
+        call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
 
         return call_sites_list
 
     def find_callees(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
         """Find all functions called by the specified function"""
         results = []
-        
+
         # Find the target function(s)
-        target_functions = self.search_functions(f"^{re.escape(function_name)}$", 
-                                               project_only=False, 
-                                               class_name=class_name)
-        
+        target_functions = self.search_functions(
+            f"^{re.escape(function_name)}$", project_only=False, class_name=class_name
+        )
+
         # Collect USRs of target functions
         target_usrs = set()
         for func in target_functions:
             # Find the full symbol info with USR
-            for symbol in self.function_index.get(func['name'], []):
-                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+            for symbol in self.function_index.get(func["name"], []):
+                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
                     target_usrs.add(symbol.usr)
-        
+
         # Find all callees
         for usr in target_usrs:
             callees = self.call_graph_analyzer.find_callees(usr)
             for callee_usr in callees:
                 if callee_usr in self.usr_index:
                     callee_info = self.usr_index[callee_usr]
-                    results.append({
-                        "name": callee_info.name,
-                        "kind": callee_info.kind,
-                        "file": callee_info.file,
-                        "line": callee_info.line,
-                        "column": callee_info.column,
-                        "signature": callee_info.signature,
-                        "parent_class": callee_info.parent_class,
-                        "is_project": callee_info.is_project
-                    })
-        
+                    results.append(
+                        {
+                            "name": callee_info.name,
+                            "kind": callee_info.kind,
+                            "file": callee_info.file,
+                            "line": callee_info.line,
+                            "column": callee_info.column,
+                            "signature": callee_info.signature,
+                            "parent_class": callee_info.parent_class,
+                            "is_project": callee_info.is_project,
+                        }
+                    )
+
         return results
-    
-    def get_call_path(self, from_function: str, to_function: str, max_depth: int = 10) -> List[List[str]]:
+
+    def get_call_path(
+        self, from_function: str, to_function: str, max_depth: int = 10
+    ) -> List[List[str]]:
         """Find call paths from one function to another using BFS"""
         # Find source and target USRs
         from_funcs = self.search_functions(f"^{re.escape(from_function)}$", project_only=False)
         to_funcs = self.search_functions(f"^{re.escape(to_function)}$", project_only=False)
-        
+
         if not from_funcs or not to_funcs:
             return []
-        
+
         # Get USRs
         from_usrs = set()
         for func in from_funcs:
-            for symbol in self.function_index.get(func['name'], []):
-                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+            for symbol in self.function_index.get(func["name"], []):
+                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
                     from_usrs.add(symbol.usr)
-        
+
         to_usrs = set()
         for func in to_funcs:
-            for symbol in self.function_index.get(func['name'], []):
-                if symbol.usr and symbol.file == func['file'] and symbol.line == func['line']:
+            for symbol in self.function_index.get(func["name"], []):
+                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
                     to_usrs.add(symbol.usr)
-        
+
         # BFS to find paths
         paths = []
         for from_usr in from_usrs:
@@ -2449,7 +2563,7 @@ class CppAnalyzer:
             queue = [(from_usr, [from_usr])]
             visited = {from_usr}
             depth = 0
-            
+
             while queue and depth < max_depth:
                 next_queue = []
                 for current_usr, path in queue:
@@ -2460,44 +2574,45 @@ class CppAnalyzer:
                         for usr in path:
                             if usr in self.usr_index:
                                 info = self.usr_index[usr]
-                                name_path.append(f"{info.parent_class}::{info.name}" if info.parent_class else info.name)
+                                name_path.append(
+                                    f"{info.parent_class}::{info.name}"
+                                    if info.parent_class
+                                    else info.name
+                                )
                         paths.append(name_path)
                         continue
-                    
+
                     # Explore callees
                     for callee_usr in self.call_graph_analyzer.find_callees(current_usr):
                         if callee_usr not in visited:
                             visited.add(callee_usr)
                             next_queue.append((callee_usr, path + [callee_usr]))
-                
+
                 queue = next_queue
                 depth += 1
-        
+
         return paths
-    
+
     def find_in_file(self, file_path: str, pattern: str) -> List[Dict[str, Any]]:
         """Search for symbols within a specific file"""
         results = []
-        
+
         # Search in both class and function results
         all_classes = self.search_classes(pattern, project_only=False)
         all_functions = self.search_functions(pattern, project_only=False)
-        
+
         # Filter by file path
         abs_file_path = str(Path(file_path).resolve())
-        
+
         for item in all_classes + all_functions:
-            item_file = str(Path(item['file']).resolve()) if item['file'] else ""
-            if item_file == abs_file_path or item['file'].endswith(file_path):
+            item_file = str(Path(item["file"]).resolve()) if item["file"] else ""
+            if item_file == abs_file_path or item["file"].endswith(file_path):
                 results.append(item)
 
         return results
 
     async def get_files_containing_symbol(
-        self,
-        symbol_name: str,
-        symbol_kind: Optional[str] = None,
-        project_only: bool = True
+        self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
     ) -> Dict[str, Any]:
         """
         Get all files that contain references to or define a symbol.
@@ -2549,7 +2664,9 @@ class CppAnalyzer:
                                 # Don't break - could be overloaded
 
             # 3. Find callers (for functions/methods)
-            if kind in ("function", "method") or (not kind and symbol_kind in (None, "function", "method")):
+            if kind in ("function", "method") or (
+                not kind and symbol_kind in (None, "function", "method")
+            ):
                 # Get USRs for all functions with this name
                 target_usrs = set()
                 for infos in self.function_index.values():
@@ -2591,11 +2708,12 @@ class CppAnalyzer:
             "symbol": symbol_name,
             "kind": kind,
             "files": file_list,
-            "total_references": total_refs
+            "total_references": total_refs,
         }
 
-    def get_parse_errors(self, limit: Optional[int] = None,
-                        file_path_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_parse_errors(
+        self, limit: Optional[int] = None, file_path_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Get parse errors from the error log (for developer analysis).
 
         Args:
@@ -2637,16 +2755,16 @@ def create_analyzer(project_root: str) -> CppAnalyzer:
 if __name__ == "__main__":
     print("Testing Python CppAnalyzer...")
     analyzer = CppAnalyzer(".")
-    
+
     # Try to load from cache first
     if not analyzer._load_cache():
         analyzer.index_project()
-    
+
     stats = analyzer.get_stats()
     print(f"Stats: {stats}")
-    
+
     classes = analyzer.search_classes(".*", project_only=True)
     print(f"Found {len(classes)} project classes")
-    
+
     functions = analyzer.search_functions(".*", project_only=True)
     print(f"Found {len(functions)} project functions")
