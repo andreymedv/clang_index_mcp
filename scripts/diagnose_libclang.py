@@ -7,6 +7,7 @@ This helps diagnose issues where libclang can't find system headers on macOS.
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import clang.cindex
@@ -21,11 +22,11 @@ def check_libclang_version():
     print("=" * 70)
 
     version = clang.cindex.conf.lib.clang_getClangVersion()
-    version_str = version.spelling if hasattr(version, 'spelling') else str(version)
+    version_str = version.spelling if hasattr(version, "spelling") else str(version)
     print(f"libclang version: {version_str}")
 
     # Get the library path
-    lib_path = clang.cindex.conf.lib._name if hasattr(clang.cindex.conf.lib, '_name') else "unknown"
+    lib_path = clang.cindex.conf.lib._name if hasattr(clang.cindex.conf.lib, "_name") else "unknown"
     print(f"libclang library: {lib_path}")
 
     return version_str
@@ -39,14 +40,14 @@ def check_system_compiler():
 
     if platform.system() == "Darwin":
         try:
-            result = subprocess.run(['clang', '--version'], capture_output=True, text=True)
+            result = subprocess.run(["clang", "--version"], capture_output=True, text=True)
             print(result.stdout)
         except FileNotFoundError:
             print("clang not found in PATH")
     elif platform.system() == "Linux":
         try:
-            result = subprocess.run(['gcc', '--version'], capture_output=True, text=True)
-            print(result.stdout.split('\n')[0])
+            result = subprocess.run(["gcc", "--version"], capture_output=True, text=True)
+            print(result.stdout.split("\n")[0])
         except FileNotFoundError:
             print("gcc not found in PATH")
 
@@ -101,7 +102,8 @@ int main() {
 
     # Create temp file
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as f:
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
         f.write(test_code)
         temp_path = f.name
 
@@ -134,7 +136,8 @@ def suggest_solutions():
     print("SOLUTIONS FOR MACOS SDK ISSUES")
     print("=" * 70)
 
-    print("""
+    print(
+        """
 If libclang can't find system headers (like stdbool.h), try these solutions:
 
 1. Install Xcode Command Line Tools (if not already installed):
@@ -168,7 +171,8 @@ If libclang can't find system headers (like stdbool.h), try these solutions:
    - Check your Xcode/CLT version: clang --version
    - Install matching libclang version via pip
    - Example: pip install libclang==14.0.0  (match your clang version)
-""")
+"""
+    )
 
 
 def main():

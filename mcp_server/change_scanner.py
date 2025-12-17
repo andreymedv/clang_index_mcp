@@ -35,6 +35,7 @@ except ImportError:
 
 class ChangeType(Enum):
     """Type of file change detected."""
+
     ADDED = "added"
     MODIFIED = "modified"
     REMOVED = "removed"
@@ -275,7 +276,7 @@ class ChangeScanner:
         # File in database cache, check if content changed
         try:
             current_hash = self.analyzer._get_file_hash(file_path)
-            cached_hash = metadata.get('file_hash', '')
+            cached_hash = metadata.get("file_hash", "")
 
             if current_hash != cached_hash:
                 return ChangeType.MODIFIED
@@ -298,8 +299,7 @@ class ChangeScanner:
         """
         compile_commands_config = self.analyzer.config.get_compile_commands_config()
         cc_path = self.analyzer.project_root / compile_commands_config.get(
-            'compile_commands_path',
-            'compile_commands.json'
+            "compile_commands_path", "compile_commands.json"
         )
 
         if not cc_path.exists():
@@ -333,10 +333,12 @@ class ChangeScanner:
         """
         try:
             # Query all files from file_metadata table
-            if hasattr(self.analyzer.cache_manager.backend, 'conn'):
-                cursor = self.analyzer.cache_manager.backend.conn.execute("""
+            if hasattr(self.analyzer.cache_manager.backend, "conn"):
+                cursor = self.analyzer.cache_manager.backend.conn.execute(
+                    """
                     SELECT file_path FROM file_metadata
-                """)
+                """
+                )
 
                 cached_files = {row[0] for row in cursor.fetchall()}
                 return cached_files

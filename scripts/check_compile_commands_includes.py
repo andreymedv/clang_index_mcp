@@ -28,9 +28,9 @@ def extract_include_paths(command: str) -> List[str]:
     include_paths = []
 
     # Pattern for -I<path> (no space between flag and path)
-    i_pattern = r'-I([^\s]+)'
+    i_pattern = r"-I([^\s]+)"
     # Pattern for -isystem <path> (space between flag and path)
-    isystem_pattern = r'-isystem\s+([^\s]+)'
+    isystem_pattern = r"-isystem\s+([^\s]+)"
 
     # Find all -I paths
     for match in re.finditer(i_pattern, command):
@@ -62,7 +62,9 @@ def resolve_path(path: str, base_directory: str) -> str:
         return os.path.join(base_directory, path)
 
 
-def check_compile_commands(compile_commands_path: str, verbose: bool = False) -> Tuple[Set[str], Set[str]]:
+def check_compile_commands(
+    compile_commands_path: str, verbose: bool = False
+) -> Tuple[Set[str], Set[str]]:
     """
     Check all include paths in compile_commands.json.
 
@@ -74,7 +76,7 @@ def check_compile_commands(compile_commands_path: str, verbose: bool = False) ->
         Tuple of (all_paths, missing_paths)
     """
     try:
-        with open(compile_commands_path, 'r') as f:
+        with open(compile_commands_path, "r") as f:
             compile_commands = json.load(f)
     except FileNotFoundError:
         print(f"Error: File not found: {compile_commands_path}", file=sys.stderr)
@@ -87,8 +89,8 @@ def check_compile_commands(compile_commands_path: str, verbose: bool = False) ->
     missing_paths = set()
 
     for entry in compile_commands:
-        command = entry.get('command', '')
-        directory = entry.get('directory', '')
+        command = entry.get("command", "")
+        directory = entry.get("directory", "")
 
         if not command:
             continue
@@ -115,24 +117,16 @@ def check_compile_commands(compile_commands_path: str, verbose: bool = False) ->
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Check if all include paths in compile_commands.json exist'
+        description="Check if all include paths in compile_commands.json exist"
     )
     parser.add_argument(
-        'compile_commands',
-        nargs='?',
-        default='compile_commands.json',
-        help='Path to compile_commands.json (default: compile_commands.json)'
+        "compile_commands",
+        nargs="?",
+        default="compile_commands.json",
+        help="Path to compile_commands.json (default: compile_commands.json)",
     )
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Print all checked paths'
-    )
-    parser.add_argument(
-        '--stats',
-        action='store_true',
-        help='Print statistics about checked paths'
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print all checked paths")
+    parser.add_argument("--stats", action="store_true", help="Print statistics about checked paths")
 
     args = parser.parse_args()
 
@@ -162,5 +156,5 @@ def main():
         sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

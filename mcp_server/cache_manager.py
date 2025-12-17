@@ -52,7 +52,7 @@ class CacheManager:
         # Initialize error tracking
         self.error_tracker = ErrorTracker(
             window_seconds=300.0,  # 5 minute window
-            fallback_threshold=0.05  # 5% error rate triggers fallback
+            fallback_threshold=0.05,  # 5% error rate triggers fallback
         )
 
         # Initialize recovery manager
@@ -73,7 +73,9 @@ class CacheManager:
             Path to cache directory
         """
         # Use the MCP server directory for cache, not the project being analyzed
-        mcp_server_root = Path(__file__).parent.parent  # Go up from mcp_server/cache_manager.py to root
+        mcp_server_root = Path(
+            __file__
+        ).parent.parent  # Go up from mcp_server/cache_manager.py to root
         cache_base = mcp_server_root / ".mcp_cache"
 
         # Use ProjectIdentity to get unique cache directory name
@@ -115,8 +117,9 @@ class CacheManager:
         This should be called when the CacheManager is no longer needed
         to properly close the SQLite connection and avoid resource leaks.
         """
-        if hasattr(self, 'backend') and self.backend is not None:
+        if hasattr(self, "backend") and self.backend is not None:
             from .sqlite_cache_backend import SqliteCacheBackend
+
             if isinstance(self.backend, SqliteCacheBackend):
                 self.backend._close()
 
@@ -157,18 +160,18 @@ class CacheManager:
         error_message = str(error)
 
         # Determine if error is recoverable
-        recoverable = not isinstance(error, (
-            sqlite3.DatabaseError,  # Database corruption
-            PermissionError,        # Permission issues
-            OSError,               # Disk full, etc.
-        ))
+        recoverable = not isinstance(
+            error,
+            (
+                sqlite3.DatabaseError,  # Database corruption
+                PermissionError,  # Permission issues
+                OSError,  # Disk full, etc.
+            ),
+        )
 
         # Record error
         self.error_tracker.record_error(
-            error_type,
-            error_message,
-            operation,
-            recoverable=recoverable
+            error_type, error_message, operation, recoverable=recoverable
         )
 
         # For critical errors (corruption, disk full), attempt recovery
@@ -209,6 +212,7 @@ class CacheManager:
                 # Reconnect to repaired database
                 try:
                     from .sqlite_cache_backend import SqliteCacheBackend
+
                     self.backend = SqliteCacheBackend(db_path)
                     return True
                 except Exception as e:
@@ -254,70 +258,98 @@ class CacheManager:
             self._handle_backend_error(e, operation)
 
             return None
-    
+
     def get_file_hash(self, file_path: str) -> str:
         """Calculate hash of a file"""
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 return hashlib.md5(f.read()).hexdigest()
         except:
             return ""
-    
-    def save_cache(self, class_index: Dict[str, List[SymbolInfo]],
-                   function_index: Dict[str, List[SymbolInfo]],
-                   file_hashes: Dict[str, str],
-                   indexed_file_count: int,
-                   include_dependencies: bool = False,
-                   config_file_path: Optional[Path] = None,
-                   config_file_mtime: Optional[float] = None,
-                   compile_commands_path: Optional[Path] = None,
-                   compile_commands_mtime: Optional[float] = None) -> bool:
+
+    def save_cache(
+        self,
+        class_index: Dict[str, List[SymbolInfo]],
+        function_index: Dict[str, List[SymbolInfo]],
+        file_hashes: Dict[str, str],
+        indexed_file_count: int,
+        include_dependencies: bool = False,
+        config_file_path: Optional[Path] = None,
+        config_file_mtime: Optional[float] = None,
+        compile_commands_path: Optional[Path] = None,
+        compile_commands_mtime: Optional[float] = None,
+    ) -> bool:
         """Save indexes to cache file with configuration metadata"""
         result = self._safe_backend_call(
             "save_cache",
             self.backend.save_cache,
-            class_index, function_index, file_hashes, indexed_file_count,
-            include_dependencies, config_file_path, config_file_mtime,
-            compile_commands_path, compile_commands_mtime
+            class_index,
+            function_index,
+            file_hashes,
+            indexed_file_count,
+            include_dependencies,
+            config_file_path,
+            config_file_mtime,
+            compile_commands_path,
+            compile_commands_mtime,
         )
         return result if result is not None else False
-    
-    def load_cache(self, include_dependencies: bool = False,
-                   config_file_path: Optional[Path] = None,
-                   config_file_mtime: Optional[float] = None,
-                   compile_commands_path: Optional[Path] = None,
-                   compile_commands_mtime: Optional[float] = None) -> Optional[Dict[str, Any]]:
+
+    def load_cache(
+        self,
+        include_dependencies: bool = False,
+        config_file_path: Optional[Path] = None,
+        config_file_mtime: Optional[float] = None,
+        compile_commands_path: Optional[Path] = None,
+        compile_commands_mtime: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Load cache if it exists and is valid, checking for configuration changes"""
         return self._safe_backend_call(
             "load_cache",
             self.backend.load_cache,
-            include_dependencies, config_file_path, config_file_mtime,
-            compile_commands_path, compile_commands_mtime
-        )
-    
-    def save_file_cache(self, file_path: str, symbols: List[SymbolInfo],
-                       file_hash: str, compile_args_hash: Optional[str] = None,
-                       success: bool = True, error_message: Optional[str] = None,
-                       retry_count: int = 0) -> bool:
-        """Save parsed symbols for a single file with compilation arguments hash"""
-        return self.backend.save_file_cache(
-            file_path, symbols, file_hash, compile_args_hash,
-            success, error_message, retry_count
+            include_dependencies,
+            config_file_path,
+            config_file_mtime,
+            compile_commands_path,
+            compile_commands_mtime,
         )
 
-    def load_file_cache(self, file_path: str, current_hash: str,
-                       compile_args_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def save_file_cache(
+        self,
+        file_path: str,
+        symbols: List[SymbolInfo],
+        file_hash: str,
+        compile_args_hash: Optional[str] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        retry_count: int = 0,
+    ) -> bool:
+        """Save parsed symbols for a single file with compilation arguments hash"""
+        return self.backend.save_file_cache(
+            file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
+        )
+
+    def load_file_cache(
+        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Load cached data for a file if hash matches"""
         return self.backend.load_file_cache(file_path, current_hash, compile_args_hash)
 
     def remove_file_cache(self, file_path: str) -> bool:
         """Remove cached data for a deleted file"""
         return self.backend.remove_file_cache(file_path)
-    
-    def save_progress(self, total_files: int, indexed_files: int, 
-                     failed_files: int, cache_hits: int,
-                     last_index_time: float, class_count: int, 
-                     function_count: int, status: str = "in_progress"):
+
+    def save_progress(
+        self,
+        total_files: int,
+        indexed_files: int,
+        failed_files: int,
+        cache_hits: int,
+        last_index_time: float,
+        class_count: int,
+        function_count: int,
+        status: str = "in_progress",
+    ):
         """Save indexing progress"""
         try:
             progress_file = self.cache_dir / "indexing_progress.json"
@@ -331,14 +363,14 @@ class CacheManager:
                 "timestamp": time.time(),
                 "class_count": class_count,
                 "function_count": function_count,
-                "status": status
+                "status": status,
             }
-            
-            with open(progress_file, 'w') as f:
+
+            with open(progress_file, "w") as f:
                 json.dump(progress_data, f, indent=2)
         except:
             pass  # Silently fail for progress tracking
-    
+
     def load_progress(self) -> Optional[Dict[str, Any]]:
         """Load indexing progress if available"""
         try:
@@ -346,7 +378,7 @@ class CacheManager:
             if not progress_file.exists():
                 return None
 
-            with open(progress_file, 'r') as f:
+            with open(progress_file, "r") as f:
                 return json.load(f)
         except:
             return None
@@ -368,16 +400,16 @@ class CacheManager:
         unique_files = set()
         error_types = {}
         for error in parse_errors:
-            unique_files.add(error['file_path'])
-            error_type = error.get('error_type', 'Unknown')
+            unique_files.add(error["file_path"])
+            error_type = error.get("error_type", "Unknown")
             error_types[error_type] = error_types.get(error_type, 0) + 1
 
         # Combine both sources
         summary = tracker_summary.copy()
-        summary['backend_type'] = 'sqlite'
-        summary['total_errors'] = tracker_summary['total_errors'] + len(parse_errors)
-        summary['unique_files'] = len(unique_files)
-        summary['error_types'] = error_types
+        summary["backend_type"] = "sqlite"
+        summary["total_errors"] = tracker_summary["total_errors"] + len(parse_errors)
+        summary["unique_files"] = len(unique_files)
+        summary["error_types"] = error_types
 
         return summary
 
@@ -385,9 +417,14 @@ class CacheManager:
         """Reset error tracking state (useful for testing)."""
         self.error_tracker.reset()
 
-    def log_parse_error(self, file_path: str, error: Exception,
-                       file_hash: str, compile_args_hash: Optional[str],
-                       retry_count: int) -> bool:
+    def log_parse_error(
+        self,
+        file_path: str,
+        error: Exception,
+        file_hash: str,
+        compile_args_hash: Optional[str],
+        retry_count: int,
+    ) -> bool:
         """Log a parsing error to the centralized error log for developer analysis.
 
         Args:
@@ -410,12 +447,12 @@ class CacheManager:
                 "stack_trace": traceback.format_exc() if sys.exc_info()[0] is not None else None,
                 "file_hash": file_hash,
                 "compile_args_hash": compile_args_hash,
-                "retry_count": retry_count
+                "retry_count": retry_count,
             }
 
             # Append to JSONL file (one JSON object per line)
-            with open(self.error_log_path, 'a') as f:
-                f.write(json.dumps(error_entry) + '\n')
+            with open(self.error_log_path, "a") as f:
+                f.write(json.dumps(error_entry) + "\n")
 
             return True
         except Exception as e:
@@ -423,8 +460,9 @@ class CacheManager:
             print(f"Failed to log parse error: {e}", file=sys.stderr)
             return False
 
-    def get_parse_errors(self, limit: Optional[int] = None,
-                        file_path_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_parse_errors(
+        self, limit: Optional[int] = None, file_path_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Get parse errors from the error log.
 
         Args:
@@ -439,7 +477,7 @@ class CacheManager:
             if not self.error_log_path.exists():
                 return []
 
-            with open(self.error_log_path, 'r') as f:
+            with open(self.error_log_path, "r") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -447,7 +485,9 @@ class CacheManager:
                     try:
                         error_entry = json.loads(line)
                         # Filter by file path if specified
-                        if file_path_filter and file_path_filter not in error_entry.get('file_path', ''):
+                        if file_path_filter and file_path_filter not in error_entry.get(
+                            "file_path", ""
+                        ):
                             continue
                         errors.append(error_entry)
                     except json.JSONDecodeError:
@@ -455,7 +495,7 @@ class CacheManager:
                         continue
 
             # Sort by timestamp (most recent first)
-            errors.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            errors.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
 
             # Apply limit if specified
             if limit:
@@ -478,8 +518,8 @@ class CacheManager:
         error_types = defaultdict(int)
         files_with_errors = set()
         for error in errors:
-            error_types[error.get('error_type', 'Unknown')] += 1
-            files_with_errors.add(error.get('file_path'))
+            error_types[error.get("error_type", "Unknown")] += 1
+            files_with_errors.add(error.get("file_path"))
 
         # Get most recent errors
         recent_errors = errors[:10] if len(errors) > 10 else errors
@@ -489,7 +529,7 @@ class CacheManager:
             "unique_files": len(files_with_errors),
             "error_types": dict(error_types),
             "recent_errors": recent_errors,
-            "error_log_path": str(self.error_log_path)
+            "error_log_path": str(self.error_log_path),
         }
 
     def clear_error_log(self, older_than_days: Optional[int] = None) -> int:
@@ -515,13 +555,13 @@ class CacheManager:
                 # Keep recent errors
                 cutoff_time = time.time() - (older_than_days * 86400)
                 errors = self.get_parse_errors()
-                kept_errors = [e for e in errors if e.get('timestamp', 0) > cutoff_time]
+                kept_errors = [e for e in errors if e.get("timestamp", 0) > cutoff_time]
                 cleared_count = len(errors) - len(kept_errors)
 
                 # Rewrite file with kept errors
-                with open(self.error_log_path, 'w') as f:
+                with open(self.error_log_path, "w") as f:
                     for error in kept_errors:
-                        f.write(json.dumps(error) + '\n')
+                        f.write(json.dumps(error) + "\n")
 
                 return cleared_count
         except Exception as e:

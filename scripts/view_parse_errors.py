@@ -45,9 +45,9 @@ def print_error_entry(error, index=None, verbose=False):
     print(f"\nError Message:")
     print(f"  {error.get('error_message', 'No message')}")
 
-    if verbose and error.get('stack_trace'):
+    if verbose and error.get("stack_trace"):
         print(f"\nStack Trace:")
-        print(error.get('stack_trace'))
+        print(error.get("stack_trace"))
 
 
 def view_errors(project_root: str, args):
@@ -66,19 +66,18 @@ def view_errors(project_root: str, args):
         print(f"Error log location: {summary['error_log_path']}")
 
         print(f"\nError Types:")
-        for error_type, count in sorted(summary['error_types'].items(), key=lambda x: x[1], reverse=True):
+        for error_type, count in sorted(
+            summary["error_types"].items(), key=lambda x: x[1], reverse=True
+        ):
             print(f"  {error_type}: {count}")
 
         print(f"\nMost Recent Errors:")
-        for i, error in enumerate(summary['recent_errors'], 1):
+        for i, error in enumerate(summary["recent_errors"], 1):
             print_error_entry(error, i, verbose=args.verbose)
 
     else:
         # Show individual errors
-        errors = cache_mgr.get_parse_errors(
-            limit=args.limit,
-            file_path_filter=args.filter
-        )
+        errors = cache_mgr.get_parse_errors(limit=args.limit, file_path_filter=args.filter)
 
         if not errors:
             print("No parse errors found.")
@@ -112,51 +111,33 @@ def main():
     parser = argparse.ArgumentParser(
         description="View and analyze C++ parse error logs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
+    )
+
+    parser.add_argument("project_root", help="Path to the C++ project root directory")
+
+    parser.add_argument(
+        "--summary", "-s", action="store_true", help="Show error summary with statistics"
     )
 
     parser.add_argument(
-        "project_root",
-        help="Path to the C++ project root directory"
+        "--filter", "-f", type=str, help="Filter errors by file path (substring match)"
     )
 
     parser.add_argument(
-        "--summary", "-s",
-        action="store_true",
-        help="Show error summary with statistics"
+        "--limit", "-l", type=int, default=20, help="Maximum number of errors to show (default: 20)"
     )
 
-    parser.add_argument(
-        "--filter", "-f",
-        type=str,
-        help="Filter errors by file path (substring match)"
-    )
-
-    parser.add_argument(
-        "--limit", "-l",
-        type=int,
-        default=20,
-        help="Maximum number of errors to show (default: 20)"
-    )
-
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Show full stack traces"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show full stack traces")
 
     parser.add_argument(
         "--clear-old",
         type=int,
         metavar="DAYS",
-        help="Clear errors older than specified number of days"
+        help="Clear errors older than specified number of days",
     )
 
-    parser.add_argument(
-        "--clear-all",
-        action="store_true",
-        help="Clear all errors from the log"
-    )
+    parser.add_argument("--clear-all", action="store_true", help="Clear all errors from the log")
 
     args = parser.parse_args()
 

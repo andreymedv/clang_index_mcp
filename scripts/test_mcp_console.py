@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Global analyzer reference for cleanup
 _analyzer = None
 
+
 def test_mcp_server(project_path: str):
     """Test the MCP server with a real codebase"""
 
@@ -82,22 +83,22 @@ def test_mcp_server(project_path: str):
     # 6. Get detailed class info (if classes exist)
     if classes:
         print(f"\n6. Getting detailed info for class: {classes[0]['name']}")
-        class_info = analyzer.get_class_info(classes[0]['name'])
+        class_info = analyzer.get_class_info(classes[0]["name"])
         if class_info:
             print(f"[OK] Class info:")
             print(f"   Name: {class_info['name']}")
             print(f"   File: {class_info['file']}:{class_info['line']}")
             print(f"   Methods: {len(class_info['methods'])}")
             print(f"   Members: {len(class_info['members'])}")
-            if class_info['methods']:
+            if class_info["methods"]:
                 print("   First 3 methods:")
-                for method in class_info['methods'][:3]:
+                for method in class_info["methods"][:3]:
                     print(f"   - {method['name']} ({method['access']})")
 
     # 7. Get function signature (if functions exist)
     if functions:
         print(f"\n7. Getting signature for function: {functions[0]['name']}")
-        signatures = analyzer.get_function_signature(functions[0]['name'])
+        signatures = analyzer.get_function_signature(functions[0]["name"])
         if signatures:
             print(f"[OK] Found {len(signatures)} function(s) with this name:")
             for sig in signatures[:3]:
@@ -107,20 +108,20 @@ def test_mcp_server(project_path: str):
     # 8. Get class hierarchy (if classes exist)
     if classes:
         print(f"\n8. Getting class hierarchy for: {classes[0]['name']}")
-        hierarchy = analyzer.get_class_hierarchy(classes[0]['name'])
+        hierarchy = analyzer.get_class_hierarchy(classes[0]["name"])
         if hierarchy:
             print(f"[OK] Class hierarchy:")
             print(f"   Class: {hierarchy['name']}")
-            if hierarchy.get('base_classes'):
+            if hierarchy.get("base_classes"):
                 print(f"   Base classes: {', '.join(hierarchy['base_classes'])}")
-            if hierarchy.get('derived_classes'):
+            if hierarchy.get("derived_classes"):
                 print(f"   Derived classes: {len(hierarchy['derived_classes'])}")
 
     # 9. Find callers (if functions exist)
     if functions:
         print(f"\n9. Finding callers of function: {functions[0]['name']}")
-        callers_result = analyzer.find_callers(functions[0]['name'])
-        callers_list = callers_result.get('callers', [])
+        callers_result = analyzer.find_callers(functions[0]["name"])
+        callers_list = callers_result.get("callers", [])
         print(f"[OK] Found {len(callers_list)} caller(s)")
         if callers_list:
             print("   First 3 callers:")
@@ -130,7 +131,7 @@ def test_mcp_server(project_path: str):
     # 10. Find callees (if functions exist)
     if functions and len(functions) > 1:
         print(f"\n10. Finding callees of function: {functions[0]['name']}")
-        callees = analyzer.find_callees(functions[0]['name'])
+        callees = analyzer.find_callees(functions[0]["name"])
         print(f"[OK] Found {len(callees)} callee(s)")
         if callees:
             print("   First 3 callees:")
@@ -140,6 +141,7 @@ def test_mcp_server(project_path: str):
     print("\n" + "=" * 60)
     print("Test completed successfully!")
     print("=" * 60)
+
 
 def main():
     """Main entry point"""
@@ -168,6 +170,7 @@ def main():
                 print("Analyzer closed successfully", file=sys.stderr)
             except Exception as e:
                 print(f"Error closing analyzer: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

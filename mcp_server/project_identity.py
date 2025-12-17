@@ -50,11 +50,7 @@ class ProjectIdentity:
         config_file_path: Absolute path to configuration file (optional)
     """
 
-    def __init__(
-        self,
-        source_directory: Path,
-        config_file_path: Optional[Path] = None
-    ):
+    def __init__(self, source_directory: Path, config_file_path: Optional[Path] = None):
         """
         Initialize project identity.
 
@@ -95,7 +91,7 @@ class ProjectIdentity:
             components.append(str(self.config_file_path))
 
         combined = "|".join(components)
-        hash_value = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+        hash_value = hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
         # Use first 16 characters (64 bits) for reasonable uniqueness
         # while keeping directory names readable
@@ -188,11 +184,11 @@ class ProjectIdentity:
             "source_directory": str(self.source_directory),
             "config_file_path": str(self.config_file_path) if self.config_file_path else None,
             "hash": self.compute_hash(),
-            "cache_directory": self.get_cache_directory_name()
+            "cache_directory": self.get_cache_directory_name(),
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'ProjectIdentity':
+    def from_dict(cls, data: dict) -> "ProjectIdentity":
         """
         Create ProjectIdentity from dictionary representation.
 

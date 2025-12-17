@@ -48,9 +48,7 @@ class SchemaMigration:
             Current version number (0 if no schema_version table exists)
         """
         try:
-            cursor = self.conn.execute(
-                "SELECT MAX(version) FROM schema_version"
-            )
+            cursor = self.conn.execute("SELECT MAX(version) FROM schema_version")
             version = cursor.fetchone()[0]
             return version if version is not None else 0
 
@@ -141,14 +139,13 @@ class SchemaMigration:
 
         try:
             # Read migration SQL
-            with open(migration_file, 'r') as f:
+            with open(migration_file, "r") as f:
                 sql = f.read()
 
             # Check if migration was already applied (race condition protection)
             # Do this without a transaction to avoid locking issues
             cursor = self.conn.execute(
-                "SELECT COUNT(*) FROM schema_version WHERE version = ?",
-                (version,)
+                "SELECT COUNT(*) FROM schema_version WHERE version = ?", (version,)
             )
             if cursor.fetchone()[0] > 0:
                 # Another thread already applied this migration
@@ -158,9 +155,9 @@ class SchemaMigration:
             # Execute migration SQL if it contains actual statements
             # Skip only if file is empty or contains ONLY comments
             has_sql = False
-            for line in sql.split('\n'):
+            for line in sql.split("\n"):
                 stripped = line.strip()
-                if stripped and not stripped.startswith('--'):
+                if stripped and not stripped.startswith("--"):
                     has_sql = True
                     break
 
@@ -173,7 +170,7 @@ class SchemaMigration:
             # might have inserted this between our check and now
             cursor = self.conn.execute(
                 "INSERT OR IGNORE INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)",
-                (version, time.time(), migration_file.stem)
+                (version, time.time(), migration_file.stem),
             )
             self.conn.commit()
 
