@@ -306,8 +306,8 @@ LM Studio is a desktop application for running local LLMs with MCP support.
 Testing with **LM Studio version 0.3.35 build 1** revealed significant compatibility issues with this MCP server:
 
 #### stdio Transport Issues
-- **Problem**: LM Studio disconnects from the MCP server after a short period of inactivity
-- **Impact**: Makes background analysis impossible - server loses connection mid-indexing
+- **Problem**: LM Studio disconnects from the MCP server after a short period of inactivity, which terminates the server process entirely (stdio transport behavior)
+- **Impact**: Background indexing is interrupted and stopped - the MCP server process is killed when LM Studio disconnects, losing all indexing progress
 - **Not recommended** for projects requiring long-running operations
 
 #### HTTP/SSE Transport Issues
