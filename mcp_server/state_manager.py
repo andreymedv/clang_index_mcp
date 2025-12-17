@@ -15,17 +15,19 @@ from typing import Optional, Callable, Any
 
 class AnalyzerState(Enum):
     """Analyzer lifecycle states"""
-    UNINITIALIZED = "uninitialized"      # No project set
-    INITIALIZING = "initializing"         # Analyzer created, preparing to index
-    INDEXING = "indexing"                 # Actively indexing files
-    INDEXED = "indexed"                   # Indexing complete, ready for queries
-    REFRESHING = "refreshing"             # Incremental refresh in progress
-    ERROR = "error"                       # Indexing failed
+
+    UNINITIALIZED = "uninitialized"  # No project set
+    INITIALIZING = "initializing"  # Analyzer created, preparing to index
+    INDEXING = "indexing"  # Actively indexing files
+    INDEXED = "indexed"  # Indexing complete, ready for queries
+    REFRESHING = "refreshing"  # Incremental refresh in progress
+    ERROR = "error"  # Indexing failed
 
 
 @dataclass
 class IndexingProgress:
     """Real-time indexing progress information"""
+
     total_files: int
     indexed_files: int
     failed_files: int
@@ -39,7 +41,7 @@ class IndexingProgress:
         """Calculate completion percentage"""
         if self.total_files == 0:
             return 0.0
-        return (self.indexed_files / self.total_files * 100.0)
+        return self.indexed_files / self.total_files * 100.0
 
     @property
     def is_complete(self) -> bool:
@@ -56,7 +58,9 @@ class IndexingProgress:
             "completion_percentage": self.completion_percentage,
             "current_file": self.current_file,
             "start_time": self.start_time.isoformat() if self.start_time else None,
-            "estimated_completion": self.estimated_completion.isoformat() if self.estimated_completion else None,
+            "estimated_completion": (
+                self.estimated_completion.isoformat() if self.estimated_completion else None
+            ),
         }
 
 
@@ -95,6 +99,7 @@ class AnalyzerStateManager:
             # Debug logging (will be picked up by diagnostics module)
             try:
                 from . import diagnostics
+
                 diagnostics.debug(f"State transition: {old_state.value} -> {new_state.value}")
             except ImportError:
                 pass
@@ -142,7 +147,7 @@ class AnalyzerStateManager:
             return self._state in (
                 AnalyzerState.INDEXING,
                 AnalyzerState.INDEXED,
-                AnalyzerState.REFRESHING
+                AnalyzerState.REFRESHING,
             )
 
     def is_fully_indexed(self) -> bool:
@@ -166,11 +171,8 @@ class AnalyzerStateManager:
             status = {
                 "state": self._state.value,
                 "is_fully_indexed": self._state == AnalyzerState.INDEXED,
-                "is_ready_for_queries": self._state in (
-                    AnalyzerState.INDEXING,
-                    AnalyzerState.INDEXED,
-                    AnalyzerState.REFRESHING
-                ),
+                "is_ready_for_queries": self._state
+                in (AnalyzerState.INDEXING, AnalyzerState.INDEXED, AnalyzerState.REFRESHING),
                 "progress": self._progress.to_dict() if self._progress else None,
             }
             return status
@@ -195,11 +197,7 @@ class BackgroundIndexer:
         self.state_manager = state_manager
         self._indexing_task: Optional[asyncio.Task] = None
 
-    async def start_indexing(
-        self,
-        force: bool = False,
-        include_dependencies: bool = True
-    ) -> int:
+    async def start_indexing(self, force: bool = False, include_dependencies: bool = True) -> int:
         """
         Start background indexing (non-blocking)
 
@@ -232,8 +230,8 @@ class BackgroundIndexer:
                 lambda: self.analyzer.index_project(
                     force=force,
                     include_dependencies=include_dependencies,
-                    progress_callback=progress_callback
-                )
+                    progress_callback=progress_callback,
+                ),
             )
 
             self.state_manager.transition_to(AnalyzerState.INDEXED)
@@ -244,6 +242,7 @@ class BackgroundIndexer:
             # Log error if diagnostics available
             try:
                 from . import diagnostics
+
                 diagnostics.error(f"Indexing failed: {e}")
             except ImportError:
                 pass
@@ -274,16 +273,18 @@ class BackgroundIndexer:
 
 class QueryBehaviorPolicy(Enum):
     """Policy for handling queries during indexing"""
+
     ALLOW_PARTIAL = "allow_partial"  # Allow queries during indexing (default)
-    BLOCK = "block"                  # Block queries until indexing completes
-    REJECT = "reject"                # Reject queries during indexing with error
+    BLOCK = "block"  # Block queries until indexing completes
+    REJECT = "reject"  # Reject queries during indexing with error
 
 
 class QueryCompletenessStatus(Enum):
     """Status of query result completeness"""
-    COMPLETE = "complete"           # Query executed on fully indexed data
-    PARTIAL = "partial"             # Query executed during indexing (incomplete)
-    STALE = "stale"                 # Query executed on outdated data (needs refresh)
+
+    COMPLETE = "complete"  # Query executed on fully indexed data
+    PARTIAL = "partial"  # Query executed during indexing (incomplete)
+    STALE = "stale"  # Query executed on outdated data (needs refresh)
 
 
 class QueryMetadata:
@@ -296,7 +297,7 @@ class QueryMetadata:
         total_files: int,
         completion_percentage: float,
         timestamp: str,
-        warning: Optional[str] = None
+        warning: Optional[str] = None,
     ):
         self.status = status
         self.indexed_files = indexed_files
@@ -313,7 +314,7 @@ class QueryMetadata:
             "total_files": self.total_files,
             "completion_percentage": self.completion_percentage,
             "timestamp": self.timestamp,
-            "warning": self.warning
+            "warning": self.warning,
         }
 
 
@@ -326,17 +327,12 @@ class EnhancedQueryResult:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization"""
-        return {
-            "data": self.data,
-            "metadata": self.metadata.to_dict()
-        }
+        return {"data": self.data, "metadata": self.metadata.to_dict()}
 
     @staticmethod
     def create_from_state(
-        data: Any,
-        state_manager: AnalyzerStateManager,
-        tool_name: str = "query"
-    ) -> 'EnhancedQueryResult':
+        data: Any, state_manager: AnalyzerStateManager, tool_name: str = "query"
+    ) -> "EnhancedQueryResult":
         """
         Create result with current state metadata
 
@@ -391,7 +387,7 @@ class EnhancedQueryResult:
             total_files=progress.total_files if progress else 0,
             completion_percentage=progress.completion_percentage if progress else 0.0,
             timestamp=datetime.now().isoformat(),
-            warning=warning
+            warning=warning,
         )
 
         return EnhancedQueryResult(data, metadata)

@@ -15,6 +15,7 @@ except ImportError:
 @dataclass
 class ErrorRecord:
     """Record of an error occurrence."""
+
     timestamp: float
     error_type: str
     error_message: str
@@ -60,8 +61,9 @@ class ErrorTracker:
         """
         self.operation_counts[operation] = self.operation_counts.get(operation, 0) + 1
 
-    def record_error(self, error_type: str, error_message: str,
-                    operation: str, recoverable: bool = True) -> bool:
+    def record_error(
+        self, error_type: str, error_message: str, operation: str, recoverable: bool = True
+    ) -> bool:
         """
         Record an error occurrence.
 
@@ -80,7 +82,7 @@ class ErrorTracker:
             error_type=error_type,
             error_message=error_message,
             operation=operation,
-            recoverable=recoverable
+            recoverable=recoverable,
         )
 
         self.error_history.append(record)
@@ -88,9 +90,7 @@ class ErrorTracker:
 
         # Log error
         if recoverable:
-            diagnostics.warning(
-                f"Recoverable error in {operation}: {error_type}: {error_message}"
-            )
+            diagnostics.warning(f"Recoverable error in {operation}: {error_type}: {error_message}")
         else:
             diagnostics.error(
                 f"Non-recoverable error in {operation}: {error_type}: {error_message}"
@@ -187,14 +187,14 @@ class ErrorTracker:
             error_by_operation[error.operation] = error_by_operation.get(error.operation, 0) + 1
 
         return {
-            'total_errors': len(recent_errors),
-            'total_operations': sum(self.operation_counts.values()),
-            'error_rate': self.get_error_rate(),
-            'errors_by_type': error_by_type,
-            'errors_by_operation': error_by_operation,
-            'fallback_triggered': self.fallback_triggered,
-            'fallback_reason': self.fallback_reason,
-            'window_seconds': self.window_seconds
+            "total_errors": len(recent_errors),
+            "total_operations": sum(self.operation_counts.values()),
+            "error_rate": self.get_error_rate(),
+            "errors_by_type": error_by_type,
+            "errors_by_operation": error_by_operation,
+            "fallback_triggered": self.fallback_triggered,
+            "fallback_reason": self.fallback_reason,
+            "window_seconds": self.window_seconds,
         }
 
     def reset(self):
@@ -354,7 +354,7 @@ class RecoveryManager:
             cursor = conn.execute("PRAGMA integrity_check")
             results = [row[0] for row in cursor.fetchall()]
 
-            if results == ['ok']:
+            if results == ["ok"]:
                 diagnostics.info("Database integrity OK after repair attempt")
                 conn.close()
                 return True
@@ -371,7 +371,7 @@ class RecoveryManager:
             try:
                 # Copy schema
                 for line in conn.iterdump():
-                    if line.startswith('CREATE TABLE') or line.startswith('CREATE INDEX'):
+                    if line.startswith("CREATE TABLE") or line.startswith("CREATE INDEX"):
                         dump_conn.execute(line)
 
                 # Try to copy data (may fail on corrupted rows)
@@ -384,10 +384,9 @@ class RecoveryManager:
                         # This may fail on corrupted rows
                         rows = cursor.fetchall()
                         if rows:
-                            placeholders = ','.join(['?'] * len(rows[0]))
+                            placeholders = ",".join(["?"] * len(rows[0]))
                             dump_conn.executemany(
-                                f"INSERT INTO {table} VALUES ({placeholders})",
-                                rows
+                                f"INSERT INTO {table} VALUES ({placeholders})", rows
                             )
                     except Exception as e:
                         diagnostics.warning(f"Failed to copy table {table}: {e}")

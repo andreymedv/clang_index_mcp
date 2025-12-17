@@ -64,10 +64,7 @@ def is_path_in_directories(file_path: Path, directories: List[Path]) -> bool:
 
 
 def filter_compile_commands(
-    input_path: str,
-    output_path: str,
-    filter_dirs: List[str],
-    verbose: bool = False
+    input_path: str, output_path: str, filter_dirs: List[str], verbose: bool = False
 ) -> int:
     """
     Filter compile_commands.json to include only entries from specified directories.
@@ -83,7 +80,7 @@ def filter_compile_commands(
     """
     # Load input compile_commands.json
     try:
-        with open(input_path, 'r') as f:
+        with open(input_path, "r") as f:
             compile_commands = json.load(f)
     except FileNotFoundError:
         print(f"Error: Input file not found: {input_path}", file=sys.stderr)
@@ -126,8 +123,8 @@ def filter_compile_commands(
             continue
 
         # Get the source file path
-        file_path = entry.get('file')
-        directory = entry.get('directory', '')
+        file_path = entry.get("file")
+        directory = entry.get("directory", "")
 
         if not file_path:
             if verbose:
@@ -152,7 +149,7 @@ def filter_compile_commands(
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(filtered_entries, f, indent=2)
     except IOError as e:
         print(f"Error: Failed to write output file: {e}", file=sys.stderr)
@@ -163,7 +160,7 @@ def filter_compile_commands(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Filter compile_commands.json by source file directories',
+        description="Filter compile_commands.json by source file directories",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Directory Path Specifications:
@@ -192,32 +189,24 @@ Examples:
 
   # Mix of relative and absolute paths
   %(prog)s input.json output.json ./src /opt/project/external
-        """
+        """,
+    )
+
+    parser.add_argument("input", help="Path to input compile_commands.json")
+
+    parser.add_argument("output", help="Path to output compile_commands.json")
+
+    parser.add_argument(
+        "directories",
+        nargs="+",
+        metavar="DIR",
+        help="One or more directories to filter by (recursive). "
+        "Can be absolute or relative paths. "
+        "Relative paths are resolved from the current working directory.",
     )
 
     parser.add_argument(
-        'input',
-        help='Path to input compile_commands.json'
-    )
-
-    parser.add_argument(
-        'output',
-        help='Path to output compile_commands.json'
-    )
-
-    parser.add_argument(
-        'directories',
-        nargs='+',
-        metavar='DIR',
-        help='One or more directories to filter by (recursive). '
-             'Can be absolute or relative paths. '
-             'Relative paths are resolved from the current working directory.'
-    )
-
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Print detailed information about filtering'
+        "-v", "--verbose", action="store_true", help="Print detailed information about filtering"
     )
 
     args = parser.parse_args()
@@ -237,16 +226,11 @@ Examples:
     print(f"Filter directories: {', '.join(args.directories)}")
     print()
 
-    num_filtered = filter_compile_commands(
-        args.input,
-        args.output,
-        args.directories,
-        args.verbose
-    )
+    num_filtered = filter_compile_commands(args.input, args.output, args.directories, args.verbose)
 
     print()
     print(f"Filtered {num_filtered} entries written to {args.output}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

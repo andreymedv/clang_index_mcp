@@ -11,6 +11,7 @@ This guide provides detailed instructions for configuring the C++ Analyzer MCP S
 - [Windsurf IDE](#windsurf-ide)
 - [Continue (VS Code Extension)](#continue-vs-code-extension)
 - [Generic MCP Client](#generic-mcp-client)
+- [HTTP/SSE Transport Configuration](#httpsse-transport-configuration)
 
 ## Prerequisites
 
@@ -332,6 +333,259 @@ Most MCP clients use a similar configuration format:
 
 - **env**: Environment variables
   - `PYTHONPATH`: Ensures Python can find the mcp_server module
+
+## HTTP/SSE Transport Configuration
+
+The examples above use **stdio** transport (standard input/output), which is the default for most MCP clients. However, the server also supports **HTTP** and **SSE** (Server-Sent Events) transports for:
+
+- Web-based integrations
+- Remote server deployments
+- Custom client implementations
+- Multi-client scenarios
+- Testing and debugging
+
+### When to Use HTTP/SSE
+
+**Use stdio (default)** when:
+- Integrating with desktop applications (Claude Desktop, VS Code extensions)
+- The client and server run on the same machine
+- The MCP client spawns the server process
+
+**Use HTTP/SSE** when:
+- Building web-based integrations
+- Deploying the server remotely
+- Multiple clients need to connect to the same server
+- You need RESTful API access
+- You want real-time progress updates (SSE)
+
+### Starting the Server with HTTP/SSE
+
+#### HTTP Transport
+
+```bash
+# Start HTTP server on default port 8000
+python -m mcp_server.cpp_mcp_server --transport http --port 8000
+
+# Start on custom port
+python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 9000
+
+# Allow external connections (use with caution)
+python -m mcp_server.cpp_mcp_server --transport http --host 0.0.0.0 --port 8000
+```
+
+#### SSE Transport
+
+```bash
+# Start SSE server on default port 8080
+python -m mcp_server.cpp_mcp_server --transport sse --port 8080
+
+# Start on custom port
+python -m mcp_server.cpp_mcp_server --transport sse --host 127.0.0.1 --port 9000
+```
+
+### MCP Client Configuration for HTTP/SSE
+
+Some MCP clients support HTTP/SSE transport. Check your client's documentation for specific configuration details.
+
+#### Example: Generic HTTP Client Configuration
+
+If your MCP client supports HTTP transport:
+
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "transport": "http",
+      "url": "http://127.0.0.1:8000/mcp/v1/messages",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    }
+  }
+}
+```
+
+#### Example: Generic SSE Client Configuration
+
+If your MCP client supports SSE transport:
+
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "transport": "sse",
+      "url": "http://127.0.0.1:8080/mcp/v1/sse",
+      "messagesUrl": "http://127.0.0.1:8080/mcp/v1/messages"
+    }
+  }
+}
+```
+
+### Running as a Background Service
+
+For remote or persistent deployments, run the server as a background service:
+
+#### Using systemd (Linux)
+
+Create `/etc/systemd/system/cpp-analyzer.service`:
+
+```ini
+[Unit]
+Description=C++ Analyzer MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/clang_index_mcp
+Environment="PYTHONPATH=/path/to/clang_index_mcp"
+ExecStart=/path/to/clang_index_mcp/mcp_env/bin/python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl enable cpp-analyzer
+sudo systemctl start cpp-analyzer
+sudo systemctl status cpp-analyzer
+```
+
+#### Using Docker
+
+Create a `Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy server files
+COPY . .
+
+# Install dependencies
+RUN pip install -r requirements.txt
+
+# Download libclang
+RUN python scripts/download_libclang.py
+
+# Expose HTTP port
+EXPOSE 8000
+
+# Run server
+CMD ["python", "-m", "mcp_server.cpp_mcp_server", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+Build and run:
+```bash
+docker build -t cpp-analyzer-mcp .
+docker run -d -p 8000:8000 --name cpp-analyzer cpp-analyzer-mcp
+```
+
+#### Using screen/tmux (Quick Solution)
+
+```bash
+# Using screen
+screen -S cpp-analyzer
+cd /path/to/clang_index_mcp
+source mcp_env/bin/activate
+python -m mcp_server.cpp_mcp_server --transport http --port 8000
+# Press Ctrl+A then D to detach
+
+# Reattach later
+screen -r cpp-analyzer
+
+# Using tmux
+tmux new -s cpp-analyzer
+cd /path/to/clang_index_mcp
+source mcp_env/bin/activate
+python -m mcp_server.cpp_mcp_server --transport http --port 8000
+# Press Ctrl+B then D to detach
+
+# Reattach later
+tmux attach -t cpp-analyzer
+```
+
+### Custom Client Implementation
+
+For building custom clients that connect to HTTP/SSE, see the comprehensive examples in [HTTP_USAGE.md](docs/HTTP_USAGE.md):
+
+- **Python client** using httpx
+- **JavaScript/TypeScript client** using fetch API
+- **SSE client** using EventSource
+- Complete API reference
+- Session management
+- Error handling
+
+### Security Considerations for HTTP/SSE
+
+When running the server with HTTP/SSE transport:
+
+1. **Default binding** is `127.0.0.1` (localhost only)
+2. **For production deployments:**
+   - Use HTTPS/TLS encryption (place behind reverse proxy like nginx)
+   - Implement authentication/authorization
+   - Configure CORS if needed
+   - Set up rate limiting
+   - Use firewall rules to restrict access
+   - Monitor logs for suspicious activity
+
+3. **Example nginx reverse proxy with TLS:**
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name cpp-analyzer.yourdomain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Health Check Endpoints
+
+When using HTTP/SSE, the server provides health check endpoints:
+
+```bash
+# Check server health
+curl http://127.0.0.1:8000/health
+
+# Get server information
+curl http://127.0.0.1:8000/
+```
+
+Example health check response:
+```json
+{
+  "status": "healthy",
+  "transport": "http",
+  "active_sessions": 2
+}
+```
+
+### Session Management
+
+HTTP/SSE transports support multiple concurrent sessions:
+
+- Each client gets a unique session ID (`x-mcp-session-id` header)
+- Sessions timeout after 1 hour of inactivity
+- Multiple clients can connect to the same server instance
+- Each session maintains independent project state
+
+See [HTTP_USAGE.md](docs/HTTP_USAGE.md) for detailed session management examples.
 
 ## Common Configuration Issues
 
