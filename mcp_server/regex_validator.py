@@ -11,6 +11,7 @@ from typing import Tuple, Optional
 
 class RegexValidationError(Exception):
     """Raised when a regex pattern is deemed unsafe."""
+
     pass
 
 
@@ -20,16 +21,13 @@ class RegexValidator:
     # Dangerous patterns that can cause catastrophic backtracking
     DANGEROUS_PATTERNS = [
         # Nested quantifiers: (a+)+, (a*)+, (a+)*, (a*)*
-        (r'\([^()]*[\+\*]\)[\+\*]', 'Nested quantifiers can cause exponential backtracking'),
-
+        (r"\([^()]*[\+\*]\)[\+\*]", "Nested quantifiers can cause exponential backtracking"),
         # Overlapping alternation: (a|a)*, (ab|a)*
-        (r'\([^()]*\|[^()]*\)[\+\*]', 'Alternation with quantifiers can cause backtracking'),
-
+        (r"\([^()]*\|[^()]*\)[\+\*]", "Alternation with quantifiers can cause backtracking"),
         # Multiple consecutive quantifiers
-        (r'[\+\*\{][^\}]*[\+\*\{]', 'Multiple consecutive quantifiers'),
-
+        (r"[\+\*\{][^\}]*[\+\*\{]", "Multiple consecutive quantifiers"),
         # Repetition on groups containing repetition
-        (r'\([^()]*[\+\*\{][^()]*\)[\+\*\{]', 'Quantified group containing quantifiers'),
+        (r"\([^()]*[\+\*\{][^()]*\)[\+\*\{]", "Quantified group containing quantifiers"),
     ]
 
     # Maximum complexity score allowed
@@ -53,28 +51,28 @@ class RegexValidator:
         max_nesting = 0
         current_nesting = 0
         for char in pattern:
-            if char == '(':
+            if char == "(":
                 current_nesting += 1
                 max_nesting = max(max_nesting, current_nesting)
-            elif char == ')':
+            elif char == ")":
                 current_nesting -= 1
 
         score += max_nesting * 2
 
         # Count quantifiers
-        quantifiers = pattern.count('+') + pattern.count('*') + pattern.count('{')
+        quantifiers = pattern.count("+") + pattern.count("*") + pattern.count("{")
         score += quantifiers
 
         # Count alternations
-        alternations = pattern.count('|')
+        alternations = pattern.count("|")
         score += alternations
 
         # Penalize nested quantifiers heavily
-        if re.search(r'\([^()]*[\+\*]\)[\+\*]', pattern):
+        if re.search(r"\([^()]*[\+\*]\)[\+\*]", pattern):
             score += 50  # Critical vulnerability
 
         # Penalize alternation in quantified groups
-        if re.search(r'\([^()]*\|[^()]*\)[\+\*]', pattern):
+        if re.search(r"\([^()]*\|[^()]*\)[\+\*]", pattern):
             score += 30  # High vulnerability
 
         return score

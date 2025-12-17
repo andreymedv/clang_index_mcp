@@ -47,7 +47,9 @@ def diagnose_file(project_path: str, file_path: str):
     print("1. Initializing analyzer...")
     analyzer = CppAnalyzer(str(project_path))
     print(f"   Compile commands enabled: {analyzer.compile_commands_manager.enabled}")
-    print(f"   Clang resource dir: {analyzer.compile_commands_manager.clang_resource_dir or 'NOT FOUND'}")
+    print(
+        f"   Clang resource dir: {analyzer.compile_commands_manager.clang_resource_dir or 'NOT FOUND'}"
+    )
     print()
 
     # Get compilation arguments
@@ -69,12 +71,12 @@ def diagnose_file(project_path: str, file_path: str):
     index = Index.create()
 
     parse_attempts = [
-        (TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
-         "PARSE_INCOMPLETE | PARSE_DETAILED_PROCESSING_RECORD (default)"),
-        (TranslationUnit.PARSE_INCOMPLETE,
-         "PARSE_INCOMPLETE only"),
-        (0,
-         "No special options"),
+        (
+            TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
+            "PARSE_INCOMPLETE | PARSE_DETAILED_PROCESSING_RECORD (default)",
+        ),
+        (TranslationUnit.PARSE_INCOMPLETE, "PARSE_INCOMPLETE only"),
+        (0, "No special options"),
     ]
 
     successful_parse = None
@@ -126,15 +128,20 @@ def diagnose_file(project_path: str, file_path: str):
         print("   2. Incompatible compilation arguments")
         if is_from_compile_commands:
             print("      → Arguments from compile_commands.json may be incompatible with libclang")
-            print("      → Try disabling compile_commands in config: 'compile_commands.enabled: false'")
+            print(
+                "      → Try disabling compile_commands in config: 'compile_commands.enabled: false'"
+            )
 
-        problematic_args = [arg for arg in args if any(x in arg for x in
-                           ['-fms-compatibility', '/clr', '-m32', '-m64'])]
+        problematic_args = [
+            arg
+            for arg in args
+            if any(x in arg for x in ["-fms-compatibility", "/clr", "-m32", "-m64"])
+        ]
         if problematic_args:
             print(f"      → Found potentially problematic args: {problematic_args}")
 
         print("   3. C++ standard compatibility")
-        std_args = [arg for arg in args if '-std=' in arg]
+        std_args = [arg for arg in args if "-std=" in arg]
         if std_args:
             print(f"      → C++ standard: {std_args}")
             print("      → Make sure libclang supports this standard")

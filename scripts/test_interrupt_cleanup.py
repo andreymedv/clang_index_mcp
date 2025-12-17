@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _analyzer = None
 
+
 def main():
     """Main entry point"""
     if len(sys.argv) < 2:
@@ -70,6 +71,7 @@ def main():
                 print("\nCheck for orphaned processes with: ps aux | grep python", file=sys.stderr)
             except Exception as e:
                 print(f"Error closing analyzer: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

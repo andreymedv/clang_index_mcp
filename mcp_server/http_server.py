@@ -38,7 +38,7 @@ class MCPHTTPServer:
         host: str = "127.0.0.1",
         port: int = 8000,
         transport_type: str = "http",
-        session_timeout: float = 3600.0  # 1 hour default
+        session_timeout: float = 3600.0,  # 1 hour default
     ):
         """
         Initialize the HTTP/SSE server.
@@ -78,7 +78,9 @@ class MCPHTTPServer:
                 for session_id, (transport, task, last_activity) in self.sessions.items():
                     if current_time - last_activity > self.session_timeout:
                         sessions_to_remove.append(session_id)
-                        logger.info(f"Session {session_id} timed out after {current_time - last_activity:.1f}s")
+                        logger.info(
+                            f"Session {session_id} timed out after {current_time - last_activity:.1f}s"
+                        )
 
                 # Clean up timed out sessions
                 for session_id in sessions_to_remove:
@@ -120,7 +122,7 @@ class MCPHTTPServer:
             "protocol": "MCP 1.0",
             "endpoints": {
                 "health": "/health",
-            }
+            },
         }
 
         if self.transport_type == "http":
@@ -133,11 +135,13 @@ class MCPHTTPServer:
 
     async def handle_health(self, request: Request) -> Response:
         """Handle health check endpoint."""
-        return JSONResponse({
-            "status": "healthy",
-            "transport": self.transport_type,
-            "active_sessions": len(self.sessions)
-        })
+        return JSONResponse(
+            {
+                "status": "healthy",
+                "transport": self.transport_type,
+                "active_sessions": len(self.sessions),
+            }
+        )
 
     async def handle_http_message(self, request: Request) -> Response:
         """
@@ -165,14 +169,11 @@ class MCPHTTPServer:
                 return JSONResponse(
                     {
                         "jsonrpc": "2.0",
-                        "error": {
-                            "code": -32700,
-                            "message": "Parse error"
-                        },
-                        "id": None
+                        "error": {"code": -32700, "message": "Parse error"},
+                        "id": None,
                     },
                     status_code=400,
-                    headers={"x-mcp-session-id": session_id}
+                    headers={"x-mcp-session-id": session_id},
                 )
 
             # Create a custom receive function that replays the body we already read
@@ -190,8 +191,7 @@ class MCPHTTPServer:
             # Get or create transport for this session
             if session_id not in self.sessions:
                 transport = StreamableHTTPServerTransport(
-                    mcp_session_id=session_id,
-                    is_json_response_enabled=True
+                    mcp_session_id=session_id, is_json_response_enabled=True
                 )
 
                 # Start MCP server with this transport in background
@@ -202,7 +202,7 @@ class MCPHTTPServer:
                                 read_stream,
                                 write_stream,
                                 self.mcp_server.create_initialization_options(),
-                                raise_exceptions=False
+                                raise_exceptions=False,
                             )
                         except Exception as e:
                             logger.exception(f"Error in session {session_id}: {e}")
@@ -248,28 +248,22 @@ class MCPHTTPServer:
                 return JSONResponse(
                     {
                         "jsonrpc": "2.0",
-                        "error": {
-                            "code": -32700,
-                            "message": "Parse error"
-                        },
-                        "id": None
+                        "error": {"code": -32700, "message": "Parse error"},
+                        "id": None,
                     },
                     status_code=400,
-                    headers={"x-mcp-session-id": session_id}
+                    headers={"x-mcp-session-id": session_id},
                 )
             except Exception as e:
                 logger.exception(f"Error handling request: {e}")
                 return JSONResponse(
                     {
                         "jsonrpc": "2.0",
-                        "error": {
-                            "code": -32603,
-                            "message": f"Internal error: {str(e)}"
-                        },
-                        "id": None
+                        "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                        "id": None,
                     },
                     status_code=500,
-                    headers={"x-mcp-session-id": session_id}
+                    headers={"x-mcp-session-id": session_id},
                 )
 
             # Build response
@@ -280,9 +274,7 @@ class MCPHTTPServer:
             headers_dict["x-mcp-session-id"] = session_id
 
             return Response(
-                content=response_body,
-                status_code=response_status,
-                headers=headers_dict
+                content=response_body, status_code=response_status, headers=headers_dict
             )
 
         except Exception as e:
@@ -290,7 +282,7 @@ class MCPHTTPServer:
             return JSONResponse(
                 {"error": f"Server error: {str(e)}"},
                 status_code=500,
-                headers={"x-mcp-session-id": session_id}
+                headers={"x-mcp-session-id": session_id},
             )
 
     async def handle_sse_stream(self, request: Request) -> Response:
@@ -335,7 +327,7 @@ class MCPHTTPServer:
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
                 "Connection": "keep-alive",
-            }
+            },
         )
 
     async def start(self):
@@ -415,10 +407,7 @@ class MCPHTTPServer:
 
 
 async def run_http_server(
-    mcp_server: Server,
-    host: str = "127.0.0.1",
-    port: int = 8000,
-    transport_type: str = "http"
+    mcp_server: Server, host: str = "127.0.0.1", port: int = 8000, transport_type: str = "http"
 ):
     """
     Run the HTTP/SSE server with the given MCP server instance.
