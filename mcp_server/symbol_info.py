@@ -7,6 +7,7 @@ from typing import List, Optional
 @dataclass
 class SymbolInfo:
     """Information about a C++ symbol (class, function, etc.)"""
+
     name: str
     kind: str  # "class", "function", "method", etc.
     file: str
@@ -24,17 +25,17 @@ class SymbolInfo:
 
     # Line ranges (Phase 1: LLM Integration)
     start_line: Optional[int] = None  # First line of symbol definition
-    end_line: Optional[int] = None    # Last line of symbol definition
+    end_line: Optional[int] = None  # Last line of symbol definition
 
     # Header file location (for declarations separate from definitions)
-    header_file: Optional[str] = None        # Path to header file (if declaration separate)
-    header_line: Optional[int] = None        # Declaration line in header
+    header_file: Optional[str] = None  # Path to header file (if declaration separate)
+    header_line: Optional[int] = None  # Declaration line in header
     header_start_line: Optional[int] = None  # Declaration start line
-    header_end_line: Optional[int] = None    # Declaration end line
+    header_end_line: Optional[int] = None  # Declaration end line
 
     # Documentation (Phase 2: LLM Integration)
-    brief: Optional[str] = None         # Brief description (first line of documentation)
-    doc_comment: Optional[str] = None   # Full documentation comment
+    brief: Optional[str] = None  # Brief description (first line of documentation)
+    doc_comment: Optional[str] = None  # Full documentation comment
 
     # Internal field for definition-wins logic (not persisted)
     is_definition: bool = False  # True if this cursor is a definition (has body)
@@ -65,5 +66,5 @@ class SymbolInfo:
             "header_end_line": self.header_end_line,
             # Documentation (Phase 2)
             "brief": self.brief,
-            "doc_comment": self.doc_comment
+            "doc_comment": self.doc_comment,
         }

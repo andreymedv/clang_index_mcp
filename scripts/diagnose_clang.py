@@ -18,12 +18,13 @@ from pathlib import Path
 
 class Colors:
     """ANSI color codes for terminal output"""
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    END = '\033[0m'
-    BOLD = '\033[1m'
+
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    END = "\033[0m"
+    BOLD = "\033[1m"
 
 
 def print_success(msg):
@@ -69,20 +70,18 @@ def check_libclang_package():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "show", "libclang"],
-            capture_output=True,
-            text=True
+            [sys.executable, "-m", "pip", "show", "libclang"], capture_output=True, text=True
         )
 
         if result.returncode == 0:
             # Parse version
-            for line in result.stdout.split('\n'):
-                if line.startswith('Version:'):
-                    version = line.split(':')[1].strip()
+            for line in result.stdout.split("\n"):
+                if line.startswith("Version:"):
+                    version = line.split(":")[1].strip()
                     print_success(f"libclang package installed: {version}")
 
                     # Check version
-                    major_version = int(version.split('.')[0])
+                    major_version = int(version.split(".")[0])
                     if major_version < 16:
                         print_warning(f"libclang {version} is old, recommend 16.0.0+")
                         return "outdated"
@@ -102,6 +101,7 @@ def check_clang_import():
 
     try:
         import clang.cindex
+
         print_success("Successfully imported clang.cindex")
 
         # Try to get library path
@@ -111,7 +111,7 @@ def check_clang_import():
                 print_info(f"Library path: {lib_path}")
 
                 # Check if library file exists
-                if hasattr(lib_path, '_name'):
+                if hasattr(lib_path, "_name"):
                     lib_file = lib_path._name
                     if os.path.exists(lib_file):
                         print_success(f"Library file exists: {lib_file}")
@@ -163,6 +163,7 @@ def check_libclang_library():
 
             for path in search_paths:
                 from glob import glob
+
                 matches = glob(f"{path}/**/libclang.so*", recursive=True)
                 if matches:
                     print_info(f"Found libclang at: {matches[0]}")
@@ -181,14 +182,10 @@ def check_system_clang():
     print_section("Checking System Clang Installation")
 
     try:
-        result = subprocess.run(
-            ["clang", "--version"],
-            capture_output=True,
-            text=True
-        )
+        result = subprocess.run(["clang", "--version"], capture_output=True, text=True)
 
         if result.returncode == 0:
-            version_line = result.stdout.split('\n')[0]
+            version_line = result.stdout.split("\n")[0]
             print_success(f"System clang found: {version_line}")
             return True
         else:
@@ -208,15 +205,14 @@ def install_libclang(force=False):
         if force:
             print_info("Uninstalling existing libclang...")
             subprocess.run(
-                [sys.executable, "-m", "pip", "uninstall", "-y", "libclang"],
-                check=False
+                [sys.executable, "-m", "pip", "uninstall", "-y", "libclang"], check=False
             )
 
         print_info("Installing libclang>=16.0.0...")
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", "libclang>=16.0.0"],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         if result.returncode == 0:
@@ -235,7 +231,8 @@ def provide_manual_solutions():
     """Print manual solution steps"""
     print_section("Manual Solutions for Common Issues")
 
-    print("""
+    print(
+        """
 1. ISSUE: ImportError when importing clang.cindex
    SOLUTION:
    - Reinstall libclang: pip install --force-reinstall libclang
@@ -269,7 +266,8 @@ def provide_manual_solutions():
    - Ensure IDE uses same Python interpreter
    - Check LD_LIBRARY_PATH or DYLD_LIBRARY_PATH environment variable
    - Restart IDE after installing libclang
-""")
+"""
+    )
 
 
 def run_comprehensive_test():
@@ -282,14 +280,15 @@ def run_comprehensive_test():
 
         # Create temp test file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.cpp', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
             f.write("class TestClass { public: void method(); };")
             test_file = f.name
 
         try:
             # Parse the file
             index = Index.create()
-            tu = index.parse(test_file, args=['-std=c++17'])
+            tu = index.parse(test_file, args=["-std=c++17"])
 
             if tu:
                 print_success("Successfully parsed C++ file")
@@ -322,8 +321,8 @@ def run_comprehensive_test():
 
 def main():
     parser = argparse.ArgumentParser(description="Diagnose and fix libclang installation issues")
-    parser.add_argument('--fix', action='store_true', help='Attempt to automatically fix issues')
-    parser.add_argument('--force-reinstall', action='store_true', help='Force reinstall libclang')
+    parser.add_argument("--fix", action="store_true", help="Attempt to automatically fix issues")
+    parser.add_argument("--force-reinstall", action="store_true", help="Force reinstall libclang")
     args = parser.parse_args()
 
     print(f"{Colors.BOLD}Clang Installation Diagnostic Tool{Colors.END}")

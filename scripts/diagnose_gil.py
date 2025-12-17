@@ -43,6 +43,7 @@ def test_with_threads(files, max_workers):
     print(f"\nTesting with ThreadPoolExecutor ({max_workers} workers)...")
 
     from mcp_server.cpp_analyzer import CppAnalyzer
+
     analyzer = CppAnalyzer(".")
 
     start = time.time()
@@ -87,12 +88,13 @@ def main():
     else:
         project_root = "."
 
-    print("="*80)
+    print("=" * 80)
     print("GIL BOTTLENECK DIAGNOSTIC")
-    print("="*80)
+    print("=" * 80)
 
     # Find C++ files
     from mcp_server.file_scanner import FileScanner
+
     scanner = FileScanner(project_root)
     all_files = scanner.find_cpp_files()
 
@@ -115,7 +117,7 @@ def main():
 
         print(f"\n{'='*80}")
         print(f"Testing with {worker_count} workers:")
-        print('='*80)
+        print("=" * 80)
 
         thread_time = test_with_threads(test_files, worker_count)
         process_time = test_with_processes(test_files, worker_count)
@@ -127,10 +129,11 @@ def main():
             print("  [WARNING]  WARNING: ProcessPool is significantly faster!")
             print("  [WARNING]  This indicates GIL contention is limiting ThreadPool performance!")
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("ANALYSIS:")
-    print("="*80)
-    print("""
+    print("=" * 80)
+    print(
+        """
 If ProcessPoolExecutor is significantly faster (1.5x+), the GIL is likely the bottleneck.
 This happens because:
 1. ThreadPoolExecutor uses Python threads (limited by GIL)
@@ -141,7 +144,8 @@ Recommendations if GIL is the bottleneck:
 - Switch to ProcessPoolExecutor for parallel parsing
 - Reduce worker count for ThreadPoolExecutor (less contention)
 - Optimize Python code between libclang calls
-    """)
+    """
+    )
 
 
 if __name__ == "__main__":
