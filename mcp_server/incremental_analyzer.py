@@ -162,7 +162,7 @@ class IncrementalAnalyzer:
             files_analyzed=analyzed_count,
             files_removed=len(changes.removed_files),
             elapsed_seconds=elapsed,
-            changes=changes
+            changes=changes,
         )
 
         diagnostics.info(f"Incremental analysis complete: {result}")
@@ -194,7 +194,9 @@ class IncrementalAnalyzer:
         new_commands = cc_manager.file_to_command_map
 
         # Compute diff
-        if self.analyzer.cache_manager.backend and hasattr(self.analyzer.cache_manager.backend, 'conn'):
+        if self.analyzer.cache_manager.backend and hasattr(
+            self.analyzer.cache_manager.backend, "conn"
+        ):
             differ = CompileCommandsDiffer(self.analyzer.cache_manager.backend)
             added, removed, changed = differ.compute_diff(old_commands, new_commands)
 
@@ -213,8 +215,11 @@ class IncrementalAnalyzer:
             diagnostics.warning("No SQLite backend, re-analyzing all compile_commands files")
 
         # Update compile_commands_hash
-        cc_path = self.analyzer.project_root / self.analyzer.config.get_compile_commands_config().get(
-            'compile_commands_path', 'compile_commands.json'
+        cc_path = (
+            self.analyzer.project_root
+            / self.analyzer.config.get_compile_commands_config().get(
+                "compile_commands_path", "compile_commands.json"
+            )
         )
         if cc_path.exists():
             self.analyzer.compile_commands_hash = self.analyzer._get_file_hash(str(cc_path))
@@ -300,7 +305,7 @@ class IncrementalAnalyzer:
                 diagnostics.warning(f"Failed to remove {file_path} from dependency graph: {e}")
 
         # Remove from header tracker if it's a header
-        if self.analyzer.header_tracker and file_path.endswith(('.h', '.hpp', '.hxx', '.h++')):
+        if self.analyzer.header_tracker and file_path.endswith((".h", ".hpp", ".hxx", ".h++")):
             try:
                 self.analyzer.header_tracker.invalidate_header(file_path)
             except Exception as e:

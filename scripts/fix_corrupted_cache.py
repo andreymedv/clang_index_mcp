@@ -33,7 +33,7 @@ def check_database(db_path):
 
         conn.close()
 
-        if result and result[0] == 'ok':
+        if result and result[0] == "ok":
             return True, "Database is healthy"
         else:
             return False, f"Database integrity check failed: {result}"
@@ -46,7 +46,7 @@ def check_database(db_path):
 
 def get_cache_directory():
     """Get the cache directory path"""
-    return Path.home() / '.mcp_cache'
+    return Path.home() / ".mcp_cache"
 
 
 def find_project_cache(project_path):
@@ -57,7 +57,7 @@ def find_project_cache(project_path):
 
     # Try to find config file
     config_file = None
-    config_path = os.path.join(project_path, 'cpp-analyzer-config.json')
+    config_path = os.path.join(project_path, "cpp-analyzer-config.json")
     if os.path.exists(config_path):
         config_file = config_path
 
@@ -95,19 +95,21 @@ def scan_all_caches():
         if not project_dir.is_dir():
             continue
 
-        db_path = project_dir / 'cache.db'
+        db_path = project_dir / "cache.db"
         if not db_path.exists():
             continue
 
         print(f"Checking: {project_dir.name}")
         is_healthy, message = check_database(str(db_path))
 
-        results.append({
-            'project_dir': project_dir,
-            'db_path': db_path,
-            'is_healthy': is_healthy,
-            'message': message
-        })
+        results.append(
+            {
+                "project_dir": project_dir,
+                "db_path": db_path,
+                "is_healthy": is_healthy,
+                "message": message,
+            }
+        )
 
         if is_healthy:
             print(f"  ✓ {message}")
@@ -138,7 +140,7 @@ def main():
             cache_dir = find_project_cache(project_path)
             print(f"Cache directory: {cache_dir}\n")
 
-            db_path = Path(cache_dir) / 'cache.db'
+            db_path = Path(cache_dir) / "cache.db"
 
             if not db_path.exists():
                 print(f"No database found at: {db_path}")
@@ -151,7 +153,7 @@ def main():
 
             if not is_healthy:
                 response = input("Database is corrupted. Delete cache and rebuild? [y/N]: ")
-                if response.lower() == 'y':
+                if response.lower() == "y":
                     success, msg = remove_cache_directory(cache_dir)
                     if success:
                         print(f"✓ {msg}")
@@ -167,6 +169,7 @@ def main():
         except Exception as e:
             print(f"Error: {e}")
             import traceback
+
             traceback.print_exc()
             sys.exit(1)
 
@@ -182,7 +185,7 @@ def main():
         print("Summary")
         print("=" * 70)
 
-        corrupted = [r for r in results if not r['is_healthy']]
+        corrupted = [r for r in results if not r["is_healthy"]]
 
         if corrupted:
             print(f"\nFound {len(corrupted)} corrupted database(s):\n")

@@ -41,12 +41,12 @@ class SessionManager:
                 "project_path": str(project_path),
                 "config_file": str(config_file) if config_file else None,
                 "last_accessed": datetime.now(timezone.utc).isoformat(),
-                "version": "1.0"
+                "version": "1.0",
             }
 
             # Atomic write via temp file
-            temp_file = self.session_file.with_suffix('.tmp')
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            temp_file = self.session_file.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(session_data, f, indent=2)
 
             # Atomic rename
@@ -69,7 +69,7 @@ class SessionManager:
                 diagnostics.debug("No saved session found")
                 return None
 
-            with open(self.session_file, 'r', encoding='utf-8') as f:
+            with open(self.session_file, "r", encoding="utf-8") as f:
                 session_data = json.load(f)
 
             # Validate session data
@@ -77,12 +77,12 @@ class SessionManager:
                 diagnostics.warning("Invalid session file format")
                 return None
 
-            if 'project_path' not in session_data:
+            if "project_path" not in session_data:
                 diagnostics.warning("Session missing project_path")
                 return None
 
             # Check if project directory still exists
-            project_path = Path(session_data['project_path'])
+            project_path = Path(session_data["project_path"])
             if not project_path.exists() or not project_path.is_dir():
                 diagnostics.info(f"Saved project directory no longer exists: {project_path}")
                 return None

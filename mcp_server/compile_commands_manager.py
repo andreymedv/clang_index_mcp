@@ -27,6 +27,7 @@ from clang.cindex import CompilationDatabase
 # Try to import orjson for faster JSON parsing (optional)
 try:
     import orjson
+
     HAS_ORJSON = True
 except ImportError:
     HAS_ORJSON = False
@@ -47,21 +48,27 @@ class CompileCommandsManager:
         self,
         project_root: Path,
         config: Optional[Dict[str, Any]] = None,
-        cache_dir: Optional[Path] = None
+        cache_dir: Optional[Path] = None,
     ):
         self.project_root = project_root
         self.config = config or {}
         self.cache_dir = cache_dir  # Optional cache directory from CacheManager
 
         # Configuration settings
-        self.enabled = self.config.get('compile_commands_enabled', True)
-        self.compile_commands_path = self.config.get('compile_commands_path', 'compile_commands.json')
-        self.cache_enabled = self.config.get('compile_commands_cache_enabled', True)
-        self.fallback_to_hardcoded = self.config.get('fallback_to_hardcoded', True)
-        self.cache_expiry_seconds = self.config.get('cache_expiry_seconds', 300)
-        self.supported_extensions = set(self.config.get('supported_extensions',
-            [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]))
-        self.exclude_patterns = self.config.get('exclude_patterns', [])
+        self.enabled = self.config.get("compile_commands_enabled", True)
+        self.compile_commands_path = self.config.get(
+            "compile_commands_path", "compile_commands.json"
+        )
+        self.cache_enabled = self.config.get("compile_commands_cache_enabled", True)
+        self.fallback_to_hardcoded = self.config.get("fallback_to_hardcoded", True)
+        self.cache_expiry_seconds = self.config.get("cache_expiry_seconds", 300)
+        self.supported_extensions = set(
+            self.config.get(
+                "supported_extensions",
+                [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
+            )
+        )
+        self.exclude_patterns = self.config.get("exclude_patterns", [])
 
         # Cache data
         self.compile_commands = {}
@@ -70,7 +77,7 @@ class CompileCommandsManager:
         self.cache_lock = threading.Lock()
 
         # Initialize argument sanitizer with optional custom rules
-        custom_rules_file = self.config.get('sanitization_rules_file')
+        custom_rules_file = self.config.get("sanitization_rules_file")
         custom_rules_path = None
         if custom_rules_file:
             custom_rules_path = Path(custom_rules_file)
@@ -107,9 +114,9 @@ class CompileCommandsManager:
             compile_commands_file = self.project_root / self.compile_commands_path
 
             # Hash the absolute path of compile_commands.json for uniqueness
-            cc_path_hash = hashlib.md5(
-                str(compile_commands_file.absolute()).encode()
-            ).hexdigest()[:16]
+            cc_path_hash = hashlib.md5(str(compile_commands_file.absolute()).encode()).hexdigest()[
+                :16
+            ]
 
             # Create compile_commands subdirectory
             cc_cache_dir = self.cache_dir / "compile_commands"
@@ -129,7 +136,7 @@ class CompileCommandsManager:
 
         hash_md5 = hashlib.md5()
         # For large files, read in chunks
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(8192), b""):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
@@ -151,24 +158,26 @@ class CompileCommandsManager:
                 return False
 
             # Load cache
-            with open(cache_path, 'rb') as f:
+            with open(cache_path, "rb") as f:
                 cache_data = pickle.load(f)
 
             # Validate cache
-            if cache_data.get('file_hash') != current_hash:
+            if cache_data.get("file_hash") != current_hash:
                 diagnostics.debug("Compile commands cache invalid: file changed")
                 return False
 
-            if cache_data.get('version') != '1.0':
+            if cache_data.get("version") != "1.0":
                 diagnostics.debug("Compile commands cache invalid: version mismatch")
                 return False
 
             # Load cached data
-            self.compile_commands = cache_data.get('compile_commands', {})
-            self.file_to_command_map = cache_data.get('file_to_command_map', {})
+            self.compile_commands = cache_data.get("compile_commands", {})
+            self.file_to_command_map = cache_data.get("file_to_command_map", {})
             self.last_modified = compile_commands_file.stat().st_mtime
 
-            diagnostics.debug(f"Loaded {len(self.compile_commands)} compile commands from cache (fast path)")
+            diagnostics.debug(
+                f"Loaded {len(self.compile_commands)} compile commands from cache (fast path)"
+            )
             return True
 
         except Exception as e:
@@ -183,15 +192,15 @@ class CompileCommandsManager:
             current_hash = self._get_file_hash(compile_commands_file)
 
             cache_data = {
-                'version': '1.0',
-                'file_hash': current_hash,
-                'compile_commands': self.compile_commands,
-                'file_to_command_map': self.file_to_command_map
+                "version": "1.0",
+                "file_hash": current_hash,
+                "compile_commands": self.compile_commands,
+                "file_to_command_map": self.file_to_command_map,
             }
 
             # Atomic write via temp file
-            temp_path = cache_path.with_suffix('.tmp')
-            with open(temp_path, 'wb') as f:
+            temp_path = cache_path.with_suffix(".tmp")
+            with open(temp_path, "wb") as f:
                 pickle.dump(cache_data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
             temp_path.replace(cache_path)
@@ -203,42 +212,46 @@ class CompileCommandsManager:
     def _build_fallback_args(self) -> List[str]:
         """Build the fallback compilation arguments (current hardcoded approach)."""
         args = [
-            '-std=c++17',
+            "-std=c++17",
         ]
 
         # Add clang builtin includes first (highest priority for system headers)
         if self.clang_resource_dir:
-            args.extend(['-isystem', self.clang_resource_dir])
+            args.extend(["-isystem", self.clang_resource_dir])
 
-        args.extend([
-            '-I.',
-            f'-I{self.project_root}',
-            f'-I{self.project_root}/src',
-            # Preprocessor defines for common libraries
-            '-DWIN32',
-            '-D_WIN32',
-            '-D_WINDOWS',
-            '-DNOMINMAX',
-            # Common warnings to suppress
-            '-Wno-pragma-once-outside-header',
-            '-Wno-unknown-pragmas',
-            '-Wno-deprecated-declarations',
-            # Parse as C++
-            '-x', 'c++',
-        ])
+        args.extend(
+            [
+                "-I.",
+                f"-I{self.project_root}",
+                f"-I{self.project_root}/src",
+                # Preprocessor defines for common libraries
+                "-DWIN32",
+                "-D_WIN32",
+                "-D_WINDOWS",
+                "-DNOMINMAX",
+                # Common warnings to suppress
+                "-Wno-pragma-once-outside-header",
+                "-Wno-unknown-pragmas",
+                "-Wno-deprecated-declarations",
+                # Parse as C++
+                "-x",
+                "c++",
+            ]
+        )
 
         # Add Windows SDK includes if on Windows
-        if sys.platform.startswith('win'):
+        if sys.platform.startswith("win"):
             import glob
+
             winsdk_patterns = [
                 "C:/Program Files (x86)/Windows Kits/10/Include/*/ucrt",
                 "C:/Program Files (x86)/Windows Kits/10/Include/*/um",
-                "C:/Program Files (x86)/Windows Kits/10/Include/*/shared"
+                "C:/Program Files (x86)/Windows Kits/10/Include/*/shared",
             ]
             for pattern in winsdk_patterns:
                 matches = glob.glob(pattern)
                 if matches:
-                    args.append(f'-I{matches[-1]}')  # Use latest version
+                    args.append(f"-I{matches[-1]}")  # Use latest version
 
         return args
 
@@ -261,33 +274,30 @@ class CompileCommandsManager:
         try:
             # Try to get resource directory from clang itself
             result = subprocess.run(
-                ['clang', '-print-resource-dir'],
-                capture_output=True,
-                text=True,
-                timeout=5
+                ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
             )
 
             if result.returncode == 0:
                 resource_dir = result.stdout.strip()
-                include_dir = os.path.join(resource_dir, 'include')
+                include_dir = os.path.join(resource_dir, "include")
 
                 # Verify the directory exists and contains stddef.h
                 if os.path.isdir(include_dir):
-                    stddef_path = os.path.join(include_dir, 'stddef.h')
+                    stddef_path = os.path.join(include_dir, "stddef.h")
                     if os.path.isfile(stddef_path):
                         diagnostics.debug(f"Found clang resource directory: {include_dir}")
                         return include_dir
 
             # Fallback: try common locations
             # Format: /usr/lib/clang/<version>/include
-            clang_lib_dir = '/usr/lib/clang'
+            clang_lib_dir = "/usr/lib/clang"
             if os.path.isdir(clang_lib_dir):
                 # Find the highest version directory
                 versions = []
                 for entry in os.listdir(clang_lib_dir):
                     version_dir = os.path.join(clang_lib_dir, entry)
-                    include_dir = os.path.join(version_dir, 'include')
-                    stddef_path = os.path.join(include_dir, 'stddef.h')
+                    include_dir = os.path.join(version_dir, "include")
+                    stddef_path = os.path.join(include_dir, "stddef.h")
 
                     if os.path.isfile(stddef_path):
                         versions.append((entry, include_dir))
@@ -299,7 +309,9 @@ class CompileCommandsManager:
                     diagnostics.debug(f"Found clang resource directory (fallback): {include_dir}")
                     return include_dir
 
-            diagnostics.warning("Could not detect clang resource directory - builtin headers may not be found")
+            diagnostics.warning(
+                "Could not detect clang resource directory - builtin headers may not be found"
+            )
             return None
 
         except Exception as e:
@@ -321,9 +333,13 @@ class CompileCommandsManager:
 
         if not compile_commands_file.exists():
             if self.fallback_to_hardcoded:
-                diagnostics.info(f"compile_commands.json not found at: {compile_commands_file} - using fallback compilation arguments")
+                diagnostics.info(
+                    f"compile_commands.json not found at: {compile_commands_file} - using fallback compilation arguments"
+                )
             else:
-                diagnostics.warning(f"compile_commands.json not found at: {compile_commands_file} - fallback disabled")
+                diagnostics.warning(
+                    f"compile_commands.json not found at: {compile_commands_file} - fallback disabled"
+                )
             return False
 
         # Try loading from cache first (fast path)
@@ -357,7 +373,9 @@ class CompileCommandsManager:
             self._save_to_cache(compile_commands_file)
 
             total_time = time.time() - start_time
-            diagnostics.info(f"Successfully loaded {len(self.compile_commands)} compile commands in {total_time:.2f}s")
+            diagnostics.info(
+                f"Successfully loaded {len(self.compile_commands)} compile commands in {total_time:.2f}s"
+            )
             diagnostics.debug(f"Compile commands will be used for accurate C++ parsing")
             return True
 
@@ -380,7 +398,7 @@ class CompileCommandsManager:
 
         try:
             # Read JSON to get file list (minimal parsing, just to get filenames)
-            with open(compile_commands_file, 'r', encoding='utf-8') as f:
+            with open(compile_commands_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             if not isinstance(data, list):
@@ -394,12 +412,12 @@ class CompileCommandsManager:
                     continue
 
                 # Extract required fields
-                if 'file' not in entry:
+                if "file" not in entry:
                     diagnostics.warning(f"Skipping command without 'file' field at index {i}")
                     continue
 
-                file_path = entry['file']
-                directory = entry.get('directory', str(self.project_root))
+                file_path = entry["file"]
+                directory = entry.get("directory", str(self.project_root))
 
                 # Normalize file path
                 normalized_path = self._normalize_path(file_path, directory)
@@ -427,10 +445,10 @@ class CompileCommandsManager:
 
                         # Store the command
                         self.compile_commands[normalized_path] = {
-                            'arguments': arguments,
-                            'directory': cmd.directory,
-                            'command': '',  # Not needed since we have arguments
-                            'index': i
+                            "arguments": arguments,
+                            "directory": cmd.directory,
+                            "command": "",  # Not needed since we have arguments
+                            "index": i,
                         }
 
                         # Build mapping from file to command
@@ -461,31 +479,35 @@ class CompileCommandsManager:
         # Check if first argument is a compiler
         if arguments:
             first_arg = arguments[0]
-            compiler_names = {'gcc', 'g++', 'clang', 'clang++', 'cc', 'c++', 'cl', 'cl.exe'}
-            basename = first_arg.split('/')[-1].split('\\')[-1].lower()
-            if basename.endswith('.exe'):
+            compiler_names = {"gcc", "g++", "clang", "clang++", "cc", "c++", "cl", "cl.exe"}
+            basename = first_arg.split("/")[-1].split("\\")[-1].lower()
+            if basename.endswith(".exe"):
                 basename = basename[:-4]
 
             # Skip compiler executable if present
-            if basename in compiler_names or first_arg.startswith('/') or first_arg.startswith('\\'):
+            if (
+                basename in compiler_names
+                or first_arg.startswith("/")
+                or first_arg.startswith("\\")
+            ):
                 i_arg = 1
 
         # Filter out -o, -c, and source files
         while i_arg < len(arguments):
             arg = arguments[i_arg]
 
-            if arg == '-o':
+            if arg == "-o":
                 i_arg += 2  # Skip -o and output file
                 continue
 
-            if arg == '-c':
+            if arg == "-c":
                 i_arg += 1
                 continue
 
             # Skip source files
-            if not arg.startswith('-'):
+            if not arg.startswith("-"):
                 lower_arg = arg.lower()
-                source_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.m', '.mm']
+                source_extensions = [".c", ".cc", ".cpp", ".cxx", ".c++", ".m", ".mm"]
                 if any(lower_arg.endswith(ext) for ext in source_extensions):
                     i_arg += 1
                     continue
@@ -521,6 +543,7 @@ class CompileCommandsManager:
             List of arguments with normalized include paths
         """
         import os
+
         normalized = []
         i = 0
 
@@ -528,7 +551,7 @@ class CompileCommandsManager:
             arg = arguments[i]
 
             # Handle -I with separate argument
-            if arg == '-I' and i + 1 < len(arguments):
+            if arg == "-I" and i + 1 < len(arguments):
                 include_path = arguments[i + 1]
                 # Make relative paths absolute based on directory
                 if not os.path.isabs(include_path):
@@ -539,17 +562,17 @@ class CompileCommandsManager:
                 continue
 
             # Handle -I<path> (combined form)
-            if arg.startswith('-I'):
+            if arg.startswith("-I"):
                 include_path = arg[2:]  # Remove -I prefix
                 if include_path and not os.path.isabs(include_path):
                     include_path = os.path.abspath(os.path.join(directory, include_path))
-                    arg = f'-I{include_path}'
+                    arg = f"-I{include_path}"
                 normalized.append(arg)
                 i += 1
                 continue
 
             # Handle -isystem with separate argument
-            if arg == '-isystem' and i + 1 < len(arguments):
+            if arg == "-isystem" and i + 1 < len(arguments):
                 include_path = arguments[i + 1]
                 # Make relative paths absolute based on directory
                 if not os.path.isabs(include_path):
@@ -560,13 +583,13 @@ class CompileCommandsManager:
                 continue
 
             # Handle -isystem<path> (combined form, rare but possible)
-            if arg.startswith('-isystem'):
+            if arg.startswith("-isystem"):
                 # Check if there's a path after -isystem
                 if len(arg) > 8:  # More than just "-isystem"
                     include_path = arg[8:]  # Remove -isystem prefix
                     if not os.path.isabs(include_path):
                         include_path = os.path.abspath(os.path.join(directory, include_path))
-                        arg = f'-isystem{include_path}'
+                        arg = f"-isystem{include_path}"
                 normalized.append(arg)
                 i += 1
                 continue
@@ -624,58 +647,57 @@ class CompileCommandsManager:
 
         # Detect -stdlib flag
         for i, arg in enumerate(arguments):
-            if arg == '-stdlib' and i + 1 < len(arguments):
+            if arg == "-stdlib" and i + 1 < len(arguments):
                 stdlib = arguments[i + 1]
-            elif arg.startswith('-stdlib='):
+            elif arg.startswith("-stdlib="):
                 stdlib = arg[8:]  # Remove '-stdlib=' prefix
 
         # Detect -isysroot flag
         for i, arg in enumerate(arguments):
-            if arg == '-isysroot' and i + 1 < len(arguments):
+            if arg == "-isysroot" and i + 1 < len(arguments):
                 sysroot = arguments[i + 1]
-            elif arg.startswith('-isysroot='):
+            elif arg.startswith("-isysroot="):
                 sysroot = arg[10:]  # Remove '-isysroot=' prefix
 
         # If no stdlib specified, assume system default
         # For macOS, this is typically libc++
         if not stdlib and sysroot:
             # On macOS, default is libc++
-            if 'MacOSX' in sysroot or 'macos' in sysroot.lower():
-                stdlib = 'libc++'
+            if "MacOSX" in sysroot or "macos" in sysroot.lower():
+                stdlib = "libc++"
 
         if not stdlib:
             # No stdlib or sysroot info, can't determine path
             return None
 
         # Build the C++ stdlib include path
-        if stdlib == 'libc++':
+        if stdlib == "libc++":
             # For libc++, headers are in /usr/include/c++/v1
             if sysroot:
-                cxx_path = os.path.join(sysroot, 'usr', 'include', 'c++', 'v1')
+                cxx_path = os.path.join(sysroot, "usr", "include", "c++", "v1")
                 # Return the path even if directory doesn't exist on current system
                 # (e.g., when analyzing macOS code on Linux)
                 # libclang will handle missing directories gracefully
                 return cxx_path
 
             # Try system paths
-            system_paths = [
-                '/usr/include/c++/v1',
-                '/usr/local/include/c++/v1'
-            ]
+            system_paths = ["/usr/include/c++/v1", "/usr/local/include/c++/v1"]
             for path in system_paths:
                 if os.path.isdir(path):
                     return path
 
-        elif stdlib == 'libstdc++':
+        elif stdlib == "libstdc++":
             # For libstdc++, headers are in /usr/include/c++/<version>
             if sysroot:
-                cxx_base = os.path.join(sysroot, 'usr', 'include', 'c++')
+                cxx_base = os.path.join(sysroot, "usr", "include", "c++")
                 if os.path.isdir(cxx_base):
                     # Find the highest version directory
                     try:
-                        versions = [d for d in os.listdir(cxx_base)
-                                   if os.path.isdir(os.path.join(cxx_base, d))
-                                   and d[0].isdigit()]
+                        versions = [
+                            d
+                            for d in os.listdir(cxx_base)
+                            if os.path.isdir(os.path.join(cxx_base, d)) and d[0].isdigit()
+                        ]
                         if versions:
                             versions.sort(reverse=True)
                             return os.path.join(cxx_base, versions[0])
@@ -716,7 +738,7 @@ class CompileCommandsManager:
         # Find insertion position (after -std= flag if present)
         insert_pos = 0
         for i, arg in enumerate(result):
-            if arg.startswith('-std='):
+            if arg.startswith("-std="):
                 insert_pos = i + 1
                 break
 
@@ -734,7 +756,7 @@ class CompileCommandsManager:
             if not already_has_stdlib:
                 # Add C++ stdlib path as first system include
                 # This ensures it has priority for C++ headers
-                result.insert(insert_pos, '-isystem')
+                result.insert(insert_pos, "-isystem")
                 result.insert(insert_pos + 1, cxx_stdlib_path)
                 diagnostics.debug(f"Added C++ stdlib path: {cxx_stdlib_path}")
                 # Update insert position for next includes
@@ -753,7 +775,7 @@ class CompileCommandsManager:
                 # Add the resource directory as a system include (-isystem)
                 # Use -isystem instead of -I to avoid warnings from system headers
                 # Insert after C++ stdlib
-                result.insert(insert_pos, '-isystem')
+                result.insert(insert_pos, "-isystem")
                 result.insert(insert_pos + 1, self.clang_resource_dir)
                 diagnostics.debug(f"Added clang resource dir: {self.clang_resource_dir}")
 
@@ -783,8 +805,8 @@ class CompileCommandsManager:
                 commands = self.file_to_command_map[file_path_str]
                 if commands:
                     cmd = commands[-1]
-                    arguments = cmd['arguments'].copy()
-                    directory = cmd['directory']
+                    arguments = cmd["arguments"].copy()
+                    directory = cmd["directory"]
                     # Normalize relative include paths to absolute paths
                     normalized_args = self._normalize_arguments(arguments, directory)
                     # Add clang builtin includes if needed
@@ -838,13 +860,13 @@ class CompileCommandsManager:
         """Get statistics about the compile commands manager."""
         with self.cache_lock:
             return {
-                'enabled': self.enabled,
-                'compile_commands_count': len(self.compile_commands),
-                'file_mapping_count': len(self.file_to_command_map),
-                'cache_enabled': self.cache_enabled,
-                'fallback_enabled': self.fallback_to_hardcoded,
-                'last_modified': self.last_modified,
-                'compile_commands_path': str(self.project_root / self.compile_commands_path)
+                "enabled": self.enabled,
+                "compile_commands_count": len(self.compile_commands),
+                "file_mapping_count": len(self.file_to_command_map),
+                "cache_enabled": self.cache_enabled,
+                "fallback_enabled": self.fallback_to_hardcoded,
+                "last_modified": self.last_modified,
+                "compile_commands_path": str(self.project_root / self.compile_commands_path),
             }
 
     def is_file_supported(self, file_path: Path) -> bool:

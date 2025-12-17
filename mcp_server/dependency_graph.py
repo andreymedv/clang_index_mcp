@@ -67,11 +67,7 @@ class DependencyGraphBuilder:
         """
         self.conn = conn
 
-    def extract_includes_from_tu(
-        self,
-        tu: 'TranslationUnit',
-        source_file: str
-    ) -> List[str]:
+    def extract_includes_from_tu(self, tu: "TranslationUnit", source_file: str) -> List[str]:
         """
         Extract all includes from a translation unit.
 
@@ -118,11 +114,7 @@ class DependencyGraphBuilder:
         diagnostics.debug(f"Extracted {len(includes)} includes from {source_file}")
         return includes
 
-    def update_dependencies(
-        self,
-        source_file: str,
-        included_files: List[str]
-    ) -> int:
+    def update_dependencies(self, source_file: str, included_files: List[str]) -> int:
         """
         Update dependency graph for a source file.
 
@@ -149,10 +141,7 @@ class DependencyGraphBuilder:
 
         try:
             # Delete old dependencies for this source file
-            cursor.execute(
-                "DELETE FROM file_dependencies WHERE source_file = ?",
-                (source_file,)
-            )
+            cursor.execute("DELETE FROM file_dependencies WHERE source_file = ?", (source_file,))
 
             # Insert new dependencies (deduplicate first)
             now = time.time()
@@ -161,11 +150,14 @@ class DependencyGraphBuilder:
 
             for included_file in unique_includes:
                 try:
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT OR REPLACE INTO file_dependencies
                         (source_file, included_file, is_direct, include_depth, detected_at)
                         VALUES (?, ?, ?, ?, ?)
-                    """, (source_file, included_file, True, 1, now))
+                    """,
+                        (source_file, included_file, True, 1, now),
+                    )
                     inserted += 1
                 except sqlite3.IntegrityError:
                     # Duplicate, skip
@@ -173,9 +165,7 @@ class DependencyGraphBuilder:
 
             self.conn.commit()
 
-            diagnostics.debug(
-                f"Updated dependencies for {source_file}: {inserted} includes"
-            )
+            diagnostics.debug(f"Updated dependencies for {source_file}: {inserted} includes")
 
             return inserted
 
@@ -205,17 +195,18 @@ class DependencyGraphBuilder:
 
         try:
             # Direct dependents
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT DISTINCT source_file
                 FROM file_dependencies
                 WHERE included_file = ?
-            """, (header_path,))
+            """,
+                (header_path,),
+            )
 
             dependents = {row[0] for row in cursor.fetchall()}
 
-            diagnostics.debug(
-                f"Found {len(dependents)} direct dependents of {header_path}"
-            )
+            diagnostics.debug(f"Found {len(dependents)} direct dependents of {header_path}")
 
             return dependents
 
@@ -254,7 +245,8 @@ class DependencyGraphBuilder:
         cursor = self.conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 WITH RECURSIVE dependents(file_path) AS (
                     -- Base case: direct dependents
                     SELECT DISTINCT source_file
@@ -269,7 +261,9 @@ class DependencyGraphBuilder:
                     JOIN dependents d ON fd.included_file = d.file_path
                 )
                 SELECT file_path FROM dependents
-            """, (header_path,))
+            """,
+                (header_path,),
+            )
 
             transitive_dependents = {row[0] for row in cursor.fetchall()}
 
@@ -280,9 +274,7 @@ class DependencyGraphBuilder:
             return transitive_dependents
 
         except Exception as e:
-            diagnostics.error(
-                f"Failed to find transitive dependents of {header_path}: {e}"
-            )
+            diagnostics.error(f"Failed to find transitive dependents of {header_path}: {e}")
             return set()
 
     def remove_file_dependencies(self, file_path: str) -> int:
@@ -303,25 +295,17 @@ class DependencyGraphBuilder:
 
         try:
             # Remove dependencies where this is the source
-            cursor.execute(
-                "DELETE FROM file_dependencies WHERE source_file = ?",
-                (file_path,)
-            )
+            cursor.execute("DELETE FROM file_dependencies WHERE source_file = ?", (file_path,))
             source_deleted = cursor.rowcount
 
             # Remove dependencies where this is included
-            cursor.execute(
-                "DELETE FROM file_dependencies WHERE included_file = ?",
-                (file_path,)
-            )
+            cursor.execute("DELETE FROM file_dependencies WHERE included_file = ?", (file_path,))
             included_deleted = cursor.rowcount
 
             self.conn.commit()
 
             total_deleted = source_deleted + included_deleted
-            diagnostics.debug(
-                f"Removed {total_deleted} dependencies for {file_path}"
-            )
+            diagnostics.debug(f"Removed {total_deleted} dependencies for {file_path}")
 
             return total_deleted
 
@@ -351,27 +335,21 @@ class DependencyGraphBuilder:
             total_dependencies = cursor.fetchone()[0]
 
             # Unique source files
-            cursor.execute(
-                "SELECT COUNT(DISTINCT source_file) FROM file_dependencies"
-            )
+            cursor.execute("SELECT COUNT(DISTINCT source_file) FROM file_dependencies")
             unique_sources = cursor.fetchone()[0]
 
             # Unique included files
-            cursor.execute(
-                "SELECT COUNT(DISTINCT included_file) FROM file_dependencies"
-            )
+            cursor.execute("SELECT COUNT(DISTINCT included_file) FROM file_dependencies")
             unique_includes = cursor.fetchone()[0]
 
             # Average includes per file
-            avg_includes = (
-                total_dependencies / unique_sources if unique_sources > 0 else 0
-            )
+            avg_includes = total_dependencies / unique_sources if unique_sources > 0 else 0
 
             return {
                 "total_dependencies": total_dependencies,
                 "unique_source_files": unique_sources,
                 "unique_included_files": unique_includes,
-                "avg_includes_per_file": round(avg_includes, 2)
+                "avg_includes_per_file": round(avg_includes, 2),
             }
 
         except Exception as e:
@@ -380,7 +358,7 @@ class DependencyGraphBuilder:
                 "total_dependencies": 0,
                 "unique_source_files": 0,
                 "unique_included_files": 0,
-                "avg_includes_per_file": 0.0
+                "avg_includes_per_file": 0.0,
             }
 
     def get_include_count(self, source_file: str) -> int:
@@ -396,11 +374,14 @@ class DependencyGraphBuilder:
         cursor = self.conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*)
                 FROM file_dependencies
                 WHERE source_file = ?
-            """, (source_file,))
+            """,
+                (source_file,),
+            )
 
             count = cursor.fetchone()[0]
             return count

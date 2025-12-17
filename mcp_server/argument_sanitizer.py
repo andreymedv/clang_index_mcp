@@ -54,7 +54,7 @@ class ArgumentSanitizer:
             append: If True, append to existing rules; if False, replace
         """
         try:
-            with open(rules_file, 'r') as f:
+            with open(rules_file, "r") as f:
                 data = json.load(f)
 
             if not append:
@@ -162,21 +162,23 @@ class ArgumentSanitizer:
                 return 1  # Remove this argument
         return 0
 
-    def _apply_flag_with_optional_value(self, args: List[str], index: int, rule: Dict[str, Any]) -> int:
+    def _apply_flag_with_optional_value(
+        self, args: List[str], index: int, rule: Dict[str, Any]
+    ) -> int:
         """Apply flag_with_optional_value rule."""
         pattern = rule.get("pattern")
         if args[index] != pattern:
             return 0
 
         # Flag matches, check if next argument is a value (not a flag)
-        if index + 1 < len(args) and not args[index + 1].startswith('-'):
+        if index + 1 < len(args) and not args[index + 1].startswith("-"):
             return 2  # Remove flag and value
         else:
             return 1  # Remove just the flag
 
     def _apply_xclang_sequence(self, args: List[str], index: int, rule: Dict[str, Any]) -> int:
         """Apply xclang_sequence rule."""
-        if args[index] != '-Xclang':
+        if args[index] != "-Xclang":
             return 0
 
         sequence = rule.get("sequence", [])
@@ -198,9 +200,11 @@ class ArgumentSanitizer:
         # Sequence matches, remove all matching arguments
         return len(sequence)
 
-    def _apply_xclang_conditional_sequence(self, args: List[str], index: int, rule: Dict[str, Any]) -> int:
+    def _apply_xclang_conditional_sequence(
+        self, args: List[str], index: int, rule: Dict[str, Any]
+    ) -> int:
         """Apply xclang_conditional_sequence rule."""
-        if args[index] != '-Xclang':
+        if args[index] != "-Xclang":
             return 0
 
         sequence = rule.get("sequence", [])
@@ -234,9 +238,11 @@ class ArgumentSanitizer:
 
         return 0
 
-    def _apply_xclang_option_with_value(self, args: List[str], index: int, rule: Dict[str, Any]) -> int:
+    def _apply_xclang_option_with_value(
+        self, args: List[str], index: int, rule: Dict[str, Any]
+    ) -> int:
         """Apply xclang_option_with_value rule."""
-        if args[index] != '-Xclang':
+        if args[index] != "-Xclang":
             return 0
 
         if index + 1 >= len(args):
@@ -248,7 +254,7 @@ class ArgumentSanitizer:
         if next_arg in patterns:
             # Matched -Xclang <option>
             # Check if there's a value after (non-flag argument)
-            if index + 2 < len(args) and not args[index + 2].startswith('-'):
+            if index + 2 < len(args) and not args[index + 2].startswith("-"):
                 return 3  # Remove -Xclang, option, and value
             else:
                 return 2  # Remove -Xclang and option
@@ -264,8 +270,8 @@ class ArgumentSanitizer:
                 {
                     "id": rule.get("id", "unknown"),
                     "type": rule.get("type", "unknown"),
-                    "description": rule.get("description", "")
+                    "description": rule.get("description", ""),
                 }
                 for rule in self.rules
-            ]
+            ],
         }

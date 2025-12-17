@@ -44,10 +44,7 @@ def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
     if not db_path.exists():
         return {"error": "No SQLite cache found"}
 
-    stats = {
-        "backend_type": "SQLite",
-        "db_path": str(db_path)
-    }
+    stats = {"backend_type": "SQLite", "db_path": str(db_path)}
 
     try:
         backend = SqliteCacheBackend(db_path)
@@ -216,18 +213,12 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="Show comprehensive cache statistics",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--cache-dir",
-        type=Path,
-        help="Path to cache directory (default: .mcp_cache)"
+        "--cache-dir", type=Path, help="Path to cache directory (default: .mcp_cache)"
     )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output statistics as JSON"
-    )
+    parser.add_argument("--json", action="store_true", help="Output statistics as JSON")
 
     args = parser.parse_args()
 
