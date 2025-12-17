@@ -44,7 +44,7 @@ class CacheDiagnostic:
             "issues": [],
             "warnings": [],
             "suggestions": [],
-            "checks": {}
+            "checks": {},
         }
 
         # Check if SQLite cache exists
@@ -96,7 +96,9 @@ class CacheDiagnostic:
 
         except Exception as e:
             results["issues"].append(f"Failed to open SQLite database: {e}")
-            results["suggestions"].append("Database may be corrupted. Try running sqlite_cache_backend.auto_maintenance()")
+            results["suggestions"].append(
+                "Database may be corrupted. Try running sqlite_cache_backend.auto_maintenance()"
+            )
 
     def _check_integrity(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
         """Check database integrity."""
@@ -105,7 +107,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -130,7 +132,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -163,7 +165,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -183,7 +185,7 @@ class CacheDiagnostic:
                 "idx_symbols_project",
                 "idx_symbols_name_kind_project",
                 "idx_symbols_updated_at",
-                "idx_file_metadata_indexed_at"
+                "idx_file_metadata_indexed_at",
             }
 
             missing_indexes = required_indexes - existing_indexes
@@ -205,7 +207,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -244,7 +246,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -268,7 +270,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -305,7 +307,7 @@ class CacheDiagnostic:
             "passed": True,
             "issues": [],
             "warnings": [],
-            "suggestions": []
+            "suggestions": [],
         }
 
         try:
@@ -391,22 +393,14 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="Diagnose cache health and suggest fixes",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--cache-dir",
-        type=Path,
-        help="Path to cache directory (default: .mcp_cache)"
+        "--cache-dir", type=Path, help="Path to cache directory (default: .mcp_cache)"
     )
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
     parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results as JSON"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show detailed diagnostic information"
+        "--verbose", action="store_true", help="Show detailed diagnostic information"
     )
 
     args = parser.parse_args()

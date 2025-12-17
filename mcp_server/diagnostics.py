@@ -12,6 +12,7 @@ from typing import Optional, TextIO
 
 class DiagnosticLevel(IntEnum):
     """Diagnostic message levels in order of severity."""
+
     DEBUG = 0
     INFO = 1
     WARNING = 2
@@ -22,8 +23,9 @@ class DiagnosticLevel(IntEnum):
 class DiagnosticLogger:
     """Handles diagnostic output with configurable levels and output streams."""
 
-    def __init__(self, level: DiagnosticLevel = DiagnosticLevel.INFO,
-                 output_stream: TextIO = sys.stderr):
+    def __init__(
+        self, level: DiagnosticLevel = DiagnosticLevel.INFO, output_stream: TextIO = sys.stderr
+    ):
         self.level = level
         self.output_stream = output_stream
         self._enabled = True
@@ -51,39 +53,54 @@ class DiagnosticLogger:
             DiagnosticLevel.INFO: "[INFO]",
             DiagnosticLevel.WARNING: "[WARNING]",
             DiagnosticLevel.ERROR: "[ERROR]",
-            DiagnosticLevel.FATAL: "[FATAL]"
+            DiagnosticLevel.FATAL: "[FATAL]",
         }
         return f"{prefix[level]} {message}"
 
     def debug(self, message: str):
         """Output a debug message."""
         if self._should_output(DiagnosticLevel.DEBUG):
-            print(self._format_message(DiagnosticLevel.DEBUG, message),
-                  file=self.output_stream, flush=True)
+            print(
+                self._format_message(DiagnosticLevel.DEBUG, message),
+                file=self.output_stream,
+                flush=True,
+            )
 
     def info(self, message: str):
         """Output an info message."""
         if self._should_output(DiagnosticLevel.INFO):
-            print(self._format_message(DiagnosticLevel.INFO, message),
-                  file=self.output_stream, flush=True)
+            print(
+                self._format_message(DiagnosticLevel.INFO, message),
+                file=self.output_stream,
+                flush=True,
+            )
 
     def warning(self, message: str):
         """Output a warning message."""
         if self._should_output(DiagnosticLevel.WARNING):
-            print(self._format_message(DiagnosticLevel.WARNING, message),
-                  file=self.output_stream, flush=True)
+            print(
+                self._format_message(DiagnosticLevel.WARNING, message),
+                file=self.output_stream,
+                flush=True,
+            )
 
     def error(self, message: str):
         """Output an error message."""
         if self._should_output(DiagnosticLevel.ERROR):
-            print(self._format_message(DiagnosticLevel.ERROR, message),
-                  file=self.output_stream, flush=True)
+            print(
+                self._format_message(DiagnosticLevel.ERROR, message),
+                file=self.output_stream,
+                flush=True,
+            )
 
     def fatal(self, message: str):
         """Output a fatal error message."""
         if self._should_output(DiagnosticLevel.FATAL):
-            print(self._format_message(DiagnosticLevel.FATAL, message),
-                  file=self.output_stream, flush=True)
+            print(
+                self._format_message(DiagnosticLevel.FATAL, message),
+                file=self.output_stream,
+                flush=True,
+            )
 
 
 # Global diagnostic logger instance
@@ -101,13 +118,13 @@ def get_logger() -> DiagnosticLogger:
 def _create_default_logger() -> DiagnosticLogger:
     """Create a logger with default settings from environment/config."""
     # Check environment variable for diagnostic level
-    level_str = os.environ.get('CPP_ANALYZER_DIAGNOSTIC_LEVEL', 'INFO').upper()
+    level_str = os.environ.get("CPP_ANALYZER_DIAGNOSTIC_LEVEL", "INFO").upper()
     level_map = {
-        'DEBUG': DiagnosticLevel.DEBUG,
-        'INFO': DiagnosticLevel.INFO,
-        'WARNING': DiagnosticLevel.WARNING,
-        'ERROR': DiagnosticLevel.ERROR,
-        'FATAL': DiagnosticLevel.FATAL
+        "DEBUG": DiagnosticLevel.DEBUG,
+        "INFO": DiagnosticLevel.INFO,
+        "WARNING": DiagnosticLevel.WARNING,
+        "ERROR": DiagnosticLevel.ERROR,
+        "FATAL": DiagnosticLevel.FATAL,
     }
     level = level_map.get(level_str, DiagnosticLevel.INFO)
 
@@ -127,25 +144,25 @@ def configure_from_config(config: dict):
     """
     global _global_logger
 
-    diag_config = config.get('diagnostics', {})
+    diag_config = config.get("diagnostics", {})
 
     # Get or create logger
     logger = get_logger()
 
     # Set level
-    level_str = diag_config.get('level', 'INFO').upper()
+    level_str = diag_config.get("level", "INFO").upper()
     level_map = {
-        'DEBUG': DiagnosticLevel.DEBUG,
-        'INFO': DiagnosticLevel.INFO,
-        'WARNING': DiagnosticLevel.WARNING,
-        'ERROR': DiagnosticLevel.ERROR,
-        'FATAL': DiagnosticLevel.FATAL
+        "DEBUG": DiagnosticLevel.DEBUG,
+        "INFO": DiagnosticLevel.INFO,
+        "WARNING": DiagnosticLevel.WARNING,
+        "ERROR": DiagnosticLevel.ERROR,
+        "FATAL": DiagnosticLevel.FATAL,
     }
     if level_str in level_map:
         logger.set_level(level_map[level_str])
 
     # Set enabled state
-    enabled = diag_config.get('enabled', True)
+    enabled = diag_config.get("enabled", True)
     logger.set_enabled(enabled)
 
 

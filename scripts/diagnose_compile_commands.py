@@ -30,7 +30,7 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
     """Show sample entries from compile_commands.json"""
     config = CppAnalyzerConfig(project_root)
     cc_config = config.get_compile_commands_config()
-    cc_path = project_root / cc_config.get('compile_commands_path', 'compile_commands.json')
+    cc_path = project_root / cc_config.get("compile_commands_path", "compile_commands.json")
 
     if not cc_path.exists():
         print(f"[ERROR] compile_commands.json not found at: {cc_path}")
@@ -42,7 +42,7 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
     print(f"Path: {cc_path}")
 
     try:
-        with open(cc_path, 'r') as f:
+        with open(cc_path, "r") as f:
             commands = json.load(f)
 
         print(f"Total entries: {len(commands)}")
@@ -54,16 +54,18 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
             print(f"\n[{i+1}] File: {cmd.get('file', 'N/A')}")
             print(f"    Directory: {cmd.get('directory', 'N/A')}")
 
-            if 'arguments' in cmd:
+            if "arguments" in cmd:
                 print(f"    Arguments format: LIST")
                 print(f"    Arguments ({len(cmd['arguments'])} items):")
-                for arg in cmd['arguments'][:10]:  # Show first 10
+                for arg in cmd["arguments"][:10]:  # Show first 10
                     print(f"      - {arg}")
-                if len(cmd['arguments']) > 10:
+                if len(cmd["arguments"]) > 10:
                     print(f"      ... and {len(cmd['arguments']) - 10} more")
-            elif 'command' in cmd:
+            elif "command" in cmd:
                 print(f"    Arguments format: STRING")
-                print(f"    Command: {cmd['command'][:200]}{'...' if len(cmd['command']) > 200 else ''}")
+                print(
+                    f"    Command: {cmd['command'][:200]}{'...' if len(cmd['command']) > 200 else ''}"
+                )
             else:
                 print(f"    [ERROR] No 'arguments' or 'command' field!")
 
@@ -71,6 +73,7 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
     except Exception as e:
         print(f"[ERROR] Error reading compile_commands.json: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -87,7 +90,7 @@ def test_argument_extraction(project_root: Path, compile_commands: list):
 
     # Test first file
     if compile_commands:
-        first_file = compile_commands[0].get('file')
+        first_file = compile_commands[0].get("file")
         if first_file:
             file_path = Path(first_file)
             args = cc_manager.get_compile_args(file_path)
@@ -166,25 +169,19 @@ def main():
     parser = argparse.ArgumentParser(
         description="Diagnose compile_commands.json parsing issues",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
-    parser.add_argument(
-        "project_root",
-        help="Path to the C++ project root directory"
-    )
+    parser.add_argument("project_root", help="Path to the C++ project root directory")
+
+    parser.add_argument("--file", "-f", type=str, help="Specific file to test parsing (optional)")
 
     parser.add_argument(
-        "--file", "-f",
-        type=str,
-        help="Specific file to test parsing (optional)"
-    )
-
-    parser.add_argument(
-        "--samples", "-s",
+        "--samples",
+        "-s",
         type=int,
         default=3,
-        help="Number of sample compile commands to show (default: 3)"
+        help="Number of sample compile commands to show (default: 3)",
     )
 
     args = parser.parse_args()

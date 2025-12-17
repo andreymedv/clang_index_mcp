@@ -10,12 +10,14 @@ Requirements verified:
 import sys
 import os
 
+
 def test_imports():
     """Test that all required packages can be imported"""
     print("Testing package imports...")
 
     try:
         import mcp
+
         print("[OK] MCP package imported successfully")
     except ImportError as e:
         print(f"[FAIL] Failed to import MCP: {e}")
@@ -23,12 +25,14 @@ def test_imports():
 
     try:
         import clang.cindex
+
         print("[OK] libclang Python bindings imported successfully")
     except ImportError as e:
         print(f"[FAIL] Failed to import clang: {e}")
         return False
 
     return True
+
 
 def test_optional_dependencies():
     """Test optional performance dependencies (informational only, not required)"""
@@ -37,6 +41,7 @@ def test_optional_dependencies():
     # Check orjson (from [performance] extras)
     try:
         import orjson
+
         print("[OK] orjson is installed (3-5x faster JSON parsing)")
     except ImportError:
         print("[INFO] orjson not installed (optional performance optimization)")
@@ -44,17 +49,18 @@ def test_optional_dependencies():
 
     return True  # Always return True since these are optional
 
+
 def test_libclang_library():
     """Test that libclang library can be found and loaded"""
     print("\nTesting libclang library...")
-    
+
     try:
         from clang.cindex import Config
-        
+
         # Get the parent directory path
         current_dir = os.path.dirname(os.path.abspath(__file__))
         parent_dir = os.path.dirname(current_dir)
-        
+
         # Check for bundled libclang
         libclang_paths = []
         if sys.platform == "win32":
@@ -62,11 +68,13 @@ def test_libclang_library():
         elif sys.platform == "darwin":
             libclang_paths.append(os.path.join(parent_dir, "lib", "macos", "libclang.dylib"))
         else:
-            libclang_paths.extend([
-                os.path.join(parent_dir, "lib", "linux", "libclang.so.1"),
-                os.path.join(parent_dir, "lib", "linux", "libclang.so")
-            ])
-        
+            libclang_paths.extend(
+                [
+                    os.path.join(parent_dir, "lib", "linux", "libclang.so.1"),
+                    os.path.join(parent_dir, "lib", "linux", "libclang.so"),
+                ]
+            )
+
         bundled_found = False
         for path in libclang_paths:
             if os.path.exists(path):
@@ -80,6 +88,7 @@ def test_libclang_library():
 
         # Try to create an index (this will fail if libclang can't be loaded)
         from clang.cindex import Index
+
         index = Index.create()
         print("[OK] libclang library loaded successfully")
         return True
@@ -88,16 +97,18 @@ def test_libclang_library():
         print(f"[FAIL] Failed to load libclang: {e}")
         return False
 
+
 def test_server_import():
     """Test that the MCP server can be imported"""
     print("\nTesting MCP server import...")
-    
+
     try:
         # We need to test this in a subprocess to avoid libclang conflicts
         import subprocess
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         parent_dir = os.path.dirname(current_dir)
-        
+
         # Run a simple import test in a clean Python process
         test_code = f"""
 import sys
@@ -105,14 +116,11 @@ sys.path.insert(0, r'{parent_dir}')
 from mcp_server import cpp_mcp_server
 print("SUCCESS")
 """
-        
+
         result = subprocess.run(
-            [sys.executable, "-c", test_code],
-            capture_output=True,
-            text=True,
-            cwd=parent_dir
+            [sys.executable, "-c", test_code], capture_output=True, text=True, cwd=parent_dir
         )
-        
+
         if result.returncode == 0 and "SUCCESS" in result.stdout:
             print("[OK] MCP server module imported successfully")
             return True
@@ -124,13 +132,14 @@ print("SUCCESS")
         print(f"[FAIL] Failed to test MCP server import: {e}")
         return False
 
+
 def test_basic_parsing():
     """Test basic C++ parsing functionality"""
     print("\nTesting basic C++ parsing...")
-    
+
     try:
         from clang.cindex import Index, TranslationUnit
-        
+
         # Create a simple test file content
         test_code = """
         class TestClass {
@@ -138,15 +147,13 @@ def test_basic_parsing():
             void testMethod() {}
         };
         """
-        
+
         # Create index and parse
         index = Index.create()
         tu = TranslationUnit.from_source(
-            'test.cpp',
-            args=['-x', 'c++'],
-            unsaved_files=[('test.cpp', test_code)]
+            "test.cpp", args=["-x", "c++"], unsaved_files=[("test.cpp", test_code)]
         )
-        
+
         # Check if parsing succeeded
         if tu:
             print("[OK] Basic C++ parsing works")
@@ -158,6 +165,7 @@ def test_basic_parsing():
     except Exception as e:
         print(f"[FAIL] C++ parsing test failed: {e}")
         return False
+
 
 def main():
     """Run all tests"""
@@ -197,6 +205,7 @@ def main():
         print("- Make sure you're in the virtual environment")
         print("- Check that libclang exists in the lib/<platform>/ directory")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())
