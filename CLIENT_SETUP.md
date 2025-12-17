@@ -10,6 +10,7 @@ This guide provides detailed instructions for configuring the C++ Analyzer MCP S
 - [Cline (VS Code Extension)](#cline-vs-code-extension)
 - [Windsurf IDE](#windsurf-ide)
 - [Continue (VS Code Extension)](#continue-vs-code-extension)
+- [LM Studio](#lm-studio)
 - [Generic MCP Client](#generic-mcp-client)
 - [HTTP/SSE Transport Configuration](#httpsse-transport-configuration)
 
@@ -295,6 +296,84 @@ Continue is an open-source VS Code extension for AI coding assistance.
 3. **Reload Continue extension** or restart VS Code
 
 4. **Usage:** Tools will be available in Continue chat sessions
+
+## LM Studio
+
+LM Studio is a desktop application for running local LLMs with MCP support.
+
+### ⚠️ Known Compatibility Issues
+
+Testing with **LM Studio version 0.3.35 build 1** revealed significant compatibility issues with this MCP server:
+
+#### stdio Transport Issues
+- **Problem**: LM Studio disconnects from the MCP server after a short period of inactivity
+- **Impact**: Makes background analysis impossible - server loses connection mid-indexing
+- **Not recommended** for projects requiring long-running operations
+
+#### HTTP/SSE Transport Issues
+- **Problem**: LM Studio's MCP bridge does not properly support HTTP or SSE transports
+- **Symptoms**:
+  - Returns "405 Method Not Allowed" errors
+  - Continues treating HTTP endpoints as SSE regardless of configuration
+  - Connection closes immediately after establishment
+- **Testing details**: Attempted both HTTP and SSE transports with proper server configuration, but LM Studio's MCP bridge consistently failed to recognize the transport type
+
+**Example error from LM Studio logs:**
+```
+Error in LM Studio MCP bridge process: SSE error: Non-200 status code (405)
+```
+
+Even when server was running with HTTP transport, LM Studio still attempted SSE-style requests.
+
+### Configuration Attempted (Did Not Work)
+
+**stdio transport (disconnects on inactivity):**
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "command": "python",
+      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "cwd": "/absolute/path/to/clang_index_mcp",
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/clang_index_mcp"
+      }
+    }
+  }
+}
+```
+
+**HTTP transport (405 errors):**
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "url": "http://127.0.0.1:8080/mcp/v1/messages"
+    }
+  }
+}
+```
+
+### Recommendation
+
+**LM Studio is not recommended for use with this MCP server** due to the issues above. Consider using:
+- **Claude Desktop** - Excellent MCP support with persistent connections
+- **Claude Code** (VS Code) - Reliable stdio transport
+- **Cursor IDE** - Good MCP integration
+- **Cline** (VS Code) - Stable MCP support
+- **Continue** (VS Code) - Open-source alternative
+
+These clients properly handle long-running indexing operations and maintain stable connections.
+
+### If You Must Use LM Studio
+
+If LM Studio is your only option:
+1. Keep projects small (< 1000 files) to avoid timeout issues
+2. Be prepared to manually restart the MCP connection frequently
+3. Monitor the LM Studio developer logs for disconnection events
+4. Avoid background indexing - index only when actively using the tools
+
+**Note:** These issues may be resolved in future LM Studio releases. This information is accurate as of LM Studio 0.3.35 build 1.
 
 ## Generic MCP Client
 
