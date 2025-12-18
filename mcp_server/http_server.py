@@ -60,6 +60,11 @@ class MCPHTTPServer:
         # Format: session_id -> (transport, task, last_activity_time)
         self.sessions = {}
 
+        # Create SSE transport if needed (must match the POST route path)
+        self.sse_transport = None
+        if transport_type == "sse":
+            self.sse_transport = SseServerTransport("/messages")
+
         # Start background task for session cleanup
         self._cleanup_task = None
         self._server = None  # Store uvicorn server instance for proper shutdown
@@ -104,14 +109,37 @@ class MCPHTTPServer:
         ]
 
         if self.transport_type == "http":
-            routes.append(Route("/mcp/v1/messages", self.handle_http_message, methods=["POST"]))
+            routes.append(Route("/messages", self.handle_http_message, methods=["POST"]))
 
-        elif self.transport_type == "sse":
-            routes.append(Route("/mcp/v1/sse", self.handle_sse_stream, methods=["GET"]))
-            # SSE also needs a message endpoint for POST requests
-            routes.append(Route("/mcp/v1/messages", self.handle_http_message, methods=["POST"]))
+        app = Starlette(debug=True, routes=routes)
 
-        return Starlette(debug=True, routes=routes)
+        # For SSE transport, wrap the app with a middleware that intercepts
+        # /sse and /messages paths and delegates to raw ASGI handlers
+        if self.transport_type == "sse":
+            original_app = app
+
+            async def sse_middleware(scope, receive, send):
+                """Middleware that intercepts SSE paths and delegates to raw ASGI handlers."""
+                if scope["type"] == "http":
+                    path = scope["path"]
+                    method = scope["method"]
+
+                    # Intercept GET /sse
+                    if path == "/sse" and method == "GET":
+                        await self.handle_sse_endpoint(scope, receive, send)
+                        return
+
+                    # Intercept POST /messages
+                    if path == "/messages" and method == "POST":
+                        await self.handle_messages_endpoint(scope, receive, send)
+                        return
+
+                # Pass through to Starlette for all other routes
+                await original_app(scope, receive, send)
+
+            return sse_middleware
+
+        return app
 
     async def handle_root(self, request: Request) -> Response:
         """Handle root endpoint - return server information."""
@@ -126,10 +154,10 @@ class MCPHTTPServer:
         }
 
         if self.transport_type == "http":
-            info["endpoints"]["messages"] = "/mcp/v1/messages"
+            info["endpoints"]["messages"] = "/messages"
         elif self.transport_type == "sse":
-            info["endpoints"]["sse"] = "/mcp/v1/sse"
-            info["endpoints"]["messages"] = "/mcp/v1/messages"
+            info["endpoints"]["sse"] = "/sse"
+            info["endpoints"]["messages"] = "/messages"
 
         return JSONResponse(info)
 
@@ -149,8 +177,8 @@ class MCPHTTPServer:
 
         This is an ASGI endpoint that delegates to StreamableHTTPServerTransport.
         """
-        # Get or create session ID
-        session_id = request.headers.get("x-mcp-session-id")
+        # Get or create session ID (using canonical MCP header name)
+        session_id = request.headers.get("Mcp-Session-Id")
         if not session_id:
             session_id = str(uuid4())
             logger.info(f"Created new HTTP session: {session_id}")
@@ -173,7 +201,7 @@ class MCPHTTPServer:
                         "id": None,
                     },
                     status_code=400,
-                    headers={"x-mcp-session-id": session_id},
+                    headers={"Mcp-Session-Id": session_id},
                 )
 
             # Create a custom receive function that replays the body we already read
@@ -252,7 +280,7 @@ class MCPHTTPServer:
                         "id": None,
                     },
                     status_code=400,
-                    headers={"x-mcp-session-id": session_id},
+                    headers={"Mcp-Session-Id": session_id},
                 )
             except Exception as e:
                 logger.exception(f"Error handling request: {e}")
@@ -263,7 +291,7 @@ class MCPHTTPServer:
                         "id": None,
                     },
                     status_code=500,
-                    headers={"x-mcp-session-id": session_id},
+                    headers={"Mcp-Session-Id": session_id},
                 )
 
             # Build response
@@ -271,7 +299,7 @@ class MCPHTTPServer:
                 k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
                 for k, v in response_headers
             }
-            headers_dict["x-mcp-session-id"] = session_id
+            headers_dict["Mcp-Session-Id"] = session_id
 
             return Response(
                 content=response_body, status_code=response_status, headers=headers_dict
@@ -282,53 +310,61 @@ class MCPHTTPServer:
             return JSONResponse(
                 {"error": f"Server error: {str(e)}"},
                 status_code=500,
-                headers={"x-mcp-session-id": session_id},
+                headers={"Mcp-Session-Id": session_id},
             )
 
-    async def handle_sse_stream(self, request: Request) -> Response:
+    async def handle_sse_endpoint(self, scope, receive, send):
         """
-        Handle SSE stream endpoint.
+        Handle SSE endpoint using SseServerTransport.
 
-        This delegates to SseServerTransport for event streaming.
+        This properly implements the MCP SSE transport by delegating
+        to SseServerTransport.connect_sse() which handles the SSE stream
+        and sends actual MCP JSON-RPC messages.
         """
-        from starlette.responses import StreamingResponse
+        assert self.sse_transport is not None, "SSE transport not initialized"
 
-        # Get or create session ID
-        session_id = request.headers.get("x-mcp-session-id")
-        if not session_id:
-            session_id = str(uuid4())
-            logger.info(f"Created new SSE session: {session_id}")
+        logger.info("New SSE connection established")
 
-        async def sse_event_stream():
-            """Generate SSE events including keepalives."""
-            # Send initial connected event
-            yield f"event: connected\ndata: {json.dumps({'session_id': session_id})}\n\n".encode()
-
-            # Send keepalive comments periodically
+        async with self.sse_transport.connect_sse(scope, receive, send) as (read_stream, write_stream):
             try:
-                count = 0
-                while True:
-                    await asyncio.sleep(1)
-                    yield b": keepalive\n\n"
-                    count += 1
+                await self.mcp_server.run(
+                    read_stream,
+                    write_stream,
+                    self.mcp_server.create_initialization_options(),
+                    raise_exceptions=False,
+                )
+            except Exception as e:
+                logger.exception(f"Error in SSE session: {e}")
+            finally:
+                logger.info("SSE connection closed")
 
-                    # Also send a periodic data event
-                    if count % 5 == 0:
-                        yield f"event: ping\ndata: {json.dumps({'timestamp': count})}\n\n".encode()
-            except asyncio.CancelledError:
-                logger.info(f"SSE stream closed for session {session_id}")
-                raise
+    async def handle_messages_endpoint(self, scope, receive, send):
+        """
+        Handle POST /messages endpoint for SSE transport.
 
-        return StreamingResponse(
-            sse_event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "x-mcp-session-id": session_id,
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "Connection": "keep-alive",
-            },
-        )
+        This properly implements the MCP SSE message posting by delegating
+        to SseServerTransport.handle_post_message().
+        """
+        assert self.sse_transport is not None, "SSE transport not initialized"
+
+        try:
+            await self.sse_transport.handle_post_message(scope, receive, send)
+        except Exception as e:
+            logger.exception(f"Error handling SSE message: {e}")
+            # Send error response
+            await send({
+                "type": "http.response.start",
+                "status": 500,
+                "headers": [[b"content-type", b"application/json"]],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": json.dumps({
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                    "id": None,
+                }).encode(),
+            })
 
     async def start(self):
         """Start the HTTP/SSE server."""

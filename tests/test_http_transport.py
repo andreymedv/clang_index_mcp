@@ -111,7 +111,7 @@ async def test_http_messages_endpoint_invalid_json(http_server):
     """Test messages endpoint with invalid JSON."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{http_server}/mcp/v1/messages",
+            f"{http_server}/messages",
             content=b"invalid json{",
             headers={"Content-Type": "application/json"}
         )
@@ -136,24 +136,24 @@ async def test_http_session_creation(http_server):
         }
 
         response = await client.post(
-            f"{http_server}/mcp/v1/messages",
+            f"{http_server}/messages",
             json=request_data
         )
 
         # Should get a session ID header
-        assert "x-mcp-session-id" in response.headers
-        session_id = response.headers["x-mcp-session-id"]
+        assert "Mcp-Session-Id" in response.headers
+        session_id = response.headers["Mcp-Session-Id"]
         assert session_id
 
         # Make another request with the same session ID
         response2 = await client.post(
-            f"{http_server}/mcp/v1/messages",
+            f"{http_server}/messages",
             json=request_data,
-            headers={"x-mcp-session-id": session_id}
+            headers={"Mcp-Session-Id": session_id}
         )
 
         # Should get the same session ID back
-        assert response2.headers["x-mcp-session-id"] == session_id
+        assert response2.headers["Mcp-Session-Id"] == session_id
 
 
 @pytest.mark.asyncio
@@ -170,7 +170,7 @@ async def test_http_concurrent_sessions(http_server):
                 "params": {}
             }
             tasks.append(
-                client.post(f"{http_server}/mcp/v1/messages", json=request_data)
+                client.post(f"{http_server}/messages", json=request_data)
             )
 
         responses = await asyncio.gather(*tasks)
@@ -183,7 +183,7 @@ async def test_http_concurrent_sessions(http_server):
             assert response.status_code in (200, 406, 500)
 
         # All should have different session IDs
-        session_ids = [r.headers["x-mcp-session-id"] for r in responses]
+        session_ids = [r.headers["Mcp-Session-Id"] for r in responses]
         assert len(set(session_ids)) == len(session_ids)  # All unique
 
 
@@ -199,7 +199,7 @@ async def test_http_tool_list_request(http_server):
         }
 
         response = await client.post(
-            f"{http_server}/mcp/v1/messages",
+            f"{http_server}/messages",
             json=request_data,
             timeout=10.0
         )
