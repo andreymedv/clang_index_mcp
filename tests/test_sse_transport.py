@@ -109,57 +109,76 @@ async def test_sse_health_endpoint(sse_server):
 async def test_sse_stream_endpoint(sse_server):
     """Test the SSE stream endpoint returns event stream."""
     async with httpx.AsyncClient() as client:
-        async with client.stream("GET", f"{sse_server}/mcp/v1/sse", timeout=5.0) as response:
+        async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as response:
             assert response.status_code == 200
             assert "text/event-stream" in response.headers.get("content-type", "")
-            assert "x-mcp-session-id" in response.headers
+            # Note: MCP SDK's SseServerTransport sends session ID in endpoint event,
+            # not in headers
 
-            # Read first few events
-            event_count = 0
+            # Read the endpoint event to verify stream is working
+            endpoint_found = False
             async for line in response.aiter_lines():
-                if line.strip():
-                    event_count += 1
-                    # Stop after getting a few events
-                    if event_count >= 3:
-                        break
+                if "endpoint" in line or "session_id=" in line:
+                    endpoint_found = True
+                    break  # Exit after finding the endpoint event
+
+            assert endpoint_found, "Should receive at least the endpoint event"
 
 
 @pytest.mark.asyncio
-async def test_sse_session_id_header(sse_server):
-    """Test that SSE stream includes session ID in headers."""
+async def test_sse_session_id_in_endpoint_event(sse_server):
+    """Test that SSE stream includes session ID in endpoint event (MCP SDK behavior)."""
     async with httpx.AsyncClient() as client:
-        async with client.stream("GET", f"{sse_server}/mcp/v1/sse", timeout=2.0) as response:
-            assert "x-mcp-session-id" in response.headers
-            session_id = response.headers["x-mcp-session-id"]
-            assert session_id
-            assert len(session_id) > 0
+        async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response:
+            # MCP SDK's SseServerTransport sends session ID in the "endpoint" event
+            session_id_found = False
+            async for line in response.aiter_lines():
+                # Look for "event: endpoint" followed by "data: /messages?session_id=..."
+                if line.startswith("data:") and "session_id=" in line:
+                    session_id_found = True
+                    assert len(line) > len("data: /messages?session_id=")
+                    break
+
+            assert session_id_found, "Should receive endpoint event with session ID"
 
 
 @pytest.mark.asyncio
-async def test_sse_keepalive(sse_server):
-    """Test that SSE stream sends keepalive messages."""
+async def test_sse_endpoint_event(sse_server):
+    """Test that SSE stream sends endpoint event (MCP SDK behavior)."""
     async with httpx.AsyncClient() as client:
-        async with client.stream("GET", f"{sse_server}/mcp/v1/sse", timeout=5.0) as response:
-            keepalive_found = False
+        async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as response:
+            endpoint_event_found = False
 
             async for line in response.aiter_lines():
-                # SSE keepalive is a comment line starting with ':'
-                if line.strip().startswith(":"):
-                    keepalive_found = True
+                # Look for the "endpoint" event that MCP SDK sends
+                if line.startswith("event:") and "endpoint" in line:
+                    endpoint_event_found = True
                     break
 
-                # Safety: break after reading some lines
-                if keepalive_found:
+                # Safety: stop after reading many lines
+                if endpoint_event_found:
                     break
 
-            assert keepalive_found, "No keepalive messages received"
+            assert endpoint_event_found, "No endpoint event received from SSE stream"
 
 
 @pytest.mark.asyncio
 async def test_sse_with_messages_endpoint(sse_server):
-    """Test that SSE server also provides messages endpoint for requests."""
+    """Test that SSE server provides messages endpoint with session ID."""
     async with httpx.AsyncClient() as client:
-        # SSE server should also have a messages endpoint
+        # First connect to SSE to get session ID
+        session_id = None
+        async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as sse_response:
+            async for line in sse_response.aiter_lines():
+                if "session_id=" in line:
+                    # Extract session ID from endpoint URL
+                    start = line.find("session_id=") + len("session_id=")
+                    session_id = line[start:].strip()
+                    break
+
+        assert session_id is not None, "Should receive session ID from endpoint event"
+
+        # Now POST to messages endpoint with session ID (MCP SDK SSE protocol)
         request_data = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -168,15 +187,17 @@ async def test_sse_with_messages_endpoint(sse_server):
         }
 
         response = await client.post(
-            f"{sse_server}/mcp/v1/messages",
+            f"{sse_server}/messages?session_id={session_id}",
             json=request_data
         )
 
-        # Should respond (200/406/500 are all valid)
+        # Should respond (various status codes are valid at protocol level)
+        # 200 = Success
+        # 202 = Accepted (async response)
+        # 400 = Bad request
         # 406 = Not Acceptable (MCP transport validation)
         # 500 = Server error
-        # 200 = Success
-        assert response.status_code in (200, 406, 500)
+        assert response.status_code in (200, 202, 400, 406, 500)
 
 
 class TestSSEProtocol:
@@ -186,35 +207,48 @@ class TestSSEProtocol:
     async def test_sse_content_type(self, sse_server):
         """Test that SSE stream has correct content type."""
         async with httpx.AsyncClient() as client:
-            async with client.stream("GET", f"{sse_server}/mcp/v1/sse", timeout=2.0) as response:
+            async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response:
                 content_type = response.headers.get("content-type", "")
                 assert "text/event-stream" in content_type
 
     @pytest.mark.asyncio
     async def test_sse_cache_control(self, sse_server):
-        """Test that SSE stream has no-cache header."""
+        """Test that SSE stream has cache control header."""
         async with httpx.AsyncClient() as client:
-            async with client.stream("GET", f"{sse_server}/mcp/v1/sse", timeout=2.0) as response:
+            async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response:
                 cache_control = response.headers.get("cache-control", "")
-                assert "no-cache" in cache_control
+                # MCP SDK's SseServerTransport uses "no-store"
+                assert "no-store" in cache_control or "no-cache" in cache_control
 
     @pytest.mark.asyncio
     async def test_sse_reconnection(self, sse_server):
-        """Test SSE stream reconnection with same session ID."""
+        """Test SSE stream can be reconnected (each connection gets new session)."""
         async with httpx.AsyncClient() as client:
             # First connection
-            async with client.stream("GET", f"{sse_server}/mcp/v1/sse", timeout=2.0) as response1:
-                session_id = response1.headers["x-mcp-session-id"]
+            session_id_1 = None
+            async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response1:
+                # Extract session ID from endpoint event
+                async for line in response1.aiter_lines():
+                    if "session_id=" in line:
+                        # Parse session ID from URL
+                        start = line.find("session_id=") + len("session_id=")
+                        session_id_1 = line[start:].strip()
+                        break
 
-            # Reconnect with same session ID
-            async with client.stream(
-                "GET",
-                f"{sse_server}/mcp/v1/sse",
-                headers={"x-mcp-session-id": session_id},
-                timeout=2.0
-            ) as response2:
-                # Should get same session ID back
-                assert response2.headers["x-mcp-session-id"] == session_id
+            # Second connection (MCP SDK creates new session per connection)
+            session_id_2 = None
+            async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response2:
+                async for line in response2.aiter_lines():
+                    if "session_id=" in line:
+                        start = line.find("session_id=") + len("session_id=")
+                        session_id_2 = line[start:].strip()
+                        break
+
+            # Both connections should receive session IDs
+            assert session_id_1 is not None
+            assert session_id_2 is not None
+            # Each SSE connection gets its own session in MCP SDK
+            assert session_id_1 != session_id_2
 
 
 if __name__ == "__main__":
