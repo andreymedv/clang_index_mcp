@@ -301,33 +301,33 @@ Continue is an open-source VS Code extension for AI coding assistance.
 
 LM Studio is a desktop application for running local LLMs with MCP support.
 
-### ⚠️ Known Compatibility Issues
+### ⚠️ Known Compatibility Issues (Updated 2025-12-18)
 
-Testing with **LM Studio version 0.3.35 build 1** revealed significant compatibility issues with this MCP server:
+Testing with **LM Studio version 0.3.35 build 1** revealed significant compatibility issues with this MCP server. **HTTP/SSE transport issues have been fixed** based on analysis of the MCP protocol implementation.
 
 #### stdio Transport Issues
 - **Problem**: LM Studio disconnects from the MCP server after a short period of inactivity, which terminates the server process entirely (stdio transport behavior)
 - **Impact**: Background indexing is interrupted and stopped - the MCP server process is killed when LM Studio disconnects, losing all indexing progress
 - **Not recommended** for projects requiring long-running operations
 
-#### HTTP/SSE Transport Issues
-- **Problem**: LM Studio's MCP bridge does not properly support HTTP or SSE transports
-- **Symptoms**:
-  - Returns "405 Method Not Allowed" errors
-  - Continues treating HTTP endpoints as SSE regardless of configuration
-  - Connection closes immediately after establishment
-- **Testing details**: Attempted both HTTP and SSE transports with proper server configuration, but LM Studio's MCP bridge consistently failed to recognize the transport type
+#### HTTP/SSE Transport Issues (FIXED)
+- **Previous Problem**: The server used non-standard endpoint paths (`/mcp/v1/sse`, `/mcp/v1/messages`) and custom session headers (`x-mcp-session-id`)
+- **Root Cause Analysis**: The SSE implementation was not properly using the MCP SDK's `SseServerTransport` - it only sent keepalive/ping events instead of actual MCP JSON-RPC messages
+- **Fixes Applied** (2025-12-18):
+  - ✅ Changed endpoint paths to canonical `/sse` and `/messages` (matching MCP specification)
+  - ✅ Properly implemented SSE using `SseServerTransport.connect_sse()` from the MCP SDK
+  - ✅ Changed session header to canonical `Mcp-Session-Id` (instead of `x-mcp-session-id`)
+  - ✅ SSE now sends actual MCP JSON-RPC messages (not just keepalives)
+- **Status**: HTTP/SSE transports should now be compatible with LM Studio and other MCP clients. Testing with LM Studio recommended to verify.
 
-**Example error from LM Studio logs:**
+**Previous error from LM Studio logs (should now be fixed):**
 ```
 Error in LM Studio MCP bridge process: SSE error: Non-200 status code (405)
 ```
 
-Even when server was running with HTTP transport, LM Studio still attempted SSE-style requests.
+### Configuration Examples
 
-### Configuration Attempted (Did Not Work)
-
-**stdio transport (disconnects on inactivity):**
+**stdio transport (may disconnect on inactivity):**
 ```json
 {
   "mcpServers": {
@@ -343,12 +343,24 @@ Even when server was running with HTTP transport, LM Studio still attempted SSE-
 }
 ```
 
-**HTTP transport (405 errors):**
+**HTTP transport (with fixes applied - should now work):**
 ```json
 {
   "mcpServers": {
     "cpp-analyzer": {
-      "url": "http://127.0.0.1:8080/mcp/v1/messages"
+      "url": "http://127.0.0.1:8000/messages"
+    }
+  }
+}
+```
+
+**SSE transport (with fixes applied - should now work):**
+```json
+{
+  "mcpServers": {
+    "cpp-analyzer": {
+      "url": "http://127.0.0.1:8080/sse",
+      "messagesUrl": "http://127.0.0.1:8080/messages"
     }
   }
 }
@@ -356,24 +368,32 @@ Even when server was running with HTTP transport, LM Studio still attempted SSE-
 
 ### Recommendation
 
-**LM Studio is not recommended for use with this MCP server** due to the issues above. Consider using:
+**HTTP/SSE transport fixes have been applied** and should now work with LM Studio. However, **stdio transport is still not recommended** due to LM Studio's aggressive process lifecycle management.
+
+**Recommended setup for LM Studio:**
+1. **Use HTTP or SSE transport** (fixes applied 2025-12-18) instead of stdio
+2. Start the server separately: `python -m mcp_server.cpp_mcp_server --transport http --port 8000`
+3. Configure LM Studio to connect to `http://127.0.0.1:8000/messages`
+4. This avoids LM Studio killing the server process during long-running indexing
+
+**Alternative clients with excellent MCP support:**
 - **Claude Desktop** - Excellent MCP support with persistent connections
 - **Claude Code** (VS Code) - Reliable stdio transport
 - **Cursor IDE** - Good MCP integration
 - **Cline** (VS Code) - Stable MCP support
 - **Continue** (VS Code) - Open-source alternative
 
-These clients properly handle long-running indexing operations and maintain stable connections.
+These clients properly handle long-running indexing operations over stdio transport.
 
-### If You Must Use LM Studio
+### Testing Needed
 
-If LM Studio is your only option:
-1. Keep projects small (< 1000 files) to avoid timeout issues
-2. Be prepared to manually restart the MCP connection frequently
-3. Monitor the LM Studio developer logs for disconnection events
-4. Avoid background indexing - index only when actively using the tools
+If you use LM Studio with HTTP/SSE transport after these fixes:
+1. Test with a small project first
+2. Monitor the MCP connection stability
+3. Report success/failure on the GitHub issues
+4. Help us verify the fixes work with LM Studio
 
-**Note:** These issues may be resolved in future LM Studio releases. This information is accurate as of LM Studio 0.3.35 build 1.
+**Note:** stdio transport issues (process killing) are inherent to LM Studio's architecture and cannot be fixed on the server side. This information is accurate as of LM Studio 0.3.35 build 1.
 
 ## Generic MCP Client
 
@@ -475,7 +495,7 @@ If your MCP client supports HTTP transport:
   "mcpServers": {
     "cpp-analyzer": {
       "transport": "http",
-      "url": "http://127.0.0.1:8000/mcp/v1/messages",
+      "url": "http://127.0.0.1:8000/messages",
       "headers": {
         "Content-Type": "application/json"
       }
@@ -493,8 +513,8 @@ If your MCP client supports SSE transport:
   "mcpServers": {
     "cpp-analyzer": {
       "transport": "sse",
-      "url": "http://127.0.0.1:8080/mcp/v1/sse",
-      "messagesUrl": "http://127.0.0.1:8080/mcp/v1/messages"
+      "url": "http://127.0.0.1:8080/sse",
+      "messagesUrl": "http://127.0.0.1:8080/messages"
     }
   }
 }
@@ -659,7 +679,7 @@ Example health check response:
 
 HTTP/SSE transports support multiple concurrent sessions:
 
-- Each client gets a unique session ID (`x-mcp-session-id` header)
+- Each client gets a unique session ID (`Mcp-Session-Id` header)
 - Sessions timeout after 1 hour of inactivity
 - Multiple clients can connect to the same server instance
 - Each session maintains independent project state

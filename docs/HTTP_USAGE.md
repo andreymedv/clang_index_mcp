@@ -30,7 +30,7 @@ This starts an HTTP server on `http://127.0.0.1:8000` with the following endpoin
 
 - `GET /` - Server information
 - `GET /health` - Health check
-- `POST /mcp/v1/messages` - MCP JSON-RPC messages
+- `POST /messages` - MCP JSON-RPC messages
 
 ### SSE Transport
 
@@ -42,8 +42,8 @@ This starts an SSE server on `http://127.0.0.1:8080` with the following endpoint
 
 - `GET /` - Server information
 - `GET /health` - Health check
-- `GET /mcp/v1/sse` - Server-Sent Events stream
-- `POST /mcp/v1/messages` - MCP JSON-RPC messages (for client requests)
+- `GET /sse` - Server-Sent Events stream
+- `POST /messages` - MCP JSON-RPC messages (for client requests)
 
 ### Custom Host and Port
 
@@ -87,18 +87,18 @@ Response:
   "protocol": "MCP 1.0",
   "endpoints": {
     "health": "/health",
-    "messages": "/mcp/v1/messages"
+    "messages": "/messages"
   }
 }
 ```
 
 ### Making MCP Requests
 
-Send JSON-RPC messages to `/mcp/v1/messages`:
+Send JSON-RPC messages to `/messages`:
 
 ```bash
 # Initialize session and set project directory
-curl -X POST http://127.0.0.1:8000/mcp/v1/messages \
+curl -X POST http://127.0.0.1:8000/messages \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -116,15 +116,15 @@ curl -X POST http://127.0.0.1:8000/mcp/v1/messages \
 The response will include a session ID header:
 
 ```
-x-mcp-session-id: <uuid>
+Mcp-Session-Id: <uuid>
 ```
 
 Use this session ID in subsequent requests to maintain session state:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/mcp/v1/messages \
+curl -X POST http://127.0.0.1:8000/messages \
   -H "Content-Type: application/json" \
-  -H "x-mcp-session-id: <uuid-from-previous-response>" \
+  -H "Mcp-Session-Id: <uuid-from-previous-response>" \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
@@ -144,36 +144,24 @@ curl -X POST http://127.0.0.1:8000/mcp/v1/messages \
 ### Connecting to SSE Stream
 
 ```bash
-curl -N http://127.0.0.1:8080/mcp/v1/sse
+curl -N http://127.0.0.1:8080/sse
 ```
 
-This will establish an SSE connection and stream events as they occur.
+This will establish an SSE connection and stream MCP JSON-RPC messages as they occur.
 
-Example events:
-```
-event: connected
-data: {"session_id": "<uuid>"}
-
-: keepalive
-
-event: progress
-data: {"indexed": 10, "total": 100, "percentage": 10.0}
-
-: keepalive
-```
+**Note:** The server now properly implements MCP SSE transport using `SseServerTransport`, which means you'll receive actual MCP protocol messages (not just keepalives and pings).
 
 ### Sending Requests with SSE
 
-While connected to the SSE stream, you can send requests using the POST endpoint with the same session ID:
+While connected to the SSE stream, you can send requests using the POST endpoint:
 
 ```bash
 # In terminal 1: Connect to SSE stream
-curl -N http://127.0.0.1:8080/mcp/v1/sse
+curl -N http://127.0.0.1:8080/sse
 
-# In terminal 2: Send requests (note: extract session_id from SSE stream first)
-curl -X POST http://127.0.0.1:8080/mcp/v1/messages \
+# In terminal 2: Send requests
+curl -X POST http://127.0.0.1:8080/messages \
   -H "Content-Type: application/json" \
-  -H "x-mcp-session-id: <session-id-from-sse>" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -191,7 +179,7 @@ curl -X POST http://127.0.0.1:8080/mcp/v1/messages \
 
 ### HTTP Sessions
 
-- Each unique `x-mcp-session-id` creates a separate session
+- Each unique `Mcp-Session-Id` creates a separate session
 - If no session ID is provided, a new one is automatically generated
 - **Session Timeout**: Sessions automatically expire after 1 hour (3600 seconds) of inactivity
 - Sessions are cleaned up every minute by a background task
@@ -199,11 +187,11 @@ curl -X POST http://127.0.0.1:8080/mcp/v1/messages \
 
 ### SSE Sessions
 
-- SSE connections automatically create a session
-- The session ID is provided in the initial connection event
-- Reconnection with the same session ID resumes the session
-- Long-running operations stream keepalive events (`: keepalive`)
-- **Note**: Full indexing progress updates are planned for a future release
+- SSE connections are now properly implemented using the MCP SDK's `SseServerTransport`
+- Each connection runs the MCP server protocol loop and sends actual MCP JSON-RPC messages
+- Messages are sent via the SSE stream as MCP protocol events
+- Client sends requests via POST to `/messages` endpoint
+- Reconnection requires establishing a new SSE connection
 
 ### Session Lifecycle
 
@@ -226,7 +214,7 @@ async def main():
     async with httpx.AsyncClient() as client:
         # Set project directory
         response = await client.post(
-            f"{base_url}/mcp/v1/messages",
+            f"{base_url}/messages",
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -241,14 +229,14 @@ async def main():
         )
 
         # Extract session ID
-        session_id = response.headers.get("x-mcp-session-id")
+        session_id = response.headers.get("Mcp-Session-Id")
         print(f"Session ID: {session_id}")
         print(f"Response: {response.json()}")
 
         # Search classes (using same session)
         response = await client.post(
-            f"{base_url}/mcp/v1/messages",
-            headers={"x-mcp-session-id": session_id},
+            f"{base_url}/messages",
+            headers={"Mcp-Session-Id": session_id},
             json={
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -276,7 +264,7 @@ const baseUrl = 'http://127.0.0.1:8000';
 let sessionId: string | null = null;
 
 // Set project directory
-const response1 = await fetch(`${baseUrl}/mcp/v1/messages`, {
+const response1 = await fetch(`${baseUrl}/messages`, {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -294,17 +282,17 @@ const response1 = await fetch(`${baseUrl}/mcp/v1/messages`, {
   })
 });
 
-sessionId = response1.headers.get('x-mcp-session-id');
+sessionId = response1.headers.get('Mcp-Session-Id');
 const data1 = await response1.json();
 console.log('Session ID:', sessionId);
 console.log('Response:', data1);
 
 // Search classes (using same session)
-const response2 = await fetch(`${baseUrl}/mcp/v1/messages`, {
+const response2 = await fetch(`${baseUrl}/messages`, {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'x-mcp-session-id': sessionId!
+    'Mcp-Session-Id': sessionId!
   },
   body: JSON.stringify({
     jsonrpc: '2.0',
@@ -325,37 +313,31 @@ console.log('Classes:', data2);
 
 ## SSE Client Example (JavaScript)
 
+**Note:** The SSE transport now properly implements MCP protocol using `SseServerTransport` from the MCP SDK. The SSE stream sends MCP JSON-RPC messages as SSE events.
+
 ```javascript
 const baseUrl = 'http://127.0.0.1:8080';
-let sessionId = null;
 
 // Connect to SSE stream
-const eventSource = new EventSource(`${baseUrl}/mcp/v1/sse`);
+// The server will send MCP JSON-RPC messages through the SSE connection
+const eventSource = new EventSource(`${baseUrl}/sse`);
 
-eventSource.addEventListener('connected', (event) => {
-  const data = JSON.parse(event.data);
-  sessionId = data.session_id;
-  console.log('Connected with session:', sessionId);
-
-  // Now you can send requests using the session ID
-  sendRequest();
-});
-
-eventSource.addEventListener('progress', (event) => {
-  const data = JSON.parse(event.data);
-  console.log('Progress:', data);
-});
+eventSource.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  console.log('MCP message:', message);
+  // Handle MCP JSON-RPC messages (requests, responses, notifications)
+};
 
 eventSource.onerror = (error) => {
   console.error('SSE error:', error);
 };
 
+// Send requests via POST endpoint
 async function sendRequest() {
-  const response = await fetch(`${baseUrl}/mcp/v1/messages`, {
+  const response = await fetch(`${baseUrl}/messages`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-mcp-session-id': sessionId
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -437,7 +419,7 @@ python3 -m mcp_server.cpp_mcp_server --transport http --port 9000
 
 ### Session not found
 
-Ensure you're using the same `x-mcp-session-id` header in all requests for a session.
+Ensure you're using the same `Mcp-Session-Id` header in all requests for a session (HTTP transport only).
 
 ### SSE connection drops
 
