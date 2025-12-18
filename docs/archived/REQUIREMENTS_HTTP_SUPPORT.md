@@ -1,5 +1,15 @@
 # HTTP/Streamable HTTP Protocol Support Requirements
 
+> **⚠️ ARCHIVED DOCUMENT - OUTDATED INFORMATION**
+>
+> This document contains the original requirements but has **outdated endpoint paths**.
+> The implementation now uses canonical MCP paths:
+> - `/sse` (not `/mcp/v1/sse`)
+> - `/messages` (not `/mcp/v1/messages`)
+> - `Mcp-Session-Id` header (not `x-mcp-session-id`)
+>
+> See [CLIENT_SETUP.md](../../CLIENT_SETUP.md) and [HTTP_USAGE.md](../HTTP_USAGE.md) for current documentation.
+
 ## Overview
 Add HTTP and Server-Sent Events (SSE) transport protocols to the clang_index_mcp server, in addition to the existing stdio transport.
 
