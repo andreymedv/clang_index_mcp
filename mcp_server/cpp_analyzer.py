@@ -23,6 +23,7 @@ from .symbol_info import SymbolInfo
 from .cache_manager import CacheManager
 from .file_scanner import FileScanner
 from .call_graph import CallGraphAnalyzer
+from .call_graph import CallGraphAnalyzer
 from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
@@ -56,12 +57,26 @@ class _NoOpLock:
         return False
 
 
+# Global analyzer instance for each worker process
+# This is a process-local global, NOT shared between processes
+_worker_analyzer = None
+
+
+def _cleanup_worker_analyzer():
+    """Ensure worker analyzer resources are released on process exit."""
+    global _worker_analyzer
+    if _worker_analyzer is not None:
+        _worker_analyzer.close()
+        _worker_analyzer = None
+
+
 def _process_file_worker(args_tuple):
     """
     Worker function for ProcessPoolExecutor-based parallel parsing.
 
-    This is a module-level function (required for pickling) that creates
-    a minimal analyzer instance to parse a single file.
+    This is a module-level function (required for pickling) that uses
+    a shared, process-local CppAnalyzer instance to parse a single file.
+    This avoids creating a new analyzer (and new DB connection) for every file.
 
     Args:
         args_tuple: (project_root, file_path, force, include_dependencies)
@@ -72,38 +87,46 @@ def _process_file_worker(args_tuple):
         and call_sites is a list of call site dicts (Phase 3)
     """
     project_root, file_path, force, include_dependencies = args_tuple
+    global _worker_analyzer
 
-    # Create a minimal analyzer for this process
-    # Each process gets its own analyzer instance
-    analyzer = CppAnalyzer(project_root)
-    analyzer.include_dependencies = include_dependencies
+    # Create a single analyzer instance per worker process (process-local)
+    if _worker_analyzer is None:
+        diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
+        _worker_analyzer = CppAnalyzer(project_root)
+        # Ensure cleanup is called when the worker process exits
+        atexit.register(_cleanup_worker_analyzer)
+
+    # Set per-call parameters
+    _worker_analyzer.include_dependencies = include_dependencies
+    # Reset stateful components to prevent data leakage between files
+    _worker_analyzer.call_graph_analyzer = CallGraphAnalyzer()
 
     # Mark this instance as isolated (no shared memory, locks not needed)
     # This is a worker process with its own memory space
-    analyzer._needs_locking = False
+    _worker_analyzer._needs_locking = False
 
     # Parse the file
-    success, was_cached = analyzer.index_file(file_path, force)
+    success, was_cached = _worker_analyzer.index_file(file_path, force)
 
     # Extract symbols from this file
     # No lock needed here since this process has isolated memory
     symbols = []
     call_sites = []  # Phase 3
     if success:
-        if file_path in analyzer.file_index:
-            symbols = analyzer.file_index[file_path]
+        if file_path in _worker_analyzer.file_index:
+            symbols = _worker_analyzer.file_index[file_path].copy()
 
         # Phase 3: Extract call sites collected during this file's parsing
-        call_sites = analyzer.call_graph_analyzer.get_all_call_sites()
+        call_sites = _worker_analyzer.call_graph_analyzer.get_all_call_sites()
 
         # Debug
         if call_sites:
             diagnostics.debug(f"Worker extracted {len(call_sites)} call sites from {file_path}")
         diagnostics.debug(
-            f"Worker call_graph entries: {len(analyzer.call_graph_analyzer.call_graph)}"
+            f"Worker call_graph entries: {len(_worker_analyzer.call_graph_analyzer.call_graph)}"
         )
         diagnostics.debug(
-            f"Worker call_sites count: {len(analyzer.call_graph_analyzer.call_sites)}"
+            f"Worker call_sites count: {len(_worker_analyzer.call_graph_analyzer.call_sites)}"
         )
 
     return (file_path, success, was_cached, symbols, call_sites)
