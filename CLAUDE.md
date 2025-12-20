@@ -167,33 +167,42 @@ make ie                         # install-editable
 - Provides 30-300x speedup for partial refreshes
 - See mcp_server/incremental_analyzer.py, mcp_server/change_scanner.py
 
-**4. SQLite Cache with FTS5**
+**4. Resource Management and File Descriptor Handling**
+- **CRITICAL:** TranslationUnit objects are deleted immediately after symbol extraction
+- `del tu` + `gc.collect()` forces cleanup of libclang C++ resources (file descriptors)
+- Worker processes clean up indexes after each file to prevent memory accumulation
+- Singleton analyzer per worker process (not per file) reduces SQLite connections
+- File descriptors remain stable at ~10-15 during indexing (tested with 5700+ files)
+- **Historical Issue:** self.translation_units dict was removed (write-only, caused 516+ FD leak)
+- See mcp_server/cpp_analyzer.py:1648 (explicit TU deletion), :131-159 (worker cleanup)
+
+**5. SQLite Cache with FTS5**
 - Symbol storage in SQLite with full-text search (2-5ms for 100K symbols)
 - WAL mode for concurrent multi-process access
 - Automatic VACUUM, OPTIMIZE, and ANALYZE maintenance
 - Cache per project configuration: (source_dir, config_file) → unique cache dir
 - See mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql
 
-**5. Compile Commands Integration**
+**6. Compile Commands Integration**
 - Parses compile_commands.json for accurate per-file compilation arguments
 - Binary caching (.mcp_cache/<project>/compile_commands/<hash>.cache) for 10-100x faster startup
 - Optional orjson for 3-5x faster JSON parsing (pip install .[performance])
 - Fallback to hardcoded args if compile_commands.json not found
 - See mcp_server/compile_commands_manager.py
 
-**6. No Runtime Monitoring of compile_commands.json**
+**7. No Runtime Monitoring of compile_commands.json**
 - Only checked on analyzer startup (not during runtime)
 - Users must restart analyzer after modifying compilation database
 - Trade-off: simplicity vs convenience (config changes are rare)
 
-**7. Header Tracking Cache Optimization**
+**8. Header Tracking Cache Optimization**
 - Header tracking state saved once at end of indexing (not per-file)
 - Eliminates race conditions in multi-process mode (was causing ~5000 writes for large projects)
 - Cached as header_tracker.json in project cache directory
 - Includes compile_commands.json hash for invalidation on config changes
 - See mcp_server/header_tracker.py, cpp_analyzer.py:_save_header_tracking()
 
-**8. libclang Error Recovery**
+**9. libclang Error Recovery**
 - Leverages libclang's built-in error recovery for non-fatal parse errors
 - Files with syntax/semantic errors continue processing, extract partial symbols from usable AST
 - Only TranslationUnitLoadError (no TU created) causes true failure
@@ -201,7 +210,7 @@ make ie                         # install-editable
 - Provides 90%+ symbol extraction vs 0% for files with minor issues
 - See cpp_analyzer.py:index_file() error handling
 
-**9. AST Traversal Optimization (System Header Skipping)**
+**10. AST Traversal Optimization (System Header Skipping)**
 - Early exit from AST traversal when encountering non-project file cursors
 - Skips traversing entire AST subtrees of system headers and external dependencies
 - Provides 5-7x speedup on large projects (3.5 hours → ~30-60 minutes for 5700 files)
@@ -289,6 +298,50 @@ python scripts/cache_stats.py
 # Diagnose cache health
 python scripts/diagnose_cache.py
 ```
+
+## Resource Monitoring (File Descriptors & Memory)
+
+Monitor file descriptors and resource usage during indexing to detect leaks:
+
+```bash
+# Get the MCP server PID
+MCP_PID=$(pgrep -f "cpp_mcp_server" | head -1)
+
+# Monitor file descriptor counts (should stay stable at ~10-15)
+watch -n 2 'echo "=== FD Monitor ==="; \
+  echo "Main: $(ls /proc/'$MCP_PID'/fd 2>/dev/null | wc -l) FDs"; \
+  pgrep -P '$MCP_PID' | while read wpid; do \
+    echo "Worker $wpid: $(ls /proc/$wpid/fd 2>/dev/null | wc -l) FDs"; \
+  done'
+
+# Check open C++ source files (should be 0 or very low)
+lsof -p $MCP_PID $(pgrep -P $MCP_PID | tr '\n' ',' | sed 's/,$//' | sed 's/^/,/') 2>/dev/null | \
+  grep -E '\.(cpp|h|cc|hpp)$' | wc -l
+
+# View which specific files are open
+lsof -p $MCP_PID $(pgrep -P $MCP_PID | tr '\n' ',' | sed 's/,$//' | sed 's/^/,/') 2>/dev/null | \
+  grep -E '\.(cpp|h|cc|hpp)$' | awk '{print $NF}' | sort | uniq
+
+# File type summary (should show minimal .h/.cpp files)
+lsof -p $MCP_PID $(pgrep -P $MCP_PID | tr '\n' ',' | sed 's/,$//' | sed 's/^/,/') 2>/dev/null | \
+  grep REG | awk '{print $NF}' | sed 's/.*\.//' | sort | uniq -c | sort -rn
+
+# Memory usage per process
+ps -p $MCP_PID $(pgrep -P $MCP_PID | tr '\n' ',') -o pid,rss,cmd --no-headers | \
+  awk '{printf "PID %s: %.1f MB - %s\n", $1, $2/1024, substr($0, index($0,$3))}'
+```
+
+**Expected healthy values:**
+- Main process: 10-15 FDs
+- Worker processes: 8-10 FDs each
+- Open C++ files: 0-2 (near zero)
+- Total FDs: 30-60 for 8 workers (stable, not growing)
+
+**Signs of file descriptor leak:**
+- FDs continuously increasing during indexing
+- 100+ .h or .cpp files kept open
+- "Too many open files" errors
+- FD count approaching system limit (usually 1024 per process)
 
 ## Parse Error Diagnostics
 
