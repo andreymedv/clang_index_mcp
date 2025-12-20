@@ -13,6 +13,7 @@ import time
 import threading
 import signal
 import atexit
+import gc
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple, Callable
@@ -156,6 +157,11 @@ def _process_file_worker(args_tuple):
     # Remove from file_hashes
     if file_path in _worker_analyzer.file_hashes:
         del _worker_analyzer.file_hashes[file_path]
+
+    # Force garbage collection to free TranslationUnit objects
+    # TU objects hold native C++ resources (file descriptors) that Python's GC
+    # doesn't clean up frequently enough, causing FD leak in long-running workers
+    gc.collect()
 
     return (file_path, success, was_cached, symbols, call_sites)
 
