@@ -128,6 +128,35 @@ def _process_file_worker(args_tuple):
             f"Worker call_sites count: {len(_worker_analyzer.call_graph_analyzer.call_sites)}"
         )
 
+    # Clean up worker indexes after extracting symbols to prevent memory accumulation
+    # Workers don't need to keep this data - it's sent back to parent process
+    if file_path in _worker_analyzer.file_index:
+        # Remove symbols from file_index
+        for symbol in _worker_analyzer.file_index[file_path]:
+            # Remove from class_index and function_index
+            if symbol.kind in ("class", "struct"):
+                if symbol.name in _worker_analyzer.class_index:
+                    _worker_analyzer.class_index[symbol.name] = [
+                        s for s in _worker_analyzer.class_index[symbol.name] if s.file != file_path
+                    ]
+            else:
+                if symbol.name in _worker_analyzer.function_index:
+                    _worker_analyzer.function_index[symbol.name] = [
+                        s
+                        for s in _worker_analyzer.function_index[symbol.name]
+                        if s.file != file_path
+                    ]
+            # Remove from usr_index
+            if symbol.usr and symbol.usr in _worker_analyzer.usr_index:
+                del _worker_analyzer.usr_index[symbol.usr]
+
+        # Remove from file_index
+        del _worker_analyzer.file_index[file_path]
+
+    # Remove from file_hashes
+    if file_path in _worker_analyzer.file_hashes:
+        del _worker_analyzer.file_hashes[file_path]
+
     return (file_path, success, was_cached, symbols, call_sites)
 
 
@@ -1605,7 +1634,11 @@ class CppAnalyzer:
             # Update tracking
             # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
             with self._get_lock():
-                self.translation_units[file_path] = tu
+                # Don't store TranslationUnits in worker processes to avoid FD leak
+                # Workers only need to extract symbols and return them
+                if self._needs_locking:
+                    # Only store TUs in main process (not workers)
+                    self.translation_units[file_path] = tu
                 self.file_hashes[file_path] = current_hash
 
             return (True, False)  # Success, not from cache
