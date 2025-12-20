@@ -250,7 +250,7 @@ make ie                         # install-editable
 - **Core Analyzer:** mcp_server/cpp_analyzer.py (CppAnalyzer class)
 - **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
 - **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
-- **Parallel Worker:** mcp_server/cpp_analyzer.py:55-90 (`_process_file_worker()`)
+- **Parallel Worker:** mcp_server/cpp_analyzer.py:72-131 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
 - **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v8.0 with brief/doc_comment fields and call_sites table)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py

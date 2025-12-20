@@ -23,7 +23,6 @@ from .symbol_info import SymbolInfo
 from .cache_manager import CacheManager
 from .file_scanner import FileScanner
 from .call_graph import CallGraphAnalyzer
-from .call_graph import CallGraphAnalyzer
 from .search_engine import SearchEngine
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .compile_commands_manager import CompileCommandsManager
@@ -2077,9 +2076,7 @@ class CppAnalyzer:
     ) -> List[Dict[str, Any]]:
         """Search for functions matching pattern, optionally within a specific class"""
         try:
-            return self.search_engine.search_functions(
-                pattern, project_only, class_name, file_name
-            )
+            return self.search_engine.search_functions(pattern, project_only, class_name, file_name)
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
