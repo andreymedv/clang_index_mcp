@@ -325,7 +325,10 @@ class MCPHTTPServer:
 
         logger.info("New SSE connection established")
 
-        async with self.sse_transport.connect_sse(scope, receive, send) as (read_stream, write_stream):
+        async with self.sse_transport.connect_sse(scope, receive, send) as (
+            read_stream,
+            write_stream,
+        ):
             try:
                 await self.mcp_server.run(
                     read_stream,
@@ -352,19 +355,25 @@ class MCPHTTPServer:
         except Exception as e:
             logger.exception(f"Error handling SSE message: {e}")
             # Send error response
-            await send({
-                "type": "http.response.start",
-                "status": 500,
-                "headers": [[b"content-type", b"application/json"]],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": json.dumps({
-                    "jsonrpc": "2.0",
-                    "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
-                    "id": None,
-                }).encode(),
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                            "id": None,
+                        }
+                    ).encode(),
+                }
+            )
 
     async def start(self):
         """Start the HTTP/SSE server."""
