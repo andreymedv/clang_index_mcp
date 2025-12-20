@@ -1645,6 +1645,11 @@ class CppAnalyzer:
                 if self._needs_locking:
                     # Only store TUs in main process (not workers)
                     self.translation_units[file_path] = tu
+                else:
+                    # CRITICAL: Explicitly delete TU in worker processes to release FDs
+                    # gc.collect() alone isn't sufficient for native C++ resources
+                    del tu
+                    gc.collect()
                 self.file_hashes[file_path] = current_hash
 
             return (True, False)  # Success, not from cache
