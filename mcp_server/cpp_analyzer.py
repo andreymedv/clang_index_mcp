@@ -1640,16 +1640,13 @@ class CppAnalyzer:
             # Update tracking
             # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
             with self._get_lock():
-                # Don't store TranslationUnits in worker processes to avoid FD leak
-                # Workers only need to extract symbols and return them
-                if self._needs_locking:
-                    # Only store TUs in main process (not workers)
-                    self.translation_units[file_path] = tu
-                else:
-                    # CRITICAL: Explicitly delete TU in worker processes to release FDs
-                    # gc.collect() alone isn't sufficient for native C++ resources
-                    del tu
-                    gc.collect()
+                # CRITICAL: Don't store TranslationUnits at all - they're never used!
+                # self.translation_units is a write-only dict that causes massive FD leak
+                # TUs hold system headers open (516+ .h files from /usr/include/c++/14/)
+                # We only need symbols extracted from TU, not the TU itself
+                # Explicitly delete to release file descriptors immediately
+                del tu
+                gc.collect()
                 self.file_hashes[file_path] = current_hash
 
             return (True, False)  # Success, not from cache
@@ -2182,8 +2179,7 @@ class CppAnalyzer:
             # Remove from tracking
             if file_path in self.file_hashes:
                 del self.file_hashes[file_path]
-            if file_path in self.translation_units:
-                del self.translation_units[file_path]
+            # Note: translation_units dict removed - was never used, caused FD leak
             # Clean up per-file cache
             self.cache_manager.remove_file_cache(file_path)
             deleted += 1
