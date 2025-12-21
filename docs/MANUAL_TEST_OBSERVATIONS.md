@@ -1052,6 +1052,181 @@ status.update({
 
 ---
 
+## Issue: refresh_project Doesn't Report Progress During Refresh
+
+**Platform:** All platforms (observed during manual testing on 2025-12-21)
+
+### Observation
+
+After calling `refresh_project`, the operation correctly runs in the background (non-blocking), but `get_indexing_status` returns `progress: null` during the entire refresh:
+
+```json
+{
+  "state": "refreshing",
+  "is_fully_indexed": false,
+  "is_ready_for_queries": true,
+  "progress": null          // ← No progress information during refresh!
+}
+```
+
+### Comparison with Initial Indexing
+
+**During initial indexing (set_project_directory):**
+```json
+{
+  "state": "indexing",
+  "is_fully_indexed": false,
+  "is_ready_for_queries": true,
+  "progress": {
+    "indexed_files": 1234,
+    "total_files": 5678,
+    "completion_percentage": 21.7,
+    "current_file": "/path/to/file.cpp",
+    "eta_seconds": 45.2
+  }
+}
+```
+
+**During refresh (refresh_project):**
+```json
+{
+  "state": "refreshing",
+  "progress": null          // ← Missing!
+}
+```
+
+### Root Cause Analysis
+
+**Progress tracking not implemented for refresh operations:**
+
+1. **Initial indexing has progress:**
+   - `set_project_directory` → `BackgroundIndexer.start_indexing()`
+   - Passes `progress_callback` to `analyzer.index_project()`
+   - `index_project()` periodically calls `progress_callback(progress)`
+   - Callback updates `state_manager._progress`
+
+2. **Refresh operations lack progress:**
+   - `refresh_project` → `run_background_refresh()` (async function)
+   - Calls `analyzer.refresh_if_needed()` or `incremental_analyzer.perform_incremental_analysis()`
+   - **Neither function accepts progress_callback parameter**
+   - **Neither function reports progress**
+   - State transitions to REFRESHING but `_progress` stays null
+
+### Evidence
+
+```python
+# mcp_server/cpp_analyzer.py:2158
+def refresh_if_needed(self) -> int:
+    # No progress_callback parameter!
+    # No progress reporting during execution
+
+# mcp_server/incremental_analyzer.py:89
+def perform_incremental_analysis(self) -> AnalysisResult:
+    # No progress_callback parameter!
+    # Returns AnalysisResult at end, but no intermediate progress
+```
+
+### Impact
+
+**Problem:** Poor user experience during refresh:
+- Users cannot monitor refresh progress
+- No visibility into how many files are being processed
+- No ETA for completion
+- Inconsistent with initial indexing experience
+- Users must wait without feedback (especially for large refreshes)
+
+**Expected Behavior:**
+- Refresh should report progress similar to initial indexing
+- Show files processed, total files, completion percentage
+- Provide ETA for long-running refreshes
+- Update progress periodically during execution
+
+### Solution
+
+**Requires architectural changes:**
+
+1. **Add progress callback support to refresh methods:**
+   ```python
+   # cpp_analyzer.py
+   def refresh_if_needed(self, progress_callback=None) -> int:
+       # Report progress during file processing
+
+   # incremental_analyzer.py
+   def perform_incremental_analysis(self, progress_callback=None) -> AnalysisResult:
+       # Report progress during re-analysis
+   ```
+
+2. **Update run_background_refresh to use progress callback:**
+   ```python
+   async def run_background_refresh():
+       state_manager.transition_to(AnalyzerState.REFRESHING)
+
+       def progress_callback(progress: IndexingProgress):
+           state_manager.update_progress(progress)
+
+       # Pass callback to refresh methods
+       result = await loop.run_in_executor(
+           None,
+           lambda: incremental_analyzer.perform_incremental_analysis(
+               progress_callback=progress_callback
+           )
+       )
+   ```
+
+3. **Modify _reanalyze_files to report progress:**
+   ```python
+   # incremental_analyzer.py:_reanalyze_files
+   def _reanalyze_files(self, files: Set[str], progress_callback=None) -> int:
+       total = len(files)
+       for idx, file_path in enumerate(files):
+           # ... process file ...
+           if progress_callback:
+               progress_callback(IndexingProgress(
+                   indexed_files=idx+1,
+                   total_files=total,
+                   current_file=file_path,
+                   # ... other fields
+               ))
+   ```
+
+### Investigation Status
+
+⏸️ **DOCUMENTED** - Enhancement for future work
+
+### Next Steps
+
+1. Add progress_callback parameter to:
+   - `analyzer.refresh_if_needed()`
+   - `incremental_analyzer.perform_incremental_analysis()`
+   - `incremental_analyzer._reanalyze_files()`
+
+2. Update run_background_refresh to create and pass progress callback
+
+3. Implement progress reporting in _reanalyze_files sequential loop
+
+4. Test with various refresh scenarios:
+   - Incremental refresh (few files)
+   - Full refresh (many files)
+   - Force full refresh
+
+5. Ensure progress resets to null after INDEXED state transition
+
+### Related Issues
+
+- **Issue #2:** refresh_project timeout (RESOLVED - now non-blocking)
+- **Issue #6:** Sequential processing in incremental refresh (affects progress reporting)
+- **Enhancement:** This issue is about visibility, not performance
+
+### Priority
+
+**Medium - UX Enhancement:**
+- Refresh works correctly (non-blocking)
+- Progress reporting would improve user experience
+- Especially important for large projects with slow refreshes
+- Not critical for functionality
+
+---
+
 ## General Status
 
 ✅ **Working:** MCP server general functionality
@@ -1076,6 +1251,11 @@ status.update({
 - Regression from FD leak fix (commit 2e6700f)
 - Simple 2-line fix: use `file_index` instead of removed `translation_units`
 - Affects all platforms
+
+⚠️ **Issue #11:** refresh_project doesn't report progress during refresh
+- Progress stays null during REFRESHING state (inconsistent with initial indexing)
+- UX enhancement - requires adding progress_callback support to refresh methods
+- Medium priority (non-blocking, but affects user experience on large refreshes)
 
 ### Issues Observed on macOS (LM Studio Testing)
 ⚠️ **Issue #4:** Class search uses substring matching by default (should use exact match)
