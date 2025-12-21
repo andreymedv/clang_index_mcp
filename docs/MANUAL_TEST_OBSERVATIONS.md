@@ -950,6 +950,108 @@ def find_libclang():
 
 ---
 
+## Issue: get_server_status Reports Zero Files After Successful Indexing
+
+**Platform:** Linux (observed during manual testing on 2025-12-21)
+
+### Observation
+
+After successfully calling `set_project_directory` and completing indexing (verified by 45,639 classes and 211,367 functions indexed), `get_server_status` returns zero for file-related counts:
+
+```json
+{
+  "analyzer_type": "python_enhanced",
+  "call_graph_enabled": true,
+  "usr_tracking_enabled": true,
+  "compile_commands_enabled": true,
+  "compile_commands_path": "/path/to/build/compile_commands.json",
+  "compile_commands_cache_enabled": true,
+  "parsed_files": 0,        // ← Should NOT be zero!
+  "indexed_classes": 45639,
+  "indexed_functions": 211367,
+  "project_files": 0         // ← Should NOT be zero!
+}
+```
+
+### Root Cause Analysis
+
+**Bug introduced by file descriptor leak fix (commit 2e6700f):**
+
+1. **What was removed:** The FD leak fix removed `self.translation_units` dict (it was write-only, causing file descriptor leaks)
+2. **What wasn't updated:** `get_server_status` still references the removed dict:
+
+```python
+# mcp_server/cpp_mcp_server.py:997-1000
+status.update({
+    "parsed_files": len(analyzer.translation_units),    # ← Dict no longer exists!
+    "indexed_classes": total_classes,
+    "indexed_functions": total_functions,
+    "project_files": len(analyzer.translation_units),   # ← Returns 0
+})
+```
+
+3. **Why symbols still work:** Classes and functions are stored in `class_index` and `function_index`, which were NOT removed
+
+### Evidence
+
+```bash
+# translation_units dict was removed:
+$ git show 2e6700f
+"CRITICAL FIX: Stop storing TranslationUnits - they're never used!"
+
+# But get_server_status wasn't updated:
+$ grep "translation_units" mcp_server/cpp_mcp_server.py
+    "parsed_files": len(analyzer.translation_units),
+    "project_files": len(analyzer.translation_units),
+```
+
+### Impact
+
+**Problem:** Misleading/incorrect status information:
+- Users cannot determine how many files were processed
+- Status tool provides incomplete information
+- Creates confusion about indexing completion
+- Could affect debugging and diagnostics
+
+**Expected Behavior:**
+- `parsed_files` should show actual count of files processed
+- `project_files` should show total files in project
+- Counts should match reality (thousands of files for large projects)
+
+### Solution
+
+**Simple fix - use `file_index` instead:**
+
+```python
+# mcp_server/cpp_mcp_server.py:997-1000
+status.update({
+    "parsed_files": len(analyzer.file_index),      # Files with extracted symbols
+    "indexed_classes": total_classes,
+    "indexed_functions": total_functions,
+    "project_files": len(analyzer.file_index),     # Same count
+})
+```
+
+### Investigation Status
+
+⏸️ **DOCUMENTED** - Ready for fix in separate PR
+
+### Next Steps
+
+1. Create separate PR to fix `get_server_status` counts
+2. Update lines 997 and 1000 in `mcp_server/cpp_mcp_server.py`
+3. Change `len(analyzer.translation_units)` to `len(analyzer.file_index)`
+4. Test with large project to verify correct counts
+5. Consider adding test to prevent similar regressions
+
+### Related Issues
+
+- **Introduced by:** File descriptor leak fix (Issue #3, commit 2e6700f)
+- **Not related to:** refresh_project timeout fix (Issue #2)
+- **Affects:** All platforms (Linux, macOS, Windows)
+
+---
+
 ## General Status
 
 ✅ **Working:** MCP server general functionality
@@ -969,6 +1071,11 @@ def find_libclang():
 ⚠️ **Issue #1 [PRIORITY 3 - LOW]:** set_project_directory state synchronization race condition
 - Race condition between setting state and background indexing
 - Lower impact on manual testing workflow
+
+⚠️ **Issue #10:** get_server_status reports zero files after successful indexing
+- Regression from FD leak fix (commit 2e6700f)
+- Simple 2-line fix: use `file_index` instead of removed `translation_units`
+- Affects all platforms
 
 ### Issues Observed on macOS (LM Studio Testing)
 ⚠️ **Issue #4:** Class search uses substring matching by default (should use exact match)
