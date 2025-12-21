@@ -950,6 +950,466 @@ def find_libclang():
 
 ---
 
+## Issue: get_server_status Reports Zero Files After Successful Indexing
+
+**Platform:** Linux (observed during manual testing on 2025-12-21)
+
+### Observation
+
+After successfully calling `set_project_directory` and completing indexing (verified by 45,639 classes and 211,367 functions indexed), `get_server_status` returns zero for file-related counts:
+
+```json
+{
+  "analyzer_type": "python_enhanced",
+  "call_graph_enabled": true,
+  "usr_tracking_enabled": true,
+  "compile_commands_enabled": true,
+  "compile_commands_path": "/path/to/build/compile_commands.json",
+  "compile_commands_cache_enabled": true,
+  "parsed_files": 0,        // ← Should NOT be zero!
+  "indexed_classes": 45639,
+  "indexed_functions": 211367,
+  "project_files": 0         // ← Should NOT be zero!
+}
+```
+
+### Root Cause Analysis
+
+**Bug introduced by file descriptor leak fix (commit 2e6700f):**
+
+1. **What was removed:** The FD leak fix removed `self.translation_units` dict (it was write-only, causing file descriptor leaks)
+2. **What wasn't updated:** `get_server_status` still references the removed dict:
+
+```python
+# mcp_server/cpp_mcp_server.py:997-1000
+status.update({
+    "parsed_files": len(analyzer.translation_units),    # ← Dict no longer exists!
+    "indexed_classes": total_classes,
+    "indexed_functions": total_functions,
+    "project_files": len(analyzer.translation_units),   # ← Returns 0
+})
+```
+
+3. **Why symbols still work:** Classes and functions are stored in `class_index` and `function_index`, which were NOT removed
+
+### Evidence
+
+```bash
+# translation_units dict was removed:
+$ git show 2e6700f
+"CRITICAL FIX: Stop storing TranslationUnits - they're never used!"
+
+# But get_server_status wasn't updated:
+$ grep "translation_units" mcp_server/cpp_mcp_server.py
+    "parsed_files": len(analyzer.translation_units),
+    "project_files": len(analyzer.translation_units),
+```
+
+### Impact
+
+**Problem:** Misleading/incorrect status information:
+- Users cannot determine how many files were processed
+- Status tool provides incomplete information
+- Creates confusion about indexing completion
+- Could affect debugging and diagnostics
+
+**Expected Behavior:**
+- `parsed_files` should show actual count of files processed
+- `project_files` should show total files in project
+- Counts should match reality (thousands of files for large projects)
+
+### Solution
+
+**Simple fix - use `file_index` instead:**
+
+```python
+# mcp_server/cpp_mcp_server.py:997-1000
+status.update({
+    "parsed_files": len(analyzer.file_index),      # Files with extracted symbols
+    "indexed_classes": total_classes,
+    "indexed_functions": total_functions,
+    "project_files": len(analyzer.file_index),     # Same count
+})
+```
+
+### Investigation Status
+
+⏸️ **DOCUMENTED** - Ready for fix in separate PR
+
+### Next Steps
+
+1. Create separate PR to fix `get_server_status` counts
+2. Update lines 997 and 1000 in `mcp_server/cpp_mcp_server.py`
+3. Change `len(analyzer.translation_units)` to `len(analyzer.file_index)`
+4. Test with large project to verify correct counts
+5. Consider adding test to prevent similar regressions
+
+### Related Issues
+
+- **Introduced by:** File descriptor leak fix (Issue #3, commit 2e6700f)
+- **Not related to:** refresh_project timeout fix (Issue #2)
+- **Affects:** All platforms (Linux, macOS, Windows)
+
+---
+
+## Issue: refresh_project Doesn't Report Progress During Refresh
+
+**Platform:** All platforms (observed during manual testing on 2025-12-21)
+
+### Observation
+
+After calling `refresh_project`, the operation correctly runs in the background (non-blocking), but `get_indexing_status` returns `progress: null` during the entire refresh:
+
+```json
+{
+  "state": "refreshing",
+  "is_fully_indexed": false,
+  "is_ready_for_queries": true,
+  "progress": null          // ← No progress information during refresh!
+}
+```
+
+### Comparison with Initial Indexing
+
+**During initial indexing (set_project_directory):**
+```json
+{
+  "state": "indexing",
+  "is_fully_indexed": false,
+  "is_ready_for_queries": true,
+  "progress": {
+    "indexed_files": 1234,
+    "total_files": 5678,
+    "completion_percentage": 21.7,
+    "current_file": "/path/to/file.cpp",
+    "eta_seconds": 45.2
+  }
+}
+```
+
+**During refresh (refresh_project):**
+```json
+{
+  "state": "refreshing",
+  "progress": null          // ← Missing!
+}
+```
+
+### Root Cause Analysis
+
+**Progress tracking not implemented for refresh operations:**
+
+1. **Initial indexing has progress:**
+   - `set_project_directory` → `BackgroundIndexer.start_indexing()`
+   - Passes `progress_callback` to `analyzer.index_project()`
+   - `index_project()` periodically calls `progress_callback(progress)`
+   - Callback updates `state_manager._progress`
+
+2. **Refresh operations lack progress:**
+   - `refresh_project` → `run_background_refresh()` (async function)
+   - Calls `analyzer.refresh_if_needed()` or `incremental_analyzer.perform_incremental_analysis()`
+   - **Neither function accepts progress_callback parameter**
+   - **Neither function reports progress**
+   - State transitions to REFRESHING but `_progress` stays null
+
+### Evidence
+
+```python
+# mcp_server/cpp_analyzer.py:2158
+def refresh_if_needed(self) -> int:
+    # No progress_callback parameter!
+    # No progress reporting during execution
+
+# mcp_server/incremental_analyzer.py:89
+def perform_incremental_analysis(self) -> AnalysisResult:
+    # No progress_callback parameter!
+    # Returns AnalysisResult at end, but no intermediate progress
+```
+
+### Impact
+
+**Problem:** Poor user experience during refresh:
+- Users cannot monitor refresh progress
+- No visibility into how many files are being processed
+- No ETA for completion
+- Inconsistent with initial indexing experience
+- Users must wait without feedback (especially for large refreshes)
+
+**Expected Behavior:**
+- Refresh should report progress similar to initial indexing
+- Show files processed, total files, completion percentage
+- Provide ETA for long-running refreshes
+- Update progress periodically during execution
+
+### Solution
+
+**Requires architectural changes:**
+
+1. **Add progress callback support to refresh methods:**
+   ```python
+   # cpp_analyzer.py
+   def refresh_if_needed(self, progress_callback=None) -> int:
+       # Report progress during file processing
+
+   # incremental_analyzer.py
+   def perform_incremental_analysis(self, progress_callback=None) -> AnalysisResult:
+       # Report progress during re-analysis
+   ```
+
+2. **Update run_background_refresh to use progress callback:**
+   ```python
+   async def run_background_refresh():
+       state_manager.transition_to(AnalyzerState.REFRESHING)
+
+       def progress_callback(progress: IndexingProgress):
+           state_manager.update_progress(progress)
+
+       # Pass callback to refresh methods
+       result = await loop.run_in_executor(
+           None,
+           lambda: incremental_analyzer.perform_incremental_analysis(
+               progress_callback=progress_callback
+           )
+       )
+   ```
+
+3. **Modify _reanalyze_files to report progress:**
+   ```python
+   # incremental_analyzer.py:_reanalyze_files
+   def _reanalyze_files(self, files: Set[str], progress_callback=None) -> int:
+       total = len(files)
+       for idx, file_path in enumerate(files):
+           # ... process file ...
+           if progress_callback:
+               progress_callback(IndexingProgress(
+                   indexed_files=idx+1,
+                   total_files=total,
+                   current_file=file_path,
+                   # ... other fields
+               ))
+   ```
+
+### Investigation Status
+
+⏸️ **DOCUMENTED** - Enhancement for future work
+
+### Next Steps
+
+1. Add progress_callback parameter to:
+   - `analyzer.refresh_if_needed()`
+   - `incremental_analyzer.perform_incremental_analysis()`
+   - `incremental_analyzer._reanalyze_files()`
+
+2. Update run_background_refresh to create and pass progress callback
+
+3. Implement progress reporting in _reanalyze_files sequential loop
+
+4. Test with various refresh scenarios:
+   - Incremental refresh (few files)
+   - Full refresh (many files)
+   - Force full refresh
+
+5. Ensure progress resets to null after INDEXED state transition
+
+### Related Issues
+
+- **Issue #2:** refresh_project timeout (RESOLVED - now non-blocking)
+- **Issue #6:** Sequential processing in incremental refresh (affects progress reporting)
+- **Enhancement:** This issue is about visibility, not performance
+
+### Priority
+
+**Medium - UX Enhancement:**
+- Refresh works correctly (non-blocking)
+- Progress reporting would improve user experience
+- Especially important for large projects with slow refreshes
+- Not critical for functionality
+
+---
+
+## Issue: Database Connection Error During Refresh - "Cannot operate on a closed database"
+
+**Platform:** All platforms (observed during incremental refresh on 2025-12-21)
+
+### Observation
+
+During `refresh_project` execution, warnings appear indicating SQLite database operations fail:
+
+```
+[WARNING] Failed to update dependencies for /path/to/project/File1.h: Cannot operate on a closed database.
+[WARNING] Failed to update dependencies for /path/to/project/File2.h: Cannot operate on a closed database.
+```
+
+### Root Cause Analysis
+
+**Shared database connection with mismatched lifecycle:**
+
+1. **Connection sharing setup:**
+   ```python
+   # mcp_server/cpp_analyzer.py:270
+   if hasattr(self.cache_manager.backend, "conn"):
+       self.dependency_graph = DependencyGraphBuilder(self.cache_manager.backend.conn)
+   ```
+   - DependencyGraphBuilder shares the same SQLite connection as cache backend
+
+2. **Connection closing:**
+   ```python
+   # mcp_server/cpp_analyzer.py:310
+   self.cache_manager.close()
+   ```
+   - Closes the shared connection
+
+3. **Stale reference:**
+   ```python
+   # mcp_server/dependency_graph.py:173
+   self.conn.cursor()  # ← Tries to use closed connection!
+   ```
+   - DependencyGraphBuilder still holds reference to closed connection
+   - Operations fail with SQLite error
+
+### When This Occurs
+
+**Triggered during incremental refresh:**
+- Sequential file re-analysis in `_reanalyze_files()`
+- Each file calls `index_file()` which tries to update dependencies
+- If cache manager closed between files, dependency updates fail
+- Non-fatal: caught and logged as warning at `cpp_analyzer.py:1291`
+
+### Evidence
+
+```python
+# mcp_server/cpp_analyzer.py:1286-1291
+if self.dependency_graph is not None:
+    try:
+        includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
+        self.dependency_graph.update_dependencies(source_file, includes)  # ← Fails!
+    except Exception as e:
+        diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
+        # ← Logs "Cannot operate on a closed database"
+```
+
+### Impact
+
+**Problem:** Dependency tracking incomplete after refresh:
+- Files re-analyzed successfully (symbols extracted)
+- But dependency graph not updated for those files
+- Incremental refresh on next run may miss cascading header changes
+- Could cause stale symbol data to persist
+
+**Expected Behavior:**
+- Dependencies should be updated for all re-analyzed files
+- Connection should remain open during entire refresh operation
+- Or dependency graph should handle closed connection gracefully
+
+### Solution Options
+
+**Option 1: Keep connection open during refresh**
+```python
+# Don't close cache_manager until all operations complete
+# Ensure connection lifecycle matches operation lifecycle
+```
+
+**Option 2: Separate dependency connection**
+```python
+# Create separate connection for dependency_graph
+# Don't share connection with cache backend
+self.dependency_graph = DependencyGraphBuilder(
+    sqlite3.connect(db_path)  # Own connection
+)
+```
+
+**Option 3: Check connection before use**
+```python
+# dependency_graph.py:update_dependencies
+def update_dependencies(self, source_file: str, included_files: List[str]) -> int:
+    if not self._is_connection_open():
+        diagnostics.warning("Database connection closed, skipping dependency update")
+        return 0
+    # ... existing code
+```
+
+### Investigation Status
+
+⏸️ **DOCUMENTED** - Database lifecycle management issue
+
+### Next Steps
+
+1. Trace cache_manager.close() calls during refresh
+2. Determine when/why connection closes during operation
+3. Choose solution approach (keep open vs separate connection)
+4. Implement fix
+5. Add test for dependency updates during incremental refresh
+6. Verify no "closed database" errors after fix
+
+### Related Issues
+
+- **Issue #6:** Sequential processing in incremental refresh (where this error occurs)
+- **Issue #11:** Missing progress reporting during refresh (same code path)
+
+---
+
+## Issue: Missing Third-Party Headers During Refresh (Expected Behavior)
+
+**Platform:** All platforms (observed during refresh on 2025-12-21)
+
+### Observation
+
+During refresh, some files fail to parse with missing header errors:
+
+```
+libclang parsing errors (1 total):
+[fatal] /path/to/project/Utils/Preprocessor/OverloadedMacro.h:10:10: 'boost/preprocessor/cat.hpp' file not found
+```
+
+### Analysis
+
+**This is expected behavior, not a bug:**
+
+1. **Files not in compile_commands.json:**
+   - If a file isn't listed in compile_commands.json, fallback args are used
+   - Fallback args are generic: `-std=c++17 -I/path/to/project`
+   - Don't include project-specific third-party paths (boost, etc.)
+
+2. **Why it happens during refresh:**
+   - Incremental refresh may pick up files not tracked by build system
+   - Header files are often not in compile_commands.json (only .cpp files)
+   - When refreshing headers, fallback args used
+
+3. **Error recovery:**
+   - libclang continues parsing despite errors (partial AST extraction)
+   - Symbols from parseable parts still extracted
+   - See Issue #3 documentation: "Continue on parse errors"
+
+### Evidence
+
+```python
+# mcp_server/cpp_analyzer.py:1324
+args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+# ↑ Uses fallback if file not in compile_commands.json
+
+# mcp_server/cpp_analyzer.py:1507
+"Using fallback compilation args - compile_commands.json may be needed"
+```
+
+### Impact
+
+**Not a defect:**
+- Partial symbol extraction still works (libclang error recovery)
+- Errors logged for user awareness
+- User can fix by ensuring files are in compile_commands.json
+- Or by adding third-party include paths to config
+
+**User action (if needed):**
+- Regenerate compile_commands.json to include more files
+- Or configure include paths in cpp-analyzer-config.json
+- Or accept partial parsing for headers not in build
+
+### Investigation Status
+
+✅ **EXPECTED BEHAVIOR** - Not a bug, informational only
+
+---
+
 ## General Status
 
 ✅ **Working:** MCP server general functionality
@@ -969,6 +1429,24 @@ def find_libclang():
 ⚠️ **Issue #1 [PRIORITY 3 - LOW]:** set_project_directory state synchronization race condition
 - Race condition between setting state and background indexing
 - Lower impact on manual testing workflow
+
+⚠️ **Issue #10:** get_server_status reports zero files after successful indexing
+- Regression from FD leak fix (commit 2e6700f)
+- Simple 2-line fix: use `file_index` instead of removed `translation_units`
+- Affects all platforms
+
+⚠️ **Issue #11:** refresh_project doesn't report progress during refresh
+- Progress stays null during REFRESHING state (inconsistent with initial indexing)
+- UX enhancement - requires adding progress_callback support to refresh methods
+- Medium priority (non-blocking, but affects user experience on large refreshes)
+
+🔴 **Issue #12:** Database connection closed during refresh causes dependency tracking failures
+- "Cannot operate on a closed database" errors during incremental refresh
+- Shared SQLite connection between cache_manager and dependency_graph with mismatched lifecycle
+- Dependencies not updated for re-analyzed files (could cause stale data on next refresh)
+- Requires connection lifecycle fix or separate dependency connection
+
+ℹ️ **Note:** Missing third-party header errors (e.g., boost) during refresh are expected behavior when files aren't in compile_commands.json (fallback args used)
 
 ### Issues Observed on macOS (LM Studio Testing)
 ⚠️ **Issue #4:** Class search uses substring matching by default (should use exact match)
