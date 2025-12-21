@@ -994,10 +994,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
             status.update(
                 {
-                    "parsed_files": len(analyzer.translation_units),
+                    "parsed_files": len(analyzer.file_index),
                     "indexed_classes": total_classes,
                     "indexed_functions": total_functions,
-                    "project_files": len(analyzer.translation_units),  # Approximate count
+                    "project_files": len(analyzer.file_index),
                 }
             )
             return [TextContent(type="text", text=json.dumps(status, indent=2))]
