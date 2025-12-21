@@ -1275,6 +1275,25 @@ During `refresh_project` execution, warnings appear indicating SQLite database o
 - If cache manager closed between files, dependency updates fail
 - Non-fatal: caught and logged as warning at `cpp_analyzer.py:1291`
 
+**Real-world evidence (SSE mode with Ctrl-C):**
+```
+[WARNING] /path/to/QtEditors/TextEditor/PageInfoHint.h: Continuing despite 1 error(s):
+libclang parsing errors (1 total):
+[fatal] /path/to/CoreConfig.h:10:10: 'CoreConfig.h' file not found
+[WARNING] Failed to update dependencies for /path/to/PageInfoHint.h: Cannot operate on a closed database.
+^C
+INFO:     Shutting down
+[WARNING] /path/to/iOSEditors/DeviceFileDataContainer.h: Continuing despite 1 error(s):
+[WARNING] Failed to update dependencies for /path/to/DeviceFileDataContainer.h: Cannot operate on a closed database.
+INFO:     Application shutdown complete.
+[WARNING] /path/to/QtComponents/ActionGridList.h: Continuing despite 1 error(s):
+[WARNING] Failed to update dependencies for /path/to/ActionGridList.h: Cannot operate on a closed database.
+```
+
+**Shows two problems:**
+1. Database connection closed (this issue)
+2. Workers continue after server shutdown (Ctrl-C doesn't stop background tasks)
+
 ### Evidence
 
 ```python
@@ -1366,6 +1385,27 @@ libclang parsing errors (1 total):
 - Initial indexing (test_mcp_console.py) parses same project without boost errors
 - Refresh shows boost/third-party header errors
 - Indicates headers being re-analyzed with different (fallback) args during refresh
+
+**Real-world evidence (same session showing multiple third-party header failures):**
+```
+[WARNING] /path/to/QtComponents/Controls/ActionGridList.h: Continuing despite 1 error(s):
+libclang parsing errors (1 total):
+[fatal] /path/to/Utils/TypeUtils/DefineValueFromTrait.h:12:10: 'boost/preprocessor/cat.hpp' file not found
+
+[WARNING] /path/to/iOSEditors/Editors/Common/DeviceFileDataContainer.h: Continuing despite 1 error(s):
+libclang parsing errors (1 total):
+[fatal] /path/to/iOSEditors/Editors/Common/DeviceFileDataContainer.h:9:9: 'Foundation/Foundation.h' file not found
+
+[WARNING] /path/to/WebDAVNetworking/Request/CheckResourceRequest.h: Continuing despite 1 error(s):
+libclang parsing errors (1 total):
+[fatal] /path/to/Utils/Preprocessor/OverloadedMacro.h:10:10: 'boost/preprocessor/cat.hpp' file not found
+```
+
+**Pattern shows:**
+- Multiple header files (.h) being parsed directly
+- Missing boost headers (C++ third-party library)
+- Missing Foundation headers (macOS/iOS system framework)
+- All using fallback args that lack proper include paths
 
 ### Root Cause Analysis
 
