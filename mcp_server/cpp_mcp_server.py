@@ -345,7 +345,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="refresh_project",
-            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. The analyzer does NOT automatically detect file changes - you must call this tool whenever source files are modified (whether by you, external editor, git checkout, build system, or any other means) to ensure the index reflects the current state of the codebase.\n\nSupports two modes:\n- Incremental (default): Analyzes only changed files using dependency tracking\n- Full: Re-analyzes all files (use force_full=true)\n\nReturns detailed statistics about files analyzed, removed, and elapsed time.",
+            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. The analyzer does NOT automatically detect file changes - you must call this tool whenever source files are modified (whether by you, external editor, git checkout, build system, or any other means) to ensure the index reflects the current state of the codebase.\n\nSupports two modes:\n- Incremental (default): Analyzes only changed files using dependency tracking\n- Full: Re-analyzes all files (use force_full=true)\n\n**Non-blocking operation:** Refresh runs in the background. This tool returns immediately while the refresh continues. Use 'get_indexing_status' to monitor progress. Tools remain available during refresh and will return results based on the current cache state.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -882,77 +882,97 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             incremental = arguments.get("incremental", True)
             force_full = arguments.get("force_full", False)
 
-            # Force full re-analysis overrides incremental setting
-            if force_full:
-                # Run synchronous method in executor to avoid blocking event loop
-                modified_count = await loop.run_in_executor(None, analyzer.refresh_if_needed)
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Full refresh complete. Re-analyzed {modified_count} files.",
-                    )
-                ]
-
-            # Incremental analysis using IncrementalAnalyzer
-            if incremental:
+            # Start refresh in background (non-blocking, similar to set_project_directory)
+            async def run_background_refresh():
                 try:
-                    from mcp_server.incremental_analyzer import IncrementalAnalyzer
+                    # Transition to REFRESHING state
+                    state_manager.transition_to(AnalyzerState.REFRESHING)
 
-                    incremental_analyzer = IncrementalAnalyzer(analyzer)
-                    # Run synchronous method in executor to avoid blocking event loop
-                    result = await loop.run_in_executor(
-                        None, incremental_analyzer.perform_incremental_analysis
-                    )
+                    loop = asyncio.get_event_loop()
 
-                    # Build detailed response
-                    response = {
-                        "mode": "incremental",
-                        "files_analyzed": result.files_analyzed,
-                        "files_removed": result.files_removed,
-                        "elapsed_seconds": result.elapsed_seconds,
-                        "changes": {
-                            "compile_commands_changed": result.changes.compile_commands_changed,
-                            "added_files": len(result.changes.added_files),
-                            "modified_files": len(result.changes.modified_files),
-                            "modified_headers": len(result.changes.modified_headers),
-                            "removed_files": len(result.changes.removed_files),
-                            "total_changes": result.changes.get_total_changes(),
-                        },
-                    }
-
-                    if result.changes.is_empty():
-                        response["message"] = "No changes detected. Cache is up to date."
-                    else:
-                        response["message"] = (
-                            f"Incremental refresh complete: Re-analyzed {result.files_analyzed} files, "
-                            f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
+                    # Force full re-analysis overrides incremental setting
+                    if force_full:
+                        diagnostics.info("Starting full refresh (forced)...")
+                        modified_count = await loop.run_in_executor(
+                            None, analyzer.refresh_if_needed
                         )
+                        diagnostics.info(
+                            f"Full refresh complete: re-analyzed {modified_count} files"
+                        )
+                        state_manager.transition_to(AnalyzerState.INDEXED)
+                        return
 
-                    return [TextContent(type="text", text=json.dumps(response, indent=2))]
+                    # Incremental analysis using IncrementalAnalyzer
+                    if incremental:
+                        try:
+                            from mcp_server.incremental_analyzer import IncrementalAnalyzer
+
+                            diagnostics.info("Starting incremental refresh...")
+                            incremental_analyzer = IncrementalAnalyzer(analyzer)
+                            result = await loop.run_in_executor(
+                                None, incremental_analyzer.perform_incremental_analysis
+                            )
+
+                            if result.changes.is_empty():
+                                diagnostics.info(
+                                    "Incremental refresh complete: no changes detected"
+                                )
+                            else:
+                                diagnostics.info(
+                                    f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
+                                    f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
+                                )
+
+                            state_manager.transition_to(AnalyzerState.INDEXED)
+                            return
+
+                        except Exception as e:
+                            diagnostics.error(f"Incremental analysis failed: {e}")
+                            diagnostics.info("Falling back to full refresh...")
+                            # Fallback to full refresh
+                            modified_count = await loop.run_in_executor(
+                                None, analyzer.refresh_if_needed
+                            )
+                            diagnostics.info(
+                                f"Fallback full refresh complete: re-analyzed {modified_count} files"
+                            )
+                            state_manager.transition_to(AnalyzerState.INDEXED)
+                            return
+
+                    # Non-incremental (full) refresh
+                    else:
+                        diagnostics.info("Starting full refresh...")
+                        modified_count = await loop.run_in_executor(
+                            None, analyzer.refresh_if_needed
+                        )
+                        diagnostics.info(
+                            f"Full refresh complete: re-analyzed {modified_count} files"
+                        )
+                        state_manager.transition_to(AnalyzerState.INDEXED)
+                        return
 
                 except Exception as e:
-                    diagnostics.error(f"Incremental analysis failed: {e}")
-                    # Fallback to full refresh
-                    # Run synchronous method in executor to avoid blocking event loop
-                    modified_count = await loop.run_in_executor(None, analyzer.refresh_if_needed)
-                    return [
-                        TextContent(
-                            type="text",
-                            text=f"Incremental analysis failed, performed full refresh. "
-                            f"Re-analyzed {modified_count} files.\nError: {str(e)}",
-                        )
-                    ]
+                    diagnostics.error(f"Background refresh failed: {e}")
+                    state_manager.transition_to(AnalyzerState.ERROR)
+                    pass
 
-            # Non-incremental (full) refresh
-            else:
-                # Run synchronous method in executor to avoid blocking event loop
-                modified_count = await loop.run_in_executor(None, analyzer.refresh_if_needed)
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Full refresh complete. Re-analyzed {modified_count} files.",
-                    )
-                ]
+            # Create background task (non-blocking)
+            asyncio.create_task(run_background_refresh())
+
+            # Build response message
+            refresh_mode = (
+                "full (forced)" if force_full else ("incremental" if incremental else "full")
+            )
+
+            # Return immediately - refresh continues in background
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Refresh started in background (mode: {refresh_mode}).\n"
+                    f"Use 'get_indexing_status' to check progress.\n"
+                    f"Tools will continue to work and return results based on current cache state.",
+                )
+            ]
 
         elif name == "get_server_status":
             # Determine analyzer type
