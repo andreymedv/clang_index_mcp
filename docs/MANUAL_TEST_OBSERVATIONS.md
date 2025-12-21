@@ -1348,65 +1348,163 @@ def update_dependencies(self, source_file: str, included_files: List[str]) -> in
 
 ---
 
-## Issue: Missing Third-Party Headers During Refresh (Expected Behavior)
+## Issue: Headers Re-Analyzed with Fallback Args During Refresh (Bug)
 
-**Platform:** All platforms (observed during refresh on 2025-12-21)
+**Platform:** All platforms (observed during incremental refresh on 2025-12-21)
 
 ### Observation
 
-During refresh, some files fail to parse with missing header errors:
+During `refresh_project`, header files are re-analyzed using fallback compilation arguments instead of proper args from compile_commands.json, causing missing header errors:
 
 ```
+[WARNING] /path/to/project/Printing/File1.h: Continuing despite 1 error(s):
 libclang parsing errors (1 total):
 [fatal] /path/to/project/Utils/Preprocessor/OverloadedMacro.h:10:10: 'boost/preprocessor/cat.hpp' file not found
 ```
 
-### Analysis
+**Key Evidence:**
+- Initial indexing (test_mcp_console.py) parses same project without boost errors
+- Refresh shows boost/third-party header errors
+- Indicates headers being re-analyzed with different (fallback) args during refresh
 
-**This is expected behavior, not a bug:**
+### Root Cause Analysis
 
-1. **Files not in compile_commands.json:**
-   - If a file isn't listed in compile_commands.json, fallback args are used
-   - Fallback args are generic: `-std=c++17 -I/path/to/project`
-   - Don't include project-specific third-party paths (boost, etc.)
+**Bug in ChangeScanner file categorization:**
 
-2. **Why it happens during refresh:**
-   - Incremental refresh may pick up files not tracked by build system
-   - Header files are often not in compile_commands.json (only .cpp files)
-   - When refreshing headers, fallback args used
+1. **CPP_EXTENSIONS includes headers:**
+   ```python
+   # mcp_server/file_scanner.py:13
+   CPP_EXTENSIONS = {".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"}
+   #                                                  ↑ Headers included!
+   ```
 
-3. **Error recovery:**
-   - libclang continues parsing despite errors (partial AST extraction)
-   - Symbols from parseable parts still extracted
-   - See Issue #3 documentation: "Continue on parse errors"
+2. **find_cpp_files() returns ALL C++ files:**
+   ```python
+   # mcp_server/file_scanner.py:66
+   if any(filename.endswith(ext) for ext in self.CPP_EXTENSIONS):
+       # Returns BOTH sources (.cpp) AND headers (.h)!
+   ```
 
-### Evidence
+3. **ChangeScanner scans all files as "sources":**
+   ```python
+   # mcp_server/change_scanner.py:171
+   current_source_files = set(self.analyzer.file_scanner.find_cpp_files())
+   # ↑ Comment says "source files" but includes headers!
 
-```python
-# mcp_server/cpp_analyzer.py:1324
-args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
-# ↑ Uses fallback if file not in compile_commands.json
+   for source_file in current_source_files:
+       # ... check if modified ...
+       changeset.modified_files.add(normalized_path)  # ← Headers go here!
+   ```
 
-# mcp_server/cpp_analyzer.py:1507
-"Using fallback compilation args - compile_commands.json may be needed"
-```
+4. **Modified headers categorized twice:**
+   - Headers found by directory scan → `modified_files`
+   - Same headers found by header_tracker → `modified_headers`
+   - Or only in `modified_files` if not previously tracked
+
+5. **Different handling in incremental_analyzer:**
+   ```python
+   # mcp_server/incremental_analyzer.py
+
+   # Headers in modified_headers: only dependents re-analyzed (CORRECT)
+   for header in changes.modified_headers:
+       dependents = self._handle_header_change(header)  # Gets .cpp files
+       files_to_analyze.update(dependents)  # ← Re-analyze sources, not header
+
+   # Headers in modified_files: header itself re-analyzed (BUG!)
+   for source_file in changes.modified_files:  # ← Contains headers too!
+       files_to_analyze.add(source_file)  # ← Header added for direct re-analysis!
+   ```
+
+6. **Headers not in compile_commands.json:**
+   ```python
+   # mcp_server/cpp_analyzer.py:1324
+   args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+   # ↑ Headers not in compile_commands.json → fallback args used
+   # Fallback args: -std=c++17 -I/path/to/project (missing boost, vcpkg, etc.)
+   ```
 
 ### Impact
 
-**Not a defect:**
-- Partial symbol extraction still works (libclang error recovery)
-- Errors logged for user awareness
-- User can fix by ensuring files are in compile_commands.json
-- Or by adding third-party include paths to config
+**Problem:** Headers re-analyzed incorrectly during refresh:
+- Headers scanned as "source files" in change detection
+- Added to files_to_analyze for direct re-parsing
+- Not in compile_commands.json (only .cpp files are)
+- Fallback args lack third-party include paths (boost, vcpkg)
+- Parse errors for missing dependencies
+- Inconsistent with initial indexing behavior
 
-**User action (if needed):**
-- Regenerate compile_commands.json to include more files
-- Or configure include paths in cpp-analyzer-config.json
-- Or accept partial parsing for headers not in build
+**Why initial indexing works:**
+- During `index_project()`, headers processed as dependencies of source files
+- Source files have proper compile args from compile_commands.json
+- Headers inherit those args when included
+- No fallback args needed
+
+**Why refresh fails:**
+- Headers detected as standalone "modified files"
+- Directly re-analyzed independent of any source file
+- No compile args available → fallback args used
+- Missing third-party paths → parse errors
+
+### Solution
+
+**Option 1: Exclude headers from directory scan (Recommended)**
+```python
+# mcp_server/change_scanner.py:171
+# Only scan for actual SOURCE files, not headers
+current_source_files = set()
+for file_path in self.analyzer.file_scanner.find_cpp_files():
+    # Skip headers - they'll be detected via header_tracker
+    if file_path.endswith(('.h', '.hpp', '.hxx', '.h++')):
+        continue
+    current_source_files.add(file_path)
+```
+
+**Option 2: Categorize headers correctly**
+```python
+# mcp_server/change_scanner.py:185-186
+elif change_type == ChangeType.MODIFIED:
+    # Check if it's a header or source
+    if normalized_path.endswith(('.h', '.hpp', '.hxx', '.h++')):
+        changeset.modified_headers.add(normalized_path)
+    else:
+        changeset.modified_files.add(normalized_path)
+```
+
+**Option 3: Don't re-analyze headers directly**
+```python
+# mcp_server/incremental_analyzer.py:141-143
+for source_file in changes.modified_files:
+    # Skip headers - they're handled via modified_headers
+    if source_file.endswith(('.h', '.hpp', '.hxx', '.h++')):
+        continue
+    self._handle_source_change(source_file)
+    files_to_analyze.add(source_file)
+```
 
 ### Investigation Status
 
-✅ **EXPECTED BEHAVIOR** - Not a bug, informational only
+🔴 **CONFIRMED BUG** - Headers incorrectly re-analyzed with fallback args
+
+### Next Steps
+
+1. Implement Option 1 (cleanest solution - headers shouldn't be in source scan)
+2. Or implement Option 2 (proper categorization)
+3. Add test to verify headers not directly re-analyzed during refresh
+4. Verify boost/third-party header errors disappear after fix
+5. Confirm initial indexing and refresh use same compilation args
+
+### Related Issues
+
+- **Issue #6:** Sequential processing in incremental refresh
+- **Issue #11:** Missing progress during refresh
+- **Issue #12:** Database connection lifecycle
+
+### Priority
+
+🔴 **HIGH** - Causes incorrect compilation args during refresh, leading to:
+- Parse errors for headers with third-party dependencies
+- Inconsistent behavior between initial indexing and refresh
+- Potentially incomplete symbol extraction
 
 ---
 
@@ -1446,7 +1544,12 @@ args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_ob
 - Dependencies not updated for re-analyzed files (could cause stale data on next refresh)
 - Requires connection lifecycle fix or separate dependency connection
 
-ℹ️ **Note:** Missing third-party header errors (e.g., boost) during refresh are expected behavior when files aren't in compile_commands.json (fallback args used)
+🔴 **Issue #13:** Headers re-analyzed with fallback args during refresh (missing boost/third-party headers)
+- ChangeScanner incorrectly categorizes headers as "source files"
+- Headers re-analyzed directly with fallback args (not from compile_commands.json)
+- Initial indexing works (headers processed as dependencies), refresh fails
+- Causes parse errors for boost, vcpkg, and other third-party dependencies
+- HIGH priority - inconsistent behavior and incomplete symbol extraction
 
 ### Issues Observed on macOS (LM Studio Testing)
 ⚠️ **Issue #4:** Class search uses substring matching by default (should use exact match)
