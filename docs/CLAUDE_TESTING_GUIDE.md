@@ -1,17 +1,114 @@
-# Claude Testing Guide - MCP Server Testing with SSE
+# Claude Testing Guide - MCP Server Testing
 
 **Audience:** Claude Code (AI assistant)
-**Purpose:** Guide for testing and debugging MCP server functionality using SSE transport
+**Purpose:** Guide for testing and debugging MCP server functionality
 **Created:** 2025-12-21
+**Updated:** 2025-12-21 (Revised based on practical testing experience)
 
 ## Overview
 
-This guide describes how to test the C++ MCP server using direct SSE (Server-Sent Events) connections instead of relying on external MCP clients. This approach enables:
-- ✅ Direct control over test execution
-- ✅ Immediate debugging and iteration
-- ✅ No dependency on external tools
-- ✅ Full visibility into request/response flow
-- ✅ Easy resource monitoring (FD counts, memory, logs)
+This guide describes different approaches for testing the C++ MCP server. Choose the appropriate method based on what you're testing.
+
+## Testing Approaches
+
+### Approach 1: Direct Python Testing (Recommended for Quick Validation)
+
+**Best for:** Quick iteration during development, verifying code fixes, unit-style testing
+
+**How it works:**
+- Create simple Python scripts that import CppAnalyzer directly
+- Test specific functionality without MCP protocol overhead
+- Fast, simple, no network complexity
+
+**Example:**
+```python
+from mcp_server.cpp_analyzer import CppAnalyzer
+
+analyzer = CppAnalyzer("examples/compile_commands_example")
+analyzer.index_project()
+print(f"Files indexed: {len(analyzer.file_index)}")
+```
+
+**Pros:**
+- ✅ Extremely simple - just import and use
+- ✅ Fast iteration (no server startup)
+- ✅ Easy to debug (direct Python debugging)
+- ✅ No protocol complexity
+- ✅ Perfect for fixing and verifying individual issues
+
+**Cons:**
+- ❌ Doesn't test MCP protocol layer
+- ❌ Doesn't test client integration
+- ❌ Doesn't test transport (SSE/HTTP/stdio)
+
+**When to use:**
+- Fixing and testing Issue #10, #13, #12 (code-level fixes)
+- Verifying analyzer behavior
+- Quick validation during development
+- Unit-style testing
+
+---
+
+### Approach 2: SSE Testing via MCP Client Libraries (For Integration Testing)
+
+**Best for:** Testing MCP protocol, client integration, end-to-end workflows
+
+**How it works:**
+- Use MCP Python SDK or client libraries
+- Connect via SSE protocol
+- Test full request/response flow
+
+**Note:** Direct curl testing of SSE is complex due to session management. SSE protocol requires:
+1. Establishing session via GET /sse
+2. Receiving session ID
+3. POST messages to /messages with session context
+4. This is NOT a simple REST API
+
+**Pros:**
+- ✅ Tests full MCP protocol
+- ✅ Tests client integration
+- ✅ Realistic end-to-end testing
+
+**Cons:**
+- ❌ Requires MCP client library setup
+- ❌ More complex than direct Python testing
+- ❌ Slower iteration
+
+**When to use:**
+- Final integration testing before release
+- Testing MCP protocol compliance
+- Testing with actual MCP clients
+- End-to-end workflow validation
+
+---
+
+### Approach 3: Using test_mcp_console.py (Existing Test Script)
+
+**Best for:** Manual testing with real codebases, demonstrations
+
+**How it works:**
+- Run existing `scripts/test_mcp_console.py` script
+- Interactive console-style testing
+- Tests analyzer directly (like Approach 1)
+
+**Usage:**
+```bash
+python scripts/test_mcp_console.py /path/to/cpp/project
+```
+
+**Pros:**
+- ✅ Ready to use (already in repo)
+- ✅ Tests with real codebases
+- ✅ Interactive feedback
+
+**Cons:**
+- ❌ May need updates (references removed translation_units)
+- ❌ Not automated
+
+**When to use:**
+- Manual testing with real projects
+- Demonstrating functionality
+- Quick exploratory testing
 
 ## Testing Strategy: Two-Tier Approach
 
