@@ -1227,6 +1227,189 @@ def perform_incremental_analysis(self) -> AnalysisResult:
 
 ---
 
+## Issue: Database Connection Error During Refresh - "Cannot operate on a closed database"
+
+**Platform:** All platforms (observed during incremental refresh on 2025-12-21)
+
+### Observation
+
+During `refresh_project` execution, warnings appear indicating SQLite database operations fail:
+
+```
+[WARNING] Failed to update dependencies for /path/to/project/File1.h: Cannot operate on a closed database.
+[WARNING] Failed to update dependencies for /path/to/project/File2.h: Cannot operate on a closed database.
+```
+
+### Root Cause Analysis
+
+**Shared database connection with mismatched lifecycle:**
+
+1. **Connection sharing setup:**
+   ```python
+   # mcp_server/cpp_analyzer.py:270
+   if hasattr(self.cache_manager.backend, "conn"):
+       self.dependency_graph = DependencyGraphBuilder(self.cache_manager.backend.conn)
+   ```
+   - DependencyGraphBuilder shares the same SQLite connection as cache backend
+
+2. **Connection closing:**
+   ```python
+   # mcp_server/cpp_analyzer.py:310
+   self.cache_manager.close()
+   ```
+   - Closes the shared connection
+
+3. **Stale reference:**
+   ```python
+   # mcp_server/dependency_graph.py:173
+   self.conn.cursor()  # ← Tries to use closed connection!
+   ```
+   - DependencyGraphBuilder still holds reference to closed connection
+   - Operations fail with SQLite error
+
+### When This Occurs
+
+**Triggered during incremental refresh:**
+- Sequential file re-analysis in `_reanalyze_files()`
+- Each file calls `index_file()` which tries to update dependencies
+- If cache manager closed between files, dependency updates fail
+- Non-fatal: caught and logged as warning at `cpp_analyzer.py:1291`
+
+### Evidence
+
+```python
+# mcp_server/cpp_analyzer.py:1286-1291
+if self.dependency_graph is not None:
+    try:
+        includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
+        self.dependency_graph.update_dependencies(source_file, includes)  # ← Fails!
+    except Exception as e:
+        diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
+        # ← Logs "Cannot operate on a closed database"
+```
+
+### Impact
+
+**Problem:** Dependency tracking incomplete after refresh:
+- Files re-analyzed successfully (symbols extracted)
+- But dependency graph not updated for those files
+- Incremental refresh on next run may miss cascading header changes
+- Could cause stale symbol data to persist
+
+**Expected Behavior:**
+- Dependencies should be updated for all re-analyzed files
+- Connection should remain open during entire refresh operation
+- Or dependency graph should handle closed connection gracefully
+
+### Solution Options
+
+**Option 1: Keep connection open during refresh**
+```python
+# Don't close cache_manager until all operations complete
+# Ensure connection lifecycle matches operation lifecycle
+```
+
+**Option 2: Separate dependency connection**
+```python
+# Create separate connection for dependency_graph
+# Don't share connection with cache backend
+self.dependency_graph = DependencyGraphBuilder(
+    sqlite3.connect(db_path)  # Own connection
+)
+```
+
+**Option 3: Check connection before use**
+```python
+# dependency_graph.py:update_dependencies
+def update_dependencies(self, source_file: str, included_files: List[str]) -> int:
+    if not self._is_connection_open():
+        diagnostics.warning("Database connection closed, skipping dependency update")
+        return 0
+    # ... existing code
+```
+
+### Investigation Status
+
+⏸️ **DOCUMENTED** - Database lifecycle management issue
+
+### Next Steps
+
+1. Trace cache_manager.close() calls during refresh
+2. Determine when/why connection closes during operation
+3. Choose solution approach (keep open vs separate connection)
+4. Implement fix
+5. Add test for dependency updates during incremental refresh
+6. Verify no "closed database" errors after fix
+
+### Related Issues
+
+- **Issue #6:** Sequential processing in incremental refresh (where this error occurs)
+- **Issue #11:** Missing progress reporting during refresh (same code path)
+
+---
+
+## Issue: Missing Third-Party Headers During Refresh (Expected Behavior)
+
+**Platform:** All platforms (observed during refresh on 2025-12-21)
+
+### Observation
+
+During refresh, some files fail to parse with missing header errors:
+
+```
+libclang parsing errors (1 total):
+[fatal] /path/to/project/Utils/Preprocessor/OverloadedMacro.h:10:10: 'boost/preprocessor/cat.hpp' file not found
+```
+
+### Analysis
+
+**This is expected behavior, not a bug:**
+
+1. **Files not in compile_commands.json:**
+   - If a file isn't listed in compile_commands.json, fallback args are used
+   - Fallback args are generic: `-std=c++17 -I/path/to/project`
+   - Don't include project-specific third-party paths (boost, etc.)
+
+2. **Why it happens during refresh:**
+   - Incremental refresh may pick up files not tracked by build system
+   - Header files are often not in compile_commands.json (only .cpp files)
+   - When refreshing headers, fallback args used
+
+3. **Error recovery:**
+   - libclang continues parsing despite errors (partial AST extraction)
+   - Symbols from parseable parts still extracted
+   - See Issue #3 documentation: "Continue on parse errors"
+
+### Evidence
+
+```python
+# mcp_server/cpp_analyzer.py:1324
+args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+# ↑ Uses fallback if file not in compile_commands.json
+
+# mcp_server/cpp_analyzer.py:1507
+"Using fallback compilation args - compile_commands.json may be needed"
+```
+
+### Impact
+
+**Not a defect:**
+- Partial symbol extraction still works (libclang error recovery)
+- Errors logged for user awareness
+- User can fix by ensuring files are in compile_commands.json
+- Or by adding third-party include paths to config
+
+**User action (if needed):**
+- Regenerate compile_commands.json to include more files
+- Or configure include paths in cpp-analyzer-config.json
+- Or accept partial parsing for headers not in build
+
+### Investigation Status
+
+✅ **EXPECTED BEHAVIOR** - Not a bug, informational only
+
+---
+
 ## General Status
 
 ✅ **Working:** MCP server general functionality
@@ -1256,6 +1439,14 @@ def perform_incremental_analysis(self) -> AnalysisResult:
 - Progress stays null during REFRESHING state (inconsistent with initial indexing)
 - UX enhancement - requires adding progress_callback support to refresh methods
 - Medium priority (non-blocking, but affects user experience on large refreshes)
+
+🔴 **Issue #12:** Database connection closed during refresh causes dependency tracking failures
+- "Cannot operate on a closed database" errors during incremental refresh
+- Shared SQLite connection between cache_manager and dependency_graph with mismatched lifecycle
+- Dependencies not updated for re-analyzed files (could cause stale data on next refresh)
+- Requires connection lifecycle fix or separate dependency connection
+
+ℹ️ **Note:** Missing third-party header errors (e.g., boost) during refresh are expected behavior when files aren't in compile_commands.json (fallback args used)
 
 ### Issues Observed on macOS (LM Studio Testing)
 ⚠️ **Issue #4:** Class search uses substring matching by default (should use exact match)
