@@ -55,17 +55,37 @@ class DependencyGraphBuilder:
     - detected_at: Timestamp when relationship was discovered
 
     Attributes:
-        conn: SQLite database connection
+        _conn_getter: Callable that returns the current SQLite connection
     """
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn_or_getter):
         """
         Initialize dependency graph builder.
 
         Args:
-            conn: Active SQLite database connection with file_dependencies table
+            conn_or_getter: Either a SQLite connection (for backwards compatibility)
+                           or a callable that returns the current connection.
+                           Using a callable ensures the connection stays valid even
+                           if the underlying cache is recreated (e.g., due to
+                           schema mismatch or corruption).
         """
-        self.conn = conn
+        # Support both direct connection and callable for backwards compatibility
+        # Check if it's a SQLite connection object (has cursor method)
+        if isinstance(conn_or_getter, sqlite3.Connection):
+            # Legacy: direct connection reference (may become stale)
+            self._conn_getter = lambda: conn_or_getter
+        elif callable(conn_or_getter):
+            # New style: callable that returns connection
+            self._conn_getter = conn_or_getter
+        else:
+            raise TypeError(
+                f"Expected sqlite3.Connection or callable, got {type(conn_or_getter)}"
+            )
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """Get the current database connection."""
+        return self._conn_getter()
 
     def extract_includes_from_tu(self, tu: "TranslationUnit", source_file: str) -> List[str]:
         """
