@@ -265,10 +265,17 @@ class CppAnalyzer:
 
         # Initialize dependency graph builder for incremental analysis
         # Note: Only initialize if using SQLite backend (has conn attribute)
+        # Pass a callable to get the connection dynamically, ensuring it stays valid
+        # even if the cache is recreated (e.g., due to schema mismatch or corruption)
         self.dependency_graph = None
         if hasattr(self.cache_manager.backend, "conn"):
-            self.dependency_graph = DependencyGraphBuilder(self.cache_manager.backend.conn)
-            diagnostics.debug("Dependency graph builder initialized")
+            # Use lambda to get connection dynamically, not a static reference
+            # This prevents "Cannot operate on a closed database" errors when
+            # cache is recreated during operation
+            self.dependency_graph = DependencyGraphBuilder(
+                lambda: self.cache_manager.backend.conn
+            )
+            diagnostics.debug("Dependency graph builder initialized with dynamic connection")
         else:
             diagnostics.debug("Dependency graph not available (non-SQLite backend)")
 
