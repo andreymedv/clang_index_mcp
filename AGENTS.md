@@ -25,5 +25,7 @@ The pull request review process is as follows:
 1.  **Initiation:** The user will initiate a review by providing Jules with a branch name and a pull request description.
 2.  **Analysis:** Jules will fetch the branch, identify the changed files, and review them against the primary and secondary goals.
 3.  **Testing:** Jules will run the full test suite to check for any regressions.
-4.  **Reporting:** Jules will provide a single, comprehensive feedback report in the session chat as a markdown file. The report will be formatted for AI coding agent processing and will only list found errors/mistakes and findings that you recommend to fix.
+4.  **Reporting:** Jules will provide a single, comprehensive feedback report.
+    - The report will only list found errors, mistakes, or recommended fixes. Change descriptions should not be included.
+    - If the review finds no issues, no report will be generated. Instead, Jules will state the approval of the changes directly in the session chat.
 5.  **Completion:** After the report is delivered, the review task is considered complete.
