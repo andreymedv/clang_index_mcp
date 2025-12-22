@@ -689,9 +689,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Re-initialize analyzer with new path and config
             global analyzer, analyzer_initialized, state_manager, background_indexer
 
-            # Transition to INDEXING state (allows immediate queries with partial results)
-            # This prevents race condition where get_indexing_status fails if called immediately
-            state_manager.transition_to(AnalyzerState.INDEXING)
+            # Transition to INITIALIZING state
+            state_manager.transition_to(AnalyzerState.INITIALIZING)
             analyzer = CppAnalyzer(project_path, config_file=config_file)
             background_indexer = BackgroundIndexer(analyzer, state_manager)
 
