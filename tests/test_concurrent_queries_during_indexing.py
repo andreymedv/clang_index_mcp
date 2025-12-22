@@ -313,3 +313,53 @@ async def test_state_manager_ready_for_queries_during_indexing(large_cpp_project
     # Should be ready during refresh
     state_manager.transition_to(AnalyzerState.REFRESHING)
     assert state_manager.is_ready_for_queries(), "Should be ready during refresh"
+
+
+@pytest.mark.asyncio
+async def test_get_indexing_status_immediately_after_set_project_directory(large_cpp_project):
+    """
+    Test for Issue #1: Verify get_indexing_status works immediately after set_project_directory
+
+    This test reproduces the race condition that occurred when:
+    1. set_project_directory was called (setting state to INITIALIZING)
+    2. get_indexing_status was called immediately
+    3. The query failed because INITIALIZING was not in allowed states
+
+    The fix changed the initial state from INITIALIZING to INDEXING,
+    which is an allowed state for queries.
+    """
+    analyzer = CppAnalyzer(str(large_cpp_project))
+    state_manager = AnalyzerStateManager()
+
+    # Update global state for MCP server
+    cpp_mcp_server.analyzer = analyzer
+    cpp_mcp_server.state_manager = state_manager
+    cpp_mcp_server.analyzer_initialized = False
+
+    # Simulate what set_project_directory does:
+    # It transitions to INDEXING state (the fix) before starting background indexing
+    state_manager.transition_to(AnalyzerState.INDEXING)
+
+    # CRITICAL TEST: Immediately call get_indexing_status without any delay
+    # This simulates a user calling get_indexing_status right after set_project_directory
+    # Before the fix, this would fail with "Project directory not set"
+    result = await cpp_mcp_server.call_tool("get_indexing_status", {})
+
+    # Verify the call succeeded (no exception raised)
+    assert len(result) > 0, "get_indexing_status should return a result"
+
+    # Parse the response
+    response_text = result[0].text
+    response_data = json.loads(response_text)
+
+    # Verify the state is reported correctly
+    assert "state" in response_data, "Response should contain state"
+    assert response_data["state"] == "indexing", "State should be 'indexing'"
+
+    # Verify is_ready_for_queries flag
+    assert "is_ready_for_queries" in response_data, "Response should contain is_ready_for_queries"
+    assert response_data["is_ready_for_queries"] is True, "Should be ready for queries"
+
+    # Verify no error occurred
+    assert "error" not in response_text.lower(), "Should not contain error message"
+    assert "not set" not in response_text.lower(), "Should not say 'not set'"
