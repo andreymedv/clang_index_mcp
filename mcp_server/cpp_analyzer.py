@@ -115,8 +115,14 @@ def _process_file_worker(args_tuple):
     call_sites = []  # Phase 3
     processed_headers = {}  # Header tracking for this file
     if success:
-        if file_path in _worker_analyzer.file_index:
-            symbols = _worker_analyzer.file_index[file_path].copy()
+        # CRITICAL FIX FOR ISSUE #8: Extract symbols from ALL files processed during this
+        # source file's parsing, including headers. The worker processed both the source file
+        # and any headers it includes (via first-win header claiming), so we need to return
+        # ALL symbols, not just the source file's symbols.
+        # Before fix: only returned source file symbols → headers missing from main process
+        # After fix: return all symbols from source + headers → complete symbol extraction
+        for fpath, file_symbols in _worker_analyzer.file_index.items():
+            symbols.extend(file_symbols)
 
         # Phase 3: Extract call sites collected during this file's parsing
         call_sites = _worker_analyzer.call_graph_analyzer.get_all_call_sites()
@@ -2192,7 +2198,25 @@ class CppAnalyzer:
         tracked_files = set(self.file_hashes.keys())
 
         # Find deleted files
-        deleted_files = tracked_files - current_files
+        # CRITICAL FIX FOR ISSUE #8: When using compile_commands.json, current_files only
+        # contains source files (.cpp), not headers. Headers are tracked via header_tracker
+        # and dependency graph, so we must not treat them as "deleted" just because they're
+        # not in compile_commands.json. Only check if source files were deleted.
+        # For headers, check if they physically exist on disk.
+        deleted_files = set()
+        for tracked_file in tracked_files:
+            if tracked_file in current_files:
+                continue  # Still in current scan, not deleted
+
+            # File not in current_files - check if it's a header
+            if tracked_file.endswith(('.h', '.hpp', '.hxx', '.h++')):
+                # Header file - only consider deleted if it doesn't exist on disk
+                if not os.path.exists(tracked_file):
+                    deleted_files.add(tracked_file)
+                # else: Header exists but not in compile_commands (expected), keep it
+            else:
+                # Source file not in scan - it was deleted
+                deleted_files.add(tracked_file)
 
         # Remove deleted files from all indexes
         for file_path in deleted_files:
