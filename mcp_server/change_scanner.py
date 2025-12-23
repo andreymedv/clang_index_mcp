@@ -167,8 +167,18 @@ class ChangeScanner:
             changeset.compile_commands_changed = True
             diagnostics.info("compile_commands.json has changed")
 
-        # 2. Scan source files
-        current_source_files = set(self.analyzer.file_scanner.find_cpp_files())
+        # 2. Scan source files (excluding headers)
+        # Headers are tracked separately via header_tracker (see step 3 below)
+        # We only want actual source files (.cpp, .cc, .cxx, .c++) in this scan
+        # because headers don't have entries in compile_commands.json and would
+        # be re-analyzed with fallback args if treated as source files.
+        all_cpp_files = self.analyzer.file_scanner.find_cpp_files()
+        current_source_files = set()
+        for file_path in all_cpp_files:
+            # Skip headers - they'll be detected via header_tracker in step 3
+            if file_path.endswith(('.h', '.hpp', '.hxx', '.h++')):
+                continue
+            current_source_files.add(file_path)
 
         for source_file in current_source_files:
             # Normalize path to resolve symlinks (e.g., /var -> /private/var on macOS)
