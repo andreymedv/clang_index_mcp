@@ -79,20 +79,21 @@ def _process_file_worker(args_tuple):
     This avoids creating a new analyzer (and new DB connection) for every file.
 
     Args:
-        args_tuple: (project_root, file_path, force, include_dependencies)
+        args_tuple: (project_root, config_file, file_path, force, include_dependencies)
 
     Returns:
-        (file_path, success, was_cached, symbols, call_sites)
-        where symbols is a list of SymbolInfo objects or empty list on failure
-        and call_sites is a list of call site dicts (Phase 3)
+        (file_path, success, was_cached, symbols, call_sites, processed_headers)
+        where symbols is a list of SymbolInfo objects or empty list on failure,
+        call_sites is a list of call site dicts (Phase 3),
+        and processed_headers is a dict mapping header paths to file hashes
     """
-    project_root, file_path, force, include_dependencies = args_tuple
+    project_root, config_file, file_path, force, include_dependencies = args_tuple
     global _worker_analyzer
 
     # Create a single analyzer instance per worker process (process-local)
     if _worker_analyzer is None:
         diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
-        _worker_analyzer = CppAnalyzer(project_root)
+        _worker_analyzer = CppAnalyzer(project_root, config_file)
         # Ensure cleanup is called when the worker process exits
         atexit.register(_cleanup_worker_analyzer)
 
@@ -112,12 +113,17 @@ def _process_file_worker(args_tuple):
     # No lock needed here since this process has isolated memory
     symbols = []
     call_sites = []  # Phase 3
+    processed_headers = {}  # Header tracking for this file
     if success:
         if file_path in _worker_analyzer.file_index:
             symbols = _worker_analyzer.file_index[file_path].copy()
 
         # Phase 3: Extract call sites collected during this file's parsing
         call_sites = _worker_analyzer.call_graph_analyzer.get_all_call_sites()
+
+        # Extract header tracking information (need to send back to main process)
+        # This is critical for incremental analysis - without it, header changes won't be detected
+        processed_headers = _worker_analyzer.header_tracker.get_processed_headers()
 
         # Debug
         if call_sites:
@@ -163,7 +169,7 @@ def _process_file_worker(args_tuple):
     # doesn't clean up frequently enough, causing FD leak in long-running workers
     gc.collect()
 
-    return (file_path, success, was_cached, symbols, call_sites)
+    return (file_path, success, was_cached, symbols, call_sites, processed_headers)
 
 
 class CppAnalyzer:
@@ -1750,11 +1756,14 @@ class CppAnalyzer:
 
             if self.use_processes:
                 # ProcessPoolExecutor: use worker function that returns symbols
+                # Pass config_file to ensure workers use the same cache directory
+                config_file_str = str(self.project_identity.config_file_path) if self.project_identity.config_file_path else None
                 future_to_file = {
                     executor.submit(
                         _process_file_worker,
                         (
                             str(self.project_root),
+                            config_file_str,
                             os.path.abspath(file_path),
                             force,
                             include_dependencies,
@@ -1777,8 +1786,8 @@ class CppAnalyzer:
                     result = future.result()
 
                     if self.use_processes:
-                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites)
-                        _, success, was_cached, symbols, call_sites = result
+                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
+                        _, success, was_cached, symbols, call_sites, processed_headers = result
 
                         # Merge symbols into main process indexes
                         if success and symbols:
@@ -1824,6 +1833,18 @@ class CppAnalyzer:
                                         cs_dict["file"],
                                         cs_dict["line"],
                                         cs_dict.get("column"),
+                                    )
+
+                                # Merge header tracking from worker (critical for incremental analysis)
+                                # Workers claim headers during parsing, we need to merge that state
+                                # back into the main process's header_tracker
+                                if processed_headers:
+                                    for header_path, header_hash in processed_headers.items():
+                                        # Use mark_completed to update main process tracker
+                                        # This is safe because workers already claimed these headers
+                                        self.header_tracker.mark_completed(header_path, header_hash)
+                                    diagnostics.debug(
+                                        f"Merged {len(processed_headers)} header tracking entries from {file_path}"
                                     )
 
                                 # Update file hash tracking
