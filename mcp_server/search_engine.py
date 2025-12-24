@@ -80,20 +80,30 @@ class SearchEngine:
         results = []
         regex = re.compile(pattern, re.IGNORECASE)
 
-        for name, infos in self.function_index.items():
-            if regex.search(name):
+        # CRITICAL FIX FOR ISSUE #8:
+        # When file_name is specified, search file_index instead of function_index
+        # This ensures we find declarations in headers even when definition-wins
+        # removed them from function_index
+        if file_name:
+            # Search file_index for file-specific queries
+            for file_path, infos in self.file_index.items():
+                # Match if the file path ends with the specified file_name
+                if not file_path.endswith(file_name):
+                    continue
+
                 for info in infos:
+                    # Only include functions (not classes)
+                    if info.kind not in ("function", "method"):
+                        continue
+
                     if not project_only or info.is_project:
                         # Filter by class name if specified
                         if class_name and info.parent_class != class_name:
                             continue
 
-                        # Filter by file name if specified
-                        if file_name:
-                            # Match if the file path ends with the specified file_name
-                            # This supports full paths, relative paths, or just filenames
-                            if not info.file.endswith(file_name):
-                                continue
+                        # Filter by pattern
+                        if not regex.search(info.name):
+                            continue
 
                         results.append(
                             {
@@ -116,6 +126,37 @@ class SearchEngine:
                                 "doc_comment": info.doc_comment,
                             }
                         )
+        else:
+            # Original logic: search function_index
+            for name, infos in self.function_index.items():
+                if regex.search(name):
+                    for info in infos:
+                        if not project_only or info.is_project:
+                            # Filter by class name if specified
+                            if class_name and info.parent_class != class_name:
+                                continue
+
+                            results.append(
+                                {
+                                    "name": info.name,
+                                    "kind": info.kind,
+                                    "file": info.file,
+                                    "line": info.line,
+                                    "signature": info.signature,
+                                    "is_project": info.is_project,
+                                    "parent_class": info.parent_class,
+                                    # Phase 1: Line ranges
+                                    "start_line": info.start_line,
+                                    "end_line": info.end_line,
+                                    "header_file": info.header_file,
+                                    "header_line": info.header_line,
+                                    "header_start_line": info.header_start_line,
+                                    "header_end_line": info.header_end_line,
+                                    # Phase 2: Documentation
+                                    "brief": info.brief,
+                                    "doc_comment": info.doc_comment,
+                                }
+                            )
 
         return results
 
