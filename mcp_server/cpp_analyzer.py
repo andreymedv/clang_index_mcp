@@ -2342,63 +2342,93 @@ class CppAnalyzer:
             self.cache_manager.remove_file_cache(file_path)
             deleted += 1
 
-        # Check existing tracked files for modifications
+        # PHASE 1: Identify files that need refreshing (hash comparison)
         tracked_file_list = list(self.file_hashes.keys())
         new_files = current_files - tracked_files
-        total_files_to_check = len(tracked_file_list) + len(new_files)
-        files_checked = 0
-        failed = 0
 
+        # Scan for modified files (quick hash comparison)
+        modified_files = []
         for file_path in tracked_file_list:
             if not os.path.exists(file_path):
-                files_checked += 1
-                continue  # Skip files that no longer exist (should have been caught above)
+                continue  # Skip files that no longer exist (already handled in deleted_files)
 
             current_hash = self._get_file_hash(file_path)
             if current_hash != self.file_hashes.get(file_path):
-                success, _ = self.index_file(file_path, force=True)
-                if success:
-                    refreshed += 1
-                else:
+                modified_files.append(file_path)
+
+        # Collect all files to process: modified + new
+        files_to_process = modified_files + list(new_files)
+        total_files_to_check = len(files_to_process)
+
+        if total_files_to_check == 0:
+            # No files to process, just cleanup and return
+            if deleted > 0:
+                self._save_cache()
+                self._save_header_tracking()
+                diagnostics.info(f"Removed {deleted} deleted files from indexes")
+            return 0
+
+        diagnostics.debug(
+            f"Refresh: {len(modified_files)} modified, {len(new_files)} new files"
+        )
+
+        # PHASE 2: Process files in parallel using ThreadPoolExecutor
+        # Note: We use ThreadPoolExecutor instead of ProcessPoolExecutor to avoid
+        # pickling issues with libclang ctypes objects. While ProcessPool would give
+        # better parallelism (GIL bypass), ThreadPool is sufficient for refresh operations
+        # and avoids the complexity of serializing the analyzer state.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        diagnostics.debug(
+            f"Full refresh: Using ThreadPoolExecutor with {self.max_workers} workers"
+        )
+
+        executor = None
+        failed = 0
+        try:
+            executor = ThreadPoolExecutor(max_workers=self.max_workers)
+
+            # Submit all files for parallel processing
+            # For modified files: force=True; for new files: force=False
+            future_to_file = {}
+            for file_path in modified_files:
+                future_to_file[executor.submit(self.index_file, file_path, True)] = file_path
+            for file_path in new_files:
+                future_to_file[executor.submit(self.index_file, file_path, False)] = file_path
+
+            # Process results as they complete
+            for i, future in enumerate(as_completed(future_to_file)):
+                file_path = future_to_file[future]
+                try:
+                    success, _ = future.result()
+
+                    if success:
+                        refreshed += 1
+                    else:
+                        failed += 1
+                        diagnostics.warning(f"Failed to refresh: {file_path}")
+
+                except Exception as e:
                     failed += 1
+                    diagnostics.error(f"Error refreshing {file_path}: {e}")
 
-            files_checked += 1
+                # Report progress periodically
+                if progress_callback:
+                    processed = i + 1
+                    # Report every 10 files or at completion
+                    if processed % 10 == 0 or processed == total_files_to_check:
+                        self._report_refresh_progress(
+                            progress_callback,
+                            total_files_to_check,
+                            refreshed,
+                            failed,
+                            file_path,
+                            start_time,
+                        )
 
-            # Report progress periodically
-            if progress_callback and total_files_to_check > 0:
-                # Report every 10 files or at key milestones
-                if files_checked % 10 == 0 or files_checked == len(tracked_file_list):
-                    self._report_refresh_progress(
-                        progress_callback,
-                        total_files_to_check,
-                        refreshed,
-                        failed,
-                        file_path,
-                        start_time,
-                    )
-
-        # Check for new files
-        for file_path in new_files:
-            success, _ = self.index_file(file_path, force=False)
-            if success:
-                refreshed += 1
-            else:
-                failed += 1
-
-            files_checked += 1
-
-            # Report progress periodically
-            if progress_callback and total_files_to_check > 0:
-                # Report every 10 files or at completion
-                if files_checked % 10 == 0 or files_checked == total_files_to_check:
-                    self._report_refresh_progress(
-                        progress_callback,
-                        total_files_to_check,
-                        refreshed,
-                        failed,
-                        file_path,
-                        start_time,
-                    )
+        finally:
+            if executor:
+                executor.shutdown(wait=True)
 
         if refreshed > 0 or deleted > 0:
             self._save_cache()
