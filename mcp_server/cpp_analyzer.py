@@ -115,8 +115,14 @@ def _process_file_worker(args_tuple):
     call_sites = []  # Phase 3
     processed_headers = {}  # Header tracking for this file
     if success:
-        if file_path in _worker_analyzer.file_index:
-            symbols = _worker_analyzer.file_index[file_path].copy()
+        # CRITICAL FIX FOR ISSUE #8: Extract symbols from ALL files processed during this
+        # source file's parsing, including headers. The worker processed both the source file
+        # and any headers it includes (via first-win header claiming), so we need to return
+        # ALL symbols, not just the source file's symbols.
+        # Before fix: only returned source file symbols → headers missing from main process
+        # After fix: return all symbols from source + headers → complete symbol extraction
+        for fpath, file_symbols in _worker_analyzer.file_index.items():
+            symbols.extend(file_symbols)
 
         # Phase 3: Extract call sites collected during this file's parsing
         call_sites = _worker_analyzer.call_graph_analyzer.get_all_call_sites()
@@ -620,8 +626,35 @@ class CppAnalyzer:
                             f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
                         )
 
-                        # Remove existing symbol from all indexes
-                        self._remove_symbol_from_indexes(existing_symbol)
+                        # CRITICAL FIX FOR ISSUE #8:
+                        # When applying definition-wins, we want to replace in usr_index,
+                        # class_index, and function_index, but KEEP the declaration in file_index
+                        # so that headers remain indexed with their symbols.
+                        # Remove from class_index or function_index
+                        if existing_symbol.kind in ("class", "struct"):
+                            if existing_symbol.name in self.class_index:
+                                try:
+                                    self.class_index[existing_symbol.name].remove(existing_symbol)
+                                    if not self.class_index[existing_symbol.name]:
+                                        del self.class_index[existing_symbol.name]
+                                except ValueError:
+                                    pass
+                        else:
+                            if existing_symbol.name in self.function_index:
+                                try:
+                                    self.function_index[existing_symbol.name].remove(existing_symbol)
+                                    if not self.function_index[existing_symbol.name]:
+                                        del self.function_index[existing_symbol.name]
+                                except ValueError:
+                                    pass
+
+                        # Remove from usr_index (will be replaced with definition)
+                        if existing_symbol.usr and existing_symbol.usr in self.usr_index:
+                            del self.usr_index[existing_symbol.usr]
+
+                        # NOTE: We intentionally DO NOT remove from file_index here
+                        # The declaration stays in file_index under its header file
+                        # The definition will be added to file_index under its source file
 
                         # Add new definition to all indexes (fall through to add logic below)
                         # Note: Don't increment added_count as we're replacing, not adding
@@ -638,10 +671,23 @@ class CppAnalyzer:
                 if info.usr:
                     self.usr_index[info.usr] = info
 
+                # Add to file_index (with deduplication check for Issue #8)
+                # We keep both declarations and definitions in file_index, but avoid exact duplicates
                 if info.file:
                     if info.file not in self.file_index:
                         self.file_index[info.file] = []
-                    self.file_index[info.file].append(info)
+
+                    # Check if this exact symbol (same USR, same file) is already in file_index
+                    # This can happen when the same header is processed multiple times
+                    already_in_file_index = False
+                    if info.usr:
+                        for existing in self.file_index[info.file]:
+                            if existing.usr == info.usr:
+                                already_in_file_index = True
+                                break
+
+                    if not already_in_file_index:
+                        self.file_index[info.file].append(info)
 
                 added_count += 1
 
@@ -853,7 +899,7 @@ class CppAnalyzer:
 
         Returns:
             Dictionary with:
-                - file: Primary location file path
+                - file: Primary location file path (uses extent.start for accurate attribution)
                 - line: Primary location line
                 - column: Primary location column
                 - start_line: Start line of symbol extent
@@ -864,8 +910,27 @@ class CppAnalyzer:
                 - header_end_line: Header declaration end line
         """
         location = cursor.location
+
+        # CRITICAL FIX FOR ISSUE #8 (ThreadPoolExecutor mode):
+        # Use cursor.extent.start.file instead of cursor.location.file
+        # Reason: For function declarations in headers, cursor.location points to the
+        # DEFINITION location (in .cpp), not the DECLARATION location (in .h).
+        # cursor.extent.start.file gives us where the cursor actually appears in the AST.
+        # This ensures header symbols are correctly attributed to header files.
+        primary_file = ""
+
+        # IMPORTANT: cursor.location.file can be different from cursor.extent.start.file
+        # For declarations in headers, we want extent (where cursor appears in source)
+        # For definitions, both should be the same
+        if cursor.extent and cursor.extent.start.file:
+            primary_file = str(cursor.extent.start.file.name)
+        elif location.file:
+            # Fallback to location.file if extent not available
+            primary_file = str(location.file.name)
+
+
         result = {
-            "file": str(location.file.name) if location.file else "",
+            "file": primary_file,
             "line": location.line,
             "column": location.column,
             "start_line": None,
@@ -894,6 +959,7 @@ class CppAnalyzer:
             # cursor.get_definition() gets the definition cursor if this is a declaration
             definition_cursor = cursor.get_definition()
 
+
             if definition_cursor and definition_cursor != cursor:
                 # This cursor is a declaration, definition exists elsewhere
                 decl_location = cursor.location
@@ -909,30 +975,24 @@ class CppAnalyzer:
 
                     if is_decl_header and not is_def_header:
                         # Declaration in header, definition in source
-                        # Store declaration as header info
-                        result["header_file"] = decl_file
-                        result["header_line"] = decl_location.line
-                        try:
-                            decl_extent = cursor.extent
-                            if decl_extent and decl_extent.start.file:
-                                result["header_start_line"] = decl_extent.start.line
-                                result["header_end_line"] = decl_extent.end.line
-                        except Exception:
-                            result["header_start_line"] = decl_location.line
-                            result["header_end_line"] = decl_location.line
-
-                        # Update primary location to definition
-                        result["file"] = def_file
-                        result["line"] = def_location.line
-                        result["column"] = def_location.column
+                        # CRITICAL FIX FOR ISSUE #8:
+                        # Store alternate location (definition) in header_* fields
+                        # But DO NOT overwrite result["file"] - keep cursor's actual location
+                        # This ensures declarations stay in file_index under their header file
+                        result["header_file"] = def_file  # Store definition location
+                        result["header_line"] = def_location.line
                         try:
                             def_extent = definition_cursor.extent
                             if def_extent and def_extent.start.file:
-                                result["start_line"] = def_extent.start.line
-                                result["end_line"] = def_extent.end.line
+                                result["header_start_line"] = def_extent.start.line
+                                result["header_end_line"] = def_extent.end.line
                         except Exception:
-                            result["start_line"] = def_location.line
-                            result["end_line"] = def_location.line
+                            result["header_start_line"] = def_location.line
+                            result["header_end_line"] = def_location.line
+
+                        # NOTE: We intentionally do NOT overwrite result["file"] here
+                        # The cursor's location (declaration in header) is the primary location
+
                     elif is_def_header and is_decl_header:
                         # Both in headers (e.g., template, inline)
                         # Primary location stays as declaration
@@ -1800,21 +1860,63 @@ class CppAnalyzer:
                         if success and symbols:
                             with self.index_lock:
                                 for symbol in symbols:
-                                    # Add to appropriate index
-                                    if symbol.kind in ("class", "struct"):
-                                        self.class_index[symbol.name].append(symbol)
-                                    else:
-                                        self.function_index[symbol.name].append(symbol)
+                                    # CRITICAL FIX FOR ISSUE #8: Apply same deduplication logic as _bulk_write_symbols
+                                    # Check for duplicates before adding
+                                    skip_symbol = False
 
-                                    # Add to USR index
-                                    if symbol.usr:
-                                        self.usr_index[symbol.usr] = symbol
+                                    if symbol.usr and symbol.usr in self.usr_index:
+                                        existing = self.usr_index[symbol.usr]
 
-                                    # Add to file index
-                                    if symbol.file:
-                                        if symbol.file not in self.file_index:
-                                            self.file_index[symbol.file] = []
-                                        self.file_index[symbol.file].append(symbol)
+                                        # Definition-wins: if new is definition and existing is not, replace
+                                        if symbol.is_definition and not existing.is_definition:
+                                            # Remove old declaration from class/function index
+                                            if existing.kind in ("class", "struct"):
+                                                if existing.name in self.class_index:
+                                                    try:
+                                                        self.class_index[existing.name].remove(existing)
+                                                        if not self.class_index[existing.name]:
+                                                            del self.class_index[existing.name]
+                                                    except ValueError:
+                                                        pass
+                                            else:
+                                                if existing.name in self.function_index:
+                                                    try:
+                                                        self.function_index[existing.name].remove(existing)
+                                                        if not self.function_index[existing.name]:
+                                                            del self.function_index[existing.name]
+                                                    except ValueError:
+                                                        pass
+                                            # Will add new definition below (fall through)
+                                        else:
+                                            # Keep existing (both declarations or existing is already definition)
+                                            skip_symbol = True
+
+                                    if not skip_symbol:
+                                        # Add to appropriate index
+                                        if symbol.kind in ("class", "struct"):
+                                            self.class_index[symbol.name].append(symbol)
+                                        else:
+                                            self.function_index[symbol.name].append(symbol)
+
+                                        # Add to USR index
+                                        if symbol.usr:
+                                            self.usr_index[symbol.usr] = symbol
+
+                                        # Add to file index (with deduplication)
+                                        if symbol.file:
+                                            if symbol.file not in self.file_index:
+                                                self.file_index[symbol.file] = []
+
+                                            # Check for duplicates in file_index
+                                            already_in_file_index = False
+                                            if symbol.usr:
+                                                for existing in self.file_index[symbol.file]:
+                                                    if existing.usr == symbol.usr:
+                                                        already_in_file_index = True
+                                                        break
+
+                                            if not already_in_file_index:
+                                                self.file_index[symbol.file].append(symbol)
 
                                     # Restore call graph
                                     if symbol.calls:
@@ -2199,7 +2301,25 @@ class CppAnalyzer:
         tracked_files = set(self.file_hashes.keys())
 
         # Find deleted files
-        deleted_files = tracked_files - current_files
+        # CRITICAL FIX FOR ISSUE #8: When using compile_commands.json, current_files only
+        # contains source files (.cpp), not headers. Headers are tracked via header_tracker
+        # and dependency graph, so we must not treat them as "deleted" just because they're
+        # not in compile_commands.json. Only check if source files were deleted.
+        # For headers, check if they physically exist on disk.
+        deleted_files = set()
+        for tracked_file in tracked_files:
+            if tracked_file in current_files:
+                continue  # Still in current scan, not deleted
+
+            # File not in current_files - check if it's a header
+            if tracked_file.endswith(('.h', '.hpp', '.hxx', '.h++')):
+                # Header file - only consider deleted if it doesn't exist on disk
+                if not os.path.exists(tracked_file):
+                    deleted_files.add(tracked_file)
+                # else: Header exists but not in compile_commands (expected), keep it
+            else:
+                # Source file not in scan - it was deleted
+                deleted_files.add(tracked_file)
 
         # Remove deleted files from all indexes
         for file_path in deleted_files:
