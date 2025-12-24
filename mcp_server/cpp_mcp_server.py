@@ -891,11 +891,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
                     loop = asyncio.get_event_loop()
 
+                    # Create progress callback that updates state_manager (same as BackgroundIndexer)
+                    def progress_callback(progress: IndexingProgress):
+                        """Callback to update progress in state manager during refresh"""
+                        state_manager.update_progress(progress)
+
                     # Force full re-analysis overrides incremental setting
                     if force_full:
                         diagnostics.info("Starting full refresh (forced)...")
                         modified_count = await loop.run_in_executor(
-                            None, analyzer.refresh_if_needed
+                            None, lambda: analyzer.refresh_if_needed(progress_callback)
                         )
                         diagnostics.info(
                             f"Full refresh complete: re-analyzed {modified_count} files"
@@ -911,7 +916,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             diagnostics.info("Starting incremental refresh...")
                             incremental_analyzer = IncrementalAnalyzer(analyzer)
                             result = await loop.run_in_executor(
-                                None, incremental_analyzer.perform_incremental_analysis
+                                None,
+                                lambda: incremental_analyzer.perform_incremental_analysis(
+                                    progress_callback
+                                ),
                             )
 
                             if result.changes.is_empty():
@@ -932,7 +940,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             diagnostics.info("Falling back to full refresh...")
                             # Fallback to full refresh
                             modified_count = await loop.run_in_executor(
-                                None, analyzer.refresh_if_needed
+                                None, lambda: analyzer.refresh_if_needed(progress_callback)
                             )
                             diagnostics.info(
                                 f"Fallback full refresh complete: re-analyzed {modified_count} files"
@@ -944,7 +952,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     else:
                         diagnostics.info("Starting full refresh...")
                         modified_count = await loop.run_in_executor(
-                            None, analyzer.refresh_if_needed
+                            None, lambda: analyzer.refresh_if_needed(progress_callback)
                         )
                         diagnostics.info(
                             f"Full refresh complete: re-analyzed {modified_count} files"
