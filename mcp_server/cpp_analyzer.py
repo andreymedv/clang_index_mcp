@@ -2285,10 +2285,20 @@ class CppAnalyzer:
 
         return self.compile_commands_manager.get_stats()
 
-    def refresh_if_needed(self) -> int:
-        """Refresh index for changed files and remove deleted files"""
+    def refresh_if_needed(self, progress_callback: Optional[Callable] = None) -> int:
+        """
+        Refresh index for changed files and remove deleted files
+
+        Args:
+            progress_callback: Optional callback for progress updates.
+                             Called with IndexingProgress object during refresh.
+
+        Returns:
+            Number of files refreshed
+        """
         refreshed = 0
         deleted = 0
+        start_time = time.time()
 
         # Refresh compile commands if needed
         if self.compile_commands_manager.enabled:
@@ -2333,8 +2343,15 @@ class CppAnalyzer:
             deleted += 1
 
         # Check existing tracked files for modifications
-        for file_path in list(self.file_hashes.keys()):
+        tracked_file_list = list(self.file_hashes.keys())
+        new_files = current_files - tracked_files
+        total_files_to_check = len(tracked_file_list) + len(new_files)
+        files_checked = 0
+        failed = 0
+
+        for file_path in tracked_file_list:
             if not os.path.exists(file_path):
+                files_checked += 1
                 continue  # Skip files that no longer exist (should have been caught above)
 
             current_hash = self._get_file_hash(file_path)
@@ -2342,13 +2359,46 @@ class CppAnalyzer:
                 success, _ = self.index_file(file_path, force=True)
                 if success:
                     refreshed += 1
+                else:
+                    failed += 1
+
+            files_checked += 1
+
+            # Report progress periodically
+            if progress_callback and total_files_to_check > 0:
+                # Report every 10 files or at key milestones
+                if files_checked % 10 == 0 or files_checked == len(tracked_file_list):
+                    self._report_refresh_progress(
+                        progress_callback,
+                        total_files_to_check,
+                        refreshed,
+                        failed,
+                        file_path,
+                        start_time,
+                    )
 
         # Check for new files
-        new_files = current_files - tracked_files
         for file_path in new_files:
             success, _ = self.index_file(file_path, force=False)
             if success:
                 refreshed += 1
+            else:
+                failed += 1
+
+            files_checked += 1
+
+            # Report progress periodically
+            if progress_callback and total_files_to_check > 0:
+                # Report every 10 files or at completion
+                if files_checked % 10 == 0 or files_checked == total_files_to_check:
+                    self._report_refresh_progress(
+                        progress_callback,
+                        total_files_to_check,
+                        refreshed,
+                        failed,
+                        file_path,
+                        start_time,
+                    )
 
         if refreshed > 0 or deleted > 0:
             self._save_cache()
@@ -2361,6 +2411,54 @@ class CppAnalyzer:
         self.indexed_file_count = len(self.file_hashes)
 
         return refreshed
+
+    def _report_refresh_progress(
+        self,
+        progress_callback: Callable,
+        total_files: int,
+        refreshed: int,
+        failed: int,
+        current_file: str,
+        start_time: float,
+    ):
+        """
+        Report refresh progress via callback.
+
+        Args:
+            progress_callback: Callback to invoke with progress
+            total_files: Total number of files to process
+            refreshed: Number of files successfully refreshed so far
+            failed: Number of files that failed
+            current_file: Currently processing file
+            start_time: Unix timestamp when refresh started
+        """
+        try:
+            # Import IndexingProgress here to avoid circular dependency
+            from .state_manager import IndexingProgress
+
+            processed = refreshed + failed
+            elapsed = time.time() - start_time
+            rate = processed / elapsed if elapsed > 0 else 0
+            eta = (total_files - processed) / rate if rate > 0 else 0
+
+            estimated_completion = (
+                datetime.now() + timedelta(seconds=eta) if eta > 0 else None
+            )
+
+            progress = IndexingProgress(
+                total_files=total_files,
+                indexed_files=refreshed,
+                failed_files=failed,
+                cache_hits=0,  # Not tracked during refresh
+                current_file=current_file if processed < total_files else None,
+                start_time=datetime.fromtimestamp(start_time),
+                estimated_completion=estimated_completion,
+            )
+
+            progress_callback(progress)
+        except Exception as e:
+            # Don't fail refresh if progress callback fails
+            diagnostics.debug(f"Progress callback failed: {e}")
 
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
