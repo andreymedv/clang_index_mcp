@@ -2372,41 +2372,151 @@ class CppAnalyzer:
             f"Refresh: {len(modified_files)} modified, {len(new_files)} new files"
         )
 
-        # PHASE 2: Process files in parallel using ThreadPoolExecutor
-        # Note: We use ThreadPoolExecutor instead of ProcessPoolExecutor to avoid
-        # pickling issues with libclang ctypes objects. While ProcessPool would give
-        # better parallelism (GIL bypass), ThreadPool is sufficient for refresh operations
-        # and avoids the complexity of serializing the analyzer state.
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # PHASE 2: Process files in parallel using ProcessPoolExecutor or ThreadPoolExecutor
+        # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
+        # ThreadPoolExecutor used as fallback when use_processes=False
+        from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+        executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
+        executor_type = "ProcessPoolExecutor" if self.use_processes else "ThreadPoolExecutor"
 
         diagnostics.debug(
-            f"Full refresh: Using ThreadPoolExecutor with {self.max_workers} workers"
+            f"Full refresh: Using {executor_type} with {self.max_workers} workers"
         )
 
         executor = None
         failed = 0
         try:
-            executor = ThreadPoolExecutor(max_workers=self.max_workers)
+            executor = executor_class(max_workers=self.max_workers)
 
             # Submit all files for parallel processing
-            # For modified files: force=True; for new files: force=False
             future_to_file = {}
-            for file_path in modified_files:
-                future_to_file[executor.submit(self.index_file, file_path, True)] = file_path
-            for file_path in new_files:
-                future_to_file[executor.submit(self.index_file, file_path, False)] = file_path
+
+            if self.use_processes:
+                # ProcessPoolExecutor: use worker function (same as index_project)
+                # Convert config_file to string for serialization
+                project_root = str(self.project_root)
+                config_file_str = str(self.project_identity.config_file_path) if self.project_identity.config_file_path else None
+
+                # Submit modified files (force=True)
+                for file_path in modified_files:
+                    abs_path = os.path.abspath(file_path)
+                    future = executor.submit(
+                        _process_file_worker,
+                        (
+                            project_root,
+                            config_file_str,
+                            abs_path,
+                            True,  # force=True for modified files
+                            self.include_dependencies,
+                        ),
+                    )
+                    future_to_file[future] = file_path
+
+                # Submit new files (force=False)
+                for file_path in new_files:
+                    abs_path = os.path.abspath(file_path)
+                    future = executor.submit(
+                        _process_file_worker,
+                        (
+                            project_root,
+                            config_file_str,
+                            abs_path,
+                            False,  # force=False for new files
+                            self.include_dependencies,
+                        ),
+                    )
+                    future_to_file[future] = file_path
+            else:
+                # ThreadPoolExecutor: use bound method (same as before)
+                for file_path in modified_files:
+                    future_to_file[executor.submit(self.index_file, file_path, True)] = file_path
+                for file_path in new_files:
+                    future_to_file[executor.submit(self.index_file, file_path, False)] = file_path
 
             # Process results as they complete
             for i, future in enumerate(as_completed(future_to_file)):
                 file_path = future_to_file[future]
                 try:
-                    success, _ = future.result()
+                    if self.use_processes:
+                        # ProcessPoolExecutor: worker returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
+                        result = future.result()
+                        if result is None:
+                            failed += 1
+                            diagnostics.warning(f"Failed to refresh: {file_path}")
+                            continue
 
-                    if success:
-                        refreshed += 1
+                        _, success, was_cached, symbols, call_sites, processed_headers = result
+
+                        if success and symbols:
+                            # Merge symbols into main process (same logic as index_file)
+                            with self.index_lock:
+                                # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
+                                # This ensures that modified files don't have duplicate/stale symbols
+                                if file_path in self.file_index:
+                                    for old_symbol in self.file_index[file_path]:
+                                        # Remove from class_index or function_index
+                                        if old_symbol.kind in ("class", "struct"):
+                                            if old_symbol.name in self.class_index:
+                                                self.class_index[old_symbol.name] = [
+                                                    s
+                                                    for s in self.class_index[old_symbol.name]
+                                                    if s.file != file_path
+                                                ]
+                                        else:
+                                            if old_symbol.name in self.function_index:
+                                                self.function_index[old_symbol.name] = [
+                                                    s
+                                                    for s in self.function_index[old_symbol.name]
+                                                    if s.file != file_path
+                                                ]
+
+                                # Clear the file_index for this file
+                                self.file_index[file_path] = []
+
+                                # Now add all new symbols
+                                for symbol in symbols:
+                                    # Add to appropriate index
+                                    if symbol.kind in ("class", "struct"):
+                                        self.class_index[symbol.name].append(symbol)
+                                    else:
+                                        self.function_index[symbol.name].append(symbol)
+
+                                    # USR and file indexes
+                                    if symbol.usr:
+                                        self.usr_index[symbol.usr] = symbol
+                                    self.file_index[file_path].append(symbol)
+
+                                # Restore call graph from worker process
+                                if call_sites:
+                                    for caller_usr, call_site_list in call_sites.items():
+                                        for call_site in call_site_list:
+                                            self.call_graph.add_call(
+                                                caller_usr,
+                                                call_site["callee_usr"],
+                                                call_site["file_path"],
+                                                call_site["line"],
+                                                call_site["column"],
+                                            )
+
+                                # Merge header tracking from worker process
+                                if processed_headers:
+                                    for header_path, source_file in processed_headers.items():
+                                        self.header_tracker.mark_processed(header_path, source_file)
+
+                            refreshed += 1
+                        else:
+                            failed += 1
+                            diagnostics.warning(f"Failed to refresh: {file_path}")
                     else:
-                        failed += 1
-                        diagnostics.warning(f"Failed to refresh: {file_path}")
+                        # ThreadPoolExecutor: bound method returns (success, _)
+                        success, _ = future.result()
+
+                        if success:
+                            refreshed += 1
+                        else:
+                            failed += 1
+                            diagnostics.warning(f"Failed to refresh: {file_path}")
 
                 except Exception as e:
                     failed += 1
