@@ -275,6 +275,8 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
     def test_reanalyze_files_handles_failures(self):
         """Test _reanalyze_files handles individual file failures gracefully."""
+        import time
+
         # Mock index_file to fail for one file
         def index_side_effect(path, force=False):
             if "fail" in path:
@@ -289,7 +291,8 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             str(self.test_dir / "success2.cpp")
         }
 
-        analyzed = self.incremental._reanalyze_files(files)
+        start_time = time.time()
+        analyzed = self.incremental._reanalyze_files(files, start_time)
 
         # Should analyze 2 out of 3
         self.assertEqual(analyzed, 2)
