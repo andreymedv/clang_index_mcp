@@ -19,8 +19,9 @@ Usage:
 """
 
 import time
-from typing import Set
+from typing import Set, Optional, Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 # Handle both package and script imports
 try:
@@ -86,7 +87,9 @@ class IncrementalAnalyzer:
         self.analyzer = analyzer
         self.scanner = ChangeScanner(analyzer)
 
-    def perform_incremental_analysis(self) -> AnalysisResult:
+    def perform_incremental_analysis(
+        self, progress_callback: Optional[Callable] = None
+    ) -> AnalysisResult:
         """
         Perform incremental analysis of changed files.
 
@@ -104,6 +107,10 @@ class IncrementalAnalyzer:
             4. Remove deleted files from cache
             5. Re-analyze the minimal set
             6. Return detailed results
+
+        Args:
+            progress_callback: Optional callback for progress updates.
+                             Called with IndexingProgress object during analysis.
 
         Returns:
             AnalysisResult with statistics and details
@@ -152,7 +159,9 @@ class IncrementalAnalyzer:
         # 4. Re-analyze files
         if files_to_analyze:
             diagnostics.info(f"Re-analyzing {len(files_to_analyze)} files...")
-            analyzed_count = self._reanalyze_files(files_to_analyze)
+            analyzed_count = self._reanalyze_files(
+                files_to_analyze, start_time, progress_callback
+            )
         else:
             analyzed_count = 0
 
@@ -311,7 +320,12 @@ class IncrementalAnalyzer:
             except Exception as e:
                 diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
 
-    def _reanalyze_files(self, files: Set[str]) -> int:
+    def _reanalyze_files(
+        self,
+        files: Set[str],
+        start_time: float,
+        progress_callback: Optional[Callable] = None,
+    ) -> int:
         """
         Re-analyze a set of files.
 
@@ -320,13 +334,18 @@ class IncrementalAnalyzer:
 
         Args:
             files: Set of file paths to re-analyze
+            start_time: Unix timestamp when analysis started (for ETA calculation)
+            progress_callback: Optional callback for progress updates
 
         Returns:
             Number of files successfully analyzed
         """
         analyzed = 0
+        failed = 0
+        total = len(files)
+        file_list = list(files)  # Convert to list for indexing
 
-        for file_path in files:
+        for i, file_path in enumerate(file_list):
             try:
                 # Use force=True to bypass cache and re-parse
                 success, was_cached = self.analyzer.index_file(file_path, force=True)
@@ -335,9 +354,43 @@ class IncrementalAnalyzer:
                     analyzed += 1
                     diagnostics.debug(f"Re-analyzed: {file_path}")
                 else:
+                    failed += 1
                     diagnostics.warning(f"Failed to re-analyze: {file_path}")
 
             except Exception as e:
+                failed += 1
                 diagnostics.error(f"Error re-analyzing {file_path}: {e}")
+
+            # Report progress periodically
+            if progress_callback:
+                processed = i + 1
+                # Report every 10 files or at completion
+                if processed % 10 == 0 or processed == total:
+                    try:
+                        # Import IndexingProgress here to avoid circular dependency
+                        from .state_manager import IndexingProgress
+
+                        elapsed = time.time() - start_time
+                        rate = processed / elapsed if elapsed > 0 else 0
+                        eta = (total - processed) / rate if rate > 0 else 0
+
+                        estimated_completion = (
+                            datetime.now() + timedelta(seconds=eta) if eta > 0 else None
+                        )
+
+                        progress = IndexingProgress(
+                            total_files=total,
+                            indexed_files=analyzed,
+                            failed_files=failed,
+                            cache_hits=0,  # Not tracked during refresh
+                            current_file=file_path if processed < total else None,
+                            start_time=datetime.fromtimestamp(start_time),
+                            estimated_completion=estimated_completion,
+                        )
+
+                        progress_callback(progress)
+                    except Exception as e:
+                        # Don't fail refresh if progress callback fails
+                        diagnostics.debug(f"Progress callback failed: {e}")
 
         return analyzed
