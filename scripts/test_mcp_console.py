@@ -50,7 +50,7 @@ def test_mcp_server(project_path: str):
     # 3. Get server status
     print("\n3. Getting server status...")
     status = {
-        "parsed_files": len(analyzer.translation_units),
+        "parsed_files": len(analyzer.file_index),  # Fixed: use file_index (Issue #10)
         "indexed_classes": len(analyzer.class_index),
         "indexed_functions": len(analyzer.function_index),
         "indexed_symbols": len(analyzer.usr_index),
