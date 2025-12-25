@@ -210,6 +210,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 ## Related Issues
 
+- **Issue #002:** This issue is tracked in [issues/002-test-freeze-concurrent-cache.md](issues/002-test-freeze-concurrent-cache.md)
+- **Fork Deprecation Warnings:** See [TEST_WARNINGS_RESOURCE_LEAKS.md](TEST_WARNINGS_RESOURCE_LEAKS.md#1--fork-deprecation-warning-critical---see-issue-002)
+  - 7 tests produce fork() deprecation warnings
+  - All will be resolved by switching to 'spawn' multiprocessing method
 - **Python 3.12+ fork deprecation:** https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods
 - **Fork safety in multi-threaded programs:** Known issue in CPython
 - **ProcessPoolExecutor deadlocks:** Common with improper fork usage
