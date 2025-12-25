@@ -7,6 +7,7 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 | ID | Title | Category | Priority | Status | Date |
 |----|-------|----------|----------|--------|------|
 | 001 | Cache Scalability for Large Codebases | Architecture | High | Postponed | 2025-11-16 |
+| 002 | Test Freeze in Concurrent Cache Write Protection | Bug | High | Open | 2025-12-25 |
 
 ## Categories
 
@@ -41,3 +42,4 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 ## Issue Files
 
 - [001-cache-scalability.md](001-cache-scalability.md) - Cache Scalability for Large Codebases
+- [002-test-freeze-concurrent-cache.md](002-test-freeze-concurrent-cache.md) - Test Freeze in Concurrent Cache Write Protection (🔴 **BLOCKS TEST SUITE**)
