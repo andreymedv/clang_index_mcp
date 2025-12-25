@@ -2,7 +2,22 @@
 
 This directory contains historical documentation from earlier development phases and completed work that has been archived to reduce token usage. These files are preserved for reference but are no longer actively used in day-to-day development.
 
-## Recently Archived (2025-12-25) - Issue Fixes
+## Recently Archived (2025-12-25)
+
+### Development Session Documents (Token Savings: ~21K)
+Located in `development-sessions-2025/` subdirectory:
+- **FIXES_APPLIED.md** (6.6K) - Session persistence & fast cache resume fixes (Dec 14, 2025)
+- **INCREMENTAL_ANALYSIS_FIX.md** (5.1K) - Fix for false "9788 files added" after cache load (Dec 14, 2025)
+- **TESTING_AUTO_REFRESH_FIX.md** (4.3K) - Auto-refresh testing notes (Dec 14, 2025)
+- **TEST_REPORT_FILE_NAME_FILTER.md** (4.7K) - Test report for file_name filter feature (Dec 17, 2025)
+
+These were temporary development session notes documenting specific bug fixes and features. The features are now implemented and tested; keeping these in the root directory was redundant.
+
+### Test Coverage Analysis (Token Savings: ~7K)
+- **TEST_COVERAGE_INCREMENTAL_ANALYSIS.md** (7.4K) - Detailed test coverage analysis for incremental analysis feature
+  - Maps specific user requirements to test coverage for incremental analysis
+  - Documents 77 tests specific to incremental analysis functionality
+  - **Current general coverage:** `../TEST_COVERAGE.md` covers all features
 
 ### Completed Issue Investigation Files
 - **FIX_ISSUE_3_ANALYSIS.md** (2.2K) - Detailed analysis of file descriptor leak fix (Issue #3, PR #62)
@@ -27,7 +42,9 @@ This directory contains historical documentation from earlier development phases
 
 ## Token Savings Summary
 
-Archiving these files saves approximately **70K+ tokens** when working with documentation:
+Archiving these files saves approximately **98K+ tokens** when working with documentation:
+- Development session documents: ~21K tokens
+- Test coverage analysis (incremental-specific): ~7K tokens
 - Issue #3 investigation files: ~6K tokens
 - MANUAL_TEST_OBSERVATIONS compaction: ~50K tokens
 - ISSUE_FIXING_PLAN compaction: ~15K tokens
