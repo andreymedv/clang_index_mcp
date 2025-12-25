@@ -323,7 +323,8 @@ class ProfiledAnalyzer(CppAnalyzer):
 
             # Update tracking
             with self.index_lock:
-                self.translation_units[file_path] = tu
+                # Note: translation_units dict removed in Issue #3 fix (FD leak)
+                # self.translation_units[file_path] = tu  # No longer needed
                 self.file_hashes[file_path] = current_hash
 
             self._stop_timer("total_file", "total_file_success")
