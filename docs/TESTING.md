@@ -10,8 +10,11 @@ This document describes how to set up the test environment, run tests, and inter
 - [Test Organization](#test-organization)
 - [Test Markers](#test-markers)
 - [Coverage Reports](#coverage-reports)
+- [Mutation Testing](#mutation-testing)
+- [HTML Test Reports](#html-test-reports)
 - [Writing Tests](#writing-tests)
 - [Troubleshooting](#troubleshooting)
+- [Continuous Integration](#continuous-integration)
 
 > **Platform-specific notes:** For macOS-specific testing issues, see [TESTING_MACOS.md](TESTING_MACOS.md).
 
@@ -277,7 +280,12 @@ pytest --cov=mcp_server --cov-report=html tests/
 
 ```bash
 # Open HTML coverage report
-open htmlcov/index.html
+open htmlcov/index.html  # macOS
+xdg-open htmlcov/index.html  # Linux
+
+# Or serve with HTTP
+python3 -m http.server --directory htmlcov 8000
+# Open http://localhost:8000 in browser
 ```
 
 The HTML report shows:
@@ -285,6 +293,72 @@ The HTML report shows:
 - Branch coverage
 - Uncovered lines highlighted
 - Coverage percentage per module
+
+---
+
+## Mutation Testing
+
+Mutation testing helps identify weaknesses in your test suite by introducing small changes (mutations) to the code and verifying that tests catch them.
+
+### Setup
+
+```bash
+# Install mutmut
+pip install mutmut
+
+# Run mutation tests
+mutmut run
+
+# Show results
+mutmut results
+
+# Show specific mutation
+mutmut show <mutation-id>
+
+# Apply a mutation to see it
+mutmut apply <mutation-id>
+```
+
+### Configuration
+
+Mutation testing is configured in `pyproject.toml`:
+
+```toml
+[tool.mutmut]
+paths_to_mutate = "mcp_server/"
+backup = false
+runner = "pytest -x tests/"
+tests_dir = "tests/"
+```
+
+### Interpreting Results
+
+- **Killed**: Test suite caught the mutation (good!)
+- **Survived**: Mutation wasn't caught (test gap!)
+- **Timeout**: Mutation caused infinite loop
+- **Suspicious**: Mutation changed test results but didn't fail
+
+Target: >80% mutation score
+
+---
+
+## HTML Test Reports
+
+Generate detailed HTML test reports with execution details:
+
+```bash
+# Install pytest-html
+pip install pytest-html
+
+# Run tests with HTML report
+pytest tests/ --html=test-report.html --self-contained-html
+```
+
+The report will be saved to `test-report.html` and includes:
+- Test results summary
+- Pass/fail statistics
+- Execution times
+- Failure details with tracebacks
 
 ---
 
@@ -480,18 +554,42 @@ pytest --cov=mcp_server --cov-report=xml tests/
 pytest --cov=mcp_server --cov-fail-under=80 tests/
 ```
 
-### CI Configuration Example
+### GitHub Actions Example
 
 ```yaml
-# .github/workflows/test.yml
-- name: Install test dependencies
-  run: pip install -r requirements-test.txt
+name: Tests
 
-- name: Run tests
-  run: pytest --cov=mcp_server --cov-report=xml tests/
+on: [push, pull_request]
 
-- name: Upload coverage
-  uses: codecov/codecov-action@v3
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-test.txt
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=mcp_server --cov-report=xml --html=test-report.html
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report
+          path: test-report.html
 ```
 
 ---
