@@ -1,18 +1,19 @@
 # Issue Fixing Plan - Summary
 
-**Status:** ✅ **ALL CRITICAL ISSUES FIXED** - Phases 1-3 Complete
+**Status:** ✅ **ALL CRITICAL ISSUES FIXED** - Phases 1-3 Complete + Additional Fixes
 **Detailed Plan:** See [archived/ISSUE_FIXING_PLAN_DETAILED.md](archived/ISSUE_FIXING_PLAN_DETAILED.md) for complete implementation details
 
 ## Quick Summary
 
-**Timeline:** 2025-12-21 to 2025-12-25 (~12 hours)
-**Result:** 9/9 critical & medium priority issues fixed (100% success rate)
+**Timeline:** 2025-12-21 to 2025-12-26
+**Result:** 12/12 critical & medium priority issues fixed (100% success rate)
 
 ### Completion Status
 - ✅ **Phase 1:** Workflow Foundation (Issues #10, #1, #2, #3)
 - ✅ **Phase 2:** Refresh Correctness (Issues #13, #12, #8)
 - ✅ **Phase 3:** UX Enhancements (Issues #11, #6)
-- 📋 **Phase 4:** Deferred Issues (Issues #4, #5, #7, #9)
+- ✅ **Phase 4:** Large Project Stability (Issues #14/004, #15/005, #16/006) - 2025-12-26
+- 📋 **Phase 5:** Deferred Issues (Issues #4, #5, #7, #9)
 
 ### Fixed Issues Reference
 | Issue | Description | PR | Key Fix |
@@ -26,10 +27,15 @@
 | #11 | Missing progress | #72 | Add callback support |
 | #12 | DB connection lifecycle | #69 | Separate connections |
 | #13 | Headers with fallback args | #67 | Filter from scanner |
+| #14/004 | Memory leak during indexing | #77 | Clear worker indexes |
+| #15/005 | Status zero files before refresh | #78 | Initialize progress from cache |
+| #16/006 | Server shutdown hang | #79 | Shutdown timeout |
 
-## Phase 4: Deferred Issues (Future Work)
+## Phase 5: Deferred Issues (Future Work)
 
 These issues are deferred due to lower priority and available workarounds:
+
+**Note:** Issue 001 (Cache Scalability) was previously listed as deferred but was actually **completed in v3.0.0 (2025-11-17)** with the SQLite migration. See [issues/001-cache-scalability.md](issues/001-cache-scalability.md) for details.
 
 ### Issue #4: Class Search Substring Matching
 **Priority:** Low (minor usability)
@@ -58,7 +64,7 @@ export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib
 ```
 **Details:** See [MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md#issue-9)
 
-## Next Steps (If Addressing Phase 4)
+## Next Steps (If Addressing Phase 5 Deferred Issues)
 
 **For Issue #4 (Substring Matching):**
 1. Review `search_engine.py` for substring matching logic
