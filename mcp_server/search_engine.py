@@ -22,18 +22,54 @@ class SearchEngine:
         self.file_index = file_index
         self.usr_index = usr_index
 
+    @staticmethod
+    def _is_pattern(text: str) -> bool:
+        """Check if text contains regex metacharacters that indicate it's a pattern.
+
+        Returns True if text contains regex special chars (*, +, ?, ., [, etc.)
+        Returns False for plain text (should use exact matching)
+        """
+        # Check for common regex metacharacters
+        # This list includes characters that users would use for pattern matching
+        regex_chars = r'.*+?[]{}()|\^$'
+        return any(char in text for char in regex_chars)
+
+    @staticmethod
+    def _matches(pattern: str, name: str) -> bool:
+        """Check if name matches pattern using exact or pattern matching.
+
+        - If pattern has no regex metacharacters: exact match (case-insensitive)
+        - If pattern has regex metacharacters: regex fullmatch (anchored pattern matching)
+
+        Using fullmatch instead of search provides more intuitive behavior:
+        - "View.*" matches "View", "ViewManager" (starts with View)
+        - "View.*" does NOT match "ListView" (doesn't start with View)
+        - ".*View.*" matches all of the above (contains View anywhere)
+        """
+        if SearchEngine._is_pattern(pattern):
+            # Pattern matching: use regex fullmatch (anchored at both ends)
+            regex = re.compile(pattern, re.IGNORECASE)
+            return regex.fullmatch(name) is not None
+        else:
+            # Exact matching: case-insensitive equality
+            return name.lower() == pattern.lower()
+
     def search_classes(
         self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Search for classes matching a pattern"""
-        # Validate pattern for ReDoS prevention
-        RegexValidator.validate_or_raise(pattern)
+        """Search for classes matching a pattern.
+
+        Uses exact matching by default (case-insensitive).
+        Uses pattern matching when pattern contains regex metacharacters (*, +, ?, etc.)
+        """
+        # Validate pattern for ReDoS prevention (only if it's a regex pattern)
+        if self._is_pattern(pattern):
+            RegexValidator.validate_or_raise(pattern)
 
         results = []
-        regex = re.compile(pattern, re.IGNORECASE)
 
         for name, infos in self.class_index.items():
-            if regex.search(name):
+            if self._matches(pattern, name):
                 for info in infos:
                     if not project_only or info.is_project:
                         # Filter by file name if specified
@@ -73,12 +109,16 @@ class SearchEngine:
         class_name: Optional[str] = None,
         file_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Search for functions matching a pattern"""
-        # Validate pattern for ReDoS prevention
-        RegexValidator.validate_or_raise(pattern)
+        """Search for functions matching a pattern.
+
+        Uses exact matching by default (case-insensitive).
+        Uses pattern matching when pattern contains regex metacharacters (*, +, ?, etc.)
+        """
+        # Validate pattern for ReDoS prevention (only if it's a regex pattern)
+        if self._is_pattern(pattern):
+            RegexValidator.validate_or_raise(pattern)
 
         results = []
-        regex = re.compile(pattern, re.IGNORECASE)
 
         # CRITICAL FIX FOR ISSUE #8:
         # When file_name is specified, search file_index instead of function_index
@@ -102,7 +142,7 @@ class SearchEngine:
                             continue
 
                         # Filter by pattern
-                        if not regex.search(info.name):
+                        if not self._matches(pattern, info.name):
                             continue
 
                         results.append(
@@ -129,7 +169,7 @@ class SearchEngine:
         else:
             # Original logic: search function_index
             for name, infos in self.function_index.items():
-                if regex.search(name):
+                if self._matches(pattern, name):
                     for info in infos:
                         if not project_only or info.is_project:
                             # Filter by class name if specified

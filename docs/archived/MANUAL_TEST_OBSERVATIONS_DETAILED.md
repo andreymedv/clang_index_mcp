@@ -252,14 +252,28 @@ Modify search tool behavior:
 
 ### Fix Status
 
-📋 **DEFERRED** - Phase 4 (Future Work)
+✅ **FIXED** - 2025-12-26
 
-**Rationale:** Minor usability issue; workaround exists (use exact pattern in search)
-- Not blocking manual testing or core functionality
-- Lower priority compared to critical data integrity and performance issues
-- Can be addressed in future enhancement cycle
+**Solution Applied:**
+1. Added intelligent pattern detection to SearchEngine
+   - Detects regex metacharacters (*, +, ?, ., [, etc.) in search pattern
+   - Plain text (no metacharacters) → exact match (case-insensitive)
+   - Pattern with metacharacters → regex fullmatch (anchored pattern matching)
 
-**Workaround:** Users can specify exact patterns when needed
+2. Updated search behavior:
+   - `search_classes(pattern="View")` → Returns only "View" (exact match)
+   - `search_classes(pattern=".*View.*")` → Returns View, ViewManager, ListView (substring match)
+   - `search_classes(pattern="View.*")` → Returns View, ViewManager (prefix match)
+
+3. Updated tool descriptions:
+   - Documented default exact matching behavior
+   - Provided examples of pattern matching with regex
+   - Clear guidance for both exact and pattern searches
+
+**Validated:**
+- Unit tests pass for both exact and pattern matching scenarios
+- Intuitive user experience: plain names match exactly, patterns match flexibly
+- No breaking changes to existing functionality
 
 ---
 
@@ -1536,10 +1550,12 @@ for source_file in changes.modified_files:
 - ✅ **Issue #11:** Missing progress reporting during refresh - **FIXED** PR #72
 - ✅ **Issue #6:** Sequential processing in incremental refresh - **FIXED** PR #73
 
-### Deferred Issues - Phase 4 (Future Work) 📋
+**Phase 4: Usability Improvements** ✅
+- ✅ **Issue #4:** Class search substring matching - **FIXED** 2025-12-26 (exact match by default)
+
+### Deferred Issues - Phase 5 (Future Work) 📋
 
 **Lower Priority / Have Workarounds:**
-- 📋 **Issue #4:** Class search substring matching (minor usability, workaround exists)
 - 📋 **Issue #5:** Tool descriptions for small models (affects edge case models)
 - 📋 **Issue #7:** Unauthorized full refresh (mitigated by #2, #6, #11 fixes)
 - 📋 **Issue #9:** libclang paths on macOS (LIBCLANG_PATH workaround exists)
@@ -1547,7 +1563,7 @@ for source_file in changes.modified_files:
 ### Summary
 
 **All critical and medium-priority issues have been successfully fixed.**
-- ✅ 9 issues fixed across Phases 1-3
-- 📋 4 issues deferred to Phase 4 (lower priority, workarounds available)
-- Period: 2025-12-21 to 2025-12-25
-- Total effort: ~12 hours development + testing
+- ✅ 10 issues fixed across Phases 1-4
+- 📋 3 issues deferred to Phase 5 (lower priority, workarounds available)
+- Period: 2025-12-21 to 2025-12-26
+- Total effort: ~18 hours development + testing

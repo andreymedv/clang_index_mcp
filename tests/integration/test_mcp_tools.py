@@ -54,19 +54,19 @@ public:
         """Test search_classes functionality"""
         (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {};
-class AnotherTestClass {};
+class TestHelper {};
 class DifferentClass {};
 """)
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        # Search for classes with pattern
+        # Search for classes with pattern (starts with "Test")
         results = analyzer.search_classes("Test.*")
         assert len(results) >= 2
         names = [r["name"] for r in results]
         assert "TestClass" in names
-        assert "AnotherTestClass" in names
+        assert "TestHelper" in names
         assert "DifferentClass" not in names
 
     def test_search_functions_tool(self, temp_project_dir):
@@ -307,13 +307,17 @@ class InvalidClass {
         # Should index at least the valid file
         assert count >= 1
 
-        # Should still find valid classes (using simpler pattern to avoid ReDoS detection)
-        classes = analyzer.search_classes("Valid")
-        assert len(classes) >= 1
+        # Should still find valid classes (using pattern to match classes starting with "Valid")
+        classes = analyzer.search_classes("ValidClass")
+        assert len(classes) >= 1  # Should find ValidClass (exact match)
 
-        # Try more specific pattern (avoiding consecutive quantifiers)
-        all_classes = analyzer.search_classes("AnotherValidClass")
-        assert len(all_classes) >= 1
+        # Try another exact match for specific class
+        another_class = analyzer.search_classes("AnotherValidClass")
+        assert len(another_class) >= 1  # Should find AnotherValidClass (exact match)
+
+        # Verify we can find classes starting with "Valid"
+        valid_prefix = analyzer.search_classes("Valid.*")
+        assert len(valid_prefix) >= 1  # Should find at least ValidClass
 
     def test_empty_project(self, temp_project_dir):
         """Test behavior with empty project"""
