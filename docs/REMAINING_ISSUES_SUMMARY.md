@@ -35,10 +35,6 @@ These issues have acceptable workarounds and are deferred:
 - **Impact:** Small models may trigger expensive full refresh
 - **Mitigation:** Fast incremental refresh reduces likelihood
 
-### Manual Test Issue #9: libclang Paths on macOS
-- **Priority:** Low (same as Issue 003)
-- **Note:** This is the same as Issue 003 above (documented in two places)
-
 ---
 
 ## ✅ All Completed Issues
@@ -47,6 +43,7 @@ These issues have acceptable workarounds and are deferred:
 - **Issue 001:** Cache Scalability - ✅ COMPLETED in v3.0.0 (SQLite migration, 2025-11-17)
 - **Issue 002:** Test freeze - ✅ FIXED commit 828b648 (multiprocessing 'spawn' method)
 - **Issue 003:** macOS libclang discovery - ✅ FIXED commit 0ca96eb + fd0f0b5 (hybrid discovery)
+  - Note: Manual Test Issue #9 was the same issue, now resolved
 - **Issue 004:** Memory leak during indexing - ✅ FIXED PR #77 (9-11x memory reduction)
 - **Issue 005:** Status zero files before refresh - ✅ FIXED PR #78
 - **Issue 006:** Server shutdown hangs on Ctrl-C - ✅ FIXED PR #79
@@ -70,10 +67,10 @@ These issues have acceptable workarounds and are deferred:
 ## Summary Statistics
 
 **Total Issues Documented:** 19 (excluding duplicates)
-- ✅ **Completed/Fixed:** 15 (79%)
+- ✅ **Completed/Fixed:** 16 (84%)
 - 🔴 **Open (High Priority):** 0 (0%)
 - 🟡 **Open (Medium Priority):** 0 (0%)
-- 📋 **Deferred (Low Priority):** 4 (21%)
+- 📋 **Deferred (Low Priority):** 3 (16%)
 
 **Net Open Issues:** 0 - **ALL CRITICAL ISSUES RESOLVED!** 🎉
 
@@ -97,7 +94,6 @@ These issues have acceptable workarounds and are deferred:
    - Issue #4: Class search substring matching
    - Issue #5: Tool descriptions for small models
    - Issue #7: Unauthorized full refresh
-   - Issue #9: macOS libclang paths (merged into Issue 003)
    - These have acceptable workarounds and low impact
 
 ---
