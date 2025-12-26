@@ -141,34 +141,26 @@ def _process_file_worker(args_tuple):
             f"Worker call_sites count: {len(_worker_analyzer.call_graph_analyzer.call_sites)}"
         )
 
-    # Clean up worker indexes after extracting symbols to prevent memory accumulation
-    # Workers don't need to keep this data - it's sent back to parent process
-    if file_path in _worker_analyzer.file_index:
-        # Remove symbols from file_index
-        for symbol in _worker_analyzer.file_index[file_path]:
-            # Remove from class_index and function_index
-            if symbol.kind in ("class", "struct"):
-                if symbol.name in _worker_analyzer.class_index:
-                    _worker_analyzer.class_index[symbol.name] = [
-                        s for s in _worker_analyzer.class_index[symbol.name] if s.file != file_path
-                    ]
-            else:
-                if symbol.name in _worker_analyzer.function_index:
-                    _worker_analyzer.function_index[symbol.name] = [
-                        s
-                        for s in _worker_analyzer.function_index[symbol.name]
-                        if s.file != file_path
-                    ]
-            # Remove from usr_index
-            if symbol.usr and symbol.usr in _worker_analyzer.usr_index:
-                del _worker_analyzer.usr_index[symbol.usr]
+    # CRITICAL FIX FOR ISSUE #14: Clean up ALL worker indexes after extracting symbols
+    # Previous bug: Only removed source file, leaving headers in file_index
+    # This caused headers to accumulate and be returned multiple times, leading to 70+ GB memory leak
+    #
+    # Since we extract ALL symbols from file_index (line 124-125), we must clear ALL entries
+    # to prevent accumulation across multiple files processed by the same worker.
+    # Workers don't need to keep this data - it's sent back to parent process.
 
-        # Remove from file_index
-        del _worker_analyzer.file_index[file_path]
+    # Clear ALL entries from file_index (source + all headers processed with this file)
+    _worker_analyzer.file_index.clear()
 
-    # Remove from file_hashes
-    if file_path in _worker_analyzer.file_hashes:
-        del _worker_analyzer.file_hashes[file_path]
+    # Clear class and function indexes completely
+    _worker_analyzer.class_index.clear()
+    _worker_analyzer.function_index.clear()
+
+    # Clear USR index completely
+    _worker_analyzer.usr_index.clear()
+
+    # Clear file hashes to prevent stale hash tracking
+    _worker_analyzer.file_hashes.clear()
 
     # Force garbage collection to free TranslationUnit objects
     # TU objects hold native C++ resources (file descriptors) that Python's GC
