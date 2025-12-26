@@ -307,13 +307,17 @@ class InvalidClass {
         # Should index at least the valid file
         assert count >= 1
 
-        # Should still find valid classes (using simpler pattern to avoid ReDoS detection)
-        classes = analyzer.search_classes("Valid")
-        assert len(classes) >= 1
+        # Should still find valid classes (using pattern to match classes starting with "Valid")
+        classes = analyzer.search_classes("ValidClass")
+        assert len(classes) >= 1  # Should find ValidClass (exact match)
 
-        # Try more specific pattern (avoiding consecutive quantifiers)
-        all_classes = analyzer.search_classes("AnotherValidClass")
-        assert len(all_classes) >= 1
+        # Try another exact match for specific class
+        another_class = analyzer.search_classes("AnotherValidClass")
+        assert len(another_class) >= 1  # Should find AnotherValidClass (exact match)
+
+        # Verify we can find classes starting with "Valid"
+        valid_prefix = analyzer.search_classes("Valid.*")
+        assert len(valid_prefix) >= 1  # Should find at least ValidClass
 
     def test_empty_project(self, temp_project_dir):
         """Test behavior with empty project"""
