@@ -70,7 +70,7 @@ public:
 };
 
 // Function using undeclared type (semantic error, not syntax error)
-void functionWithError() {
+void testFunction() {
     UndeclaredType var;  // This type doesn't exist
 }
 
@@ -96,7 +96,7 @@ public:
         class_results = analyzer.search_classes(".*Class")
         assert len(class_results) >= 2, "Should extract both classes despite semantic error"
 
-        # Should extract functions
+        # Should extract functions (both end with "Function")
         function_results = analyzer.search_functions(".*Function")
         assert len(function_results) >= 2, "Should extract functions despite semantic error"
 

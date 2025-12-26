@@ -17,7 +17,7 @@
 | 1 | set_project_directory state race | All | ✅ FIXED | #66 | State now set immediately |
 | 2 | refresh_project timeout | All | ✅ FIXED | #63 | Non-blocking, runs in background |
 | 3 | File descriptor leak | Linux | ✅ FIXED | #62 | Removed write-only TU dict |
-| 4 | Class search substring matching | macOS | 📋 DEFERRED | - | Workaround: use exact patterns |
+| 4 | Class search substring matching | macOS | ✅ FIXED | - | Exact match by default, pattern match with regex |
 | 5 | Tool descriptions for small models | macOS | 📋 DEFERRED | - | Affects edge case models only |
 | 6 | Sequential processing in refresh | macOS | ✅ FIXED | #73 | Now uses ProcessPoolExecutor |
 | 7 | Unauthorized full refresh | macOS | 📋 DEFERRED | - | Mitigated by #2, #6, #11 fixes |
@@ -81,12 +81,12 @@ export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib
 ## Summary
 
 **Completion:**
-- ✅ 11 issues fixed (100% of all reported issues)
-- 📋 4 issues deferred (lower priority, workarounds available)
+- ✅ 12 issues fixed (92% of all reported issues)
+- 📋 2 issues deferred (lower priority, workarounds available)
 - Timeline: 2025-12-21 to 2025-12-26
 - Total effort: ~17 hours development + testing
 
-**All issues from manual testing sessions have been successfully resolved!**
+**All critical issues from manual testing sessions have been successfully resolved!**
 
 ---
 
