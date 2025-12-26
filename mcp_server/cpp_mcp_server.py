@@ -710,6 +710,25 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
                             f"{len(analyzer.function_index)} functions indexed"
                         )
+
+                        # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
+                        # Without this, get_indexing_status returns 0 files even though cache is loaded
+                        from .state_manager import IndexingProgress
+                        from datetime import datetime
+
+                        # Create progress object from cached data
+                        total_files = len(analyzer.file_index)
+                        progress = IndexingProgress(
+                            total_files=total_files,
+                            indexed_files=total_files,  # All files loaded from cache
+                            failed_files=0,  # No failures when loading from cache
+                            cache_hits=total_files,  # Everything came from cache
+                            current_file=None,  # No active file
+                            start_time=datetime.now(),
+                            estimated_completion=None  # Already complete
+                        )
+                        state_manager.update_progress(progress)
+
                         state_manager.transition_to(AnalyzerState.INDEXED)
 
                         # Mark as initialized immediately

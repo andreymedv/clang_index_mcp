@@ -28,7 +28,7 @@
 | 12 | Database connection lifecycle | All | ✅ FIXED | #69 | Separate connection for dep graph |
 | 13 | Headers with fallback args | All | ✅ FIXED | #67 | Filter headers from change scanner |
 | 14 | Memory leak during large indexing | Linux | ✅ FIXED | #77 | Worker index cleanup - 9-11x memory reduction |
-| 15 | Status reports zero files before refresh | Linux | 🔍 NEW | - | Status correct only after refresh starts |
+| 15 | Status reports zero files before refresh | Linux | ✅ FIXED | #78 | Progress initialized from cache data |
 | 16 | Server shutdown hangs on Ctrl-C | Linux | 🔍 NEW | - | Requires 5x Ctrl-C, ProcessPoolExecutor blocking |
 
 ## Phase Completion
@@ -81,10 +81,11 @@ export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib
 ## Summary
 
 **Completion:**
-- ✅ 9 issues fixed (100% of critical & medium priority)
+- ✅ 10 issues fixed (100% of critical & medium priority)
 - 📋 4 issues deferred (lower priority, workarounds available)
-- Timeline: 2025-12-21 to 2025-12-25
-- Total effort: ~12 hours development + testing
+- 🔍 1 issue pending (server shutdown hang - lower priority)
+- Timeline: 2025-12-21 to 2025-12-26
+- Total effort: ~14 hours development + testing
 
 **All critical and medium-priority issues from manual testing have been successfully resolved.**
 
