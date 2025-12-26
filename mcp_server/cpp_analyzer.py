@@ -2042,19 +2042,81 @@ class CppAnalyzer:
                 # Cancel all pending futures
                 for future in future_to_file:
                     future.cancel()
-                # Shutdown executor and wait for running tasks to complete
+
+                # CRITICAL FIX FOR ISSUE #16: Shutdown with timeout to prevent hang
+                # Previous bug: executor.shutdown(wait=True) blocked indefinitely
+                # if workers were stuck in libclang parsing or I/O operations
                 diagnostics.info(
-                    f"Waiting for {self.max_workers} worker processes to finish current files..."
+                    f"Cancelling pending work and stopping {self.max_workers} workers..."
                 )
-                executor.shutdown(wait=True)
-                diagnostics.info("All workers stopped")
+
+                # First, try graceful shutdown with cancel_futures=True
+                # This cancels any pending work that hasn't started yet
+                executor.shutdown(wait=False, cancel_futures=True)
+
+                # Now wait for running workers with timeout (5 seconds)
+                # Workers may be processing files and need time to finish current operation
+                import threading
+                shutdown_complete = threading.Event()
+
+                def wait_for_shutdown():
+                    # Wait for all worker processes to exit
+                    # This happens in background thread so we can timeout
+                    try:
+                        executor.shutdown(wait=True)
+                        shutdown_complete.set()
+                    except Exception:
+                        pass  # Ignore errors during shutdown
+
+                shutdown_thread = threading.Thread(target=wait_for_shutdown, daemon=True)
+                shutdown_thread.start()
+
+                # Wait up to 5 seconds for workers to finish
+                if shutdown_complete.wait(timeout=5.0):
+                    diagnostics.info("All workers stopped cleanly")
+                else:
+                    diagnostics.warning(
+                        "Workers did not exit within 5 seconds - forcefully terminating"
+                    )
+                    # Force terminate worker processes if they don't exit gracefully
+                    # This is safe because we've cancelled pending futures
+                    # and workers are isolated processes
+                    if hasattr(executor, '_processes') and executor._processes:
+                        import signal
+                        for pid, process in executor._processes.items():
+                            try:
+                                if process.is_alive():
+                                    diagnostics.warning(f"Forcefully terminating worker {pid}")
+                                    process.terminate()  # SIGTERM first
+                            except Exception:
+                                pass  # Ignore errors during force terminate
+
+                    # Give terminated processes a moment to die
+                    time.sleep(0.5)
+
+                    # SIGKILL any that are still alive
+                    if hasattr(executor, '_processes') and executor._processes:
+                        for pid, process in executor._processes.items():
+                            try:
+                                if process.is_alive():
+                                    diagnostics.warning(f"Killing worker {pid} with SIGKILL")
+                                    process.kill()  # SIGKILL as last resort
+                            except Exception:
+                                pass
+
+                    diagnostics.info("Worker processes terminated")
+
             raise
         finally:
             # Always ensure executor is properly shut down
             if executor is not None:
                 # This will be called even after normal completion or exception
                 # shutdown() is idempotent, so safe to call multiple times
-                executor.shutdown(wait=True)
+                # Use wait=False to avoid blocking on cleanup
+                try:
+                    executor.shutdown(wait=False, cancel_futures=False)
+                except Exception:
+                    pass  # Ignore errors during final cleanup
 
         self.indexed_file_count = indexed_count
         self.last_index_time = time.time() - start_time
