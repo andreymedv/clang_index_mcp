@@ -8,7 +8,7 @@
 - **Session 1 (Linux, 2025-12-18):** Initial LM Studio integration testing - Issues #1, #2, #3
 - **Session 2 (macOS, 2025-12-19):** LM Studio with Qwen3-4B - Issues #4-#9
 - **Session 3 (Linux, 2025-12-21):** Manual testing post-fixes - Issues #10-#13
-- **Session 4 (Linux, 2025-12-26):** Large project testing - Issues #14, #15
+- **Session 4 (Linux, 2025-12-26):** Large project testing - Issues #14, #15, #16
 
 ## All Issues Status
 
@@ -27,8 +27,9 @@
 | 11 | Missing progress during refresh | All | ✅ FIXED | #72 | Added progress callback support |
 | 12 | Database connection lifecycle | All | ✅ FIXED | #69 | Separate connection for dep graph |
 | 13 | Headers with fallback args | All | ✅ FIXED | #67 | Filter headers from change scanner |
-| 14 | Memory leak during large indexing | Linux | 🔍 INVESTIGATING | - | 70-94GB memory consumption, system thrashing |
+| 14 | Memory leak during large indexing | Linux | ✅ FIXED | #77 | Worker index cleanup - 9-11x memory reduction |
 | 15 | Status reports zero files before refresh | Linux | 🔍 NEW | - | Status correct only after refresh starts |
+| 16 | Server shutdown hangs on Ctrl-C | Linux | 🔍 NEW | - | Requires 5x Ctrl-C, ProcessPoolExecutor blocking |
 
 ## Phase Completion
 
