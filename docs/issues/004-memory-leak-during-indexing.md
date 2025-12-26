@@ -2,9 +2,10 @@
 
 **Category:** Bug
 **Priority:** High
-**Status:** Proposed
+**Status:** ✅ FIXED (PR #77)
 **Date Identified:** 2025-12-26
-**Estimated Effort:** 1-2 weeks
+**Date Resolved:** 2025-12-26 (same day)
+**Actual Effort:** 4 hours
 **Complexity:** Complex
 
 ---
@@ -449,16 +450,30 @@ Based on existing architecture documentation:
 
 ## Decision Log
 
-**2025-12-26**: Initial identification from manual testing (Linux)
+**2025-12-26 (Morning)**: Initial identification from manual testing (Linux)
 - **Observation**: Memory leak causing system thrashing on 8000-file project (Linux only)
 - **Platform**: Issue observed on Linux, NOT observed on macOS with same commit
 - **Impact**: Critical on Linux - blocks large project usage
 - **Decision**: Create issue document, prioritize investigation with focus on Linux-specific behavior
-- **Next Steps**:
-  1. Reproduce with memory profiling enabled on Linux
-  2. Compare memory behavior between Linux and macOS
-  3. Implement Phase 1 quick fixes
-  4. Investigate platform-specific memory management differences
+
+**2025-12-26 (Afternoon)**: Root cause identified and fixed
+- **Investigation**: Code review of worker cleanup in `_process_file_worker()`
+- **Root Cause Found**: Workers only cleared source file from indexes, leaving accumulated headers
+- **Mechanism**: Headers sent to main process multiple times across files → massive duplication
+- **Fix Implemented**: Clear ALL worker indexes (file_index, class_index, function_index, usr_index) after each file
+- **Testing**: All 580 unit tests passed
+
+**2025-12-26 (Evening)**: Validation on real-world project
+- **Test Project**: 8389 files, Qt/boost dependencies
+- **Validation Results**:
+  - **Before fix**: Main process 70-94 GB, 47.4 GB swap used, system thrashing at ~92%
+  - **After fix**: Main process 8.2 GB, 0 GB swap, completed 100% successfully
+  - **Improvement**: 9-11x memory reduction
+  - **Success rate**: 8149/8389 files (97%), 240 failed (normal parse errors)
+  - **Symbols indexed**: 53,160 classes, 233,526 functions
+  - **Time**: 52 minutes (3154s) for full fresh index
+- **Decision**: ✅ **FIX VALIDATED** - Merge PR #77 to main
+- **Status**: FIXED and deployed
 
 ---
 
