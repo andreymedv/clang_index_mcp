@@ -127,10 +127,12 @@ def find_and_configure_libclang():
 
             # Homebrew Apple Silicon (versioned, use glob)
             "/opt/homebrew/Cellar/llvm/*/lib/libclang.dylib",
+            "/opt/homebrew/Cellar/llvm@*/*/lib/libclang.dylib",  # Versioned (llvm@19, llvm@20, etc.)
             "/opt/homebrew/lib/libclang.dylib",  # Symlink
 
             # Homebrew Intel
             "/usr/local/Cellar/llvm/*/lib/libclang.dylib",
+            "/usr/local/Cellar/llvm@*/*/lib/libclang.dylib",  # Versioned (llvm@19, llvm@20, etc.)
             "/usr/local/lib/libclang.dylib",
 
             # MacPorts
