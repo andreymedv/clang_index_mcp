@@ -277,7 +277,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "file_name": {
                         "type": "string",
-                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'network.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
                     },
                 },
                 "required": ["pattern"],
@@ -304,7 +304,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "file_name": {
                         "type": "string",
-                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'MyClass.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'network.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
                     },
                 },
                 "required": ["pattern"],
