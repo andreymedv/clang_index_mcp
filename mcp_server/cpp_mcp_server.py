@@ -268,7 +268,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Class/struct name pattern to search for. Supports regular expressions (e.g., 'My.*Class' matches MyBaseClass, MyDerivedClass, etc.)",
+                        "description": "Class/struct name to search for. **Default behavior: exact match** (case-insensitive). For example, 'View' returns only the class named 'View', not 'ViewManager' or 'ListView'. **For pattern matching**, use regex metacharacters: '.*View.*' matches all classes containing 'View', 'View.*' matches classes starting with 'View', etc. Pattern examples: 'My.*Class' matches MyBaseClass, MyDerivedClass.",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -291,7 +291,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Function/method name pattern to search for. Supports regular expressions (e.g., 'get.*' matches getWidth, getValue, etc.)",
+                        "description": "Function/method name to search for. **Default behavior: exact match** (case-insensitive). For example, 'getValue' returns only functions named 'getValue', not 'getValueFromCache'. **For pattern matching**, use regex metacharacters: 'get.*' matches all functions starting with 'get', '.*Value.*' matches all functions containing 'Value', etc.",
                     },
                     "project_only": {
                         "type": "boolean",
