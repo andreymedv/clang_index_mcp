@@ -6,9 +6,12 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 
 | ID | Title | Category | Priority | Status | Date |
 |----|-------|----------|----------|--------|------|
-| 001 | Cache Scalability for Large Codebases | Architecture | High | Postponed | 2025-11-16 |
+| 001 | Cache Scalability for Large Codebases | Architecture | High | ✅ Completed | 2025-11-16 → 2025-11-17 |
 | 002 | Test Freeze in Concurrent Cache Write Protection | Bug | High | Open | 2025-12-25 |
 | 003 | macOS libclang Discovery - Hardcoded Paths | Bug | Medium | Open | 2025-12-25 |
+| 004 | Memory Leak During Large Project Indexing | Bug | High | ✅ Fixed | 2025-12-26 |
+| 005 | Status Reports Zero Files Before Refresh | Bug | Medium | ✅ Fixed | 2025-12-26 |
+| 006 | Server Shutdown Hangs on Ctrl-C | Bug | Medium | ✅ Fixed | 2025-12-26 |
 
 ## Categories
 
@@ -31,6 +34,8 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 - **Planned**: Accepted and scheduled for future sprint
 - **In Progress**: Currently being implemented
 - **Blocked**: Waiting on dependencies or decisions
+- **Open**: Issue identified, not yet started
+- **✅ Completed/Fixed**: Issue resolved and verified
 
 ## How to Add New Issues
 
@@ -42,6 +47,9 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 
 ## Issue Files
 
-- [001-cache-scalability.md](001-cache-scalability.md) - Cache Scalability for Large Codebases
+- [001-cache-scalability.md](001-cache-scalability.md) - Cache Scalability for Large Codebases (✅ **COMPLETED** v3.0.0)
 - [002-test-freeze-concurrent-cache.md](002-test-freeze-concurrent-cache.md) - Test Freeze in Concurrent Cache Write Protection (🔴 **BLOCKS TEST SUITE**)
 - [003-macos-libclang-discovery.md](003-macos-libclang-discovery.md) - macOS libclang Discovery - Hardcoded Paths (🍎 **macOS ONLY**)
+- [004-memory-leak-during-indexing.md](004-memory-leak-during-indexing.md) - Memory Leak During Large Project Indexing (✅ **FIXED** PR #77)
+- [005-status-zero-files-before-refresh.md](005-status-zero-files-before-refresh.md) - Status Reports Zero Files Before Refresh (✅ **FIXED** PR #78)
+- [006-server-shutdown-hang.md](006-server-shutdown-hang.md) - Server Shutdown Hangs on Ctrl-C (✅ **FIXED** PR #79)
