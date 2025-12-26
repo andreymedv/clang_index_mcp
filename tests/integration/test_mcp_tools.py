@@ -54,19 +54,19 @@ public:
         """Test search_classes functionality"""
         (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {};
-class AnotherTestClass {};
+class TestHelper {};
 class DifferentClass {};
 """)
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        # Search for classes with pattern
+        # Search for classes with pattern (starts with "Test")
         results = analyzer.search_classes("Test.*")
         assert len(results) >= 2
         names = [r["name"] for r in results]
         assert "TestClass" in names
-        assert "AnotherTestClass" in names
+        assert "TestHelper" in names
         assert "DifferentClass" not in names
 
     def test_search_functions_tool(self, temp_project_dir):
