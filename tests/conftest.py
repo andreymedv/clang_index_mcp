@@ -12,6 +12,17 @@ from pathlib import Path
 from typing import Dict, Any
 import pytest
 
+# ============================================================================
+# Multiprocessing Configuration (FIX FOR ISSUE #002)
+# ============================================================================
+# Set multiprocessing start method to 'spawn' instead of 'fork'
+# This prevents deadlocks when using ProcessPoolExecutor in multi-threaded
+# tests. Python 3.12+ warns about fork() in multi-threaded processes.
+# See: docs/issues/002-test-freeze-concurrent-cache.md
+import multiprocessing
+if multiprocessing.get_start_method(allow_none=True) != 'spawn':
+    multiprocessing.set_start_method('spawn', force=True)
+
 # Add the mcp_server directory to the path
 import sys
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
