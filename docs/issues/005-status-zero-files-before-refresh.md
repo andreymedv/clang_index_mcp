@@ -2,10 +2,11 @@
 
 **Category:** Bug
 **Priority:** Medium
-**Status:** Proposed
+**Status:** ✅ FIXED (PR #78)
 **Date Identified:** 2025-12-26
-**Estimated Effort:** 2-3 days
-**Complexity:** Medium
+**Date Resolved:** 2025-12-26 (same day)
+**Actual Effort:** 2 hours
+**Complexity:** Simple
 
 ---
 
@@ -332,6 +333,79 @@ def get_indexing_status(self):
 **Related PRs:**
 - PR #64: Fix zero file counts by using file_index instead of TU dict
 - PR #66: Fix state race in set_project_directory
+
+---
+
+## Resolution
+
+**2025-12-26 (Same Day)**: Root cause identified and fixed
+
+### Investigation
+
+Reviewed `set_project_directory` implementation in `mcp_server/cpp_mcp_server.py` lines 707-741:
+
+**Root Cause Found:**
+When cache is loaded successfully, the code transitions to `INDEXED` state but never initializes the `IndexingProgress` with cache data. The `state_manager` has no progress information, so `get_indexing_status` returns 0 for all file counts.
+
+**Code Path:**
+1. `set_project_directory` loads cache via `analyzer.set_project_directory()`
+2. If cache valid: symbols loaded into indexes, state → INDEXED
+3. **BUG**: Progress never set with cache metadata
+4. `get_indexing_status` calls `state_manager.get_status_dict()`
+5. Returns `self._progress` which is `None` → defaults to 0 for all counts
+
+### Fix Implementation
+
+Added progress initialization after successful cache load in `cpp_mcp_server.py` lines 720-735:
+
+```python
+if cache_valid:
+    # Cache loaded successfully - skip indexing
+    diagnostics.info(
+        f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
+        f"{len(analyzer.function_index)} functions indexed"
+    )
+
+    # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
+    # Without this, get_indexing_status returns 0 files even though cache is loaded
+    from .state_manager import IndexingProgress
+    from datetime import datetime
+
+    # Create progress object from cached data
+    total_files = len(analyzer.file_index)
+    progress = IndexingProgress(
+        total_files=total_files,
+        indexed_files=total_files,  # All files loaded from cache
+        failed_files=0,  # No failures when loading from cache
+        cache_hits=total_files,  # Everything came from cache
+        current_file=None,  # No active file
+        start_time=datetime.now(),
+        estimated_completion=None  # Already complete
+    )
+    state_manager.update_progress(progress)
+
+    state_manager.transition_to(AnalyzerState.INDEXED)
+    # ... rest of existing code
+```
+
+### Validation
+
+**Testing:**
+- All 580 unit tests passed with no regressions
+- Logic verified: Progress now initialized with cache data when cache loads
+- Similar test exists: `test_get_indexing_status_immediately_after_set_project_directory` in `tests/test_concurrent_queries_during_indexing.py`
+
+**Expected Behavior After Fix:**
+1. `set_project_directory` with existing cache → progress initialized with cached file counts
+2. `get_indexing_status` immediately after → shows correct total_files, indexed_files, cache_hits
+3. No need to call `refresh_project` to see cached state
+
+### Commit & PR
+
+- **Branch:** `fix/status-zero-files-before-refresh`
+- **Files Modified:** `mcp_server/cpp_mcp_server.py`
+- **PR:** #78
+- **Status:** ✅ FIXED
 
 ---
 
