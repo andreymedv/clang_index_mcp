@@ -1,5 +1,6 @@
 # [007] Type Alias Tracking and Resolution
 
+**GitHub Issue:** [#84](https://github.com/andreymedv/clang_index_mcp/issues/84)
 **Category:** Feature
 **Priority:** Medium
 **Status:** Proposed
@@ -281,7 +282,7 @@ ALTER TABLE symbols ADD COLUMN alias_kind TEXT DEFAULT NULL;
 - C++ standard: using declarations and type aliases
 
 **Related Issues:**
-- [008] Template information tracking (separate but related feature)
+- [008] Template information tracking ([#85](https://github.com/andreymedv/clang_index_mcp/issues/85)) - template aliases overlap with this feature
 
 ---
 
