@@ -12,6 +12,8 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 | 004 | Memory Leak During Large Project Indexing | Bug | High | ✅ Fixed | 2025-12-26 |
 | 005 | Status Reports Zero Files Before Refresh | Bug | Medium | ✅ Fixed | 2025-12-26 |
 | 006 | Server Shutdown Hangs on Ctrl-C | Bug | Medium | ✅ Fixed | 2025-12-26 |
+| 007 | Type Alias Tracking and Resolution | Feature | Medium | Proposed | 2025-12-27 |
+| 008 | Template Information Tracking | Feature | Medium | Proposed | 2025-12-27 |
 
 ## Categories
 
@@ -53,3 +55,5 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 - [004-memory-leak-during-indexing.md](004-memory-leak-during-indexing.md) - Memory Leak During Large Project Indexing (✅ **FIXED** PR #77)
 - [005-status-zero-files-before-refresh.md](005-status-zero-files-before-refresh.md) - Status Reports Zero Files Before Refresh (✅ **FIXED** PR #78)
 - [006-server-shutdown-hang.md](006-server-shutdown-hang.md) - Server Shutdown Hangs on Ctrl-C (✅ **FIXED** PR #79)
+- [007-type-alias-tracking.md](007-type-alias-tracking.md) - Type Alias Tracking and Resolution (⚠️ **PROPOSED** - requires investigation)
+- [008-template-information-tracking.md](008-template-information-tracking.md) - Template Information Tracking (⚠️ **PROPOSED** - requires investigation)
