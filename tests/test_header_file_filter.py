@@ -496,3 +496,52 @@ class Class5 {};
 
         names = sorted([r['name'] for r in results])
         assert names == ["Class1", "Class2", "Class3", "Class4", "Class5"]
+
+    def test_empty_pattern_with_file_name_returns_all_symbols_in_file(self, temp_project_dir):
+        """Test that empty pattern with file_name filter returns all symbols in that file.
+
+        This is the fix for the issue where LLMs using search_classes("", file_name="MyFile.h")
+        would get empty results instead of all classes in that file.
+        """
+        (temp_project_dir / "src" / "Target.h").write_text("""
+struct StructA {};
+class ClassB {};
+struct StructC {};
+""")
+        (temp_project_dir / "src" / "Other.h").write_text("""
+class OtherClass {};
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with empty pattern and file_name filter - should return all classes in Target.h
+        results = analyzer.search_classes("", file_name="Target.h")
+        assert len(results) == 3, f"Should find all 3 classes in Target.h, found {len(results)}"
+
+        names = sorted([r['name'] for r in results])
+        assert names == ["ClassB", "StructA", "StructC"]
+
+        # Verify no classes from Other.h are included
+        for result in results:
+            assert result['file'].endswith("Target.h"), f"Found unexpected file: {result['file']}"
+
+    def test_empty_pattern_with_file_name_functions(self, temp_project_dir):
+        """Test that empty pattern with file_name filter works for functions too."""
+        (temp_project_dir / "src" / "functions.cpp").write_text("""
+void funcA() {}
+void funcB() {}
+int funcC(int x) { return x; }
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with empty pattern and file_name filter
+        results = analyzer.search_functions("", file_name="functions.cpp")
+        assert len(results) == 3, f"Should find all 3 functions, found {len(results)}"
+
+        names = sorted([r['name'] for r in results])
+        assert names == ["funcA", "funcB", "funcC"]
