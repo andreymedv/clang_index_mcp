@@ -5,6 +5,12 @@ mcp_env/
 .mcp_cache/*
 !.mcp_cache/.gitkeep
 
+# Test projects (managed by /test-mcp skill)
+.test-projects/
+
+# Test results (optional - can be kept for history)
+.test-results/
+
 # Local tool state
 .claude/
 .mcp.json
