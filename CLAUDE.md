@@ -541,18 +541,23 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 2. **Documentation extraction (Phase 2):** MCP tools (`search_classes`, `search_functions`, `get_class_info`) now return `brief` and `doc_comment` fields extracted from C++ documentation comments. This allows LLMs to understand symbol purpose without reading source files. Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Documentation is truncated at 4000 characters with "..." suffix if longer.
 
-3. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
+3. **Pattern matching behavior:** All search tools (`search_classes`, `search_functions`, `search_symbols`, `find_in_file`) support flexible pattern matching:
+   - **Empty string (`""`)** matches ALL symbols - useful when filtering by file (e.g., `search_classes("", file_name="example.h")` returns all classes in that file)
+   - **Plain text** (no regex metacharacters) performs exact match, case-insensitive (e.g., `"View"` matches only "View", not "ViewManager")
+   - **Regex patterns** (with `.*+?[]{}()|` etc.) use anchored full-match (e.g., `"View.*"` matches "View", "ViewManager" but not "ListView"; `".*View.*"` matches all containing "View")
 
-4. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
+4. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
 
-5. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
+5. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
 
-6. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
+6. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 
-7. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 8.0** includes documentation fields (brief, doc_comment) and call_sites table for line-level call graph tracking.
+7. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-8. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
+8. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 8.0** includes documentation fields (brief, doc_comment) and call_sites table for line-level call graph tracking.
 
-9. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+9. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
-10. **Test before committing:** Always run `make test` and `make check` before creating PRs.
+10. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+
+11. **Test before committing:** Always run `make test` and `make check` before creating PRs.

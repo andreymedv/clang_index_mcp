@@ -496,3 +496,156 @@ class Class5 {};
 
         names = sorted([r['name'] for r in results])
         assert names == ["Class1", "Class2", "Class3", "Class4", "Class5"]
+
+    def test_empty_pattern_with_file_name_returns_all_symbols_in_file(self, temp_project_dir):
+        """Test that empty pattern with file_name filter returns all symbols in that file.
+
+        This is the fix for the issue where LLMs using search_classes("", file_name="MyFile.h")
+        would get empty results instead of all classes in that file.
+        """
+        (temp_project_dir / "src" / "Target.h").write_text("""
+struct StructA {};
+class ClassB {};
+struct StructC {};
+""")
+        (temp_project_dir / "src" / "Other.h").write_text("""
+class OtherClass {};
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with empty pattern and file_name filter - should return all classes in Target.h
+        results = analyzer.search_classes("", file_name="Target.h")
+        assert len(results) == 3, f"Should find all 3 classes in Target.h, found {len(results)}"
+
+        names = sorted([r['name'] for r in results])
+        assert names == ["ClassB", "StructA", "StructC"]
+
+        # Verify no classes from Other.h are included
+        for result in results:
+            assert result['file'].endswith("Target.h"), f"Found unexpected file: {result['file']}"
+
+    def test_empty_pattern_with_file_name_functions(self, temp_project_dir):
+        """Test that empty pattern with file_name filter works for functions too."""
+        (temp_project_dir / "src" / "functions.cpp").write_text("""
+void funcA() {}
+void funcB() {}
+int funcC(int x) { return x; }
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with empty pattern and file_name filter
+        results = analyzer.search_functions("", file_name="functions.cpp")
+        assert len(results) == 3, f"Should find all 3 functions, found {len(results)}"
+
+        names = sorted([r['name'] for r in results])
+        assert names == ["funcA", "funcB", "funcC"]
+
+    def test_empty_pattern_search_symbols_all_types(self, temp_project_dir):
+        """Test that empty pattern with search_symbols returns all symbol types."""
+        (temp_project_dir / "src" / "mixed.h").write_text("""
+class ClassA {};
+struct StructB {};
+void functionC();
+class ClassD {
+    void methodE();
+};
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with empty pattern - should return all classes and functions
+        results = analyzer.search_symbols("", project_only=True)
+
+        # Check we got both categories
+        assert "classes" in results
+        assert "functions" in results
+
+        # Check classes
+        class_names = sorted([c['name'] for c in results['classes']])
+        assert "ClassA" in class_names
+        assert "StructB" in class_names
+        assert "ClassD" in class_names
+
+        # Check functions (note: methodE might not be in function index depending on definition-wins)
+        func_names = [f['name'] for f in results['functions']]
+        assert "functionC" in func_names
+
+    def test_empty_pattern_search_symbols_filtered_by_type(self, temp_project_dir):
+        """Test that empty pattern with search_symbols and symbol_types filter works."""
+        (temp_project_dir / "src" / "mixed.h").write_text("""
+class ClassA {};
+struct StructB {};
+void functionC();
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with empty pattern, only classes
+        results = analyzer.search_symbols("", project_only=True, symbol_types=["class", "struct"])
+
+        # Should have classes but empty functions
+        assert len(results['classes']) >= 2
+        assert len(results['functions']) == 0
+
+        # Search with empty pattern, only functions
+        results = analyzer.search_symbols("", project_only=True, symbol_types=["function"])
+
+        # Should have functions but empty classes
+        assert len(results['functions']) >= 1
+        assert len(results['classes']) == 0
+
+    def test_empty_pattern_find_in_file(self, temp_project_dir):
+        """Test that empty pattern with find_in_file returns all symbols in that file."""
+        test_file = temp_project_dir / "src" / "testfile.cpp"
+        test_file.write_text("""
+class TestClass {};
+void testFunc1() {}
+void testFunc2() {}
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Use find_in_file with empty pattern
+        results = analyzer.find_in_file(str(test_file), "")
+
+        # Should find all symbols in that file
+        assert len(results) >= 3, f"Should find at least 3 symbols, found {len(results)}"
+
+        names = sorted([r['name'] for r in results])
+        assert "TestClass" in names
+        assert "testFunc1" in names
+        assert "testFunc2" in names
+
+    def test_empty_pattern_find_in_file_with_partial_path(self, temp_project_dir):
+        """Test that empty pattern works with find_in_file using partial path."""
+        # Create nested directory
+        (temp_project_dir / "src" / "module").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / "src" / "module" / "code.cpp").write_text("""
+class ModuleClass {};
+void moduleFunc() {}
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Use partial path with empty pattern
+        results = analyzer.find_in_file("module/code.cpp", "")
+
+        # Should find all symbols
+        assert len(results) >= 2
+        names = [r['name'] for r in results]
+        assert "ModuleClass" in names
+        assert "moduleFunc" in names
