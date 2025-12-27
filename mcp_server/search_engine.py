@@ -38,6 +38,7 @@ class SearchEngine:
     def _matches(pattern: str, name: str) -> bool:
         """Check if name matches pattern using exact or pattern matching.
 
+        - If pattern is empty: match all (returns True)
         - If pattern has no regex metacharacters: exact match (case-insensitive)
         - If pattern has regex metacharacters: regex fullmatch (anchored pattern matching)
 
@@ -46,6 +47,10 @@ class SearchEngine:
         - "View.*" does NOT match "ListView" (doesn't start with View)
         - ".*View.*" matches all of the above (contains View anywhere)
         """
+        # Empty pattern matches all symbols (useful with file_name filter)
+        if not pattern:
+            return True
+
         if SearchEngine._is_pattern(pattern):
             # Pattern matching: use regex fullmatch (anchored at both ends)
             regex = re.compile(pattern, re.IGNORECASE)
