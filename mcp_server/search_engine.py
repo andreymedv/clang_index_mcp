@@ -38,6 +38,7 @@ class SearchEngine:
     def _matches(pattern: str, name: str) -> bool:
         """Check if name matches pattern using exact or pattern matching.
 
+        - If pattern is empty: match all (returns True)
         - If pattern has no regex metacharacters: exact match (case-insensitive)
         - If pattern has regex metacharacters: regex fullmatch (anchored pattern matching)
 
@@ -46,6 +47,10 @@ class SearchEngine:
         - "View.*" does NOT match "ListView" (doesn't start with View)
         - ".*View.*" matches all of the above (contains View anywhere)
         """
+        # Empty pattern matches all symbols (useful with file_name filter)
+        if not pattern:
+            return True
+
         if SearchEngine._is_pattern(pattern):
             # Pattern matching: use regex fullmatch (anchored at both ends)
             regex = re.compile(pattern, re.IGNORECASE)
@@ -59,8 +64,10 @@ class SearchEngine:
     ) -> List[Dict[str, Any]]:
         """Search for classes matching a pattern.
 
-        Uses exact matching by default (case-insensitive).
-        Uses pattern matching when pattern contains regex metacharacters (*, +, ?, etc.)
+        Pattern matching modes:
+        - Empty string ("") matches ALL classes (useful with file_name filter)
+        - Plain text (no regex metacharacters) performs exact match (case-insensitive)
+        - Regex patterns (with .*+?[]{}()| etc.) use anchored full-match
         """
         # Validate pattern for ReDoS prevention (only if it's a regex pattern)
         if self._is_pattern(pattern):
@@ -111,8 +118,10 @@ class SearchEngine:
     ) -> List[Dict[str, Any]]:
         """Search for functions matching a pattern.
 
-        Uses exact matching by default (case-insensitive).
-        Uses pattern matching when pattern contains regex metacharacters (*, +, ?, etc.)
+        Pattern matching modes:
+        - Empty string ("") matches ALL functions (useful with file_name filter)
+        - Plain text (no regex metacharacters) performs exact match (case-insensitive)
+        - Regex patterns (with .*+?[]{}()| etc.) use anchored full-match
         """
         # Validate pattern for ReDoS prevention (only if it's a regex pattern)
         if self._is_pattern(pattern):
@@ -203,7 +212,13 @@ class SearchEngine:
     def search_symbols(
         self, pattern: str, project_only: bool = True, symbol_types: Optional[List[str]] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """Search for any symbols matching a pattern"""
+        """Search for any symbols matching a pattern.
+
+        Pattern matching modes:
+        - Empty string ("") matches ALL symbols of specified types
+        - Plain text (no regex metacharacters) performs exact match (case-insensitive)
+        - Regex patterns (with .*+?[]{}()| etc.) use anchored full-match
+        """
         results = {"classes": [], "functions": []}
 
         # Filter symbol types

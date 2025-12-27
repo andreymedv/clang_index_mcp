@@ -268,7 +268,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Class/struct name to search for. **Default behavior: exact match** (case-insensitive). For example, 'View' returns only the class named 'View', not 'ViewManager' or 'ListView'. **For pattern matching**, use regex metacharacters: '.*View.*' matches all classes containing 'View', 'View.*' matches classes starting with 'View', etc. Pattern examples: 'My.*Class' matches MyBaseClass, MyDerivedClass.",
+                        "description": "Class/struct name to search for. **Empty string matches all** - useful with file_name filter to get all classes in a file. **Default behavior: exact match** (case-insensitive). For example, 'View' returns only the class named 'View', not 'ViewManager' or 'ListView'. **For pattern matching**, use regex metacharacters: '.*View.*' matches all classes containing 'View', 'View.*' matches classes starting with 'View', etc. Pattern examples: 'My.*Class' matches MyBaseClass, MyDerivedClass.",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -291,7 +291,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Function/method name to search for. **Default behavior: exact match** (case-insensitive). For example, 'getValue' returns only functions named 'getValue', not 'getValueFromCache'. **For pattern matching**, use regex metacharacters: 'get.*' matches all functions starting with 'get', '.*Value.*' matches all functions containing 'Value', etc.",
+                        "description": "Function/method name to search for. **Empty string matches all** - useful with file_name filter to get all functions in a file. **Default behavior: exact match** (case-insensitive). For example, 'getValue' returns only functions named 'getValue', not 'getValueFromCache'. **For pattern matching**, use regex metacharacters: 'get.*' matches all functions starting with 'get', '.*Value.*' matches all functions containing 'Value', etc.",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -350,7 +350,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for. Supports regular expressions. Searches across all symbol types unless filtered by symbol_types parameter.",
+                        "description": "Symbol name pattern to search for. **Empty string matches all symbols** of the specified types. Supports exact matching (default) and regex patterns. Searches across all symbol types unless filtered by symbol_types parameter.",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -381,7 +381,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for within the file. Supports regular expressions.",
+                        "description": "Symbol name pattern to search for within the file. **Empty string matches all symbols** in the file. Supports exact matching (default) and regex patterns.",
                     },
                 },
                 "required": ["file_path", "pattern"],
