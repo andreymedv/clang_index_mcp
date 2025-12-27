@@ -1,5 +1,6 @@
 # [008] Template Information Tracking
 
+**GitHub Issue:** [#85](https://github.com/andreymedv/clang_index_mcp/issues/85)
 **Category:** Feature
 **Priority:** Medium
 **Status:** Proposed
@@ -364,7 +365,7 @@ CREATE TABLE template_specializations (
 - C++ standard: templates and specialization
 
 **Related Issues:**
-- [007] Type Alias Tracking (template aliases are related)
+- [007] Type Alias Tracking ([#84](https://github.com/andreymedv/clang_index_mcp/issues/84)) - template aliases overlap with this feature
 
 ---
 

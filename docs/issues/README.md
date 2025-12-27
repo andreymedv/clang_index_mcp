@@ -4,16 +4,16 @@ This directory tracks postponed bugs, proposed features, and architectural impro
 
 ## Quick Reference
 
-| ID | Title | Category | Priority | Status | Date |
-|----|-------|----------|----------|--------|------|
-| 001 | Cache Scalability for Large Codebases | Architecture | High | ✅ Completed | 2025-11-16 → 2025-11-17 |
-| 002 | Test Freeze in Concurrent Cache Write Protection | Bug | High | ✅ Fixed | 2025-12-25 → 2025-12-26 |
-| 003 | macOS libclang Discovery - Hardcoded Paths | Bug | Medium | ✅ Fixed | 2025-12-25 → 2025-12-26 |
-| 004 | Memory Leak During Large Project Indexing | Bug | High | ✅ Fixed | 2025-12-26 |
-| 005 | Status Reports Zero Files Before Refresh | Bug | Medium | ✅ Fixed | 2025-12-26 |
-| 006 | Server Shutdown Hangs on Ctrl-C | Bug | Medium | ✅ Fixed | 2025-12-26 |
-| 007 | Type Alias Tracking and Resolution | Feature | Medium | Proposed | 2025-12-27 |
-| 008 | Template Information Tracking | Feature | Medium | Proposed | 2025-12-27 |
+| ID | Title | Category | Priority | Status | Date | GitHub |
+|----|-------|----------|----------|--------|------|--------|
+| 001 | Cache Scalability for Large Codebases | Architecture | High | ✅ Completed | 2025-11-16 → 2025-11-17 | - |
+| 002 | Test Freeze in Concurrent Cache Write Protection | Bug | High | ✅ Fixed | 2025-12-25 → 2025-12-26 | - |
+| 003 | macOS libclang Discovery - Hardcoded Paths | Bug | Medium | ✅ Fixed | 2025-12-25 → 2025-12-26 | - |
+| 004 | Memory Leak During Large Project Indexing | Bug | High | ✅ Fixed | 2025-12-26 | - |
+| 005 | Status Reports Zero Files Before Refresh | Bug | Medium | ✅ Fixed | 2025-12-26 | - |
+| 006 | Server Shutdown Hangs on Ctrl-C | Bug | Medium | ✅ Fixed | 2025-12-26 | - |
+| 007 | Type Alias Tracking and Resolution | Feature | Medium | Proposed | 2025-12-27 | [#84](https://github.com/andreymedv/clang_index_mcp/issues/84) |
+| 008 | Template Information Tracking | Feature | Medium | Proposed | 2025-12-27 | [#85](https://github.com/andreymedv/clang_index_mcp/issues/85) |
 
 ## Categories
 
