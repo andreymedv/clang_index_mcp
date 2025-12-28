@@ -90,9 +90,17 @@ class ResultAnalyzer:
         # Status line
         status_icon = "✅" if analysis["status"] == "PASS" else "❌"
         metrics = analysis.get("metrics", {})
-        duration = metrics.get("duration_s", "?")
+        details = analysis.get("details", {})
 
-        output = f"{status_icon} Test: {self.test_name} ({self.project_name}, {self.protocol.upper()}, {duration}s)\n"
+        # Handle duration (could be in seconds or minutes)
+        if "duration_min" in metrics:
+            duration_str = f"{metrics['duration_min']}min"
+        elif "duration_s" in metrics:
+            duration_str = f"{metrics['duration_s']}s"
+        else:
+            duration_str = "?"
+
+        output = f"{status_icon} Test: {self.test_name} ({self.project_name}, {self.protocol.upper()}, {duration_str})\n"
 
         # Metrics
         if "files_indexed" in metrics:
@@ -112,6 +120,21 @@ class ResultAnalyzer:
             if "expected_functions" in metrics:
                 output += f" (expected: {metrics['expected_functions']})"
             output += "\n"
+
+        # Issue #13 specific metrics (boost symbols)
+        if "boost_mpl_found" in metrics or "boost_fusion_found" in metrics:
+            mpl_count = metrics.get("boost_mpl_found", 0)
+            fusion_count = metrics.get("boost_fusion_found", 0)
+            total_boost = mpl_count + fusion_count
+            output += f"   Boost symbols found: {total_boost} (mpl: {mpl_count}, fusion: {fusion_count})\n"
+
+            # Show issue status if available
+            if "issue_13_status" in details:
+                status_msg = details["issue_13_status"]
+                if "FIXED" in status_msg:
+                    output += f"   Issue #13: ✓ {status_msg}\n"
+                else:
+                    output += f"   Issue #13: ⚠ {status_msg}\n"
 
         # Issues
         if analysis["issues"]:
