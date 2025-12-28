@@ -94,11 +94,23 @@ def run(project_info, server_manager):
                     status_text = content[0].get("text", "")
                     results["details"]["last_status"] = status_text
 
-                    # Check if indexing is complete
-                    if "complete" in status_text.lower() or "ready" in status_text.lower():
-                        indexing_complete = True
-                        results["details"]["indexing_status"] = status_text
-                        break
+                    # Parse JSON status to check is_fully_indexed
+                    try:
+                        import json
+                        status_json = json.loads(status_text)
+                        is_fully_indexed = status_json.get("is_fully_indexed", False)
+
+                        # Check if indexing is complete (must be is_fully_indexed=true)
+                        if is_fully_indexed:
+                            indexing_complete = True
+                            results["details"]["indexing_status"] = status_text
+                            break
+                    except (json.JSONDecodeError, Exception):
+                        # Fallback: old text-based check if JSON parsing fails
+                        if "is_fully_indexed\": true" in status_text:
+                            indexing_complete = True
+                            results["details"]["indexing_status"] = status_text
+                            break
 
             time.sleep(1)
 
