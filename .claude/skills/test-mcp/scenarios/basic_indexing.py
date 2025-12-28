@@ -56,8 +56,17 @@ def run(project_info, server_manager):
             {"project_path": project_info["path"]}
         )
 
+        # Check for errors in JSON-RPC response
         if "error" in response:
-            results["error"] = f"set_project_directory failed: {response['error']}"
+            error_msg = response["error"]
+            if isinstance(error_msg, dict):
+                error_msg = f"Code {error_msg.get('code')}: {error_msg.get('message')}"
+            results["error"] = f"set_project_directory failed: {error_msg}"
+            return results
+
+        # Verify we got a result
+        if "result" not in response:
+            results["error"] = f"set_project_directory: No result in response: {response}"
             return results
 
         # Step 2: Wait for indexing to complete
@@ -73,10 +82,19 @@ def run(project_info, server_manager):
                 {}
             )
 
+            # Check for errors
+            if "error" in status_response:
+                results["error"] = f"get_indexing_status failed: {status_response['error']}"
+                return results
+
+            # Parse status from MCP response
             if "result" in status_response:
                 content = status_response["result"].get("content", [])
                 if content:
                     status_text = content[0].get("text", "")
+                    results["details"]["last_status"] = status_text
+
+                    # Check if indexing is complete
                     if "complete" in status_text.lower() or "ready" in status_text.lower():
                         indexing_complete = True
                         results["details"]["indexing_status"] = status_text
@@ -85,7 +103,7 @@ def run(project_info, server_manager):
             time.sleep(1)
 
         if not indexing_complete:
-            results["error"] = "Indexing did not complete within timeout"
+            results["error"] = f"Indexing did not complete within {max_wait}s. Last status: {results['details'].get('last_status', 'unknown')}"
             return results
 
         # Step 3: Verify file count
@@ -103,10 +121,15 @@ def run(project_info, server_manager):
             {"pattern": ""}  # Empty pattern to get all classes
         )
 
-        if "result" in classes_response:
+        # Check for errors
+        if "error" in classes_response:
+            print(f"WARNING: search_classes failed: {classes_response['error']}")
+            results["metrics"]["classes_found"] = 0
+        elif "result" in classes_response:
             content = classes_response["result"].get("content", [])
             if content:
                 classes_text = content[0].get("text", "")
+                results["details"]["classes_response"] = classes_text[:500]  # Store first 500 chars
                 # Count classes in response (simplified - count lines starting with "class")
                 class_count = classes_text.count("\nclass ") + (1 if classes_text.startswith("class ") else 0)
                 results["metrics"]["classes_found"] = class_count
@@ -120,10 +143,15 @@ def run(project_info, server_manager):
             {"pattern": ""}  # Empty pattern to get all functions
         )
 
-        if "result" in functions_response:
+        # Check for errors
+        if "error" in functions_response:
+            print(f"WARNING: search_functions failed: {functions_response['error']}")
+            results["metrics"]["functions_found"] = 0
+        elif "result" in functions_response:
             content = functions_response["result"].get("content", [])
             if content:
                 functions_text = content[0].get("text", "")
+                results["details"]["functions_response"] = functions_text[:500]  # Store first 500 chars
                 # Count functions (simplified)
                 function_count = functions_text.count("\n") + 1 if functions_text else 0
                 results["metrics"]["functions_found"] = function_count
