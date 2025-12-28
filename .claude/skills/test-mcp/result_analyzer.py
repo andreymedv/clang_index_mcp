@@ -136,6 +136,29 @@ class ResultAnalyzer:
                 else:
                     output += f"   Issue #13: ⚠ {status_msg}\n"
 
+        # Incremental refresh specific metrics
+        if "incremental_speedup" in metrics:
+            output += f"   Incremental speedup: {metrics['incremental_speedup']}x\n"
+            if "initial_index_time_s" in metrics:
+                output += f"   Initial index time: {metrics['initial_index_time_s']}s\n"
+            if "refresh_time_s" in metrics:
+                output += f"   Refresh time: {metrics['refresh_time_s']}s\n"
+            if "new_function_found" in details:
+                found_icon = "✓" if details["new_function_found"] else "✗"
+                output += f"   New function found: {found_icon}\n"
+
+        # All-protocols specific metrics
+        if "protocols_tested" in metrics:
+            output += f"   Protocols tested: {metrics['protocols_tested']}"
+            if "protocols_passed" in metrics:
+                output += f" (passed: {metrics['protocols_passed']})"
+            output += "\n"
+
+            if "results_consistent" in metrics:
+                consistent = metrics["results_consistent"]
+                consistency_icon = "✓" if consistent else "✗"
+                output += f"   Results consistent: {consistency_icon}\n"
+
         # Issues
         if analysis["issues"]:
             output += "   Issues:\n"

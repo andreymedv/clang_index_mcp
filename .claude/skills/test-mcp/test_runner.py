@@ -15,6 +15,8 @@ class TestRunner:
     AVAILABLE_TESTS = {
         "basic-indexing": "scenarios.basic_indexing",
         "issue-13": "scenarios.issue_13",
+        "incremental-refresh": "scenarios.incremental_refresh",
+        "all-protocols": "scenarios.all_protocols",
     }
 
     def __init__(self):
