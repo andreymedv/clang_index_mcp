@@ -2,10 +2,11 @@
 
 **Last Updated:** 2025-12-28
 
-## Current Status: Phase 1 MVP - COMPLETE ✅
+## Current Status: Phase 2 - COMPLETE ✅
 
 Phase 0 (Infrastructure) is **COMPLETE**.
 Phase 1 (MVP) is **COMPLETE** - All deliverables implemented and tested.
+Phase 2 (Project Management) is **COMPLETE** - All deliverables implemented and tested.
 
 ---
 
@@ -252,35 +253,74 @@ def run_test(self, test_name, project, protocol):
 
 ---
 
-## Phase 1 Complete - What's Next?
+---
 
-Phase 1 MVP is now fully functional! The `/test-mcp` skill can:
+## Phase 2 Progress (100% Complete) ✅
+
+### Core Implementation ✅
+- ✅ `utils/cmake_helper.py` - CMake detection, configuration, and validation
+- ✅ `ProjectManager.setup_project()` - Clone and configure projects from GitHub
+- ✅ `ProjectManager.remove_project()` - Remove projects with optional file deletion
+- ✅ `ProjectManager._get_directory_size()` - Calculate disk usage
+- ✅ Enhanced project registry with cloned project support
+- ✅ Commit/tag pinning for reproducibility
+- ✅ Automatic CMake configuration with compile_commands.json export
+
+### Commands Implemented ✅
+- ✅ `/test-mcp setup-project url=... [name=...] [commit=...] [tag=...]`
+- ✅ `/test-mcp validate-project project=...`
+- ✅ `/test-mcp remove-project project=... [delete=yes]`
+
+### Tested and Working ✅
+- ✅ Setup project from GitHub (tested with nlohmann/json)
+- ✅ CMake auto-detection and configuration
+- ✅ compile_commands.json generation and validation
+- ✅ Project validation (directory, compile_commands.json, C++ files)
+- ✅ Project removal with confirmation prompt
+- ✅ Disk usage tracking
+- ✅ Commit hash tracking for reproducibility
+
+---
+
+## Phase 1 & 2 Complete - What's Next?
+
+Phases 1 and 2 are now fully functional! The `/test-mcp` skill can:
 - Manage MCP server lifecycle (start/stop)
 - Execute automated tests on tier1/tier2 projects
+- Clone and configure C++ projects from GitHub
+- Auto-configure CMake projects with compile_commands.json
 - Validate MCP tool functionality
 - Save detailed results for debugging
 
 ### Ready to Use
 
 ```bash
+# List available projects
+python .claude/skills/test-mcp/__init__.py list-projects
+
+# Setup a new project from GitHub
+python .claude/skills/test-mcp/__init__.py setup-project url=https://github.com/nlohmann/json name=json-test tag=v3.11.3
+
+# Validate a project
+python .claude/skills/test-mcp/__init__.py validate-project project=json-test
+
 # Test basic indexing on tier1 (fast, ~5-10s)
 python .claude/skills/test-mcp/__init__.py test test=basic-indexing tier=1 protocol=http
 
 # Test Issue #13 on tier2 (slow, ~5-15min)
 python .claude/skills/test-mcp/__init__.py test test=issue-13 tier=2 protocol=http
 
-# List available projects
-python .claude/skills/test-mcp/__init__.py list-projects
+# Remove a project (with files)
+python .claude/skills/test-mcp/__init__.py remove-project project=json-test delete=yes
 ```
 
 ### Next Phases (Future Work)
 
-**Phase 2: Project Management** - Add ability to register custom test projects
-**Phase 3: Extended Test Scenarios** - Add more issue-specific test scenarios
-**Phase 4: Advanced Features** - CI/CD integration, performance benchmarking
-**Phase 5: Polish & Documentation** - User guide, video demos
+**Phase 3: Extended Test Scenarios** - Add more issue-specific test scenarios (incremental-refresh, all-protocols, regression)
+**Phase 4: Advanced Features** - CI/CD integration, custom YAML scenarios, auto-fix capability
+**Phase 5: Polish & Documentation** - User guide, comprehensive documentation, video demos
 
-**Note:** SSE transport is partially implemented but requires additional work for full session management. HTTP transport is fully functional and recommended.
+**Note:** HTTP transport is fully functional and recommended for testing.
 
 ---
 
