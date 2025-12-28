@@ -12,6 +12,11 @@ mcp_env/
 # Test results (optional - can be kept for history)
 .test-results/
 
+# Custom test scenarios (keep examples, ignore user-created)
+.test-scenarios/*
+!.test-scenarios/README.md
+!.test-scenarios/*.yaml
+
 # Local tool state
 .claude/
 !.claude/skills/

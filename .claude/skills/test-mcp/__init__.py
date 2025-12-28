@@ -54,6 +54,8 @@ def main():
         handle_validate_project(params)
     elif args.command == "remove-project":
         handle_remove_project(params)
+    elif args.command == "pytest":
+        handle_pytest(params)
     elif args.command == "help":
         show_help()
     else:
@@ -87,12 +89,13 @@ def handle_test(params):
     test_name = params.get("test")
     if not test_name:
         print("Error: test parameter required")
-        print("Usage: /test-mcp test=<scenario> [tier=1|2] [protocol=sse]")
+        print("Usage: /test-mcp test=<scenario> [tier=1|2] [protocol=http] [scenario=path/to/file.yaml]")
         sys.exit(1)
 
     tier = params.get("tier", "1")
-    protocol = params.get("protocol", "sse")
+    protocol = params.get("protocol", "http")
     project = params.get("project")
+    scenario_path = params.get("scenario")
 
     # Determine project from tier if not explicitly specified
     if not project:
@@ -108,7 +111,8 @@ def handle_test(params):
     result = runner.run_test(
         test_name=test_name,
         project=project,
-        protocol=protocol
+        protocol=protocol,
+        scenario_path=scenario_path
     )
 
     # Output result (formatted by TestRunner)
@@ -214,6 +218,13 @@ def handle_remove_project(params):
         sys.exit(1)
 
 
+def handle_pytest(params):
+    """Run pytest suite"""
+    runner = TestRunner()
+    result = runner.run_pytest()
+    print(result)
+
+
 def show_help():
     """Show help information"""
     help_text = """
@@ -221,19 +232,22 @@ MCP Testing Skill - Help
 
 Commands:
   list-projects              List available test projects
-  test=<scenario>            Run a test scenario
+  test=<scenario>            Run a test scenario (built-in or custom YAML)
   setup-project              Setup a new test project (clone from GitHub)
   validate-project           Validate a test project
   remove-project             Remove a test project from registry
+  pytest                     Run existing pytest suite
   help                       Show this help
 
 Examples:
   /test-mcp list-projects
   /test-mcp test=basic-indexing tier=1
-  /test-mcp test=issue-13 tier=2 protocol=sse
+  /test-mcp test=issue-13 tier=2 protocol=http
+  /test-mcp test=custom scenario=my-test.yaml tier=1
   /test-mcp validate-project project=tier1
   /test-mcp setup-project url=https://github.com/user/repo name=myproject
   /test-mcp remove-project project=myproject delete=yes
+  /test-mcp pytest
 
 Available test scenarios:
   Phase 1:
@@ -244,10 +258,17 @@ Available test scenarios:
   - incremental-refresh: Test incremental analysis after file changes
   - all-protocols: Verify all transport protocols work
 
+  Phase 4:
+  - custom: Run custom YAML scenario (requires scenario= parameter)
+
 Available protocols:
-  - sse: Server-Sent Events (recommended for testing)
+  - http: HTTP REST-like (recommended for testing)
+  - sse: Server-Sent Events
   - stdio: Standard I/O (production mode)
-  - http: HTTP REST-like (alternative)
+
+Custom Scenarios:
+  Define custom test scenarios in YAML format. Place in .test-scenarios/ directory
+  or specify full path with scenario= parameter. See YAML_SCENARIO_SPEC.md for format.
 
 For full documentation, see:
   docs/MCP_TESTING_SKILL.md
