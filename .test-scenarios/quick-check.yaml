@@ -1,0 +1,35 @@
+name: quick-check
+description: Quick smoke test - verify basic indexing and search
+project: tier1
+protocol: http
+timeout: 60
+
+steps:
+  - tool: set_project_directory
+    args:
+      project_path: "$PROJECT_PATH"
+    description: "Set project directory to tier1"
+
+  - tool: wait_for_indexing
+    timeout: 30
+    description: "Wait for indexing to complete"
+
+  - tool: search_classes
+    args:
+      pattern: ""
+    expect:
+      - type: count
+        operator: ">"
+        value: 0
+      - type: no_error
+    description: "Search for all classes"
+
+  - tool: search_functions
+    args:
+      pattern: ""
+    expect:
+      - type: count
+        operator: ">="
+        value: 1
+      - type: no_error
+    description: "Search for all functions"
