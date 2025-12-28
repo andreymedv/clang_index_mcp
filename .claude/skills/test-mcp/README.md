@@ -22,7 +22,7 @@ See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL
 ## Implementation Status
 
 - ✅ Phase 1: MVP - Basic Skill with tier1/tier2 (COMPLETE)
-- [ ] Phase 2: Project Management
+- ✅ Phase 2: Project Management (COMPLETE)
 - [ ] Phase 3: Extended Test Scenarios
 - [ ] Phase 4: Advanced Features
 - [ ] Phase 5: Polish & Documentation
@@ -49,12 +49,16 @@ See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL
 
 ## Current Status
 
-**Status:** Phase 1 MVP COMPLETE ✅
+**Status:** Phase 1 & 2 COMPLETE ✅
 
 **Working Features:**
 - ✅ Server lifecycle management (HTTP transport)
 - ✅ MCP protocol initialization handshake
 - ✅ `list-projects` command
+- ✅ `setup-project` command - Clone and configure from GitHub
+- ✅ `validate-project` command
+- ✅ `remove-project` command
+- ✅ CMake auto-detection and configuration
 - ✅ `test=basic-indexing` scenario (tier1, ~5-10s)
 - ✅ `test=issue-13` scenario (tier2, ~5-15min)
 - ✅ Automated result analysis and formatting
@@ -62,9 +66,16 @@ See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL
 
 **Usage:**
 ```bash
-# Run directly
+# List available projects
+python .claude/skills/test-mcp/__init__.py list-projects
+
+# Setup a new project from GitHub
+python .claude/skills/test-mcp/__init__.py setup-project url=https://github.com/user/repo name=myproject
+
+# Run tests
 python .claude/skills/test-mcp/__init__.py test test=basic-indexing tier=1 protocol=http
 
 # Or via Claude Code (when skill is registered)
 /test-mcp test=basic-indexing tier=1
+/test-mcp setup-project url=https://github.com/user/repo
 ```

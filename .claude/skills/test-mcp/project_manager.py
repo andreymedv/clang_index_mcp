@@ -4,6 +4,8 @@ Project Manager - Manages test project registry and validation
 
 import json
 import os
+import subprocess
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -151,3 +153,225 @@ class ProjectManager:
     def mark_project_used(self, name):
         """Mark project as recently used"""
         self._update_project_timestamp(name, "last_used")
+
+    def setup_project(self, url, name=None, commit=None, tag=None, build_dir="build"):
+        """
+        Clone and configure a project from GitHub
+
+        Args:
+            url: GitHub repository URL
+            name: Project name (default: derived from URL)
+            commit: Specific commit hash to checkout
+            tag: Specific tag to checkout (alternative to commit)
+            build_dir: Build directory name (default: "build")
+
+        Returns:
+            tuple: (success, message, project_name)
+        """
+        # Import here to avoid circular imports
+        import sys
+        from pathlib import Path
+
+        # Add utils to path
+        skill_dir = Path(__file__).parent
+        sys.path.insert(0, str(skill_dir))
+        from utils.cmake_helper import CMakeHelper
+
+        # Derive project name from URL if not provided
+        if not name:
+            # Extract name from URL (e.g., github.com/user/repo.git -> repo)
+            name = url.rstrip("/").split("/")[-1].replace(".git", "")
+
+        # Check if project already exists
+        if self.get_project(name):
+            return False, f"Project '{name}' already exists in registry", name
+
+        # Determine clone destination
+        clone_dest = self.registry_path.parent / name
+
+        # Check if git is available
+        if not shutil.which("git"):
+            return False, "git not found in PATH", name
+
+        # Clone repository
+        print(f"Cloning {url} to {clone_dest}...")
+        try:
+            clone_cmd = ["git", "clone", url, str(clone_dest)]
+            result = subprocess.run(
+                clone_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr or result.stdout
+                return False, f"Git clone failed:\n{error_msg}", name
+
+        except subprocess.TimeoutExpired:
+            return False, "Git clone timed out (>5 minutes)", name
+        except Exception as e:
+            return False, f"Git clone error: {e}", name
+
+        # Checkout specific commit/tag if specified
+        if commit or tag:
+            ref = commit or tag
+            print(f"Checking out {ref}...")
+            try:
+                checkout_cmd = ["git", "checkout", ref]
+                result = subprocess.run(
+                    checkout_cmd,
+                    cwd=clone_dest,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                if result.returncode != 0:
+                    error_msg = result.stderr or result.stdout
+                    # Cleanup on failure
+                    shutil.rmtree(clone_dest)
+                    return False, f"Git checkout failed:\n{error_msg}", name
+
+            except Exception as e:
+                # Cleanup on failure
+                shutil.rmtree(clone_dest)
+                return False, f"Git checkout error: {e}", name
+
+        # Get current commit hash
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=clone_dest,
+                capture_output=True,
+                text=True
+            )
+            commit_hash = result.stdout.strip()
+        except Exception:
+            commit_hash = "unknown"
+
+        # Detect CMake and configure if present
+        compile_commands_rel_path = None
+        file_count = 0
+
+        if CMakeHelper.detect_cmake_project(clone_dest):
+            print("CMakeLists.txt detected, configuring with CMake...")
+            success, message, compile_commands_path = CMakeHelper.configure_project(
+                clone_dest,
+                build_dir=build_dir
+            )
+
+            if not success:
+                # Cleanup on failure
+                shutil.rmtree(clone_dest)
+                return False, f"CMake configuration failed: {message}", name
+
+            # Get relative path for compile_commands.json
+            compile_commands_rel_path = str(
+                compile_commands_path.relative_to(clone_dest)
+            )
+
+            # Get file count from compile_commands.json
+            file_count = CMakeHelper.get_file_count(compile_commands_path)
+            print(f"CMake configuration successful, {file_count} compilation units")
+
+        else:
+            print("No CMakeLists.txt found, skipping CMake configuration")
+
+        # Calculate disk usage
+        disk_usage_mb = self._get_directory_size(clone_dest)
+
+        # Add to registry
+        project_info = {
+            "type": "cloned",
+            "source_url": url,
+            "commit": commit_hash,
+            "path": str(clone_dest),
+            "compile_commands": compile_commands_rel_path,
+            "build_dir": build_dir,
+            "file_count": file_count,
+            "disk_usage_mb": disk_usage_mb,
+            "created": datetime.now().isoformat(),
+            "last_validated": datetime.now().isoformat(),
+            "last_used": None
+        }
+
+        # Add tag if specified
+        if tag:
+            project_info["tag"] = tag
+
+        # Load registry and add project
+        if not self.registry_path.exists():
+            registry = {"version": "1.0", "projects": {}}
+        else:
+            with open(self.registry_path, "r") as f:
+                registry = json.load(f)
+
+        registry["projects"][name] = project_info
+
+        with open(self.registry_path, "w") as f:
+            json.dump(registry, f, indent=2)
+
+        return True, f"Project '{name}' setup complete ({file_count} files, {disk_usage_mb:.1f} MB)", name
+
+    def remove_project(self, name, delete_files=False):
+        """
+        Remove a project from registry
+
+        Args:
+            name: Project name
+            delete_files: If True, delete project files (only for cloned projects)
+
+        Returns:
+            tuple: (success, message)
+        """
+        project = self.get_project(name)
+        if not project:
+            return False, f"Project '{name}' not found in registry"
+
+        # Check if it's a builtin project
+        if project.get("type") == "builtin":
+            return False, f"Cannot remove builtin project '{name}'"
+
+        # Delete files if requested (only for cloned projects)
+        if delete_files and project.get("type") == "cloned":
+            project_path = Path(project["path"])
+            if project_path.exists():
+                print(f"Deleting project files: {project_path}")
+                try:
+                    shutil.rmtree(project_path)
+                except Exception as e:
+                    return False, f"Failed to delete files: {e}"
+
+        # Remove from registry
+        with open(self.registry_path, "r") as f:
+            registry = json.load(f)
+
+        del registry["projects"][name]
+
+        with open(self.registry_path, "w") as f:
+            json.dump(registry, f, indent=2)
+
+        return True, f"Project '{name}' removed from registry"
+
+    def _get_directory_size(self, path):
+        """
+        Calculate directory size in MB
+
+        Args:
+            path: Directory path
+
+        Returns:
+            float: Size in megabytes
+        """
+        total_size = 0
+        path = Path(path)
+
+        try:
+            for item in path.rglob("*"):
+                if item.is_file():
+                    total_size += item.stat().st_size
+        except Exception:
+            return 0.0
+
+        return total_size / (1024 * 1024)  # Convert to MB
