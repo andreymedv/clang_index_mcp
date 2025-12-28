@@ -115,19 +115,38 @@ def run(project_info, server_manager):
                     status_text = content[0].get("text", "")
                     results["details"]["last_status"] = status_text
 
-                    # Print progress update every 30 seconds
-                    if time.time() - last_status_update > 30:
-                        elapsed = int(time.time() - wait_start)
-                        print(f"  [{elapsed}s] Status: {status_text[:100]}...")
-                        last_status_update = time.time()
+                    # Parse JSON status to check is_fully_indexed
+                    try:
+                        import json
+                        status_json = json.loads(status_text)
+                        is_fully_indexed = status_json.get("is_fully_indexed", False)
+                        state = status_json.get("state", "unknown")
+                        progress = status_json.get("progress")
 
-                    # Check if indexing is complete
-                    if "complete" in status_text.lower() or "ready" in status_text.lower():
-                        indexing_complete = True
-                        results["details"]["indexing_status"] = status_text
-                        elapsed_min = (time.time() - wait_start) / 60
-                        print(f"  ✓ Indexing completed in {elapsed_min:.1f} minutes")
-                        break
+                        # Print progress update every 30 seconds
+                        if time.time() - last_status_update > 30:
+                            elapsed = int(time.time() - wait_start)
+                            if progress:
+                                files_done = progress.get("files_processed", 0)
+                                files_total = progress.get("total_files", 0)
+                                print(f"  [{elapsed}s] Progress: {files_done}/{files_total} files indexed...")
+                            else:
+                                print(f"  [{elapsed}s] State: {state}, fully_indexed: {is_fully_indexed}")
+                            last_status_update = time.time()
+
+                        # Check if indexing is complete (must be is_fully_indexed=true)
+                        if is_fully_indexed:
+                            indexing_complete = True
+                            results["details"]["indexing_status"] = status_text
+                            elapsed_min = (time.time() - wait_start) / 60
+                            print(f"  ✓ Indexing completed in {elapsed_min:.1f} minutes")
+                            break
+                    except (json.JSONDecodeError, Exception) as e:
+                        # Fallback to old text-based check if JSON parsing fails
+                        if time.time() - last_status_update > 30:
+                            elapsed = int(time.time() - wait_start)
+                            print(f"  [{elapsed}s] Status: {status_text[:100]}... (JSON parse error: {e})")
+                            last_status_update = time.time()
 
             time.sleep(2)  # Check every 2 seconds
 
