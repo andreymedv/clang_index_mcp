@@ -235,9 +235,14 @@ Examples:
   /test-mcp setup-project url=https://github.com/user/repo name=myproject
   /test-mcp remove-project project=myproject delete=yes
 
-Available test scenarios (Phase 1):
+Available test scenarios:
+  Phase 1:
   - basic-indexing: Quick smoke test on small project
   - issue-13: Reproduce Issue #13 (boost headers)
+
+  Phase 3:
+  - incremental-refresh: Test incremental analysis after file changes
+  - all-protocols: Verify all transport protocols work
 
 Available protocols:
   - sse: Server-Sent Events (recommended for testing)
