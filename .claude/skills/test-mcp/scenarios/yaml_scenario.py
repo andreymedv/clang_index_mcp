@@ -41,19 +41,17 @@ def run(project_info, server_manager, yaml_path=None):
         # Load YAML scenario
         yaml_path = Path(yaml_path)
         if not yaml_path.exists():
-            results["error"] = f"Scenario file not found: {yaml_path}"
+            results["error"] = f"Scenario file not found: {yaml_path}\n" \
+                             f"  Hint: Place YAML files in .test-scenarios/ directory"
             return results
 
         with open(yaml_path, "r") as f:
             scenario = yaml.safe_load(f)
 
-        # Validate scenario
-        if not isinstance(scenario, dict):
-            results["error"] = "Invalid YAML scenario format"
-            return results
-
-        if "steps" not in scenario:
-            results["error"] = "Scenario missing 'steps' field"
+        # Validate scenario schema
+        validation_error = _validate_scenario_schema(scenario)
+        if validation_error:
+            results["error"] = validation_error
             return results
 
         # Store scenario metadata
@@ -134,6 +132,182 @@ def run(project_info, server_manager, yaml_path=None):
         results["error"] = str(e)
 
     return results
+
+
+def _validate_scenario_schema(scenario):
+    """
+    Validate YAML scenario schema
+
+    Args:
+        scenario: Parsed YAML scenario dict
+
+    Returns:
+        str: Error message if validation fails, None otherwise
+    """
+    # Check root structure
+    if not isinstance(scenario, dict):
+        return "Invalid YAML scenario: must be a dictionary\n" \
+               "  Hint: Ensure YAML starts with field definitions, not a list"
+
+    # Check required fields
+    if "steps" not in scenario:
+        return "Scenario missing required 'steps' field\n" \
+               "  Hint: Add 'steps:' followed by a list of test steps"
+
+    # Validate steps
+    steps = scenario.get("steps")
+    if not isinstance(steps, list):
+        return "Scenario 'steps' must be a list\n" \
+               "  Hint: Use YAML list syntax:\n" \
+               "    steps:\n" \
+               "      - tool: tool_name\n" \
+               "        args: {...}"
+
+    if len(steps) == 0:
+        return "Scenario must have at least one step\n" \
+               "  Hint: Add at least one tool call in the steps list"
+
+    # Supported MCP tools
+    supported_tools = {
+        "set_project_directory", "get_indexing_status", "wait_for_indexing",
+        "search_classes", "search_functions", "search_symbols",
+        "get_class_info", "find_callers", "find_references",
+        "find_derived_classes", "find_implementations", "find_in_file",
+        "get_call_graph", "refresh_project", "get_project_config"
+    }
+
+    # Validate each step
+    for i, step in enumerate(steps):
+        step_num = i + 1
+
+        if not isinstance(step, dict):
+            return f"Step {step_num}: must be a dictionary\n" \
+                   f"  Hint: Each step needs 'tool' and optionally 'args', 'expect', 'description'"
+
+        # Check required tool field
+        if "tool" not in step:
+            return f"Step {step_num}: missing required 'tool' field\n" \
+                   f"  Hint: Add 'tool: tool_name' to specify which MCP tool to call"
+
+        tool_name = step.get("tool")
+        if not isinstance(tool_name, str):
+            return f"Step {step_num}: 'tool' must be a string"
+
+        # Validate tool name
+        if tool_name not in supported_tools:
+            return f"Step {step_num}: unknown tool '{tool_name}'\n" \
+                   f"  Supported tools: {', '.join(sorted(supported_tools))}"
+
+        # Validate args (if present)
+        if "args" in step:
+            args = step.get("args")
+            if not isinstance(args, dict):
+                return f"Step {step_num}: 'args' must be a dictionary\n" \
+                       f"  Hint: Use YAML dictionary syntax:\n" \
+                       f"    args:\n" \
+                       f"      param1: value1\n" \
+                       f"      param2: value2"
+
+        # Validate expectations (if present)
+        if "expect" in step:
+            expect_error = _validate_expectations(step.get("expect"), step_num)
+            if expect_error:
+                return expect_error
+
+        # Validate timeout (if present for wait_for_indexing)
+        if tool_name == "wait_for_indexing" and "timeout" in step:
+            timeout = step.get("timeout")
+            if not isinstance(timeout, (int, float)) or timeout <= 0:
+                return f"Step {step_num}: 'timeout' must be a positive number\n" \
+                       f"  Hint: Use timeout: 30 for 30 seconds"
+
+    # Validate optional fields
+    if "protocol" in scenario:
+        protocol = scenario.get("protocol")
+        if protocol not in ["http", "sse", "stdio"]:
+            return f"Invalid protocol '{protocol}'\n" \
+                   f"  Supported: http, sse, stdio"
+
+    return None
+
+
+def _validate_expectations(expectations, step_num):
+    """
+    Validate expectation list for a step
+
+    Args:
+        expectations: List of expectations
+        step_num: Step number for error messages
+
+    Returns:
+        str: Error message if validation fails, None otherwise
+    """
+    if not isinstance(expectations, list):
+        return f"Step {step_num}: 'expect' must be a list\n" \
+               f"  Hint: Use YAML list syntax:\n" \
+               f"    expect:\n" \
+               f"      - type: count\n" \
+               f"        operator: '>'\n" \
+               f"        value: 0"
+
+    supported_types = ["count", "content_includes", "content_matches", "has_field", "no_error"]
+
+    for i, expectation in enumerate(expectations):
+        exp_num = i + 1
+
+        if not isinstance(expectation, dict):
+            return f"Step {step_num}, expectation {exp_num}: must be a dictionary"
+
+        # Check required type field
+        if "type" not in expectation:
+            return f"Step {step_num}, expectation {exp_num}: missing required 'type' field\n" \
+                   f"  Supported types: {', '.join(supported_types)}"
+
+        exp_type = expectation.get("type")
+        if exp_type not in supported_types:
+            return f"Step {step_num}, expectation {exp_num}: unknown type '{exp_type}'\n" \
+                   f"  Supported types: {', '.join(supported_types)}"
+
+        # Validate type-specific fields
+        if exp_type == "count":
+            if "operator" not in expectation:
+                return f"Step {step_num}, expectation {exp_num}: 'count' type requires 'operator' field\n" \
+                       f"  Supported operators: ==, !=, >, >=, <, <="
+            if "value" not in expectation:
+                return f"Step {step_num}, expectation {exp_num}: 'count' type requires 'value' field"
+
+            operator = expectation.get("operator")
+            if operator not in ["==", "!=", ">", ">=", "<", "<="]:
+                return f"Step {step_num}, expectation {exp_num}: invalid operator '{operator}'\n" \
+                       f"  Supported: ==, !=, >, >=, <, <="
+
+            value = expectation.get("value")
+            if not isinstance(value, (int, float)):
+                return f"Step {step_num}, expectation {exp_num}: 'value' must be a number"
+
+        elif exp_type == "content_includes":
+            if "value" not in expectation:
+                return f"Step {step_num}, expectation {exp_num}: 'content_includes' type requires 'value' field\n" \
+                       f"  Hint: value: 'expected text'"
+
+        elif exp_type == "content_matches":
+            if "pattern" not in expectation:
+                return f"Step {step_num}, expectation {exp_num}: 'content_matches' type requires 'pattern' field\n" \
+                       f"  Hint: pattern: 'regex_pattern'"
+
+            # Validate regex pattern
+            pattern = expectation.get("pattern")
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                return f"Step {step_num}, expectation {exp_num}: invalid regex pattern: {e}"
+
+        elif exp_type == "has_field":
+            if "field" not in expectation:
+                return f"Step {step_num}, expectation {exp_num}: 'has_field' type requires 'field' field\n" \
+                       f"  Hint: field: 'field_name'"
+
+    return None
 
 
 def _substitute_variables(args, project_info):

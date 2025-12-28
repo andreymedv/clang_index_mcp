@@ -11,12 +11,13 @@ Responsibilities:
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Optional
 
 
 class ResultAnalyzer:
     """Analyzes test results and formats output"""
 
-    def __init__(self, test_name, project_name, protocol):
+    def __init__(self, test_name: str, project_name: str, protocol: str) -> None:
         """
         Initialize ResultAnalyzer
 
@@ -39,7 +40,7 @@ class ResultAnalyzer:
         self.test_dir = self.results_dir / f"{timestamp}_{test_name}_{project_name}_{protocol}"
         self.test_dir.mkdir(exist_ok=True)
 
-    def analyze(self, results, expected=None):
+    def analyze(self, results: Dict, expected: Optional[Dict] = None) -> Dict:
         """
         Analyze test results
 
@@ -77,7 +78,7 @@ class ResultAnalyzer:
 
         return analysis
 
-    def format_output(self, analysis):
+    def format_output(self, analysis: Dict) -> str:
         """
         Format analysis result for user output
 
