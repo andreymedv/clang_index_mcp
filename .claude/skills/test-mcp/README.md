@@ -21,7 +21,7 @@ See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL
 
 ## Implementation Status
 
-- [ ] Phase 1: MVP - Basic Skill with tier1/tier2
+- ✅ Phase 1: MVP - Basic Skill with tier1/tier2 (COMPLETE)
 - [ ] Phase 2: Project Management
 - [ ] Phase 3: Extended Test Scenarios
 - [ ] Phase 4: Advanced Features
@@ -49,9 +49,22 @@ See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL
 
 ## Current Status
 
-**Status:** Specification complete, implementation not started
+**Status:** Phase 1 MVP COMPLETE ✅
 
-**Next Steps:**
-1. Implement Phase 1 MVP with tier1/tier2 support
-2. Create `list-projects` and `test` commands
-3. Implement `basic-indexing` and `issue-13` scenarios
+**Working Features:**
+- ✅ Server lifecycle management (HTTP transport)
+- ✅ MCP protocol initialization handshake
+- ✅ `list-projects` command
+- ✅ `test=basic-indexing` scenario (tier1, ~5-10s)
+- ✅ `test=issue-13` scenario (tier2, ~5-15min)
+- ✅ Automated result analysis and formatting
+- ✅ Detailed test logs in `.test-results/`
+
+**Usage:**
+```bash
+# Run directly
+python .claude/skills/test-mcp/__init__.py test test=basic-indexing tier=1 protocol=http
+
+# Or via Claude Code (when skill is registered)
+/test-mcp test=basic-indexing tier=1
+```
