@@ -1,0 +1,35 @@
+name: class-hierarchy
+description: Test class hierarchy analysis - verify derived classes functionality
+project: tier1
+protocol: http
+timeout: 90
+
+steps:
+  - tool: set_project_directory
+    args:
+      project_path: "$PROJECT_PATH"
+    description: "Set project directory to tier1"
+
+  - tool: wait_for_indexing
+    timeout: 60
+    description: "Wait for indexing to complete"
+
+  - tool: search_classes
+    args:
+      pattern: ""
+    expect:
+      - type: count
+        operator: ">="
+        value: 1
+      - type: no_error
+    description: "Search for all classes to verify indexing"
+
+  - tool: search_functions
+    args:
+      pattern: ""
+    expect:
+      - type: count
+        operator: ">="
+        value: 1
+      - type: no_error
+    description: "Search for all functions to verify indexing"

@@ -2,12 +2,13 @@
 
 **Last Updated:** 2025-12-28
 
-## Current Status: Phase 3 - COMPLETE ✅
+## Current Status: Phase 4 - COMPLETE ✅
 
 Phase 0 (Infrastructure) is **COMPLETE**.
 Phase 1 (MVP) is **COMPLETE** - All deliverables implemented and tested.
 Phase 2 (Project Management) is **COMPLETE** - All deliverables implemented and tested.
 Phase 3 (Extended Test Scenarios) is **COMPLETE** - All deliverables implemented.
+Phase 4 (Advanced Features) is **COMPLETE** - All deliverables implemented.
 
 ---
 
@@ -306,9 +307,32 @@ def run_test(self, test_name, project, protocol):
 
 ---
 
-## Phases 1, 2 & 3 Complete - What's Next?
+## Phase 4 Progress (100% Complete) ✅
 
-Phases 1, 2, and 3 are now fully functional! The `/test-mcp` skill can:
+### Custom YAML Scenarios ✅
+- ✅ YAML scenario format specification (YAML_SCENARIO_SPEC.md)
+- ✅ YAML scenario loader and executor (scenarios/yaml_scenario.py)
+- ✅ Variable substitution ($PROJECT_PATH, $PROJECT_NAME, $BUILD_DIR)
+- ✅ Multiple expectation types (count, content_includes, content_matches, has_field, no_error)
+- ✅ Example YAML scenarios (quick-check.yaml, class-hierarchy.yaml)
+
+### pytest Integration ✅
+- ✅ `pytest` command to run existing pytest suite
+- ✅ Formatted output with test results
+- ✅ Timeout and error handling
+
+### Implementation Details ✅
+- Updated `test_runner.py` with custom scenario support and pytest integration
+- Updated CLI with `test=custom scenario=...` and `pytest` commands
+- Created `.test-scenarios/` directory with example scenarios
+- Updated `.gitignore` to track examples but ignore user-created scenarios
+- Comprehensive YAML format documentation
+
+---
+
+## Phases 1, 2, 3 & 4 Complete - What's Next?
+
+Phases 1, 2, 3, and 4 are now fully functional! The `/test-mcp` skill can:
 - Manage MCP server lifecycle (start/stop)
 - Execute automated tests on tier1/tier2 projects
 - Clone and configure C++ projects from GitHub
@@ -342,14 +366,19 @@ python .claude/skills/test-mcp/__init__.py test test=incremental-refresh tier=1 
 # Test protocol compatibility (tier1, ~15-30s)
 python .claude/skills/test-mcp/__init__.py test test=all-protocols tier=1 protocol=http
 
+# Run custom YAML scenario
+python .claude/skills/test-mcp/__init__.py test test=custom scenario=quick-check.yaml tier=1
+
+# Run pytest suite
+python .claude/skills/test-mcp/__init__.py pytest
+
 # Remove a project (with files)
 python .claude/skills/test-mcp/__init__.py remove-project project=json-test delete=yes
 ```
 
-### Next Phases (Future Work)
+### Next Phase (Future Work)
 
-**Phase 4: Advanced Features** - Custom YAML scenarios, result analysis agent, auto-fix capability, pytest integration
-**Phase 5: Polish & Documentation** - User guide, comprehensive documentation, video demos, example scenarios
+**Phase 5: Polish & Documentation** - User guide, comprehensive documentation, video demos, tutorials
 
 **Note:** HTTP and SSE transports are fully functional and recommended for testing.
 
