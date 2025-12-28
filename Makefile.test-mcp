@@ -1,0 +1,21 @@
+# Makefile for MCP Testing Skill management
+
+.PHONY: test-skill-help test-skill-structure test-skill-validate
+
+test-skill-help:
+	@echo "MCP Testing Skill - Development Commands"
+	@echo ""
+	@echo "  test-skill-structure    Show skill file structure"
+	@echo "  test-skill-validate     Validate skill installation"
+	@echo ""
+
+test-skill-structure:
+	@echo "Skill structure:"
+	@tree -L 3 .claude/skills/test-mcp/ 2>/dev/null || find .claude/skills/test-mcp -type f
+
+test-skill-validate:
+	@echo "Validating skill installation..."
+	@python3 -c "import sys; sys.path.insert(0, '.claude/skills/test-mcp'); import project_manager; print('✓ project_manager imports OK')"
+	@python3 -c "import sys; sys.path.insert(0, '.claude/skills/test-mcp'); import test_runner; print('✓ test_runner imports OK')"
+	@test -f .test-projects/registry.json && echo "✓ Registry exists" || echo "✗ Registry missing (will be created on first run)"
+	@echo "✓ Skill validation complete"

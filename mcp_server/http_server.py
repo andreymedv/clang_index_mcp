@@ -177,8 +177,8 @@ class MCPHTTPServer:
 
         This is an ASGI endpoint that delegates to StreamableHTTPServerTransport.
         """
-        # Get or create session ID (using canonical MCP header name)
-        session_id = request.headers.get("Mcp-Session-Id")
+        # Get or create session ID (using canonical MCP header name - lowercase)
+        session_id = request.headers.get("mcp-session-id")
         if not session_id:
             session_id = str(uuid4())
             logger.info(f"Created new HTTP session: {session_id}")
@@ -201,7 +201,7 @@ class MCPHTTPServer:
                         "id": None,
                     },
                     status_code=400,
-                    headers={"Mcp-Session-Id": session_id},
+                    headers={"mcp-session-id": session_id},
                 )
 
             # Create a custom receive function that replays the body we already read
@@ -215,6 +215,21 @@ class MCPHTTPServer:
                 else:
                     # Body already sent
                     return {"type": "http.disconnect"}
+
+            # Inject session ID into request headers for transport validation
+            # ASGI scope headers are tuples of (name_bytes, value_bytes)
+            scope_headers = list(request.scope.get("headers", []))
+            # Check if mcp-session-id already in headers
+            has_session_header = any(
+                name.lower() == b"mcp-session-id" for name, _ in scope_headers
+            )
+            if not has_session_header:
+                scope_headers.append((b"mcp-session-id", session_id.encode()))
+                # Create modified scope with updated headers
+                modified_scope = dict(request.scope)
+                modified_scope["headers"] = scope_headers
+            else:
+                modified_scope = request.scope
 
             # Get or create transport for this session
             if session_id not in self.sessions:
@@ -267,9 +282,9 @@ class MCPHTTPServer:
                 elif message["type"] == "http.response.body":
                     response_body += message.get("body", b"")
 
-            # Use transport's handle_request method with our custom receive
+            # Use transport's handle_request method with our custom receive and modified scope
             try:
-                await transport.handle_request(request.scope, receive_with_body, send)
+                await transport.handle_request(modified_scope, receive_with_body, send)
             except json.JSONDecodeError as e:
                 # Invalid JSON
                 logger.warning(f"JSON decode error: {e}")
@@ -280,7 +295,7 @@ class MCPHTTPServer:
                         "id": None,
                     },
                     status_code=400,
-                    headers={"Mcp-Session-Id": session_id},
+                    headers={"mcp-session-id": session_id},
                 )
             except Exception as e:
                 logger.exception(f"Error handling request: {e}")
@@ -291,7 +306,7 @@ class MCPHTTPServer:
                         "id": None,
                     },
                     status_code=500,
-                    headers={"Mcp-Session-Id": session_id},
+                    headers={"mcp-session-id": session_id},
                 )
 
             # Build response
@@ -299,7 +314,7 @@ class MCPHTTPServer:
                 k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
                 for k, v in response_headers
             }
-            headers_dict["Mcp-Session-Id"] = session_id
+            headers_dict["mcp-session-id"] = session_id
 
             return Response(
                 content=response_body, status_code=response_status, headers=headers_dict
@@ -310,7 +325,7 @@ class MCPHTTPServer:
             return JSONResponse(
                 {"error": f"Server error: {str(e)}"},
                 status_code=500,
-                headers={"Mcp-Session-Id": session_id},
+                headers={"mcp-session-id": session_id},
             )
 
     async def handle_sse_endpoint(self, scope, receive, send):
