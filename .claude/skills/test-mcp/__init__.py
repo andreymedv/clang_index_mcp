@@ -52,6 +52,8 @@ def main():
         handle_setup_project(params)
     elif args.command == "validate-project":
         handle_validate_project(params)
+    elif args.command == "remove-project":
+        handle_remove_project(params)
     elif args.command == "help":
         show_help()
     else:
@@ -115,8 +117,42 @@ def handle_test(params):
 
 def handle_setup_project(params):
     """Setup a new test project"""
-    print("⚠️  setup-project not implemented yet (Phase 2)")
-    print("Currently using builtin projects: tier1, tier2")
+    url = params.get("url")
+    if not url:
+        print("Error: url parameter required")
+        print("Usage: /test-mcp setup-project url=<github-url> [name=<name>] [commit=<hash>] [tag=<tag>]")
+        sys.exit(1)
+
+    name = params.get("name")
+    commit = params.get("commit")
+    tag = params.get("tag")
+    build_dir = params.get("build-dir", "build")
+
+    print(f"\nSetting up project from {url}...")
+    if name:
+        print(f"Project name: {name}")
+    if commit:
+        print(f"Commit: {commit}")
+    if tag:
+        print(f"Tag: {tag}")
+    print()
+
+    pm = ProjectManager()
+    success, message, project_name = pm.setup_project(
+        url=url,
+        name=name,
+        commit=commit,
+        tag=tag,
+        build_dir=build_dir
+    )
+
+    if success:
+        print(f"\n✓ {message}")
+        print(f"\nYou can now run tests on this project:")
+        print(f"  /test-mcp test=basic-indexing project={project_name}")
+    else:
+        print(f"\n✗ Setup failed: {message}")
+        sys.exit(1)
 
 
 def handle_validate_project(params):
@@ -137,6 +173,47 @@ def handle_validate_project(params):
             print(f"  - {issue}")
 
 
+def handle_remove_project(params):
+    """Remove a test project"""
+    project_name = params.get("project")
+    if not project_name:
+        print("Error: project parameter required")
+        print("Usage: /test-mcp remove-project project=<name> [delete=yes]")
+        sys.exit(1)
+
+    delete_files = params.get("delete", "").lower() in ["yes", "true", "1"]
+
+    pm = ProjectManager()
+    project = pm.get_project(project_name)
+
+    if not project:
+        print(f"✗ Project '{project_name}' not found in registry")
+        sys.exit(1)
+
+    # Confirm deletion if delete_files is true
+    if delete_files:
+        print(f"\n⚠️  WARNING: This will delete all project files!")
+        print(f"   Path: {project['path']}")
+        print(f"   Size: {project.get('disk_usage_mb', '?')} MB")
+        print(f"\nAre you sure? (yes/no): ", end="")
+        confirmation = input().strip().lower()
+        if confirmation != "yes":
+            print("Cancelled")
+            return
+
+    success, message = pm.remove_project(project_name, delete_files=delete_files)
+
+    if success:
+        print(f"✓ {message}")
+        if delete_files:
+            print("  Files deleted")
+        else:
+            print("  Files preserved (use delete=yes to remove)")
+    else:
+        print(f"✗ {message}")
+        sys.exit(1)
+
+
 def show_help():
     """Show help information"""
     help_text = """
@@ -145,8 +222,9 @@ MCP Testing Skill - Help
 Commands:
   list-projects              List available test projects
   test=<scenario>            Run a test scenario
-  setup-project              Setup a new test project (Phase 2)
+  setup-project              Setup a new test project (clone from GitHub)
   validate-project           Validate a test project
+  remove-project             Remove a test project from registry
   help                       Show this help
 
 Examples:
@@ -154,6 +232,8 @@ Examples:
   /test-mcp test=basic-indexing tier=1
   /test-mcp test=issue-13 tier=2 protocol=sse
   /test-mcp validate-project project=tier1
+  /test-mcp setup-project url=https://github.com/user/repo name=myproject
+  /test-mcp remove-project project=myproject delete=yes
 
 Available test scenarios (Phase 1):
   - basic-indexing: Quick smoke test on small project
