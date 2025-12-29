@@ -75,41 +75,43 @@ python -m mcp_server.cpp_mcp_server --transport sse --port 8000            # SSE
 
 ### Testing and Debugging
 
-**For manual testing and debugging MCP server functionality:**
+**Automated Testing (Recommended):**
 
-When fixing issues or testing MCP server functionality, always use the SSE transport with direct curl requests for better debugging and control. This approach allows you to:
-- Launch the server in background and send requests directly
-- Monitor logs and resource usage in real-time
-- Iterate quickly without external MCP client dependencies
-- Debug issues with full visibility into request/response flow
-
-**See detailed testing guide:** [docs/CLAUDE_TESTING_GUIDE.md](docs/CLAUDE_TESTING_GUIDE.md)
-
-**Quick reference:**
-
+Use the `/test-mcp` skill for automated MCP server testing:
 ```bash
-# Start SSE server for testing
-MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+# Quick smoke test
+/test-mcp test=basic-indexing tier=1
 
-# Example: Set project directory via curl
-curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "set_project_directory",
-      "arguments": {"path": "/path/to/project"}
-    }
-  }' | jq -r '.result.content[0].text'
+# Test incremental analysis
+/test-mcp test=incremental-refresh tier=1
+
+# Run custom YAML scenario
+/test-mcp test=custom scenario=my-test.yaml tier=1
+
+# Run pytest suite
+/test-mcp pytest
 ```
 
-**Two-tier testing approach:**
-1. **Tier 1 (Quick):** Use `examples/compile_commands_example/` for rapid iteration
-2. **Tier 2 (Real-world):** Use larger projects for final validation (see `.claude/CLAUDE.md` for paths)
+**Documentation:**
+- [User Guide](docs/TEST_MCP_USER_GUIDE.md) - Complete usage guide
+- [Command Reference](docs/TEST_MCP_COMMAND_REFERENCE.md) - All commands
+- [FAQ](docs/TEST_MCP_FAQ.md) - Troubleshooting
+- [Development Docs](docs/archived/MCP_TESTING_SKILL.md) - Technical specification (archived)
 
-**Note:** Always start with Tier 1 for quick validation during development, then move to Tier 2 for final verification before creating PRs.
+**Manual Testing (Advanced):**
+
+For low-level debugging or when automated testing isn't suitable, use SSE transport with curl:
+```bash
+# Start SSE server
+MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+
+# Call MCP tool
+curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{...}}' | jq
+```
+
+See [docs/CLAUDE_TESTING_GUIDE.md](docs/CLAUDE_TESTING_GUIDE.md) for detailed manual testing approaches.
 
 ### Building and Distribution
 ```bash

@@ -4,6 +4,7 @@ Test Runner - Orchestrates test execution
 
 import importlib
 from pathlib import Path
+from typing import Dict, Optional
 from project_manager import ProjectManager
 from server_manager import ServerManager
 from result_analyzer import ResultAnalyzer
@@ -19,10 +20,16 @@ class TestRunner:
         "all-protocols": "scenarios.all_protocols",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.project_manager = ProjectManager()
 
-    def run_test(self, test_name, project, protocol="http", scenario_path=None):
+    def run_test(
+        self,
+        test_name: str,
+        project: str,
+        protocol: str = "http",
+        scenario_path: Optional[str] = None
+    ) -> str:
         """
         Run a test scenario
 
@@ -38,12 +45,20 @@ class TestRunner:
         # Handle custom YAML scenarios
         if test_name == "custom" or scenario_path:
             if not scenario_path:
-                return "❌ Custom scenarios require scenario= parameter with YAML file path"
+                return (
+                    "❌ Custom scenarios require scenario= parameter with YAML file path\n"
+                    "  Hint: /test-mcp test=custom scenario=my-test.yaml tier=1\n"
+                    "        Place YAML files in .test-scenarios/ directory"
+                )
             return self.run_custom_scenario(scenario_path, project, protocol)
 
         # Validate built-in scenario
         if test_name not in self.AVAILABLE_TESTS:
-            return f"❌ Unknown test scenario: {test_name}\nAvailable: {', '.join(self.AVAILABLE_TESTS.keys())}"
+            return (
+                f"❌ Unknown test scenario: {test_name}\n"
+                f"  Available built-in scenarios: {', '.join(self.AVAILABLE_TESTS.keys())}\n"
+                f"  Hint: Use 'test=custom scenario=file.yaml' for custom scenarios"
+            )
 
         project_info = self.project_manager.get_project(project)
         if not project_info:
@@ -65,7 +80,7 @@ class TestRunner:
 
         return result
 
-    def run_custom_scenario(self, scenario_path, project, protocol="http"):
+    def run_custom_scenario(self, scenario_path: str, project: str, protocol: str = "http") -> str:
         """
         Run a custom YAML scenario
 
@@ -86,7 +101,11 @@ class TestRunner:
             scenario_path = scenarios_dir / scenario_path
 
         if not scenario_path.exists():
-            return f"❌ Scenario file not found: {scenario_path}"
+            return (
+                f"❌ Scenario file not found: {scenario_path}\n"
+                f"  Hint: Place YAML scenarios in .test-scenarios/ directory\n"
+                f"        Use relative path from .test-scenarios/ or absolute path"
+            )
 
         project_info = self.project_manager.get_project(project)
         if not project_info:
@@ -106,7 +125,7 @@ class TestRunner:
         # Execute custom scenario
         return self._execute_custom_scenario(scenario_path, project, project_info, protocol)
 
-    def _execute_test(self, test_name, project_name, project_info, protocol):
+    def _execute_test(self, test_name: str, project_name: str, project_info: Dict, protocol: str) -> str:
         """
         Execute test scenario with full orchestration
 
@@ -161,7 +180,7 @@ class TestRunner:
                 server_manager.stop_server()
                 print("✓ Server stopped")
 
-    def _execute_custom_scenario(self, scenario_path, project_name, project_info, protocol):
+    def _execute_custom_scenario(self, scenario_path: Path, project_name: str, project_info: Dict, protocol: str) -> str:
         """
         Execute custom YAML scenario with full orchestration
 
@@ -216,7 +235,7 @@ class TestRunner:
                 server_manager.stop_server()
                 print("✓ Server stopped")
 
-    def run_pytest(self):
+    def run_pytest(self) -> str:
         """
         Run existing pytest suite
 

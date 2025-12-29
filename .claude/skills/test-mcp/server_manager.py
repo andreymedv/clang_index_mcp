@@ -13,12 +13,13 @@ import requests
 import signal
 import os
 from pathlib import Path
+from typing import Dict, Optional
 
 
 class ServerManager:
     """Manages MCP server lifecycle for testing"""
 
-    def __init__(self, protocol="http", port=8000):
+    def __init__(self, protocol: str = "http", port: int = 8000) -> None:
         """
         Initialize ServerManager
 
@@ -34,7 +35,7 @@ class ServerManager:
         self.sse_connected = False  # Track SSE connection state
         self.mcp_initialized = False  # Track MCP protocol initialization
 
-    def start_server(self, project_path=None, timeout=30):
+    def start_server(self, project_path: Optional[str] = None, timeout: int = 30) -> Dict:
         """
         Start MCP server in background
 
@@ -158,7 +159,7 @@ class ServerManager:
 
         return False
 
-    def stop_server(self):
+    def stop_server(self) -> None:
         """Stop the server process"""
         if self.server_process is None:
             return
@@ -274,7 +275,7 @@ class ServerManager:
             print(f"ERROR: MCP initialization failed: {e}")
             return False
 
-    def call_tool(self, endpoint, tool_name, arguments):
+    def call_tool(self, endpoint: str, tool_name: str, arguments: Dict) -> Dict:
         """
         Call an MCP tool via HTTP/SSE
 
