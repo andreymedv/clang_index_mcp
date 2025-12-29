@@ -2,7 +2,22 @@
 
 This directory contains historical documentation from earlier development phases and completed work that has been archived to reduce token usage. These files are preserved for reference but are no longer actively used in day-to-day development.
 
-## Recently Archived (2025-12-25)
+## Recently Archived (2025-12-29)
+
+### Testing Framework Development (Token Savings: ~100K)
+- **MCP_TESTING_SKILL.md** (715 lines) - Complete technical specification for /test-mcp skill
+  - Architecture, implementation plan, all 5 phases
+  - Custom YAML scenarios, project management, server orchestration
+  - **Current usage docs:** `../TEST_MCP_USER_GUIDE.md`, `../TEST_MCP_COMMAND_REFERENCE.md`, `../TEST_MCP_FAQ.md`
+
+- **MCP_TESTING_SKILL_STATUS.md** (451 lines) - Phase-by-phase implementation tracking
+  - All 5 phases complete (Phase 1-5: MVP, Project Management, Extended Scenarios, Advanced Features, Polish)
+  - Detailed progress notes, deliverables, success criteria
+  - **Note:** Development complete, skill is production-ready
+
+These documents were moved to archive after completing all 5 phases of /test-mcp skill development. For using the skill, see the user-focused documentation in main docs/ directory.
+
+## Previously Archived (2025-12-25)
 
 ### Development Session Documents (Token Savings: ~21K)
 Located in `development-sessions-2025/` subdirectory:

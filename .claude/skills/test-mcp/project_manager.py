@@ -8,12 +8,13 @@ import subprocess
 import shutil
 from pathlib import Path
 from datetime import datetime
+from typing import Dict, Tuple, List, Optional
 
 
 class ProjectManager:
     """Manages test project registry and operations"""
 
-    def __init__(self, registry_path=None):
+    def __init__(self, registry_path: Optional[Path] = None) -> None:
         """
         Initialize ProjectManager
 
@@ -63,7 +64,7 @@ class ProjectManager:
             with open(self.registry_path, "w") as f:
                 json.dump(default_registry, f, indent=2)
 
-    def list_projects(self):
+    def list_projects(self) -> Dict:
         """
         List all registered projects
 
@@ -78,7 +79,7 @@ class ProjectManager:
 
         return registry.get("projects", {})
 
-    def get_project(self, name):
+    def get_project(self, name: str) -> Optional[Dict]:
         """
         Get project info by name
 
@@ -91,7 +92,7 @@ class ProjectManager:
         projects = self.list_projects()
         return projects.get(name)
 
-    def validate_project(self, name):
+    def validate_project(self, name: str) -> Tuple[bool, List[str]]:
         """
         Validate a project's configuration
 
@@ -103,7 +104,10 @@ class ProjectManager:
         """
         project = self.get_project(name)
         if not project:
-            return False, [f"Project '{name}' not found in registry"]
+            return False, [
+                f"Project '{name}' not found in registry",
+                "  Hint: Run '/test-mcp list-projects' to see available projects"
+            ]
 
         issues = []
 
@@ -111,11 +115,16 @@ class ProjectManager:
         project_path = Path(project["path"])
         if not project_path.exists():
             issues.append(f"Directory does not exist: {project_path}")
+            issues.append(f"  Hint: Either restore the directory or remove project with '/test-mcp remove-project project={name}'")
 
         # Check compile_commands.json exists
         compile_commands_path = project_path / project["compile_commands"]
         if not compile_commands_path.exists():
             issues.append(f"compile_commands.json not found: {compile_commands_path}")
+            if Path(project_path / "CMakeLists.txt").exists():
+                issues.append(f"  Hint: Run 'cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON' in {project_path}")
+            else:
+                issues.append(f"  Hint: Check compile_commands path in registry or create it manually")
         else:
             # Validate it's valid JSON
             try:
@@ -123,12 +132,14 @@ class ProjectManager:
                     json.load(f)
             except json.JSONDecodeError:
                 issues.append(f"compile_commands.json is not valid JSON")
+                issues.append(f"  Hint: Regenerate compile_commands.json with cmake or check for corruption")
 
         # Check for C++ files
         if project_path.exists():
             cpp_files = list(project_path.rglob("*.cpp")) + list(project_path.rglob("*.cc"))
             if not cpp_files:
                 issues.append("No C++ source files found")
+                issues.append(f"  Hint: Verify project path is correct or check if files have different extensions (.cxx, .c++)")
 
         # Update last_validated timestamp if valid
         if not issues:
@@ -136,7 +147,7 @@ class ProjectManager:
 
         return len(issues) == 0, issues
 
-    def _update_project_timestamp(self, name, field):
+    def _update_project_timestamp(self, name: str, field: str) -> None:
         """Update timestamp field for a project"""
         if not self.registry_path.exists():
             return
@@ -150,11 +161,18 @@ class ProjectManager:
             with open(self.registry_path, "w") as f:
                 json.dump(registry, f, indent=2)
 
-    def mark_project_used(self, name):
+    def mark_project_used(self, name: str) -> None:
         """Mark project as recently used"""
         self._update_project_timestamp(name, "last_used")
 
-    def setup_project(self, url, name=None, commit=None, tag=None, build_dir="build"):
+    def setup_project(
+        self,
+        url: str,
+        name: Optional[str] = None,
+        commit: Optional[str] = None,
+        tag: Optional[str] = None,
+        build_dir: str = "build"
+    ) -> Tuple[bool, str, str]:
         """
         Clone and configure a project from GitHub
 
@@ -184,14 +202,24 @@ class ProjectManager:
 
         # Check if project already exists
         if self.get_project(name):
-            return False, f"Project '{name}' already exists in registry", name
+            return False, (
+                f"Project '{name}' already exists in registry\n"
+                f"  Hint: Use '/test-mcp remove-project project={name}' to remove it first\n"
+                f"        or choose a different name with 'name=different-name'"
+            ), name
 
         # Determine clone destination
         clone_dest = self.registry_path.parent / name
 
         # Check if git is available
         if not shutil.which("git"):
-            return False, "git not found in PATH", name
+            return False, (
+                "git not found in PATH\n"
+                "  Hint: Install git:\n"
+                "    Ubuntu/Debian: sudo apt-get install git\n"
+                "    macOS: brew install git\n"
+                "    Windows: download from https://git-scm.com/"
+            ), name
 
         # Clone repository
         print(f"Cloning {url} to {clone_dest}...")
@@ -206,10 +234,20 @@ class ProjectManager:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                return False, f"Git clone failed:\n{error_msg}", name
+                return False, (
+                    f"Git clone failed:\n{error_msg}\n"
+                    f"  Hint: Check if:\n"
+                    f"    - URL is correct and accessible\n"
+                    f"    - Repository is public or you have access\n"
+                    f"    - Network connection is working"
+                ), name
 
         except subprocess.TimeoutExpired:
-            return False, "Git clone timed out (>5 minutes)", name
+            return False, (
+                "Git clone timed out (>5 minutes)\n"
+                "  Hint: Repository may be too large or network is slow\n"
+                "        Try cloning manually first"
+            ), name
         except Exception as e:
             return False, f"Git clone error: {e}", name
 
@@ -314,7 +352,7 @@ class ProjectManager:
 
         return True, f"Project '{name}' setup complete ({file_count} files, {disk_usage_mb:.1f} MB)", name
 
-    def remove_project(self, name, delete_files=False):
+    def remove_project(self, name: str, delete_files: bool = False) -> Tuple[bool, str]:
         """
         Remove a project from registry
 
@@ -331,7 +369,10 @@ class ProjectManager:
 
         # Check if it's a builtin project
         if project.get("type") == "builtin":
-            return False, f"Cannot remove builtin project '{name}'"
+            return False, (
+                f"Cannot remove builtin project '{name}'\n"
+                f"  Hint: Builtin projects (tier1, tier2) cannot be removed from registry"
+            )
 
         # Delete files if requested (only for cloned projects)
         if delete_files and project.get("type") == "cloned":
@@ -354,7 +395,7 @@ class ProjectManager:
 
         return True, f"Project '{name}' removed from registry"
 
-    def _get_directory_size(self, path):
+    def _get_directory_size(self, path: Path) -> float:
         """
         Calculate directory size in MB
 
