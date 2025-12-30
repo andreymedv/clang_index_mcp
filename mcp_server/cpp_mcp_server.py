@@ -124,20 +124,16 @@ def find_and_configure_libclang():
         system_paths = [
             # Xcode Command Line Tools (most common, FIX FOR ISSUE #003)
             "/Library/Developer/CommandLineTools/usr/lib/libclang.dylib",
-
             # Homebrew Apple Silicon (versioned, use glob)
             "/opt/homebrew/Cellar/llvm/*/lib/libclang.dylib",
             "/opt/homebrew/Cellar/llvm@*/*/lib/libclang.dylib",  # Versioned (llvm@19, llvm@20, etc.)
             "/opt/homebrew/lib/libclang.dylib",  # Symlink
-
             # Homebrew Intel
             "/usr/local/Cellar/llvm/*/lib/libclang.dylib",
             "/usr/local/Cellar/llvm@*/*/lib/libclang.dylib",  # Versioned (llvm@19, llvm@20, etc.)
             "/usr/local/lib/libclang.dylib",
-
             # MacPorts
             "/opt/local/libexec/llvm-*/lib/libclang.dylib",
-
             # Xcode.app (less common)
             "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib",
         ]
@@ -792,7 +788,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             cache_hits=total_files,  # Everything came from cache
                             current_file=None,  # No active file
                             start_time=datetime.now(),
-                            estimated_completion=None  # Already complete
+                            estimated_completion=None,  # Already complete
                         )
                         state_manager.update_progress(progress)
 

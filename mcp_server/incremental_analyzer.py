@@ -160,9 +160,7 @@ class IncrementalAnalyzer:
         # 4. Re-analyze files
         if files_to_analyze:
             diagnostics.info(f"Re-analyzing {len(files_to_analyze)} files...")
-            analyzed_count = self._reanalyze_files(
-                files_to_analyze, start_time, progress_callback
-            )
+            analyzed_count = self._reanalyze_files(files_to_analyze, start_time, progress_callback)
         else:
             analyzed_count = 0
 
@@ -355,12 +353,12 @@ class IncrementalAnalyzer:
         from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
         from unittest.mock import Mock
 
-        use_processes = getattr(self.analyzer, 'use_processes', True)
-        max_workers = getattr(self.analyzer, 'max_workers', None)
+        use_processes = getattr(self.analyzer, "use_processes", True)
+        max_workers = getattr(self.analyzer, "max_workers", None)
 
         # Detect mocked analyzer (can't pickle Mock objects)
         # Fall back to ThreadPoolExecutor when analyzer is mocked in tests
-        if isinstance(self.analyzer, Mock) or type(self.analyzer).__name__ in ('Mock', 'MagicMock'):
+        if isinstance(self.analyzer, Mock) or type(self.analyzer).__name__ in ("Mock", "MagicMock"):
             use_processes = False
             diagnostics.debug("Detected mocked analyzer - using ThreadPoolExecutor")
 
@@ -414,11 +412,7 @@ class IncrementalAnalyzer:
             else:
                 # ThreadPoolExecutor: use index_file method directly
                 future_to_file = {
-                    executor.submit(
-                        self.analyzer.index_file,
-                        file_path,
-                        force=True
-                    ): file_path
+                    executor.submit(self.analyzer.index_file, file_path, force=True): file_path
                     for file_path in file_list
                 }
 
@@ -448,17 +442,29 @@ class IncrementalAnalyzer:
                                             if existing.kind in ("class", "struct"):
                                                 if existing.name in self.analyzer.class_index:
                                                     try:
-                                                        self.analyzer.class_index[existing.name].remove(existing)
-                                                        if not self.analyzer.class_index[existing.name]:
-                                                            del self.analyzer.class_index[existing.name]
+                                                        self.analyzer.class_index[
+                                                            existing.name
+                                                        ].remove(existing)
+                                                        if not self.analyzer.class_index[
+                                                            existing.name
+                                                        ]:
+                                                            del self.analyzer.class_index[
+                                                                existing.name
+                                                            ]
                                                     except ValueError:
                                                         pass
                                             else:
                                                 if existing.name in self.analyzer.function_index:
                                                     try:
-                                                        self.analyzer.function_index[existing.name].remove(existing)
-                                                        if not self.analyzer.function_index[existing.name]:
-                                                            del self.analyzer.function_index[existing.name]
+                                                        self.analyzer.function_index[
+                                                            existing.name
+                                                        ].remove(existing)
+                                                        if not self.analyzer.function_index[
+                                                            existing.name
+                                                        ]:
+                                                            del self.analyzer.function_index[
+                                                                existing.name
+                                                            ]
                                                     except ValueError:
                                                         pass
                                         else:
@@ -484,7 +490,9 @@ class IncrementalAnalyzer:
                                             # Check for duplicates in file_index
                                             already_in_file_index = False
                                             if symbol.usr:
-                                                for existing in self.analyzer.file_index[symbol.file]:
+                                                for existing in self.analyzer.file_index[
+                                                    symbol.file
+                                                ]:
                                                     if existing.usr == symbol.usr:
                                                         already_in_file_index = True
                                                         break
@@ -495,10 +503,14 @@ class IncrementalAnalyzer:
                                     # Restore call graph
                                     if symbol.calls:
                                         for called_usr in symbol.calls:
-                                            self.analyzer.call_graph_analyzer.add_call(symbol.usr, called_usr)
+                                            self.analyzer.call_graph_analyzer.add_call(
+                                                symbol.usr, called_usr
+                                            )
                                     if symbol.called_by:
                                         for caller_usr in symbol.called_by:
-                                            self.analyzer.call_graph_analyzer.add_call(caller_usr, symbol.usr)
+                                            self.analyzer.call_graph_analyzer.add_call(
+                                                caller_usr, symbol.usr
+                                            )
 
                                 # Restore call sites
                                 if call_sites:
@@ -514,7 +526,9 @@ class IncrementalAnalyzer:
                                 # Merge header tracking
                                 if processed_headers:
                                     for header_path, header_hash in processed_headers.items():
-                                        self.analyzer.header_tracker.mark_completed(header_path, header_hash)
+                                        self.analyzer.header_tracker.mark_completed(
+                                            header_path, header_hash
+                                        )
 
                                 # Update file hash tracking
                                 file_hash = self.analyzer._get_file_hash(file_path)

@@ -176,7 +176,7 @@ class ChangeScanner:
         current_source_files = set()
         for file_path in all_cpp_files:
             # Skip headers - they'll be detected via header_tracker in step 3
-            if file_path.endswith(('.h', '.hpp', '.hxx', '.h++')):
+            if file_path.endswith((".h", ".hpp", ".hxx", ".h++")):
                 continue
             current_source_files.add(file_path)
 

@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 
+
 def test_issue_10():
     """Test that file counts are reported correctly after Issue #10 fix"""
 
@@ -86,6 +87,7 @@ def test_issue_10():
 
     return success
 
+
 if __name__ == "__main__":
     try:
         success = test_issue_10()
@@ -93,5 +95,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Test failed with exception: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

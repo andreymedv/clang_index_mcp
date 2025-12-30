@@ -31,7 +31,7 @@ class SearchEngine:
         """
         # Check for common regex metacharacters
         # This list includes characters that users would use for pattern matching
-        regex_chars = r'.*+?[]{}()|\^$'
+        regex_chars = r".*+?[]{}()|\^$"
         return any(char in text for char in regex_chars)
 
     @staticmethod
