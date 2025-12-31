@@ -20,8 +20,8 @@ class SymbolInfo:
     parent_class: str = ""  # For methods, the containing class
     base_classes: List[str] = field(default_factory=list)  # For classes
     usr: str = ""  # Unified Symbol Resolution - unique identifier
-    calls: List[str] = field(default_factory=list)  # USRs of functions this function calls
-    called_by: List[str] = field(default_factory=list)  # USRs of functions that call this
+    # Note: calls/called_by fields removed in v9.0 (Task 1.2 memory optimization)
+    # Call graph data is now stored in call_sites table and queried on-demand
 
     # Line ranges (Phase 1: LLM Integration)
     start_line: Optional[int] = None  # First line of symbol definition
@@ -55,8 +55,7 @@ class SymbolInfo:
             "parent_class": self.parent_class,
             "base_classes": self.base_classes,
             "usr": self.usr,
-            "calls": self.calls,
-            "called_by": self.called_by,
+            # Note: calls/called_by removed in v9.0 - use call graph API
             # Line ranges (Phase 1)
             "start_line": self.start_line,
             "end_line": self.end_line,

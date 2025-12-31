@@ -91,9 +91,11 @@ def _process_file_worker(args_tuple):
     global _worker_analyzer
 
     # Create a single analyzer instance per worker process (process-local)
+    # Use skip_schema_recreation=True to avoid race conditions with main process
+    # Main process ensures schema is current before spawning workers
     if _worker_analyzer is None:
         diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
-        _worker_analyzer = CppAnalyzer(project_root, config_file)
+        _worker_analyzer = CppAnalyzer(project_root, config_file, skip_schema_recreation=True)
         # Ensure cleanup is called when the worker process exits
         atexit.register(_cleanup_worker_analyzer)
 
@@ -181,13 +183,21 @@ class CppAnalyzer:
     - File-based filtering
     """
 
-    def __init__(self, project_root: str, config_file: Optional[str] = None):
+    def __init__(
+        self,
+        project_root: str,
+        config_file: Optional[str] = None,
+        skip_schema_recreation: bool = False,
+    ):
         """
         Initialize C++ Analyzer.
 
         Args:
             project_root: Path to project source directory
             config_file: Optional path to configuration file for project identity
+            skip_schema_recreation: If True, skip database recreation on schema mismatch.
+                                   Used by worker processes to avoid race conditions.
+                                   Workers should rely on main process to ensure schema is current.
 
         Note:
             Project identity is determined by (source_directory, config_file) pair.
@@ -195,6 +205,7 @@ class CppAnalyzer:
         """
         self.project_root = Path(project_root).resolve()
         self.index = Index.create()
+        self._skip_schema_recreation = skip_schema_recreation
 
         # Create project identity
         config_path = Path(config_file).resolve() if config_file else None
@@ -241,7 +252,10 @@ class CppAnalyzer:
         self._needs_locking = True
 
         # Initialize cache manager with project identity
-        self.cache_manager = CacheManager(self.project_identity)
+        # Pass skip_schema_recreation for worker processes to avoid race conditions
+        self.cache_manager = CacheManager(
+            self.project_identity, skip_schema_recreation=self._skip_schema_recreation
+        )
         self.file_scanner = FileScanner(self.project_root)
 
         # Memory optimization: enable lazy loading of call sites from SQLite
@@ -1441,7 +1455,6 @@ class CppAnalyzer:
                     class_updates = defaultdict(list)
                     function_updates = defaultdict(list)
                     usr_updates = {}
-                    call_graph_updates = []
 
                     for symbol in cached_symbols:
                         if symbol.kind in ("class", "struct"):
@@ -1452,13 +1465,8 @@ class CppAnalyzer:
                         if symbol.usr:
                             usr_updates[symbol.usr] = symbol
 
-                        # Collect call graph relationships
-                        if symbol.calls:
-                            for called_usr in symbol.calls:
-                                call_graph_updates.append((symbol.usr, called_usr))
-                        if symbol.called_by:
-                            for caller_usr in symbol.called_by:
-                                call_graph_updates.append((caller_usr, symbol.usr))
+                        # v9.0: calls/called_by removed from SymbolInfo
+                        # Call graph is now loaded lazily from call_sites table
 
                     # Apply all updates with a single lock acquisition
                     # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
@@ -1493,9 +1501,7 @@ class CppAnalyzer:
                         # Apply USR updates
                         self.usr_index.update(usr_updates)
 
-                        # Restore call graph relationships
-                        for caller_usr, called_usr in call_graph_updates:
-                            self.call_graph_analyzer.add_call(caller_usr, called_usr)
+                        # v9.0: call graph restored lazily from call_sites table
 
                         self.file_hashes[file_path] = current_hash
 
@@ -1678,19 +1684,9 @@ class CppAnalyzer:
                 else:
                     collected_symbols = []
 
-            # Populate call graph info OUTSIDE the lock to minimize lock duration
-            # Call graph queries can be expensive for large codebases
-            for symbol in collected_symbols:
-                if symbol.usr and symbol.kind in ("function", "method"):
-                    # Add calls list
-                    # Get calls from call graph analyzer
-                    calls = self.call_graph_analyzer.find_callees(symbol.usr)
-                    if calls:
-                        symbol.calls = list(calls)
-                    # Add called_by list
-                    callers = self.call_graph_analyzer.find_callers(symbol.usr)
-                    if callers:
-                        symbol.called_by = list(callers)
+            # v9.0: calls/called_by fields removed from SymbolInfo
+            # Call graph data is stored in call_sites table and queried on-demand
+            # No need to populate symbol.calls/called_by here anymore
 
             # Save to per-file cache (mark as successfully parsed, even if there were errors)
             # Note: success=True means we got a usable TU and extracted symbols
@@ -1800,6 +1796,12 @@ class CppAnalyzer:
         )
 
         # No special test mode needed - we'll handle Windows console properly
+
+        # CRITICAL: Ensure schema is current BEFORE creating workers
+        # This prevents race conditions where multiple workers detect schema mismatch
+        # and try to recreate the database simultaneously (causing "disk I/O error")
+        if self.use_processes:
+            self.cache_manager.ensure_schema_current()
 
         # Choose executor based on configuration
         # ProcessPoolExecutor bypasses Python's GIL for true parallelism
@@ -1921,17 +1923,8 @@ class CppAnalyzer:
                                             if not already_in_file_index:
                                                 self.file_index[symbol.file].append(symbol)
 
-                                    # Restore call graph
-                                    if symbol.calls:
-                                        for called_usr in symbol.calls:
-                                            self.call_graph_analyzer.add_call(
-                                                symbol.usr, called_usr
-                                            )
-                                    if symbol.called_by:
-                                        for caller_usr in symbol.called_by:
-                                            self.call_graph_analyzer.add_call(
-                                                caller_usr, symbol.usr
-                                            )
+                                    # v9.0: calls/called_by removed from SymbolInfo
+                                    # Call graph is restored from call_sites below
 
                                 # Phase 3: Restore call sites from worker
                                 if call_sites:
@@ -2442,6 +2435,12 @@ class CppAnalyzer:
         # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
         # ThreadPoolExecutor used as fallback when use_processes=False
         from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+        # CRITICAL: Ensure schema is current BEFORE creating workers
+        # This prevents race conditions where multiple workers detect schema mismatch
+        # and try to recreate the database simultaneously (causing "disk I/O error")
+        if self.use_processes:
+            self.cache_manager.ensure_schema_current()
 
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
         executor_type = "ProcessPoolExecutor" if self.use_processes else "ThreadPoolExecutor"
