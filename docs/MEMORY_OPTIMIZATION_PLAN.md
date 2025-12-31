@@ -1,9 +1,9 @@
-# Memory Optimization Implementation Plan v2.0
+# Memory Optimization Implementation Plan v3.0
 
 **Project**: C++ MCP Server Memory Optimization
 **Goal**: Reduce memory consumption during large project indexing (100K+ symbols)
-**Target Savings**: 1.0-1.5 GB for projects with 100K symbols
-**Status**: ✅ Phase 1 COMPLETED, ✅ Phase 2 (Task 1.2) COMPLETED, Phase 3 pending
+**Target Savings**: Phase 1-2: ~850 MB, Phase 3: ~30 GB (worker memory optimization)
+**Status**: ✅ Phase 1-2 COMPLETED, Phase 3 investigation complete, implementation pending
 **Last Updated**: 2025-12-31
 
 ---
@@ -474,3 +474,194 @@ Contains: Failed first attempt with 9 commits, useful for reference
 
 ### Memory Analysis
 See `backup/memory-optimization-phase1-attempt1:docs/MEMORY_OPTIMIZATION_ANALYSIS.md` for detailed memory bottleneck analysis.
+
+---
+
+## Phase 3: Worker Process Memory Optimization (Investigation Complete)
+
+### Investigation Summary (2025-12-31)
+
+**Test Project**: LargeProject (8389 files, 49.8 MB compile_commands.json)
+**System**: 32-core CPU, ProcessPoolExecutor with 32 workers
+
+### Critical Finding: Worker Memory Consumption
+
+**Each worker process consumes ~1.1-1.4 GB of memory**, resulting in **~38-40 GB total** for a 32-worker system.
+
+| Component | Memory Usage | Notes |
+|-----------|--------------|-------|
+| Main process | ~457 MB | Coordinator, receives symbols from workers |
+| Each worker | 1.1-1.4 GB | 32 workers on 32-core system |
+| **TOTAL** | **~38-40 GB** | Verified via htop system-wide usage |
+
+### Root Cause Analysis
+
+Each worker creates a full `CppAnalyzer` instance including:
+
+| Component | Per-Worker Memory | Total (32 workers) |
+|-----------|-------------------|-------------------|
+| CompileCommandsManager (8389 commands) | ~150-300 MB | **~6-10 GB** |
+| libclang Index | ~100-200 MB | ~3-6 GB |
+| SQLite CacheManager | ~50-100 MB | ~2-3 GB |
+| Parsing buffers & TU | ~500-700 MB | ~16-22 GB |
+
+**Key Insight**: Each worker parses the 49.8 MB compile_commands.json file independently, taking ~194 seconds each. With 32 workers, this means:
+- **~6.4 GB wasted** on duplicate compile commands data
+- **~103 minutes wasted** in redundant JSON parsing (32 × 194 sec)
+
+### Work Distribution Architecture
+
+The main process **pushes** work to workers (not pull-based):
+
+```python
+# Main process submits specific files to workers
+executor.submit(_process_file_worker, (project_root, config_file, file_path, force, include_deps))
+
+# Worker creates full CppAnalyzer, parses compile_commands.json AGAIN
+# Worker looks up args for the ONE file it needs to process
+args = self.compile_commands_manager.get_compile_args_with_fallback(file_path)
+```
+
+---
+
+## Phase 3: Implemented Changes
+
+### Task 3.1: Configurable max_workers ✅ COMPLETED
+
+**Objective**: Allow users to limit worker processes to control memory usage
+
+**Implementation** (2025-12-31):
+- Added `max_workers` parameter to `.cpp-analyzer-config.json`
+- Default: `null` (use cpu_count)
+- User can set integer value to limit workers (e.g., `"max_workers": 8`)
+
+**Files Changed**:
+- `mcp_server/cpp_analyzer_config.py` - Added `get_max_workers()` method
+- `mcp_server/cpp_analyzer.py` - Use config value if provided
+
+**Configuration Example**:
+```json
+{
+  "max_workers": 8,
+  "_max_workers_comment": "Set to integer (e.g., 8) to limit memory usage (~1.2 GB per worker)"
+}
+```
+
+**Memory Impact**: Setting `max_workers: 8` reduces memory from ~40 GB to ~10 GB.
+
+---
+
+## Phase 3: Proposed Optimizations (Future Work)
+
+### Task 3.2: Pass Compile Args Directly to Workers (HIGH PRIORITY)
+
+**Objective**: Eliminate CompileCommandsManager from workers entirely
+
+**Current Flow** (inefficient):
+```
+Main Process:
+  1. Parses compile_commands.json (49.8 MB, 194 seconds)
+  2. For each file: submit(worker, file_path)
+
+Worker Process:
+  1. Creates CppAnalyzer → Parses compile_commands.json AGAIN! (194 sec each)
+  2. Looks up args for ONE file
+  3. Parses file with libclang
+```
+
+**Proposed Flow** (efficient):
+```
+Main Process:
+  1. Parses compile_commands.json ONCE
+  2. For each file:
+     args = compile_commands_manager.get_compile_args(file_path)
+     submit(worker, file_path, args)  # Pass args directly!
+
+Worker Process:
+  1. Creates LIGHTWEIGHT CppAnalyzer (no CompileCommandsManager!)
+  2. Parses file with libclang using provided args
+```
+
+**Expected Savings**:
+- **Memory**: ~6-10 GB (no CompileCommandsManager in workers)
+- **Time**: ~103 minutes (no redundant JSON parsing)
+
+**Implementation Steps**:
+1. Change worker function signature to accept `compile_args` parameter
+2. Main process looks up args before submitting to worker
+3. Create lightweight worker CppAnalyzer without CompileCommandsManager
+4. Worker uses provided args directly for libclang parsing
+
+**Estimated Effort**: 4-8 hours
+
+### Task 3.3: Dynamic Worker Count (FUTURE)
+
+**Objective**: Automatically calculate and adjust worker count based on system memory
+
+**Features**:
+1. **Auto-calculation**: Calculate optimal worker count based on available memory
+   ```python
+   def calculate_max_workers(available_memory_gb):
+       memory_per_worker_gb = 1.2  # Empirical measurement
+       memory_for_main_gb = 0.5
+       safe_workers = int((available_memory_gb - memory_for_main_gb) / memory_per_worker_gb)
+       return max(4, min(safe_workers, os.cpu_count() or 8))
+   ```
+
+2. **Dynamic scaling**: Reduce workers during indexing if memory pressure detected
+   - Monitor system memory usage periodically
+   - If approaching limit, stop submitting new tasks
+   - Wait for existing workers to complete before continuing
+
+**Estimated Effort**: 1-2 days
+
+### Task 3.4: Lightweight Worker Analyzer (FUTURE)
+
+**Objective**: Create minimal CppAnalyzer variant for worker processes
+
+**Components to Remove from Worker Analyzer**:
+- CompileCommandsManager (args passed from main)
+- HeaderProcessingTracker (main process tracks)
+- DependencyGraphBuilder (not needed for parsing)
+- Full index structures (symbols sent back to main)
+
+**Expected Additional Savings**: ~200-400 MB per worker
+
+---
+
+## Phase 3: Implementation Roadmap
+
+| Priority | Task | Savings | Effort | Status |
+|----------|------|---------|--------|--------|
+| 1 | Task 3.1: Configurable max_workers | User-controlled | 1 hour | ✅ DONE |
+| 2 | Task 3.2: Pass compile args to workers | ~6-10 GB | 4-8 hours | 🔲 Planned |
+| 3 | Task 3.3: Dynamic worker count | Auto-managed | 1-2 days | 🔲 Future |
+| 4 | Task 3.4: Lightweight worker analyzer | ~6-12 GB | 1-2 days | 🔲 Future |
+
+---
+
+## Updated Success Metrics
+
+### Phase 1-2 (COMPLETED)
+- ✅ Memory savings: ~850 MB
+- ✅ All tests passing (586)
+- ✅ Schema migration race-free
+
+### Phase 3 Target
+- [ ] Memory savings: ~30 GB (for 32-worker systems)
+- [ ] Configurable worker count: ✅ DONE
+- [ ] Pass compile args to workers: 🔲 Planned
+- [ ] Dynamic memory management: 🔲 Future
+
+---
+
+## References
+
+### Phase 3 Investigation
+- Detailed analysis: `docs/MEMORY_ANALYSIS_PHASE3.md`
+- Memory profiling script: `scripts/memory_profile_indexing.py`
+
+### Key Files for Phase 3 Implementation
+- `mcp_server/cpp_analyzer.py:73-170` - Worker function (`_process_file_worker`)
+- `mcp_server/cpp_analyzer.py:1820-1850` - Work submission to ProcessPoolExecutor
+- `mcp_server/compile_commands_manager.py` - CompileCommandsManager class
