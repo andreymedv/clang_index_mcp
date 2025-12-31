@@ -3,8 +3,8 @@
 **Project**: C++ MCP Server Memory Optimization
 **Goal**: Reduce memory consumption during large project indexing (100K+ symbols)
 **Target Savings**: 1.0-1.5 GB for projects with 100K symbols
-**Status**: ✅ Phase 1 COMPLETED, Phase 2-3 pending
-**Last Updated**: 2025-12-30
+**Status**: ✅ Phase 1 COMPLETED, ✅ Race condition fix COMPLETED, Phase 2-3 ready
+**Last Updated**: 2025-12-31
 
 ---
 
@@ -18,6 +18,7 @@
 | Task 2.2: Optimize SQLite loading | ~500 MB peak | `12cd00a` | ✅ Done |
 | Documentation update | - | `12cd00a` | ✅ Done |
 | Code formatting | - | `5501b04` | ✅ Done |
+| **Race condition fix** | - | (pending) | ✅ Done |
 
 **Total Phase 1 savings: ~650-700 MB**
 
@@ -26,11 +27,25 @@
 ```
 Branch: refactor/memory-optimization-phase1
 Base: main (commit 6e45043)
-Commits ahead of main: 2
-  - 12cd00a feat: Memory optimization Phase 1 - Safe optimizations
-  - 5501b04 style: Auto-format code with black
+PR: #92 (Phase 1 ready for merge)
 Tests: 586 passed, 13 skipped
 ```
+
+### Race Condition Fix (COMPLETED)
+
+The race condition that blocked Task 1.2 has been fixed. The solution:
+
+1. **Main process ensures schema is current BEFORE spawning workers**
+   - Added `ensure_schema_current()` method to SqliteCacheBackend
+   - Called in `index_project()` and `refresh_if_needed()` before ProcessPoolExecutor
+
+2. **Workers skip schema recreation**
+   - Added `skip_schema_recreation=True` parameter to worker CppAnalyzer instances
+   - Workers trust that main process has already ensured schema is current
+
+**Key insight**: The problem was that multiple ProcessPoolExecutor workers could simultaneously
+detect schema mismatch and try to recreate the database, causing "disk I/O error" due to
+WAL file conflicts. The fix centralizes schema management in the main process.
 
 ### Backup of Failed First Attempt
 
@@ -40,24 +55,30 @@ Contains: 9 commits with failed implementation
 Purpose: Reference for lessons learned (DO NOT MERGE)
 ```
 
-### Remaining Tasks (NOT started)
+### Remaining Tasks
 
 | Task | Savings | Blocker | Priority |
 |------|---------|---------|----------|
-| Task 1.2: Remove calls/called_by | ~200 MB | Race condition in schema migration | Medium |
+| Task 1.2: Remove calls/called_by | ~200 MB | ~~Race condition~~ **UNBLOCKED** | Medium |
 | Task 1.1: Optimize file_index | ~300-500 MB | Breaks header file search | Low (needs research) |
 
 ### Next Steps for Continuation
 
-1. **To merge Phase 1**: Push branch and create PR (ready to merge)
-2. **For Task 1.2**: First fix race condition in `sqlite_cache_backend.py` (see Phase 2 section)
+1. **Merge Phase 1 PR #92** (ready)
+2. **Implement Task 1.2**: Now unblocked, can proceed with schema change
 3. **For Task 1.1**: Research alternatives that preserve header search (see Phase 3 section)
 
-### Key Files Modified in Phase 1
+### Key Files Modified
 
+**Phase 1:**
 - `mcp_server/call_graph.py` - Added `cache_backend` parameter, lazy loading methods
 - `mcp_server/cpp_analyzer.py` - Set `cache_backend`, removed bulk call_sites load, direct SymbolInfo usage
 - `mcp_server/sqlite_cache_backend.py` - Return SymbolInfo directly, stream from cursor
+
+**Race Condition Fix:**
+- `mcp_server/sqlite_cache_backend.py` - Added `skip_schema_recreation` param, `ensure_schema_current()` method
+- `mcp_server/cache_manager.py` - Pass `skip_schema_recreation` to backend, expose `ensure_schema_current()`
+- `mcp_server/cpp_analyzer.py` - Workers use `skip_schema_recreation=True`, main calls `ensure_schema_current()`
 
 ---
 
@@ -274,32 +295,21 @@ rm -rf .mcp_cache/ && make test
 
 ---
 
-## Phase 2: Schema Change (After Race Condition Fix)
+## Phase 2: Schema Change (Race Condition Fixed ✅)
 
-### Prerequisite: Fix Schema Migration Race Condition
+### Prerequisite: Fix Schema Migration Race Condition ✅ COMPLETED
 
-**Before Task 1.2 can be safely implemented:**
+**Implementation (completed 2025-12-31):**
 
-1. **Implement centralized migration** in `index_project()`:
-   ```python
-   def index_project(self):
-       # Ensure schema is current BEFORE spawning workers
-       self.cache_manager.ensure_schema_current()
+1. **Centralized migration in main process** - `ensure_schema_current()` called in `index_project()` and `refresh_if_needed()` BEFORE creating ProcessPoolExecutor
 
-       with ProcessPoolExecutor() as executor:
-           # Workers see correct schema version
-   ```
+2. **Workers skip schema recreation** - `skip_schema_recreation=True` parameter prevents workers from attempting database recreation
 
-2. **Add schema migration lock** or retry logic
+3. **Tested with parallel execution** - All 586 tests pass consistently
 
-3. **Test with parallel execution**:
-   ```bash
-   for i in {1..10}; do
-       rm -rf .mcp_cache/
-       make test
-   done
-   # All 10 runs must pass
-   ```
+**Key insight**: The problem was that multiple ProcessPoolExecutor workers could simultaneously
+detect schema mismatch and try to recreate the database, causing "disk I/O error" due to
+WAL file conflicts. The fix centralizes schema management in the main process.
 
 ### Task 1.2: Remove calls/called_by from SymbolInfo
 
@@ -307,7 +317,7 @@ rm -rf .mcp_cache/ && make test
 
 **Estimated Savings**: ~200 MB
 
-**BLOCKED UNTIL**: Race condition fix implemented and tested
+**Status**: ✅ UNBLOCKED - Race condition fix implemented
 
 **Changes Required**:
 1. Remove fields from `symbol_info.py`

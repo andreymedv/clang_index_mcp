@@ -91,9 +91,11 @@ def _process_file_worker(args_tuple):
     global _worker_analyzer
 
     # Create a single analyzer instance per worker process (process-local)
+    # Use skip_schema_recreation=True to avoid race conditions with main process
+    # Main process ensures schema is current before spawning workers
     if _worker_analyzer is None:
         diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
-        _worker_analyzer = CppAnalyzer(project_root, config_file)
+        _worker_analyzer = CppAnalyzer(project_root, config_file, skip_schema_recreation=True)
         # Ensure cleanup is called when the worker process exits
         atexit.register(_cleanup_worker_analyzer)
 
@@ -181,13 +183,21 @@ class CppAnalyzer:
     - File-based filtering
     """
 
-    def __init__(self, project_root: str, config_file: Optional[str] = None):
+    def __init__(
+        self,
+        project_root: str,
+        config_file: Optional[str] = None,
+        skip_schema_recreation: bool = False,
+    ):
         """
         Initialize C++ Analyzer.
 
         Args:
             project_root: Path to project source directory
             config_file: Optional path to configuration file for project identity
+            skip_schema_recreation: If True, skip database recreation on schema mismatch.
+                                   Used by worker processes to avoid race conditions.
+                                   Workers should rely on main process to ensure schema is current.
 
         Note:
             Project identity is determined by (source_directory, config_file) pair.
@@ -195,6 +205,7 @@ class CppAnalyzer:
         """
         self.project_root = Path(project_root).resolve()
         self.index = Index.create()
+        self._skip_schema_recreation = skip_schema_recreation
 
         # Create project identity
         config_path = Path(config_file).resolve() if config_file else None
@@ -241,7 +252,10 @@ class CppAnalyzer:
         self._needs_locking = True
 
         # Initialize cache manager with project identity
-        self.cache_manager = CacheManager(self.project_identity)
+        # Pass skip_schema_recreation for worker processes to avoid race conditions
+        self.cache_manager = CacheManager(
+            self.project_identity, skip_schema_recreation=self._skip_schema_recreation
+        )
         self.file_scanner = FileScanner(self.project_root)
 
         # Memory optimization: enable lazy loading of call sites from SQLite
@@ -1801,6 +1815,12 @@ class CppAnalyzer:
 
         # No special test mode needed - we'll handle Windows console properly
 
+        # CRITICAL: Ensure schema is current BEFORE creating workers
+        # This prevents race conditions where multiple workers detect schema mismatch
+        # and try to recreate the database simultaneously (causing "disk I/O error")
+        if self.use_processes:
+            self.cache_manager.ensure_schema_current()
+
         # Choose executor based on configuration
         # ProcessPoolExecutor bypasses Python's GIL for true parallelism
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
@@ -2442,6 +2462,12 @@ class CppAnalyzer:
         # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
         # ThreadPoolExecutor used as fallback when use_processes=False
         from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+        # CRITICAL: Ensure schema is current BEFORE creating workers
+        # This prevents race conditions where multiple workers detect schema mismatch
+        # and try to recreate the database simultaneously (causing "disk I/O error")
+        if self.use_processes:
+            self.cache_manager.ensure_schema_current()
 
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
         executor_type = "ProcessPoolExecutor" if self.use_processes else "ThreadPoolExecutor"
