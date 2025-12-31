@@ -45,6 +45,7 @@ class CppAnalyzerConfig:
         "include_dependencies": True,
         "max_file_size_mb": 10,
         "max_parse_retries": 2,  # Maximum number of times to retry parsing a failed file
+        "max_workers": None,  # None = use cpu_count(), or specify integer for memory control
         "query_behavior": "allow_partial",  # allow_partial, block, or reject
         "diagnostics": {"level": "info", "enabled": True},  # debug, info, warning, error, fatal
     }
@@ -156,6 +157,21 @@ class CppAnalyzerConfig:
         """Get maximum file size in MB."""
         return self.config.get("max_file_size_mb", self.DEFAULT_CONFIG["max_file_size_mb"])
 
+    def get_max_workers(self) -> Optional[int]:
+        """Get maximum number of worker processes for parallel indexing.
+
+        Returns:
+            None to use cpu_count() (default), or integer to limit workers.
+            Limiting workers reduces memory usage (~1.2 GB per worker on large projects).
+        """
+        value = self.config.get("max_workers", self.DEFAULT_CONFIG["max_workers"])
+        if value is None:
+            return None
+        if isinstance(value, int) and value > 0:
+            return value
+        diagnostics.warning(f"Invalid max_workers value: {value}. Using default (cpu_count).")
+        return None
+
     def get_query_behavior_policy(self) -> str:
         """Get query behavior policy during indexing.
 
@@ -238,6 +254,8 @@ class CppAnalyzerConfig:
             "dependency_directories": ["vcpkg_installed", "third_party", "external"],
             "include_dependencies": True,
             "max_file_size_mb": 10,
+            "max_workers": None,
+            "_max_workers_comment": "Set to integer (e.g., 8) to limit memory usage (~1.2 GB per worker)",
             "query_behavior": "allow_partial",
             "_query_behavior_options": [
                 "allow_partial - Allow queries during indexing (results may be incomplete)",
