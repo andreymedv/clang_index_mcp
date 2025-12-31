@@ -78,9 +78,7 @@ class DependencyGraphBuilder:
             # New style: callable that returns connection
             self._conn_getter = conn_or_getter
         else:
-            raise TypeError(
-                f"Expected sqlite3.Connection or callable, got {type(conn_or_getter)}"
-            )
+            raise TypeError(f"Expected sqlite3.Connection or callable, got {type(conn_or_getter)}")
 
     @property
     def conn(self) -> sqlite3.Connection:

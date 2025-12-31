@@ -14,6 +14,7 @@ sys.path.insert(0, str(skill_dir))
 
 from test_runner import TestRunner
 
+
 def main():
     """Run a quick test"""
     print("=" * 60)
@@ -28,17 +29,14 @@ def main():
     print("-" * 60)
     print()
 
-    result = runner.run_test(
-        test_name="basic-indexing",
-        project="tier1",
-        protocol="http"
-    )
+    result = runner.run_test(test_name="basic-indexing", project="tier1", protocol="http")
 
     print()
     print("=" * 60)
     print("RESULT:")
     print("=" * 60)
     print(result)
+
 
 if __name__ == "__main__":
     main()

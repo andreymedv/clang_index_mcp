@@ -18,6 +18,7 @@ import threading
 # Patch _bulk_write_symbols to add debug output
 original_bulk_write = CppAnalyzer._bulk_write_symbols
 
+
 def patched_bulk_write(self):
     """Patched version with debug output"""
     symbols_buffer, calls_buffer = self._get_thread_local_buffers()
@@ -40,10 +41,12 @@ def patched_bulk_write(self):
 
     return result
 
+
 CppAnalyzer._bulk_write_symbols = patched_bulk_write
 
 # Also patch _index_translation_unit
 original_index_tu = CppAnalyzer._index_translation_unit
+
 
 def patched_index_tu(self, tu, source_file):
     """Patched version with debug output"""
@@ -58,7 +61,9 @@ def patched_index_tu(self, tu, source_file):
 
     return result
 
+
 CppAnalyzer._index_translation_unit = patched_index_tu
+
 
 def debug_issue8():
     """Debug Issue #8 with detailed output"""
@@ -66,7 +71,9 @@ def debug_issue8():
     project_path = Path(__file__).parent.parent / "examples" / "compile_commands_example"
 
     print(f"Detailed debug for Issue #8")
-    print(f"Mode: {'ThreadPoolExecutor' if os.environ.get('CPP_ANALYZER_USE_THREADS') == 'true' else 'ProcessPoolExecutor'}")
+    print(
+        f"Mode: {'ThreadPoolExecutor' if os.environ.get('CPP_ANALYZER_USE_THREADS') == 'true' else 'ProcessPoolExecutor'}"
+    )
     print("=" * 80)
 
     analyzer = CppAnalyzer(str(project_path))
@@ -78,16 +85,17 @@ def debug_issue8():
     print(f"  file_index size: {len(analyzer.file_index)}")
     for f in sorted(analyzer.file_index.keys()):
         symbol_count = len(analyzer.file_index[f])
-        file_type = "HEADER" if f.endswith(('.h', '.hpp', '.hxx')) else "SOURCE"
+        file_type = "HEADER" if f.endswith((".h", ".hpp", ".hxx")) else "SOURCE"
         print(f"    [{file_type}] {f[-60:]}: {symbol_count} symbols")
 
-    headers = [f for f in analyzer.file_index.keys() if f.endswith(('.h', '.hpp', '.hxx'))]
+    headers = [f for f in analyzer.file_index.keys() if f.endswith((".h", ".hpp", ".hxx"))]
     if len(headers) == 0:
         print(f"\n🔴 FAIL: No headers in file_index")
         return False
     else:
         print(f"\n✅ PASS: {len(headers)} headers in file_index")
         return True
+
 
 if __name__ == "__main__":
     try:
@@ -96,5 +104,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n🔴 ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
