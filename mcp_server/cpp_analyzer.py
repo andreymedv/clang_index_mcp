@@ -1455,7 +1455,6 @@ class CppAnalyzer:
                     class_updates = defaultdict(list)
                     function_updates = defaultdict(list)
                     usr_updates = {}
-                    call_graph_updates = []
 
                     for symbol in cached_symbols:
                         if symbol.kind in ("class", "struct"):
@@ -1466,13 +1465,8 @@ class CppAnalyzer:
                         if symbol.usr:
                             usr_updates[symbol.usr] = symbol
 
-                        # Collect call graph relationships
-                        if symbol.calls:
-                            for called_usr in symbol.calls:
-                                call_graph_updates.append((symbol.usr, called_usr))
-                        if symbol.called_by:
-                            for caller_usr in symbol.called_by:
-                                call_graph_updates.append((caller_usr, symbol.usr))
+                        # v9.0: calls/called_by removed from SymbolInfo
+                        # Call graph is now loaded lazily from call_sites table
 
                     # Apply all updates with a single lock acquisition
                     # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
@@ -1507,9 +1501,7 @@ class CppAnalyzer:
                         # Apply USR updates
                         self.usr_index.update(usr_updates)
 
-                        # Restore call graph relationships
-                        for caller_usr, called_usr in call_graph_updates:
-                            self.call_graph_analyzer.add_call(caller_usr, called_usr)
+                        # v9.0: call graph restored lazily from call_sites table
 
                         self.file_hashes[file_path] = current_hash
 
@@ -1692,19 +1684,9 @@ class CppAnalyzer:
                 else:
                     collected_symbols = []
 
-            # Populate call graph info OUTSIDE the lock to minimize lock duration
-            # Call graph queries can be expensive for large codebases
-            for symbol in collected_symbols:
-                if symbol.usr and symbol.kind in ("function", "method"):
-                    # Add calls list
-                    # Get calls from call graph analyzer
-                    calls = self.call_graph_analyzer.find_callees(symbol.usr)
-                    if calls:
-                        symbol.calls = list(calls)
-                    # Add called_by list
-                    callers = self.call_graph_analyzer.find_callers(symbol.usr)
-                    if callers:
-                        symbol.called_by = list(callers)
+            # v9.0: calls/called_by fields removed from SymbolInfo
+            # Call graph data is stored in call_sites table and queried on-demand
+            # No need to populate symbol.calls/called_by here anymore
 
             # Save to per-file cache (mark as successfully parsed, even if there were errors)
             # Note: success=True means we got a usable TU and extracted symbols
@@ -1941,17 +1923,8 @@ class CppAnalyzer:
                                             if not already_in_file_index:
                                                 self.file_index[symbol.file].append(symbol)
 
-                                    # Restore call graph
-                                    if symbol.calls:
-                                        for called_usr in symbol.calls:
-                                            self.call_graph_analyzer.add_call(
-                                                symbol.usr, called_usr
-                                            )
-                                    if symbol.called_by:
-                                        for caller_usr in symbol.called_by:
-                                            self.call_graph_analyzer.add_call(
-                                                caller_usr, symbol.usr
-                                            )
+                                    # v9.0: calls/called_by removed from SymbolInfo
+                                    # Call graph is restored from call_sites below
 
                                 # Phase 3: Restore call sites from worker
                                 if call_sites:
