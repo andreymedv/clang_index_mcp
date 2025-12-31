@@ -237,9 +237,17 @@ class CppAnalyzer:
         self._no_op_lock = _NoOpLock()  # Reusable no-op lock for isolated processes
         self._thread_local = threading.local()
         cpu_count = os.cpu_count() or 1
-        # Use cpu_count directly for CPU-bound parsing work
-        # Using cpu_count * 2 causes excessive lock contention
-        self.max_workers = cpu_count
+
+        # Determine max_workers from config or default to cpu_count
+        # User can limit workers to reduce memory usage (~1.2 GB per worker on large projects)
+        config_max_workers = self.config.get_max_workers()
+        if config_max_workers is not None:
+            self.max_workers = min(config_max_workers, cpu_count)
+            diagnostics.info(
+                f"Using max_workers={self.max_workers} from config (cpu_count={cpu_count})"
+            )
+        else:
+            self.max_workers = cpu_count
 
         # Use ProcessPoolExecutor by default to bypass Python's GIL
         # Can be overridden via environment variable
