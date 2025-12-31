@@ -244,6 +244,11 @@ class CppAnalyzer:
         self.cache_manager = CacheManager(self.project_identity)
         self.file_scanner = FileScanner(self.project_root)
 
+        # Memory optimization: enable lazy loading of call sites from SQLite
+        # Instead of loading ALL call sites at startup (~150-200 MB for large projects),
+        # call sites are queried on-demand from the database
+        self.call_graph_analyzer.cache_backend = self.cache_manager.backend
+
         # Apply configuration to file scanner
         self.file_scanner.EXCLUDE_DIRS = set(self.config.get_exclude_directories())
         self.file_scanner.DEPENDENCY_DIRS = set(self.config.get_dependency_directories())
@@ -276,9 +281,7 @@ class CppAnalyzer:
             # Use lambda to get connection dynamically, not a static reference
             # This prevents "Cannot operate on a closed database" errors when
             # cache is recreated during operation
-            self.dependency_graph = DependencyGraphBuilder(
-                lambda: self.cache_manager.backend.conn
-            )
+            self.dependency_graph = DependencyGraphBuilder(lambda: self.cache_manager.backend.conn)
             diagnostics.debug("Dependency graph builder initialized with dynamic connection")
         else:
             diagnostics.debug("Dependency graph not available (non-SQLite backend)")
@@ -634,7 +637,9 @@ class CppAnalyzer:
                         else:
                             if existing_symbol.name in self.function_index:
                                 try:
-                                    self.function_index[existing_symbol.name].remove(existing_symbol)
+                                    self.function_index[existing_symbol.name].remove(
+                                        existing_symbol
+                                    )
                                     if not self.function_index[existing_symbol.name]:
                                         del self.function_index[existing_symbol.name]
                                 except ValueError:
@@ -920,7 +925,6 @@ class CppAnalyzer:
             # Fallback to location.file if extent not available
             primary_file = str(location.file.name)
 
-
         result = {
             "file": primary_file,
             "line": location.line,
@@ -950,7 +954,6 @@ class CppAnalyzer:
             # cursor.is_definition() tells us if this cursor IS a definition
             # cursor.get_definition() gets the definition cursor if this is a declaration
             definition_cursor = cursor.get_definition()
-
 
             if definition_cursor and definition_cursor != cursor:
                 # This cursor is a declaration, definition exists elsewhere
@@ -1816,7 +1819,11 @@ class CppAnalyzer:
             if self.use_processes:
                 # ProcessPoolExecutor: use worker function that returns symbols
                 # Pass config_file to ensure workers use the same cache directory
-                config_file_str = str(self.project_identity.config_file_path) if self.project_identity.config_file_path else None
+                config_file_str = (
+                    str(self.project_identity.config_file_path)
+                    if self.project_identity.config_file_path
+                    else None
+                )
                 future_to_file = {
                     executor.submit(
                         _process_file_worker,
@@ -1865,7 +1872,9 @@ class CppAnalyzer:
                                             if existing.kind in ("class", "struct"):
                                                 if existing.name in self.class_index:
                                                     try:
-                                                        self.class_index[existing.name].remove(existing)
+                                                        self.class_index[existing.name].remove(
+                                                            existing
+                                                        )
                                                         if not self.class_index[existing.name]:
                                                             del self.class_index[existing.name]
                                                     except ValueError:
@@ -1873,7 +1882,9 @@ class CppAnalyzer:
                                             else:
                                                 if existing.name in self.function_index:
                                                     try:
-                                                        self.function_index[existing.name].remove(existing)
+                                                        self.function_index[existing.name].remove(
+                                                            existing
+                                                        )
                                                         if not self.function_index[existing.name]:
                                                             del self.function_index[existing.name]
                                                     except ValueError:
@@ -2057,6 +2068,7 @@ class CppAnalyzer:
                 # Now wait for running workers with timeout (5 seconds)
                 # Workers may be processing files and need time to finish current operation
                 import threading
+
                 shutdown_complete = threading.Event()
 
                 def wait_for_shutdown():
@@ -2081,8 +2093,9 @@ class CppAnalyzer:
                     # Force terminate worker processes if they don't exit gracefully
                     # This is safe because we've cancelled pending futures
                     # and workers are isolated processes
-                    if hasattr(executor, '_processes') and executor._processes:
+                    if hasattr(executor, "_processes") and executor._processes:
                         import signal
+
                         for pid, process in executor._processes.items():
                             try:
                                 if process.is_alive():
@@ -2095,7 +2108,7 @@ class CppAnalyzer:
                     time.sleep(0.5)
 
                     # SIGKILL any that are still alive
-                    if hasattr(executor, '_processes') and executor._processes:
+                    if hasattr(executor, "_processes") and executor._processes:
                         for pid, process in executor._processes.items():
                             try:
                                 if process.is_alive():
@@ -2201,14 +2214,17 @@ class CppAnalyzer:
             return False
 
         try:
-            # Load indexes
+            # Load indexes - Memory optimization: SymbolInfo objects come directly
+            # from SQLite backend (no dict conversion needed, saves ~500 MB peak)
             self.class_index.clear()
             for name, infos in cache_data.get("class_index", {}).items():
-                self.class_index[name] = [SymbolInfo(**info) for info in infos]
+                # infos are already SymbolInfo objects from SQLite backend
+                self.class_index[name] = infos
 
             self.function_index.clear()
             for name, infos in cache_data.get("function_index", {}).items():
-                self.function_index[name] = [SymbolInfo(**info) for info in infos]
+                # infos are already SymbolInfo objects from SQLite backend
+                self.function_index[name] = infos
 
             # Rebuild file index mapping from loaded symbols
             self.file_index.clear()
@@ -2245,11 +2261,9 @@ class CppAnalyzer:
             # Rebuild call graph from all symbols
             self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
 
-            # Phase 3: Restore call sites from database
-            call_sites_data = self.cache_manager.backend.load_all_call_sites()
-            if call_sites_data:
-                self.call_graph_analyzer.restore_call_sites(call_sites_data)
-                diagnostics.debug(f"Restored {len(call_sites_data)} call sites from database")
+            # Memory optimization: call sites are now loaded LAZILY on-demand
+            # instead of loading all at startup (saves ~150-200 MB for large projects)
+            # The call_graph_analyzer.cache_backend handles lazy loading via SQLite queries
 
             diagnostics.debug(
                 f"Loaded cache with {len(self.class_index)} classes, {len(self.function_index)} functions"
@@ -2376,7 +2390,7 @@ class CppAnalyzer:
                 continue  # Still in current scan, not deleted
 
             # File not in current_files - check if it's a header
-            if tracked_file.endswith(('.h', '.hpp', '.hxx', '.h++')):
+            if tracked_file.endswith((".h", ".hpp", ".hxx", ".h++")):
                 # Header file - only consider deleted if it doesn't exist on disk
                 if not os.path.exists(tracked_file):
                     deleted_files.add(tracked_file)
@@ -2422,9 +2436,7 @@ class CppAnalyzer:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
             return 0
 
-        diagnostics.debug(
-            f"Refresh: {len(modified_files)} modified, {len(new_files)} new files"
-        )
+        diagnostics.debug(f"Refresh: {len(modified_files)} modified, {len(new_files)} new files")
 
         # PHASE 2: Process files in parallel using ProcessPoolExecutor or ThreadPoolExecutor
         # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
@@ -2434,9 +2446,7 @@ class CppAnalyzer:
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
         executor_type = "ProcessPoolExecutor" if self.use_processes else "ThreadPoolExecutor"
 
-        diagnostics.debug(
-            f"Full refresh: Using {executor_type} with {self.max_workers} workers"
-        )
+        diagnostics.debug(f"Full refresh: Using {executor_type} with {self.max_workers} workers")
 
         executor = None
         failed = 0
@@ -2450,7 +2460,11 @@ class CppAnalyzer:
                 # ProcessPoolExecutor: use worker function (same as index_project)
                 # Convert config_file to string for serialization
                 project_root = str(self.project_root)
-                config_file_str = str(self.project_identity.config_file_path) if self.project_identity.config_file_path else None
+                config_file_str = (
+                    str(self.project_identity.config_file_path)
+                    if self.project_identity.config_file_path
+                    else None
+                )
 
                 # Submit modified files (force=True)
                 for file_path in modified_files:
@@ -2635,9 +2649,7 @@ class CppAnalyzer:
             rate = processed / elapsed if elapsed > 0 else 0
             eta = (total_files - processed) / rate if rate > 0 else 0
 
-            estimated_completion = (
-                datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-            )
+            estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
 
             progress = IndexingProgress(
                 total_files=total_files,

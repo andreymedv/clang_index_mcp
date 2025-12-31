@@ -220,9 +220,7 @@ class MCPHTTPServer:
             # ASGI scope headers are tuples of (name_bytes, value_bytes)
             scope_headers = list(request.scope.get("headers", []))
             # Check if mcp-session-id already in headers
-            has_session_header = any(
-                name.lower() == b"mcp-session-id" for name, _ in scope_headers
-            )
+            has_session_header = any(name.lower() == b"mcp-session-id" for name, _ in scope_headers)
             if not has_session_header:
                 scope_headers.append((b"mcp-session-id", session_id.encode()))
                 # Create modified scope with updated headers

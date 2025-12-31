@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 
+
 def test_issue8():
     """Test Issue #8: Headers should be indexed and preserved"""
 
@@ -37,8 +38,8 @@ def test_issue8():
     print(f"Total functions: {sum(len(v) for v in analyzer.function_index.values())}")
 
     # Count headers vs sources
-    headers = [f for f in analyzer.file_index.keys() if f.endswith(('.h', '.hpp', '.hxx'))]
-    sources = [f for f in analyzer.file_index.keys() if f.endswith(('.cpp', '.cc', '.cxx'))]
+    headers = [f for f in analyzer.file_index.keys() if f.endswith((".h", ".hpp", ".hxx"))]
+    sources = [f for f in analyzer.file_index.keys() if f.endswith((".cpp", ".cc", ".cxx"))]
 
     print(f"  - Source files: {len(sources)}")
     print(f"  - Header files: {len(headers)}")
@@ -57,7 +58,7 @@ def test_issue8():
     print(f"Found {len(all_functions)} functions total")
     if all_functions:
         # Check if any are from headers
-        header_funcs = [f for f in all_functions if f.file.endswith(('.h', '.hpp', '.hxx'))]
+        header_funcs = [f for f in all_functions if f.file.endswith((".h", ".hpp", ".hxx"))]
         print(f"  - {len(header_funcs)} from headers")
         print(f"  - {len(all_functions) - len(header_funcs)} from sources")
 
@@ -72,8 +73,8 @@ def test_issue8():
     print(f"Total functions: {sum(len(v) for v in analyzer.function_index.values())}")
 
     # Count headers vs sources after refresh
-    headers_after = [f for f in analyzer.file_index.keys() if f.endswith(('.h', '.hpp', '.hxx'))]
-    sources_after = [f for f in analyzer.file_index.keys() if f.endswith(('.cpp', '.cc', '.cxx'))]
+    headers_after = [f for f in analyzer.file_index.keys() if f.endswith((".h", ".hpp", ".hxx"))]
+    sources_after = [f for f in analyzer.file_index.keys() if f.endswith((".cpp", ".cc", ".cxx"))]
 
     print(f"  - Source files: {len(sources_after)}")
     print(f"  - Header files: {len(headers_after)}")
@@ -91,7 +92,9 @@ def test_issue8():
     all_functions_after = [f for funcs in analyzer.function_index.values() for f in funcs]
     print(f"Found {len(all_functions_after)} functions total")
     if all_functions_after:
-        header_funcs_after = [f for f in all_functions_after if f.file.endswith(('.h', '.hpp', '.hxx'))]
+        header_funcs_after = [
+            f for f in all_functions_after if f.file.endswith((".h", ".hpp", ".hxx"))
+        ]
         print(f"  - {len(header_funcs_after)} from headers")
         print(f"  - {len(all_functions_after) - len(header_funcs_after)} from sources")
 
@@ -105,11 +108,14 @@ def test_issue8():
         print(f"🔴 FAIL: Headers lost after refresh ({len(headers)} → {len(headers_after)})")
         return False
     elif len(all_functions_after) < len(all_functions):
-        print(f"🔴 FAIL: Functions lost after refresh ({len(all_functions)} → {len(all_functions_after)})")
+        print(
+            f"🔴 FAIL: Functions lost after refresh ({len(all_functions)} → {len(all_functions_after)})"
+        )
         return False
     else:
         print("✅ PASS: Headers and symbols preserved after refresh")
         return True
+
 
 if __name__ == "__main__":
     try:
@@ -118,5 +124,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n🔴 ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

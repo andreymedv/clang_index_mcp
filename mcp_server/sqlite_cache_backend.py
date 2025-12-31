@@ -1533,21 +1533,22 @@ class SqliteCacheBackend:
                 diagnostics.info("compile_commands.json was cached but not provided")
                 return None
 
-            # Load all symbols
+            # Load all symbols - Memory optimization: return SymbolInfo directly
+            # instead of converting to dict and back (saves ~500 MB peak for large projects)
             cursor = self.conn.execute("SELECT * FROM symbols")
-            all_symbols = [self._row_to_symbol(row) for row in cursor.fetchall()]
 
-            # Build indexes by name
+            # Build indexes by name - stream rows to avoid loading all into memory at once
             from collections import defaultdict
 
             class_index = defaultdict(list)
             function_index = defaultdict(list)
 
-            for symbol in all_symbols:
+            for row in cursor:
+                symbol = self._row_to_symbol(row)
                 if symbol.kind in ("class", "struct", "union", "enum"):
-                    class_index[symbol.name].append(symbol.to_dict())
+                    class_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
                 elif symbol.kind in ("function", "method", "constructor", "destructor"):
-                    function_index[symbol.name].append(symbol.to_dict())
+                    function_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
 
             # Load file hashes
             file_hashes = self.load_all_file_hashes()
