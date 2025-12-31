@@ -1,9 +1,9 @@
-# Memory Optimization Implementation Plan v3.0
+# Memory Optimization Implementation Plan v4.0
 
 **Project**: C++ MCP Server Memory Optimization
 **Goal**: Reduce memory consumption during large project indexing (100K+ symbols)
-**Target Savings**: Phase 1-2: ~850 MB, Phase 3: ~30 GB (worker memory optimization)
-**Status**: ✅ Phase 1-2 COMPLETED, Phase 3 investigation complete, implementation pending
+**Target Savings**: Phase 1-2: ~850 MB, Phase 3: ~30 GB, Phase 4: ~5 GB
+**Status**: ✅ Phase 1-2 COMPLETED, ✅ Phase 3-4 investigation complete, implementation pending
 **Last Updated**: 2025-12-31
 
 ---
@@ -665,3 +665,134 @@ Worker Process:
 - `mcp_server/cpp_analyzer.py:73-170` - Worker function (`_process_file_worker`)
 - `mcp_server/cpp_analyzer.py:1820-1850` - Work submission to ProcessPoolExecutor
 - `mcp_server/compile_commands_manager.py` - CompileCommandsManager class
+
+---
+
+## Phase 4: Runtime Data Structure Growth (Investigation Complete)
+
+### Investigation Summary (2025-12-31)
+
+Analysis of data structure growth during indexing on 200 files from a 17,911-file project.
+
+### Key Findings: Main Process Memory Accumulation
+
+During indexing, the **main process** accumulates memory in these data structures:
+
+| Structure | After 200 files | Projected (17,911 files) | Growth Rate |
+|-----------|-----------------|--------------------------|-------------|
+| **call_sites** | 22.5 MB | **~1.9 GB** | +111 KB/file |
+| **usr_index** | 21.3 MB | **~1.45 GB** | +85 KB/file |
+| **call_graph** | 13.3 MB | **~1.23 GB** | +72 KB/file |
+| **reverse_call_graph** | 8.2 MB | **~752 MB** | +43 KB/file |
+| **file_index** | 8.0 MB | **~546 MB** | +31 KB/file |
+| **function_index** | 7.6 MB | **~520 MB** | +30 KB/file |
+| **class_index** | 1.7 MB | **~120 MB** | +7 KB/file |
+
+**Total projected main process data structure memory: ~6.5 GB**
+
+### Root Cause: Call Sites Accumulation
+
+The `call_sites` set in `CallGraphAnalyzer` is the **largest memory consumer**:
+- Stores ~629 call sites per file on average
+- Each CallSite object: ~184 bytes (5 string/int fields)
+- 17,911 files × 629 call sites = **~11.3 million CallSite objects**
+- Projected memory: **~1.9 GB**
+
+### Phase 4: Proposed Optimizations
+
+#### Task 4.1: Stream Call Sites to SQLite (HIGH PRIORITY)
+
+**Current Flow** (memory accumulation):
+```python
+# CallGraphAnalyzer accumulates ALL call sites in memory
+self.call_sites: Set[CallSite] = set()  # ~1.9 GB for large projects!
+
+# During indexing:
+for file in files:
+    call_sites = worker.process(file)
+    self.call_graph_analyzer.call_sites.update(call_sites)  # Accumulates!
+```
+
+**Proposed Flow** (streaming):
+```python
+# Stream call sites directly to SQLite during indexing
+for file in files:
+    call_sites = worker.process(file)
+    self.cache_backend.store_call_sites(call_sites)  # Write directly to DB
+    # No in-memory accumulation!
+```
+
+**Expected Savings**: ~1.9 GB
+
+**Implementation Steps**:
+1. Modify `add_call()` to write directly to SQLite (already have `call_sites` table)
+2. Remove in-memory `call_sites` set from `CallGraphAnalyzer`
+3. `get_call_sites_for_caller/callee()` already queries SQLite (no change needed)
+4. Clear call sites for file before inserting new ones (for re-indexing)
+
+#### Task 4.2: Stream Symbols to SQLite (MEDIUM PRIORITY)
+
+**Current State**: All symbols stored in 4 in-memory indexes:
+- `class_index`: Dict[name, List[SymbolInfo]]
+- `function_index`: Dict[name, List[SymbolInfo]]
+- `file_index`: Dict[file, List[SymbolInfo]]
+- `usr_index`: Dict[USR, SymbolInfo]
+
+**Problem**: ~3.9 GB for projected large projects
+
+**Proposed Solution**:
+- Stream symbols directly to SQLite during indexing
+- Keep only minimal in-memory index for current session
+- Load symbols on-demand for queries using FTS5
+
+**Expected Savings**: ~2-3 GB
+
+**Implementation Complexity**: HIGH - requires significant refactoring of search and query paths
+
+#### Task 4.3: Lazy Call Graph Loading (MEDIUM PRIORITY)
+
+**Current State**: `call_graph` and `reverse_call_graph` dicts kept in memory
+
+**Problem**: ~2 GB projected
+
+**Proposed Solution**:
+- Store call relationships in SQLite (already done in `call_sites` table)
+- Query SQLite for `find_callers()` / `find_callees()` (partially done)
+- Remove in-memory `call_graph` / `reverse_call_graph` dicts
+
+**Expected Savings**: ~2 GB
+
+---
+
+## Phase 4: Implementation Roadmap
+
+| Priority | Task | Savings | Effort | Status |
+|----------|------|---------|--------|--------|
+| 1 | Task 4.1: Stream call sites to SQLite | ~1.9 GB | 2-4 hours | 🔲 Planned |
+| 2 | Task 4.3: Lazy call graph loading | ~2 GB | 4-8 hours | 🔲 Planned |
+| 3 | Task 4.2: Stream symbols to SQLite | ~2-3 GB | 2-4 days | 🔲 Future |
+
+---
+
+## Combined Memory Optimization Summary
+
+### Current State (32-worker system, ~18,000 files)
+- Worker processes: ~40 GB (32 × ~1.2 GB each)
+- Main process data structures: ~6.5 GB
+- **Total: ~46.5 GB**
+
+### After Phase 3 (Task 3.1-3.2)
+- Worker processes: ~10 GB (8 workers with shared compile args)
+- Main process: ~6.5 GB (unchanged)
+- **Total: ~16.5 GB** (savings: ~30 GB)
+
+### After Phase 4 (Task 4.1-4.3)
+- Worker processes: ~10 GB (from Phase 3)
+- Main process: ~1.5 GB (streaming to SQLite)
+- **Total: ~11.5 GB** (additional savings: ~5 GB)
+
+---
+
+## Phase 4 Investigation Files
+- Analysis script: `scripts/analyze_structure_growth.py`
+- Memory growth analyzer: `scripts/memory_growth_analyzer.py`
