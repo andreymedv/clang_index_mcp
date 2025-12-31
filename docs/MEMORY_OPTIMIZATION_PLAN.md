@@ -3,7 +3,7 @@
 **Project**: C++ MCP Server Memory Optimization
 **Goal**: Reduce memory consumption during large project indexing (100K+ symbols)
 **Target Savings**: 1.0-1.5 GB for projects with 100K symbols
-**Status**: ✅ Phase 1 COMPLETED, ✅ Race condition fix COMPLETED, Phase 2-3 ready
+**Status**: ✅ Phase 1 COMPLETED, ✅ Phase 2 (Task 1.2) COMPLETED, Phase 3 pending
 **Last Updated**: 2025-12-31
 
 ---
@@ -18,9 +18,10 @@
 | Task 2.2: Optimize SQLite loading | ~500 MB peak | `12cd00a` | ✅ Done |
 | Documentation update | - | `12cd00a` | ✅ Done |
 | Code formatting | - | `5501b04` | ✅ Done |
-| **Race condition fix** | - | (pending) | ✅ Done |
+| Race condition fix | - | `661cc28` | ✅ Done |
+| **Task 1.2: Remove calls/called_by** | ~200 MB | (pending) | ✅ Done |
 
-**Total Phase 1 savings: ~650-700 MB**
+**Total savings: ~850-900 MB** (Phase 1: ~650-700 MB + Task 1.2: ~200 MB)
 
 ### Branch Status
 
@@ -59,14 +60,13 @@ Purpose: Reference for lessons learned (DO NOT MERGE)
 
 | Task | Savings | Blocker | Priority |
 |------|---------|---------|----------|
-| Task 1.2: Remove calls/called_by | ~200 MB | ~~Race condition~~ **UNBLOCKED** | Medium |
+| ~~Task 1.2: Remove calls/called_by~~ | ~~200 MB~~ | ~~Done~~ | ✅ Completed |
 | Task 1.1: Optimize file_index | ~300-500 MB | Breaks header file search | Low (needs research) |
 
 ### Next Steps for Continuation
 
-1. **Merge Phase 1 PR #92** (ready)
-2. **Implement Task 1.2**: Now unblocked, can proceed with schema change
-3. **For Task 1.1**: Research alternatives that preserve header search (see Phase 3 section)
+1. **Merge current branch to main** - All Phase 1 + Phase 2 work complete
+2. **For Task 1.1**: Research alternatives that preserve header search (see Phase 3 section)
 
 ### Key Files Modified
 
@@ -79,6 +79,14 @@ Purpose: Reference for lessons learned (DO NOT MERGE)
 - `mcp_server/sqlite_cache_backend.py` - Added `skip_schema_recreation` param, `ensure_schema_current()` method
 - `mcp_server/cache_manager.py` - Pass `skip_schema_recreation` to backend, expose `ensure_schema_current()`
 - `mcp_server/cpp_analyzer.py` - Workers use `skip_schema_recreation=True`, main calls `ensure_schema_current()`
+
+**Task 1.2 (calls/called_by removal):**
+- `mcp_server/symbol_info.py` - Removed `calls` and `called_by` fields
+- `mcp_server/schema.sql` - v9.0: Removed calls/called_by columns
+- `mcp_server/sqlite_cache_backend.py` - Updated CURRENT_SCHEMA_VERSION, _symbol_to_tuple(), _row_to_symbol()
+- `mcp_server/call_graph.py` - Updated find_callers/find_callees for lazy SQLite loading, deprecated rebuild_from_symbols()
+- `mcp_server/cpp_analyzer.py` - Removed calls/called_by population and restoration
+- `mcp_server/incremental_analyzer.py` - Removed calls/called_by restoration
 
 ---
 
@@ -311,20 +319,28 @@ rm -rf .mcp_cache/ && make test
 detect schema mismatch and try to recreate the database, causing "disk I/O error" due to
 WAL file conflicts. The fix centralizes schema management in the main process.
 
-### Task 1.2: Remove calls/called_by from SymbolInfo
+### Task 1.2: Remove calls/called_by from SymbolInfo ✅ COMPLETED
 
 **Objective**: Remove duplicate call graph data from SymbolInfo
 
 **Estimated Savings**: ~200 MB
 
-**Status**: ✅ UNBLOCKED - Race condition fix implemented
+**Status**: ✅ COMPLETED (2025-12-31)
 
-**Changes Required**:
-1. Remove fields from `symbol_info.py`
-2. Update `schema.sql` to v9.0
-3. Update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`
-4. Update `_symbol_to_tuple()` and `_row_to_symbol()`
-5. Remove population in `index_file()`
+**Changes Made**:
+1. ✅ Removed `calls` and `called_by` fields from `symbol_info.py`
+2. ✅ Updated `schema.sql` to v9.0 (removed calls/called_by columns)
+3. ✅ Updated `CURRENT_SCHEMA_VERSION` to "9.0" in `sqlite_cache_backend.py`
+4. ✅ Updated `_symbol_to_tuple()` and `_row_to_symbol()` to remove calls/called_by
+5. ✅ Removed population of calls/called_by in `index_file()` and other places
+6. ✅ Updated `find_callers()`/`find_callees()` in `call_graph.py` to use lazy loading from SQLite
+7. ✅ Deprecated `rebuild_from_symbols()` - now a no-op
+
+**Key Changes**:
+- Call graph data is now stored ONLY in `call_sites` table
+- `find_callers()`/`find_callees()` now query SQLite lazily
+- No more duplicate data in both SymbolInfo and call_sites table
+- Total savings: ~200 MB for large projects (100K symbols)
 
 ---
 
