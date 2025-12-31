@@ -500,17 +500,8 @@ class IncrementalAnalyzer:
                                             if not already_in_file_index:
                                                 self.analyzer.file_index[symbol.file].append(symbol)
 
-                                    # Restore call graph
-                                    if symbol.calls:
-                                        for called_usr in symbol.calls:
-                                            self.analyzer.call_graph_analyzer.add_call(
-                                                symbol.usr, called_usr
-                                            )
-                                    if symbol.called_by:
-                                        for caller_usr in symbol.called_by:
-                                            self.analyzer.call_graph_analyzer.add_call(
-                                                caller_usr, symbol.usr
-                                            )
+                                    # v9.0: calls/called_by removed from SymbolInfo
+                                    # Call graph is restored from call_sites below
 
                                 # Restore call sites
                                 if call_sites:

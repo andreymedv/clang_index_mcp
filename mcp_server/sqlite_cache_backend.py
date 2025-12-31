@@ -38,19 +38,23 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "8.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "9.0"  # Must match version in schema.sql
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
         Initialize SQLite cache backend.
 
         Args:
             db_path: Path to SQLite database file
+            skip_schema_recreation: If True, skip database recreation on schema mismatch.
+                                   Used by worker processes to avoid race conditions.
+                                   Workers should rely on main process to ensure schema is current.
         """
         self.db_path = Path(db_path)
         self.conn: Optional[sqlite3.Connection] = None
         self._last_access = 0
         self._connection_timeout = 300  # 5 minutes idle timeout
+        self._skip_schema_recreation = skip_schema_recreation
 
         # Initialize database
         self._connect()
@@ -129,6 +133,10 @@ class SqliteCacheBackend:
 
         During development, we simply recreate the database if the schema version
         doesn't match. This avoids the complexity of maintaining migrations.
+
+        If skip_schema_recreation is True (worker processes), we skip recreation
+        to avoid race conditions. Workers rely on main process to ensure schema
+        is current before spawning workers.
         """
         max_retries = 10
         base_delay = 0.1  # 100ms initial delay
@@ -137,6 +145,7 @@ class SqliteCacheBackend:
             try:
                 # Check if database exists and has the correct version
                 needs_recreate = False
+                schema_ok = False
 
                 if self.db_path.exists():
                     try:
@@ -146,22 +155,50 @@ class SqliteCacheBackend:
                         )
                         result = cursor.fetchone()
                         if result:
-                            import json
-
                             current_version = json.loads(result[0])
                             if current_version != self.CURRENT_SCHEMA_VERSION:
-                                diagnostics.info(
-                                    f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
-                                )
-                                diagnostics.info("Recreating database with current schema")
-                                needs_recreate = True
+                                if self._skip_schema_recreation:
+                                    # Worker process: don't recreate, just use existing DB
+                                    # Main process should have ensured schema is current
+                                    diagnostics.debug(
+                                        f"Worker: Schema mismatch ({current_version} vs {self.CURRENT_SCHEMA_VERSION}), "
+                                        "skipping recreation (main process handles this)"
+                                    )
+                                    schema_ok = True  # Assume main handled it
+                                else:
+                                    diagnostics.info(
+                                        f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
+                                    )
+                                    diagnostics.info("Recreating database with current schema")
+                                    needs_recreate = True
+                            else:
+                                schema_ok = True
                         else:
-                            diagnostics.info("No version metadata found, recreating database")
+                            if self._skip_schema_recreation:
+                                diagnostics.debug(
+                                    "Worker: No version metadata, skipping recreation"
+                                )
+                                schema_ok = True
+                            else:
+                                diagnostics.info("No version metadata found, recreating database")
+                                needs_recreate = True
+                    except (sqlite3.OperationalError, Exception) as e:
+                        if self._skip_schema_recreation:
+                            # Worker: database might be being recreated by main
+                            # Wait and retry
+                            diagnostics.debug(f"Worker: DB access error ({e}), will retry")
+                            raise  # Will trigger retry logic below
+                        else:
+                            # Table doesn't exist or other error - recreate
+                            diagnostics.info("Invalid or corrupted database, recreating")
                             needs_recreate = True
-                    except (sqlite3.OperationalError, Exception):
-                        # Table doesn't exist or other error - recreate
-                        diagnostics.info("Invalid or corrupted database, recreating")
-                        needs_recreate = True
+
+                # If schema is already OK, just ensure tables exist
+                if schema_ok:
+                    diagnostics.debug(
+                        f"Database schema is current (v{self.CURRENT_SCHEMA_VERSION})"
+                    )
+                    return
 
                 if needs_recreate:
                     # Close connection and delete old database
@@ -222,6 +259,54 @@ class SqliteCacheBackend:
             except Exception as e:
                 diagnostics.error(f"Failed to initialize database: {e}")
                 raise
+
+    def ensure_schema_current(self) -> bool:
+        """
+        Ensure database schema is current. Called by main process before spawning workers.
+
+        This method should be called BEFORE creating ProcessPoolExecutor workers
+        to prevent race conditions where multiple workers detect schema mismatch
+        and try to recreate the database simultaneously.
+
+        Returns:
+            True if schema was recreated, False if it was already current.
+        """
+        try:
+            cursor = self.conn.execute("SELECT value FROM cache_metadata WHERE key = 'version'")
+            result = cursor.fetchone()
+            if result:
+                current_version = json.loads(result[0])
+                if current_version == self.CURRENT_SCHEMA_VERSION:
+                    diagnostics.debug(
+                        f"Schema is current (v{self.CURRENT_SCHEMA_VERSION}), workers can proceed"
+                    )
+                    return False  # Already current
+
+            # Schema mismatch or missing - need to recreate
+            diagnostics.info("Main process ensuring schema is current before workers...")
+
+            # Force recreation by clearing skip flag temporarily
+            old_skip = self._skip_schema_recreation
+            self._skip_schema_recreation = False
+
+            # Close and reopen to trigger recreation
+            self._close()
+            self._connect()
+            self._init_database()
+
+            self._skip_schema_recreation = old_skip
+            diagnostics.info(
+                f"Schema updated to v{self.CURRENT_SCHEMA_VERSION}, workers can now proceed"
+            )
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"Failed to ensure schema current: {e}")
+            # Try to recreate anyway
+            self._close()
+            self._connect()
+            self._init_database()
+            return True
 
     def _ensure_connected(self):
         """Ensure connection is active, reconnect if needed."""
@@ -285,8 +370,7 @@ class SqliteCacheBackend:
             symbol.access,
             symbol.parent_class,
             json.dumps(symbol.base_classes),
-            json.dumps(symbol.calls),
-            json.dumps(symbol.called_by),
+            # v9.0: calls/called_by removed - use call_sites table
             symbol.start_line,  # v5.0: Line ranges
             symbol.end_line,  # v5.0: Line ranges
             symbol.header_file,  # v5.0: Header location
@@ -323,8 +407,7 @@ class SqliteCacheBackend:
             parent_class=row["parent_class"] or "",
             base_classes=json.loads(row["base_classes"]) if row["base_classes"] else [],
             usr=row["usr"] or "",
-            calls=json.loads(row["calls"]) if row["calls"] else [],
-            called_by=json.loads(row["called_by"]) if row["called_by"] else [],
+            # v9.0: calls/called_by removed - use call graph API
             # v5.0: Line ranges and header location
             start_line=row["start_line"] if "start_line" in row.keys() else None,
             end_line=row["end_line"] if "end_line" in row.keys() else None,
@@ -360,12 +443,12 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by,
+                        base_classes,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol),
                 )
@@ -401,12 +484,12 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by,
+                        base_classes,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols],
                 )
@@ -1375,12 +1458,12 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes, calls, called_by,
+                        base_classes,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol),
                 )

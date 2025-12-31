@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 8.0
+-- Version: 9.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v9.0: Removed calls/called_by columns from symbols table (memory optimization Task 1.2)
 -- Changelog v8.0: Added call_sites, cross_references, parameter_docs tables for call graph enhancement (Phase 3: LLM Integration)
 -- Changelog v7.0: Added brief and doc_comment fields for documentation extraction (Phase 2: LLM Integration)
 -- Changelog v6.0: Added is_definition field for definition-wins logic (Phase 1: Multiple Declarations)
@@ -38,8 +39,8 @@ CREATE TABLE IF NOT EXISTS symbols (
     access TEXT DEFAULT 'public',      -- "public", "private", "protected"
     parent_class TEXT DEFAULT '',      -- For methods: containing class name
     base_classes TEXT DEFAULT '[]',    -- JSON array of base class names
-    calls TEXT DEFAULT '[]',           -- JSON array of USRs this function calls
-    called_by TEXT DEFAULT '[]',       -- JSON array of USRs that call this
+    -- Note: calls/called_by columns removed in v9.0 (Task 1.2 memory optimization)
+    -- Call graph data is now stored in call_sites table
 
     -- Line ranges (v5.0: Phase 1 LLM Integration)
     start_line INTEGER,                -- First line of symbol definition
@@ -123,7 +124,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"8.0"', julianday('now')),
+    ('version', '"9.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));

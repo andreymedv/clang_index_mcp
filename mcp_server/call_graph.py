@@ -130,12 +130,18 @@ class CallGraphAnalyzer:
             del self.reverse_call_graph[usr]
 
     def rebuild_from_symbols(self, symbols: List[SymbolInfo]):
-        """Rebuild call graph from symbol list"""
-        self.clear()
-        for symbol in symbols:
-            if symbol.usr and symbol.calls:
-                for called_usr in symbol.calls:
-                    self.add_call(symbol.usr, called_usr)
+        """
+        Rebuild call graph from symbol list.
+
+        DEPRECATED (v9.0): This method is now a no-op.
+        Call graph data is loaded lazily from SQLite via find_callers/find_callees.
+        The calls/called_by fields were removed from SymbolInfo in v9.0.
+
+        For backward compatibility, this method is kept but does nothing.
+        """
+        # v9.0: No-op - call graph is now loaded lazily from SQLite
+        # The calls/called_by fields were removed from SymbolInfo
+        pass
 
     def restore_call_sites(self, call_sites_data: List[Dict[str, Any]]):
         """
@@ -155,12 +161,50 @@ class CallGraphAnalyzer:
             self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
     def find_callers(self, function_usr: str) -> Set[str]:
-        """Find all functions that call the specified function"""
-        return self.reverse_call_graph.get(function_usr, set())
+        """
+        Find all functions that call the specified function.
+
+        Uses in-memory reverse_call_graph first (for current session),
+        then falls back to SQLite for historical data (lazy loading).
+        """
+        # First check in-memory (current session or freshly indexed)
+        result = self.reverse_call_graph.get(function_usr, set()).copy()
+
+        # Then check SQLite if available (historical data / lazy loading)
+        if self.cache_backend:
+            try:
+                db_results = self.cache_backend.get_call_sites_for_callee(function_usr)
+                for cs_dict in db_results:
+                    caller_usr = cs_dict.get("caller_usr")
+                    if caller_usr:
+                        result.add(caller_usr)
+            except Exception:
+                pass  # Silently ignore DB errors, use in-memory only
+
+        return result
 
     def find_callees(self, function_usr: str) -> Set[str]:
-        """Find all functions called by the specified function"""
-        return self.call_graph.get(function_usr, set())
+        """
+        Find all functions called by the specified function.
+
+        Uses in-memory call_graph first (for current session),
+        then falls back to SQLite for historical data (lazy loading).
+        """
+        # First check in-memory (current session or freshly indexed)
+        result = self.call_graph.get(function_usr, set()).copy()
+
+        # Then check SQLite if available (historical data / lazy loading)
+        if self.cache_backend:
+            try:
+                db_results = self.cache_backend.get_call_sites_for_caller(function_usr)
+                for cs_dict in db_results:
+                    callee_usr = cs_dict.get("callee_usr")
+                    if callee_usr:
+                        result.add(callee_usr)
+            except Exception:
+                pass  # Silently ignore DB errors, use in-memory only
+
+        return result
 
     def get_call_paths(self, from_usr: str, to_usr: str, max_depth: int = 10) -> List[List[str]]:
         """Find all call paths from one function to another"""

@@ -25,12 +25,18 @@ except ImportError:
 class CacheManager:
     """Manages caching for the C++ analyzer with pluggable backends."""
 
-    def __init__(self, project_root_or_identity: Union[Path, ProjectIdentity]):
+    def __init__(
+        self,
+        project_root_or_identity: Union[Path, ProjectIdentity],
+        skip_schema_recreation: bool = False,
+    ):
         """
         Initialize CacheManager with project identity.
 
         Args:
             project_root_or_identity: Either a Path (backward compatibility) or ProjectIdentity
+            skip_schema_recreation: If True, skip database recreation on schema mismatch.
+                                   Used by worker processes to avoid race conditions.
 
         Backward Compatibility:
             Accepts Path for backward compatibility, automatically creates ProjectIdentity
@@ -45,6 +51,7 @@ class CacheManager:
             self.project_root = Path(project_root_or_identity)
             self.project_identity = ProjectIdentity(self.project_root, None)
 
+        self._skip_schema_recreation = skip_schema_recreation
         self.cache_dir = self._get_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
@@ -106,9 +113,26 @@ class CacheManager:
         from .sqlite_cache_backend import SqliteCacheBackend
 
         db_path = self.cache_dir / "symbols.db"
-        backend = SqliteCacheBackend(db_path)
+        backend = SqliteCacheBackend(db_path, skip_schema_recreation=self._skip_schema_recreation)
         diagnostics.debug(f"Using SQLite cache backend: {db_path}")
         return backend
+
+    def ensure_schema_current(self) -> bool:
+        """
+        Ensure database schema is current before spawning workers.
+
+        This should be called by main process BEFORE creating ProcessPoolExecutor
+        to prevent race conditions where multiple workers detect schema mismatch
+        and try to recreate the database simultaneously.
+
+        Returns:
+            True if schema was recreated, False if it was already current.
+        """
+        from .sqlite_cache_backend import SqliteCacheBackend
+
+        if isinstance(self.backend, SqliteCacheBackend):
+            return self.backend.ensure_schema_current()
+        return False
 
     def close(self):
         """
