@@ -272,6 +272,22 @@ make ie                         # install-editable
 - **Implementation:** Called from `_connect()` after connection establishment, applies to main + all workers
 - See mcp_server/sqlite_cache_backend.py:_set_connection_pragmas(), mcp_server/schema.sql (documentation)
 
+**12. Phase 4 Memory Optimization: Lazy Call Graph Loading (2026-01-02)**
+- **Problem:** In-memory call_graph and reverse_call_graph dicts consumed ~2 GB for large projects
+  - `call_graph`: caller USR → Set[callee USRs] (~1.23 GB)
+  - `reverse_call_graph`: callee USR → Set[caller USRs] (~752 MB)
+- **Solution:** Removed in-memory dicts, all call graph data now stored ONLY in SQLite
+  - Task 4.1: Stream call sites to SQLite during indexing (no in-memory accumulation)
+  - Task 4.3: Query SQLite directly for find_callers()/find_callees() (no in-memory cache)
+- **Architecture:**
+  - Workers extract call sites during parsing, return to main process
+  - Main process streams call sites directly to SQLite (store_call_sites=False flag)
+  - find_callers()/find_callees() query call_sites table on-demand
+  - Current session call_sites kept in memory temporarily, cleared after SQLite save
+- **Memory Savings:** ~3.9 GB total (Task 4.1: ~1.9 GB + Task 4.3: ~2 GB)
+- **Implementation:** See mcp_server/call_graph.py (queries), sqlite_cache_backend.py (storage)
+- **Deprecated:** get_call_statistics() methods (not used, would require expensive SQLite queries)
+
 ### Data Flow
 
 **Indexing Flow:**
@@ -288,16 +304,17 @@ make ie                         # install-editable
    - HeaderTracker deduplicates header processing
    - Symbols stored in SQLite cache (with error_message if errors present)
 7. Indexes built: class_index, function_index, file_index, usr_index
-8. CallGraphAnalyzer tracks function calls
+8. Call sites extracted and streamed directly to SQLite (Phase 4: no in-memory accumulation)
 9. Cache metadata and header tracking state saved (once at end)
 
 **Query Flow:**
 1. MCP tool called (e.g., search_classes, find_callers)
 2. CppAnalyzer checks indexing state
-3. SearchEngine queries SQLite FTS5 indexes
-4. Regex matching on symbol names (if pattern provided)
-5. Results filtered (project_only flag, file filters)
-6. JSON results returned via MCP TextContent
+3. For symbol searches: SearchEngine queries SQLite FTS5 indexes
+4. For call graph queries: CallGraphAnalyzer queries call_sites table directly (Phase 4: no in-memory cache)
+5. Regex matching on symbol names (if pattern provided)
+6. Results filtered (project_only flag, file filters)
+7. JSON results returned via MCP TextContent
 
 **Incremental Refresh Flow:**
 1. `refresh_project()` called
@@ -314,6 +331,7 @@ make ie                         # install-editable
 - **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
 - **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
 - **Parallel Worker:** mcp_server/cpp_analyzer.py:72-131 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
+- **Call Graph Analysis (Phase 4):** mcp_server/call_graph.py (SQLite-only queries, no in-memory dicts)
 - **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v8.0 with brief/doc_comment fields and call_sites table)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py
