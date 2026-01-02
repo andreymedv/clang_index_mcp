@@ -1,10 +1,10 @@
-# Memory Optimization Implementation Plan v4.0
+# Memory Optimization Implementation Plan v4.1
 
 **Project**: C++ MCP Server Memory Optimization
 **Goal**: Reduce memory consumption during large project indexing (100K+ symbols)
 **Target Savings**: Phase 1-2: ~850 MB, Phase 3: ~30 GB, Phase 4: ~5 GB
-**Status**: ✅ Phase 1-2 COMPLETED, ✅ Phase 3-4 investigation complete, implementation pending
-**Last Updated**: 2025-12-31
+**Status**: ✅ Phase 1-2-3 COMPLETED, ✅ Phase 4: Tasks 4.1 & 4.3 COMPLETED (~3.9 GB savings)
+**Last Updated**: 2026-01-02
 
 ---
 
@@ -12,16 +12,32 @@
 
 ### Completed Work
 
-| Task | Savings | Commit | Status |
-|------|---------|--------|--------|
+**Phase 1-2 (Memory Optimization Foundations):**
+
+| Task | Savings | PR/Commit | Status |
+|------|---------|-----------|--------|
 | Task 2.1: Lazy loading call_sites | ~150-200 MB | `12cd00a` | ✅ Done |
 | Task 2.2: Optimize SQLite loading | ~500 MB peak | `12cd00a` | ✅ Done |
-| Documentation update | - | `12cd00a` | ✅ Done |
-| Code formatting | - | `5501b04` | ✅ Done |
-| Race condition fix | - | `661cc28` | ✅ Done |
-| **Task 1.2: Remove calls/called_by** | ~200 MB | (pending) | ✅ Done |
+| Task 1.2: Remove calls/called_by from SymbolInfo | ~200 MB | PR #93 | ✅ Done |
+| Race condition fix (schema migration) | - | `661cc28` | ✅ Done |
 
-**Total savings: ~850-900 MB** (Phase 1: ~650-700 MB + Task 1.2: ~200 MB)
+**Phase 3 (Worker Process Optimization):**
+
+| Task | Savings | PR/Commit | Status |
+|------|---------|-----------|--------|
+| Task 3.1: Configurable max_workers | User-controlled | PR #94 | ✅ Done |
+
+**Phase 4 (Runtime Data Structure Optimization):**
+
+| Task | Savings | PR/Commit | Status |
+|------|---------|-----------|--------|
+| Task 4.1: Stream call sites to SQLite | ~1.9 GB | PR #95 | ✅ Done |
+| Task 4.3: Lazy call graph loading | ~2 GB | PR #96 | ✅ Done |
+
+**Total savings achieved:**
+- Phase 1-2: ~850-900 MB
+- Phase 4: ~3.9 GB
+- **Grand total: ~4.75-4.8 GB**
 
 ### Branch Status
 
@@ -749,18 +765,45 @@ for file in files:
 
 **Implementation Complexity**: HIGH - requires significant refactoring of search and query paths
 
-#### Task 4.3: Lazy Call Graph Loading (MEDIUM PRIORITY)
+#### Task 4.3: Lazy Call Graph Loading ✅ COMPLETED (2026-01-02)
 
-**Current State**: `call_graph` and `reverse_call_graph` dicts kept in memory
+**Status**: ✅ COMPLETED (PR #96)
 
-**Problem**: ~2 GB projected
+**Problem Analysis**:
+- `call_graph` dict: caller USR → Set[callee USRs] (~1.23 GB)
+- `reverse_call_graph` dict: callee USR → Set[caller USRs] (~752 MB)
+- **Total: ~2 GB** for large projects (17,911 files)
 
-**Proposed Solution**:
-- Store call relationships in SQLite (already done in `call_sites` table)
-- Query SQLite for `find_callers()` / `find_callees()` (partially done)
-- Remove in-memory `call_graph` / `reverse_call_graph` dicts
+**Implementation (2026-01-02)**:
 
-**Expected Savings**: ~2 GB
+1. **Removed in-memory dicts** from `CallGraphAnalyzer`:
+   - Deleted `call_graph: Dict[str, Set[str]]`
+   - Deleted `reverse_call_graph: Dict[str, Set[str]]`
+
+2. **Updated query methods** to use ONLY SQLite:
+   ```python
+   def find_callers(self, function_usr: str) -> Set[str]:
+       # Query SQLite exclusively (no in-memory dicts)
+       db_results = self.cache_backend.get_call_sites_for_callee(function_usr)
+       # Also check current session call_sites
+       return callers_set
+   ```
+
+3. **Added SQLite deletion support**:
+   - New `SqliteCacheBackend.delete_call_sites_by_usr()` method
+   - Used by `remove_symbol()` during incremental refresh
+
+4. **Deprecated unused methods**:
+   - `get_call_statistics()` and helper methods (not used in codebase)
+
+**Key Changes**:
+- `mcp_server/call_graph.py`: Removed dicts, updated queries
+- `mcp_server/sqlite_cache_backend.py`: Added `delete_call_sites_by_usr()`
+- `mcp_server/cpp_analyzer.py`: Fixed debug logging
+
+**Memory Savings**: ~2 GB
+
+**Testing**: All 586 tests pass, no regressions
 
 ---
 
@@ -768,8 +811,8 @@ for file in files:
 
 | Priority | Task | Savings | Effort | Status |
 |----------|------|---------|--------|--------|
-| 1 | Task 4.1: Stream call sites to SQLite | ~1.9 GB | 2-4 hours | 🔲 Planned |
-| 2 | Task 4.3: Lazy call graph loading | ~2 GB | 4-8 hours | 🔲 Planned |
+| 1 | Task 4.1: Stream call sites to SQLite | ~1.9 GB | 2-4 hours | ✅ **DONE** (PR #95) |
+| 2 | Task 4.3: Lazy call graph loading | ~2 GB | 4-8 hours | ✅ **DONE** (PR #96) |
 | 3 | Task 4.2: Stream symbols to SQLite | ~2-3 GB | 2-4 days | 🔲 Future |
 
 ---
