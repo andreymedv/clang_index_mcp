@@ -211,7 +211,9 @@ def main():
     # Get list of files - use _find_cpp_files() to respect compile_commands.json
     print("\nScanning for files...")
     all_files = analyzer._find_cpp_files()
-    print(f"Found {len(all_files)} files from compile_commands.json, will process {min(len(all_files), max_files)}")
+    print(
+        f"Found {len(all_files)} files from compile_commands.json, will process {min(len(all_files), max_files)}"
+    )
 
     # Process files in batches
     batch_size = max(10, max_files // 5)
@@ -221,7 +223,9 @@ def main():
 
     for i in range(0, len(files_to_process), batch_size):
         batch = files_to_process[i : i + batch_size]
-        print(f"\nProcessing batch {i // batch_size + 1}: files {i + 1}-{min(i + batch_size, len(files_to_process))}")
+        print(
+            f"\nProcessing batch {i // batch_size + 1}: files {i + 1}-{min(i + batch_size, len(files_to_process))}"
+        )
 
         for file_path in batch:
             try:
@@ -262,9 +266,13 @@ def main():
                     items_per_file = items_growth / files_diff if files_diff > 0 else 0
 
                     print(f"{name:30}")
-                    print(f"  Size: {format_size(first_size)} → {format_size(last_size)} (+{format_size(growth)})")
+                    print(
+                        f"  Size: {format_size(first_size)} → {format_size(last_size)} (+{format_size(growth)})"
+                    )
                     print(f"  Items: {first_items} → {last_items} (+{items_growth})")
-                    print(f"  Per file: +{format_size(int(per_file))} size, +{items_per_file:.1f} items")
+                    print(
+                        f"  Per file: +{format_size(int(per_file))} size, +{items_per_file:.1f} items"
+                    )
 
     # Estimate for full project
     if len(all_files) > max_files and len(snapshots) >= 2:
