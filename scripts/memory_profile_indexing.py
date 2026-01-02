@@ -200,35 +200,27 @@ def analyze_object_sizes(analyzer):
 
     # Analyze call graph
     call_graph_size = 0
+    call_sites_size = 0
     if hasattr(analyzer, "call_graph_analyzer"):
         cga = analyzer.call_graph_analyzer
 
-        # call_graph dict
-        for caller, callees in cga.call_graph.items():
-            call_graph_size += sys.getsizeof(caller)
-            call_graph_size += sys.getsizeof(callees)
-            for callee in callees:
-                call_graph_size += sys.getsizeof(callee)
+        # Phase 4: Task 4.3 - call_graph and reverse_call_graph removed
+        # These dicts no longer exist in memory, data is stored in SQLite
+        # Only measure call_sites (current session only, should be small after indexing)
+        if hasattr(cga, "call_sites"):
+            call_sites_size = sys.getsizeof(cga.call_sites)
+            for cs in cga.call_sites:
+                call_sites_size += sys.getsizeof(cs)
+                call_sites_size += sys.getsizeof(cs.caller_usr)
+                call_sites_size += sys.getsizeof(cs.callee_usr)
+                call_sites_size += sys.getsizeof(cs.file)
 
-        # reverse_call_graph dict
-        for callee, callers in cga.reverse_call_graph.items():
-            call_graph_size += sys.getsizeof(callee)
-            call_graph_size += sys.getsizeof(callers)
-            for caller in callers:
-                call_graph_size += sys.getsizeof(caller)
-
-        # call_sites (current session only)
-        call_sites_size = sys.getsizeof(cga.call_sites)
-        for cs in cga.call_sites:
-            call_sites_size += sys.getsizeof(cs)
-            call_sites_size += sys.getsizeof(cs.caller_usr)
-            call_sites_size += sys.getsizeof(cs.callee_usr)
-            call_sites_size += sys.getsizeof(cs.file)
-
+        # Note: call_graph_size will be 0 in Phase 4 (data in SQLite, not memory)
         sizes["call_graph"] = {
             "size_mb": call_graph_size / (1024 * 1024),
-            "num_callers": len(cga.call_graph),
-            "num_callees": len(cga.reverse_call_graph),
+            "num_callers": 0,  # Phase 4: Not in memory, stored in SQLite
+            "num_callees": 0,  # Phase 4: Not in memory, stored in SQLite
+            "note": "Phase 4: Call graph data stored in SQLite, not in memory",
         }
 
         sizes["call_sites_memory"] = {
