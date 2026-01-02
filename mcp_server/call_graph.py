@@ -81,6 +81,7 @@ class CallGraphAnalyzer:
         file: Optional[str] = None,
         line: Optional[int] = None,
         column: Optional[int] = None,
+        store_call_site: bool = True,
     ):
         """
         Add a function call relationship with optional location information.
@@ -91,13 +92,18 @@ class CallGraphAnalyzer:
             file: Source file containing call (Phase 3)
             line: Line number of call (Phase 3)
             column: Column number of call (Phase 3, optional)
+            store_call_site: If True, store CallSite in memory (default).
+                           Set to False when main process saves directly to SQLite
+                           to avoid memory accumulation (~1.9 GB for large projects).
         """
         if caller_usr and callee_usr:
             self.call_graph[caller_usr].add(callee_usr)
             self.reverse_call_graph[callee_usr].add(caller_usr)
 
             # Phase 3: Store call site with location if provided
-            if file and line:
+            # Phase 4: Only store in memory if store_call_site=True
+            # Main process should set store_call_site=False and save directly to SQLite
+            if store_call_site and file and line:
                 call_site = CallSite(caller_usr, callee_usr, file, line, column)
                 self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
@@ -275,7 +281,7 @@ class CallGraphAnalyzer:
                 db_results = self.cache_backend.get_call_sites_for_caller(caller_usr)
                 for cs_dict in db_results:
                     call_site = CallSite(
-                        caller_usr=cs_dict["caller_usr"],
+                        caller_usr=caller_usr,  # Use parameter, not from db result
                         callee_usr=cs_dict["callee_usr"],
                         file=cs_dict["file"],
                         line=cs_dict["line"],
@@ -312,7 +318,7 @@ class CallGraphAnalyzer:
                 for cs_dict in db_results:
                     call_site = CallSite(
                         caller_usr=cs_dict["caller_usr"],
-                        callee_usr=cs_dict["callee_usr"],
+                        callee_usr=callee_usr,  # Use parameter, not from db result
                         file=cs_dict["file"],
                         line=cs_dict["line"],
                         column=cs_dict.get("column"),
