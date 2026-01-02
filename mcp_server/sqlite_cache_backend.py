@@ -86,6 +86,11 @@ class SqliteCacheBackend:
             # Configure platform-specific settings
             self._configure_platform()
 
+            # Apply connection-level PRAGMA optimizations
+            # CRITICAL: This must be called for EVERY connection (main + workers)
+            # to ensure proper performance, regardless of schema recreation status
+            self._set_connection_pragmas()
+
             self._last_access = time.time()
 
         except Exception as e:
@@ -127,6 +132,44 @@ class SqliteCacheBackend:
 
         # Note: NFS support explicitly not included per requirements
         # Database should be on local filesystem
+
+    def _set_connection_pragmas(self):
+        """
+        Apply connection-level PRAGMA optimizations.
+
+        These are connection-specific settings that must be applied to each
+        database connection, including worker processes. They were previously
+        in schema.sql, but that caused a bug where worker processes (with
+        skip_schema_recreation=True) would skip applying these critical
+        performance optimizations.
+
+        CRITICAL: These PRAGMAs are connection-level settings, NOT schema.
+        They must be applied every time a connection is opened, regardless
+        of whether schema recreation is needed.
+        """
+        try:
+            # Write-Ahead Logging for better concurrency
+            # This is especially important for ProcessPoolExecutor workers
+            self.conn.execute("PRAGMA journal_mode = WAL")
+
+            # Balance safety and speed (NORMAL is safe for WAL mode)
+            self.conn.execute("PRAGMA synchronous = NORMAL")
+
+            # 64MB cache for better performance
+            # Negative value means KiB (64000 KiB = ~64 MB)
+            self.conn.execute("PRAGMA cache_size = -64000")
+
+            # Keep temporary tables in RAM instead of disk
+            self.conn.execute("PRAGMA temp_store = MEMORY")
+
+            # 256MB memory-mapped I/O for faster access
+            self.conn.execute("PRAGMA mmap_size = 268435456")
+
+            diagnostics.debug("SQLite connection PRAGMAs applied successfully")
+
+        except Exception as e:
+            diagnostics.warning(f"Failed to apply some SQLite PRAGMAs: {e}")
+            # Don't raise - database can still work with default settings
 
     def _init_database(self):
         """Initialize database schema and configuration with retry logic.

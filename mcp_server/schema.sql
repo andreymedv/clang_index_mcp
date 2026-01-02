@@ -7,12 +7,17 @@
 -- Changelog v6.0: Added is_definition field for definition-wins logic (Phase 1: Multiple Declarations)
 -- Changelog v5.0: Added line ranges and header file location tracking (Phase 1: LLM Integration)
 
--- Enable optimizations
-PRAGMA journal_mode = WAL;        -- Write-Ahead Logging for concurrency
-PRAGMA synchronous = NORMAL;      -- Balance safety and speed
-PRAGMA cache_size = -64000;       -- 64MB cache
-PRAGMA temp_store = MEMORY;       -- Keep temp tables in RAM
-PRAGMA mmap_size = 268435456;     -- 256MB memory-mapped I/O
+-- NOTE: Connection-level PRAGMA optimizations are now applied in
+-- SqliteCacheBackend._set_connection_pragmas() instead of here.
+-- This ensures they're applied to ALL connections (main + worker processes),
+-- not just during schema recreation.
+--
+-- Previously applied PRAGMAs (now in _set_connection_pragmas()):
+--   PRAGMA journal_mode = WAL;        -- Write-Ahead Logging for concurrency
+--   PRAGMA synchronous = NORMAL;      -- Balance safety and speed
+--   PRAGMA cache_size = -64000;       -- 64MB cache
+--   PRAGMA temp_store = MEMORY;       -- Keep temp tables in RAM
+--   PRAGMA mmap_size = 268435456;     -- 256MB memory-mapped I/O
 
 -- Schema version tracking
 CREATE TABLE IF NOT EXISTS schema_version (

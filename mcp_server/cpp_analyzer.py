@@ -1934,19 +1934,31 @@ class CppAnalyzer:
                                     # v9.0: calls/called_by removed from SymbolInfo
                                     # Call graph is restored from call_sites below
 
-                                # Phase 3: Restore call sites from worker
+                                # Phase 4: Stream call sites directly to SQLite
+                                # This avoids accumulating ~1.9 GB in memory for large projects
                                 if call_sites:
                                     diagnostics.debug(
-                                        f"Restoring {len(call_sites)} call sites from {file_path}"
+                                        f"Streaming {len(call_sites)} call sites from {file_path} to SQLite"
                                     )
-                                for cs_dict in call_sites:
-                                    self.call_graph_analyzer.add_call(
-                                        cs_dict["caller_usr"],
-                                        cs_dict["callee_usr"],
-                                        cs_dict["file"],
-                                        cs_dict["line"],
-                                        cs_dict.get("column"),
-                                    )
+                                    # Delete existing call sites for this file (re-indexing case)
+                                    if self.cache_manager and self.cache_manager.backend:
+                                        self.cache_manager.backend.delete_call_sites_by_file(
+                                            file_path
+                                        )
+                                        # Save call sites directly to SQLite
+                                        self.cache_manager.backend.save_call_sites_batch(call_sites)
+
+                                    # Update in-memory call graph (for current session queries)
+                                    # but DON'T store CallSite objects in memory
+                                    for cs_dict in call_sites:
+                                        self.call_graph_analyzer.add_call(
+                                            cs_dict["caller_usr"],
+                                            cs_dict["callee_usr"],
+                                            cs_dict["file"],
+                                            cs_dict["line"],
+                                            cs_dict.get("column"),
+                                            store_call_site=False,  # Phase 4: Don't accumulate in memory
+                                        )
 
                                 # Merge header tracking from worker (critical for incremental analysis)
                                 # Workers claim headers during parsing, we need to merge that state
@@ -2185,10 +2197,16 @@ class CppAnalyzer:
             compile_commands_mtime=cc_mtime,
         )
 
-        # Phase 3: Save call sites to database
+        # Phase 3/4: Save call sites to database
+        # In ProcessPoolExecutor mode (default): call_sites are already streamed to SQLite
+        # as they arrive from workers (Phase 4 optimization), so this set is empty.
+        # In ThreadPoolExecutor mode: call_sites are accumulated in memory, so we need
+        # to save them here. This is still needed for backwards compatibility.
         call_sites = self.call_graph_analyzer.get_all_call_sites()
         if call_sites:
-            diagnostics.debug(f"Saving {len(call_sites)} call sites to database")
+            diagnostics.debug(
+                f"Saving {len(call_sites)} call sites to database (ThreadPoolExecutor mode)"
+            )
             saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
             if saved_count != len(call_sites):
                 diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
@@ -2562,22 +2580,36 @@ class CppAnalyzer:
                                         self.usr_index[symbol.usr] = symbol
                                     self.file_index[file_path].append(symbol)
 
-                                # Restore call graph from worker process
+                                # Phase 4: Stream call sites directly to SQLite
+                                # This avoids accumulating ~1.9 GB in memory for large projects
                                 if call_sites:
-                                    for caller_usr, call_site_list in call_sites.items():
-                                        for call_site in call_site_list:
-                                            self.call_graph.add_call(
-                                                caller_usr,
-                                                call_site["callee_usr"],
-                                                call_site["file_path"],
-                                                call_site["line"],
-                                                call_site["column"],
-                                            )
+                                    diagnostics.debug(
+                                        f"Streaming {len(call_sites)} call sites from {file_path} to SQLite"
+                                    )
+                                    # Delete existing call sites for this file (re-indexing case)
+                                    if self.cache_manager and self.cache_manager.backend:
+                                        self.cache_manager.backend.delete_call_sites_by_file(
+                                            file_path
+                                        )
+                                        # Save call sites directly to SQLite
+                                        self.cache_manager.backend.save_call_sites_batch(call_sites)
+
+                                    # Update in-memory call graph (for current session queries)
+                                    # but DON'T store CallSite objects in memory
+                                    for cs_dict in call_sites:
+                                        self.call_graph_analyzer.add_call(
+                                            cs_dict["caller_usr"],
+                                            cs_dict["callee_usr"],
+                                            cs_dict["file"],
+                                            cs_dict["line"],
+                                            cs_dict.get("column"),
+                                            store_call_site=False,  # Phase 4: Don't accumulate in memory
+                                        )
 
                                 # Merge header tracking from worker process
                                 if processed_headers:
-                                    for header_path, source_file in processed_headers.items():
-                                        self.header_tracker.mark_processed(header_path, source_file)
+                                    for header_path, header_hash in processed_headers.items():
+                                        self.header_tracker.mark_completed(header_path, header_hash)
 
                             refreshed += 1
                         else:

@@ -258,6 +258,20 @@ make ie                         # install-editable
 - Only traverses AST nodes from project files and files with active call tracking
 - See cpp_analyzer.py:_process_cursor() early exit optimization (line ~946-954)
 
+**11. SQLite Connection-Level PRAGMA Optimization (2026-01-02)**
+- **Critical Separation:** PRAGMA statements moved from schema.sql to dedicated `_set_connection_pragmas()` method
+- **Problem Solved:** Worker processes with `skip_schema_recreation=True` were hitting early return in `_init_database()` and missing SQLite optimizations, causing >8x performance degradation
+- **Architecture:** PRAGMAs are connection-level settings (not schema definitions), must be applied to EVERY connection
+- **Applied PRAGMAs:**
+  - `journal_mode = WAL` - Write-Ahead Logging for concurrent multi-process access
+  - `synchronous = NORMAL` - Balance safety and speed (safe for WAL mode)
+  - `cache_size = -64000` - 64MB cache per connection (vs 2MB default)
+  - `temp_store = MEMORY` - Keep temp tables in RAM (vs disk)
+  - `mmap_size = 268435456` - 256MB memory-mapped I/O (vs 0 default)
+- **Performance Impact:** Restored analysis speed to ~3.5 files/sec (from ~0.4 files/sec in buggy version)
+- **Implementation:** Called from `_connect()` after connection establishment, applies to main + all workers
+- See mcp_server/sqlite_cache_backend.py:_set_connection_pragmas(), mcp_server/schema.sql (documentation)
+
 ### Data Flow
 
 **Indexing Flow:**
