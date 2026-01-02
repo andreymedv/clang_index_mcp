@@ -136,9 +136,7 @@ def _process_file_worker(args_tuple):
         # Debug
         if call_sites:
             diagnostics.debug(f"Worker extracted {len(call_sites)} call sites from {file_path}")
-        diagnostics.debug(
-            f"Worker call_graph entries: {len(_worker_analyzer.call_graph_analyzer.call_graph)}"
-        )
+        # Phase 4: Task 4.3 - call_graph dict removed, only call_sites tracked in memory
         diagnostics.debug(
             f"Worker call_sites count: {len(_worker_analyzer.call_graph_analyzer.call_sites)}"
         )
