@@ -62,7 +62,9 @@ def get_object_size_recursive(obj, seen=None, max_depth=5, current_depth=0) -> i
     elif hasattr(obj, "__slots__"):
         for slot in obj.__slots__:
             if hasattr(obj, slot):
-                size += get_object_size_recursive(getattr(obj, slot), seen, max_depth, current_depth + 1)
+                size += get_object_size_recursive(
+                    getattr(obj, slot), seen, max_depth, current_depth + 1
+                )
 
     return size
 
@@ -104,8 +106,12 @@ class MemorySnapshot:
             counts["class_index"] = len(analyzer.class_index) if analyzer.class_index else 0
 
         if hasattr(analyzer, "function_index"):
-            structures["function_index"] = get_object_size_recursive(analyzer.function_index, max_depth=3)
-            counts["function_index"] = len(analyzer.function_index) if analyzer.function_index else 0
+            structures["function_index"] = get_object_size_recursive(
+                analyzer.function_index, max_depth=3
+            )
+            counts["function_index"] = (
+                len(analyzer.function_index) if analyzer.function_index else 0
+            )
 
         if hasattr(analyzer, "file_index"):
             structures["file_index"] = get_object_size_recursive(analyzer.file_index, max_depth=3)
@@ -136,7 +142,9 @@ class MemorySnapshot:
                 structures["file_to_command_map"] = get_object_size_recursive(
                     ccm.file_to_command_map, max_depth=2
                 )
-                counts["file_to_command_map"] = len(ccm.file_to_command_map) if ccm.file_to_command_map else 0
+                counts["file_to_command_map"] = (
+                    len(ccm.file_to_command_map) if ccm.file_to_command_map else 0
+                )
 
         # Header tracker
         if hasattr(analyzer, "header_tracker") and analyzer.header_tracker:
@@ -169,7 +177,9 @@ class MemorySnapshot:
             dg = analyzer.dependency_graph
             structures["dependency_graph"] = sys.getsizeof(dg)
             if hasattr(dg, "dependencies"):
-                structures["dg_dependencies"] = get_object_size_recursive(dg.dependencies, max_depth=2)
+                structures["dg_dependencies"] = get_object_size_recursive(
+                    dg.dependencies, max_depth=2
+                )
                 counts["dg_dependencies"] = len(dg.dependencies) if dg.dependencies else 0
             if hasattr(dg, "dependents"):
                 structures["dg_dependents"] = get_object_size_recursive(dg.dependents, max_depth=2)
@@ -250,17 +260,21 @@ class MemoryGrowthAnalyzer:
         snapshot = MemorySnapshot(
             snapshot_id=len(self.snapshots),
             timestamp=time.time() - self.start_time,
-            analyzer=self.analyzer
+            analyzer=self.analyzer,
         )
         self.snapshots.append(snapshot)
 
         elapsed = snapshot.timestamp
-        print(f"\n[SNAPSHOT {snapshot.snapshot_id}] t={elapsed:.0f}s, RSS={snapshot.process_rss_mb:.1f} MB")
+        print(
+            f"\n[SNAPSHOT {snapshot.snapshot_id}] t={elapsed:.0f}s, RSS={snapshot.process_rss_mb:.1f} MB"
+        )
 
         # Print structure sizes
         if snapshot.analyzer_structures:
             print("  Structure sizes:")
-            for name, size in sorted(snapshot.analyzer_structures.items(), key=lambda x: -x[1])[:10]:
+            for name, size in sorted(snapshot.analyzer_structures.items(), key=lambda x: -x[1])[
+                :10
+            ]:
                 count = snapshot.structure_counts.get(name, "?")
                 print(f"    {name}: {format_size(size)} ({count} items)")
 
@@ -314,17 +328,33 @@ class MemoryGrowthAnalyzer:
                 growth = last_size - first_size
                 first_count = first.structure_counts.get(name, 0)
                 last_count = last.structure_counts.get(name, 0)
-                count_growth = last_count - first_count if isinstance(first_count, int) and isinstance(last_count, int) else "?"
-                growth_data.append((name, first_size, last_size, growth, first_count, last_count, count_growth))
+                count_growth = (
+                    last_count - first_count
+                    if isinstance(first_count, int) and isinstance(last_count, int)
+                    else "?"
+                )
+                growth_data.append(
+                    (name, first_size, last_size, growth, first_count, last_count, count_growth)
+                )
 
         # Sort by absolute growth
         growth_data.sort(key=lambda x: -abs(x[3]))
 
-        for name, first_size, last_size, growth, first_count, last_count, count_growth in growth_data:
+        for (
+            name,
+            first_size,
+            last_size,
+            growth,
+            first_count,
+            last_count,
+            count_growth,
+        ) in growth_data:
             if growth != 0:
                 sign = "+" if growth > 0 else ""
                 count_info = f"({first_count} → {last_count})" if count_growth != "?" else ""
-                print(f"  {name}: {format_size(first_size)} → {format_size(last_size)} ({sign}{format_size(growth)}) {count_info}")
+                print(
+                    f"  {name}: {format_size(first_size)} → {format_size(last_size)} ({sign}{format_size(growth)}) {count_info}"
+                )
 
         # Identify potential memory leaks
         print("\n" + "-" * 50)
@@ -332,7 +362,15 @@ class MemoryGrowthAnalyzer:
         print("-" * 50)
 
         issues_found = False
-        for name, first_size, last_size, growth, first_count, last_count, count_growth in growth_data:
+        for (
+            name,
+            first_size,
+            last_size,
+            growth,
+            first_count,
+            last_count,
+            count_growth,
+        ) in growth_data:
             # Flag structures with significant growth
             if growth > 10 * 1024 * 1024:  # > 10 MB growth
                 issues_found = True
@@ -365,7 +403,7 @@ class MemoryGrowthAnalyzer:
         data = {
             "start_time": self.start_time,
             "snapshot_interval_sec": self.snapshot_interval,
-            "snapshots": []
+            "snapshots": [],
         }
 
         for snap in self.snapshots:
@@ -374,7 +412,7 @@ class MemoryGrowthAnalyzer:
                 "timestamp_sec": snap.timestamp,
                 "process_rss_mb": snap.process_rss_mb,
                 "structures": {k: v for k, v in snap.analyzer_structures.items()},
-                "counts": {k: v for k, v in snap.structure_counts.items()}
+                "counts": {k: v for k, v in snap.structure_counts.items()},
             }
             data["snapshots"].append(snap_data)
 
@@ -396,13 +434,15 @@ class MemoryGrowthAnalyzer:
             "duration_sec": last.timestamp,
             "rss_growth_mb": last.process_rss_mb - first.process_rss_mb,
             "snapshots_taken": len(self.snapshots),
-            "output_file": self.output_file
+            "output_file": self.output_file,
         }
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python memory_growth_analyzer.py /path/to/project [snapshot_interval_minutes]")
+        print(
+            "Usage: python memory_growth_analyzer.py /path/to/project [snapshot_interval_minutes]"
+        )
         print("Example: python memory_growth_analyzer.py /home/user/project 3")
         sys.exit(1)
 
@@ -450,6 +490,7 @@ def main():
     except Exception as e:
         print(f"\nError during indexing: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         # Stop monitoring and generate report
