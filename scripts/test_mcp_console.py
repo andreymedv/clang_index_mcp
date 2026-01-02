@@ -49,12 +49,25 @@ def test_mcp_server(project_path: str):
 
     # 3. Get server status
     print("\n3. Getting server status...")
+
+    # Phase 4: Task 4.3 - call_graph dict removed, query SQLite for count
+    call_sites_count = 0
+    if analyzer.cache_manager and analyzer.cache_manager.backend:
+        try:
+            # Query SQLite for total call sites count
+            cursor = analyzer.cache_manager.backend.conn.execute(
+                "SELECT COUNT(*) FROM call_sites"
+            )
+            call_sites_count = cursor.fetchone()[0]
+        except Exception:
+            call_sites_count = 0  # Silently ignore if table doesn't exist
+
     status = {
         "parsed_files": len(analyzer.file_index),  # Fixed: use file_index (Issue #10)
         "indexed_classes": len(analyzer.class_index),
         "indexed_functions": len(analyzer.function_index),
         "indexed_symbols": len(analyzer.usr_index),
-        "call_graph_size": len(analyzer.call_graph_analyzer.call_graph),
+        "call_sites_count": call_sites_count,  # Phase 4: Query SQLite instead
         "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
         "compile_commands_path": str(analyzer.compile_commands_manager.compile_commands_path),
     }

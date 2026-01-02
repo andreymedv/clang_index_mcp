@@ -112,26 +112,16 @@ def analyze_analyzer_structures(analyzer, label: str = "") -> Dict[str, Any]:
     # Call graph analyzer
     if hasattr(analyzer, "call_graph_analyzer"):
         cga = analyzer.call_graph_analyzer
-        if hasattr(cga, "call_graph"):
-            cg_calls = sum(len(v) for v in cga.call_graph.values())
-            structures["call_graph"] = {
-                "size": get_size_recursive(cga.call_graph, max_depth=2),
-                "keys": len(cga.call_graph),
-                "items": cg_calls,
-            }
-        if hasattr(cga, "reverse_call_graph"):
-            rcg_calls = sum(len(v) for v in cga.reverse_call_graph.values())
-            structures["reverse_call_graph"] = {
-                "size": get_size_recursive(cga.reverse_call_graph, max_depth=2),
-                "keys": len(cga.reverse_call_graph),
-                "items": rcg_calls,
-            }
+        # Phase 4: Task 4.3 - call_graph and reverse_call_graph removed
+        # These dicts no longer exist in memory, data is in SQLite
+        # Only report call_sites (current session only, should be small/empty after indexing)
         if hasattr(cga, "call_sites"):
             structures["call_sites"] = {
                 "size": get_size_recursive(cga.call_sites, max_depth=2),
                 "keys": 0,
                 "items": len(cga.call_sites),
             }
+        # Note: Historical call graph data is in SQLite call_sites table, not in memory
 
     # Header tracker
     if hasattr(analyzer, "header_tracker"):
