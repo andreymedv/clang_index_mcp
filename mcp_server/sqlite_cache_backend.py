@@ -1983,6 +1983,43 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to delete call sites for file {file_path}: {e}")
             return 0
 
+    def delete_call_sites_by_usr(self, usr: str) -> int:
+        """
+        Delete all call sites where the given USR appears as either caller or callee.
+
+        Used during incremental refresh when removing symbols.
+
+        Args:
+            usr: USR of the symbol to remove from call graph
+
+        Returns:
+            Number of call sites deleted
+        """
+        try:
+            self._ensure_connected()
+
+            # Get count before deletion
+            cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM call_sites WHERE caller_usr = ? OR callee_usr = ?",
+                (usr, usr),
+            )
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                return 0
+
+            # Delete call sites where USR is either caller or callee
+            with self.conn:
+                self.conn.execute(
+                    "DELETE FROM call_sites WHERE caller_usr = ? OR callee_usr = ?", (usr, usr)
+                )
+
+            return count
+
+        except Exception as e:
+            diagnostics.error(f"Failed to delete call sites for USR {usr}: {e}")
+            return 0
+
     def load_all_call_sites(self) -> List[Dict[str, Any]]:
         """
         Load all call sites from the database.

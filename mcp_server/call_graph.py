@@ -1,8 +1,6 @@
 """Call graph analysis for C++ code."""
 
-import re
-from typing import Dict, List, Set, Optional, Any, Tuple
-from collections import defaultdict
+from typing import Dict, List, Set, Optional, Any
 from .symbol_info import SymbolInfo
 
 
@@ -53,16 +51,14 @@ class CallGraphAnalyzer:
         Initialize CallGraphAnalyzer.
 
         Args:
-            cache_backend: Optional SQLiteCacheBackend for lazy loading call sites.
-                          If provided, call sites are loaded on-demand from SQLite
-                          instead of being kept in memory (~150-200 MB savings).
+            cache_backend: SQLiteCacheBackend for lazy loading call graph data.
+                          Required for Task 4.3 memory optimization (~2 GB savings).
+                          Call graph relationships are stored ONLY in SQLite,
+                          not in memory.
         """
-        self.call_graph: Dict[str, Set[str]] = defaultdict(
-            set
-        )  # Function USR -> Set of called USRs
-        self.reverse_call_graph: Dict[str, Set[str]] = defaultdict(
-            set
-        )  # Function USR -> Set of caller USRs
+        # Phase 4: Task 4.3 - Remove in-memory call_graph and reverse_call_graph dicts
+        # All call graph queries now go directly to SQLite (~2 GB memory savings)
+        # The call_graph and reverse_call_graph dicts have been removed
 
         # Phase 3: Line-level call site tracking
         # Only stores call sites from CURRENT indexing session
@@ -71,7 +67,7 @@ class CallGraphAnalyzer:
             set()
         )  # Current session call sites (using set to avoid duplicates)
 
-        # Memory optimization: lazy load call sites from SQLite
+        # Memory optimization: ALL call graph data stored in SQLite
         self.cache_backend = cache_backend
 
     def add_call(
@@ -97,8 +93,8 @@ class CallGraphAnalyzer:
                            to avoid memory accumulation (~1.9 GB for large projects).
         """
         if caller_usr and callee_usr:
-            self.call_graph[caller_usr].add(callee_usr)
-            self.reverse_call_graph[callee_usr].add(caller_usr)
+            # Phase 4: Task 4.3 - Removed in-memory call_graph and reverse_call_graph
+            # Call graph relationships are now stored ONLY in SQLite via call_sites table
 
             # Phase 3: Store call site with location if provided
             # Phase 4: Only store in memory if store_call_site=True
@@ -108,32 +104,34 @@ class CallGraphAnalyzer:
                 self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
     def clear(self):
-        """Clear all call graph data"""
-        self.call_graph.clear()
-        self.reverse_call_graph.clear()
-        self.call_sites.clear()  # Phase 3
+        """
+        Clear all call graph data.
+
+        Phase 4: Task 4.3 - Only clears current session call_sites.
+        Historical call graph data in SQLite is not affected.
+        """
+        # Phase 4: Task 4.3 - Removed in-memory call_graph and reverse_call_graph
+        # Only clear current session call sites
+        self.call_sites.clear()
 
     def remove_symbol(self, usr: str):
-        """Remove a symbol from the call graph completely"""
-        if usr in self.call_graph:
-            # Remove all calls made by this function
-            called_functions = self.call_graph[usr].copy()
-            for called_usr in called_functions:
-                self.reverse_call_graph[called_usr].discard(usr)
-                # Clean up empty sets
-                if not self.reverse_call_graph[called_usr]:
-                    del self.reverse_call_graph[called_usr]
-            del self.call_graph[usr]
+        """
+        Remove a symbol from the call graph completely.
 
-        if usr in self.reverse_call_graph:
-            # Remove all calls to this function
-            calling_functions = self.reverse_call_graph[usr].copy()
-            for caller_usr in calling_functions:
-                self.call_graph[caller_usr].discard(usr)
-                # Clean up empty sets
-                if not self.call_graph[caller_usr]:
-                    del self.call_graph[caller_usr]
-            del self.reverse_call_graph[usr]
+        Phase 4: Task 4.3 - Deletes call sites from SQLite where USR appears as caller or callee.
+        """
+        # Phase 4: Task 4.3 - Delete from SQLite instead of in-memory dicts
+        if self.cache_backend:
+            try:
+                self.cache_backend.delete_call_sites_by_usr(usr)
+                # Silently ignore if no call sites found (not an error)
+            except Exception:
+                pass  # Silently ignore deletion errors
+
+        # Also remove from current session call_sites (if any)
+        self.call_sites = {
+            cs for cs in self.call_sites if cs.caller_usr != usr and cs.callee_usr != usr
+        }
 
     def rebuild_from_symbols(self, symbols: List[SymbolInfo]):
         """
@@ -170,13 +168,12 @@ class CallGraphAnalyzer:
         """
         Find all functions that call the specified function.
 
-        Uses in-memory reverse_call_graph first (for current session),
-        then falls back to SQLite for historical data (lazy loading).
+        Phase 4: Task 4.3 - Queries ONLY SQLite (no in-memory dicts).
+        All call graph data is now stored exclusively in the call_sites table.
         """
-        # First check in-memory (current session or freshly indexed)
-        result = self.reverse_call_graph.get(function_usr, set()).copy()
+        result: Set[str] = set()
 
-        # Then check SQLite if available (historical data / lazy loading)
+        # Phase 4: Task 4.3 - Query SQLite exclusively (no in-memory dicts)
         if self.cache_backend:
             try:
                 db_results = self.cache_backend.get_call_sites_for_callee(function_usr)
@@ -185,7 +182,12 @@ class CallGraphAnalyzer:
                     if caller_usr:
                         result.add(caller_usr)
             except Exception:
-                pass  # Silently ignore DB errors, use in-memory only
+                pass  # Silently ignore DB errors, return empty set
+
+        # Also check current session call_sites (before they're saved to SQLite)
+        for cs in self.call_sites:
+            if cs.callee_usr == function_usr:
+                result.add(cs.caller_usr)
 
         return result
 
@@ -193,13 +195,12 @@ class CallGraphAnalyzer:
         """
         Find all functions called by the specified function.
 
-        Uses in-memory call_graph first (for current session),
-        then falls back to SQLite for historical data (lazy loading).
+        Phase 4: Task 4.3 - Queries ONLY SQLite (no in-memory dicts).
+        All call graph data is now stored exclusively in the call_sites table.
         """
-        # First check in-memory (current session or freshly indexed)
-        result = self.call_graph.get(function_usr, set()).copy()
+        result: Set[str] = set()
 
-        # Then check SQLite if available (historical data / lazy loading)
+        # Phase 4: Task 4.3 - Query SQLite exclusively (no in-memory dicts)
         if self.cache_backend:
             try:
                 db_results = self.cache_backend.get_call_sites_for_caller(function_usr)
@@ -208,7 +209,12 @@ class CallGraphAnalyzer:
                     if callee_usr:
                         result.add(callee_usr)
             except Exception:
-                pass  # Silently ignore DB errors, use in-memory only
+                pass  # Silently ignore DB errors, return empty set
+
+        # Also check current session call_sites (before they're saved to SQLite)
+        for cs in self.call_sites:
+            if cs.caller_usr == function_usr:
+                result.add(cs.callee_usr)
 
         return result
 
@@ -238,24 +244,41 @@ class CallGraphAnalyzer:
         return paths
 
     def get_call_statistics(self) -> Dict[str, Any]:
-        """Get statistics about the call graph"""
+        """
+        Get statistics about the call graph.
+
+        DEPRECATED (Phase 4, Task 4.3): This method is now deprecated.
+        The in-memory call_graph and reverse_call_graph dicts were removed
+        to save ~2 GB of memory. Statistics would require expensive SQLite queries.
+
+        Returns placeholder data for backward compatibility.
+        """
+        # Phase 4: Task 4.3 - Return placeholder data (method deprecated)
         return {
-            "total_functions_with_calls": len(self.call_graph),
-            "total_functions_being_called": len(self.reverse_call_graph),
-            "total_unique_calls": sum(len(calls) for calls in self.call_graph.values()),
-            "most_called_functions": self._get_most_called_functions(10),
-            "functions_with_most_calls": self._get_functions_with_most_calls(10),
+            "total_functions_with_calls": 0,
+            "total_functions_being_called": 0,
+            "total_unique_calls": 0,
+            "most_called_functions": [],
+            "functions_with_most_calls": [],
+            "note": "DEPRECATED: get_call_statistics() is deprecated in Phase 4 (Task 4.3). "
+            "Use SQLite queries directly for call graph statistics if needed.",
         }
 
     def _get_most_called_functions(self, limit: int) -> List[tuple]:
-        """Get the most frequently called functions"""
-        call_counts = [(usr, len(callers)) for usr, callers in self.reverse_call_graph.items()]
-        return sorted(call_counts, key=lambda x: x[1], reverse=True)[:limit]
+        """
+        Get the most frequently called functions.
+
+        DEPRECATED (Phase 4, Task 4.3): Placeholder for backward compatibility.
+        """
+        return []
 
     def _get_functions_with_most_calls(self, limit: int) -> List[tuple]:
-        """Get functions that make the most calls"""
-        call_counts = [(usr, len(callees)) for usr, callees in self.call_graph.items()]
-        return sorted(call_counts, key=lambda x: x[1], reverse=True)[:limit]
+        """
+        Get functions that make the most calls.
+
+        DEPRECATED (Phase 4, Task 4.3): Placeholder for backward compatibility.
+        """
+        return []
 
     # Phase 3: Line-level call site methods
 
