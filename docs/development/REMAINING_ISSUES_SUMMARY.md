@@ -95,6 +95,6 @@ These issues have acceptable workarounds and are deferred:
 
 ## References
 
-- **Issue Tracker:** [docs/issues/README.md](issues/README.md)
+- **Issue Tracker:** [docs/issues/README.md](../issues/README.md)
 - **Manual Test Observations:** [docs/MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md)
-- **Issue Fixing Plan:** [docs/ISSUE_FIXING_PLAN.md](ISSUE_FIXING_PLAN.md)
+- **Issue Fixing Plan:** [docs/ISSUE_FIXING_PLAN.md](../issues/ISSUE_FIXING_PLAN.md)

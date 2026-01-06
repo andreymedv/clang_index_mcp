@@ -1,7 +1,7 @@
 # Issue Fixing Plan - Summary
 
 **Status:** ✅ **ALL CRITICAL ISSUES FIXED** - Phases 1-3 Complete + Additional Fixes
-**Detailed Plan:** See [archived/ISSUE_FIXING_PLAN_DETAILED.md](archived/ISSUE_FIXING_PLAN_DETAILED.md) for complete implementation details
+**Detailed Plan:** See [../archived/ISSUE_FIXING_PLAN_DETAILED.md](../archived/ISSUE_FIXING_PLAN_DETAILED.md) for complete implementation details
 
 ## Quick Summary
 
@@ -35,23 +35,23 @@
 
 These issues are deferred due to lower priority and available workarounds:
 
-**Note:** Issue 001 (Cache Scalability) was previously listed as deferred but was actually **completed in v3.0.0 (2025-11-17)** with the SQLite migration. See [issues/001-cache-scalability.md](issues/001-cache-scalability.md) for details.
+**Note:** Issue 001 (Cache Scalability) was previously listed as deferred but was actually **completed in v3.0.0 (2025-11-17)** with the SQLite migration. See [001-cache-scalability.md](001-cache-scalability.md) for details.
 
 ### Issue #4: Class Search Substring Matching
 **Priority:** Low (minor usability)
 **Workaround:** Users can specify exact patterns when needed
-**Details:** See [MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md#issue-4)
+**Details:** See [../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md#issue-4)
 
 ### Issue #5: Tool Descriptions for Small Models
 **Priority:** Low (edge case compatibility)
 **Workaround:** Use more capable models for production
 **Impact:** Affects small models (Qwen3-4B) only
-**Details:** See [MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md#issue-5)
+**Details:** See [../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md#issue-5)
 
 ### Issue #7: Unauthorized Full Refresh
 **Priority:** Medium (mitigated by other fixes)
 **Mitigation:** Issues #2, #6, #11 make incremental refresh fast/reliable
-**Details:** See [MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md#issue-7)
+**Details:** See [../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md#issue-7)
 **Note:** LLMs less likely to escalate when incremental refresh works well
 
 ### Issue #9: libclang Paths on macOS
@@ -62,7 +62,7 @@ export LIBCLANG_PATH=/opt/homebrew/Cellar/llvm/*/lib/libclang.dylib
 # or
 export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib
 ```
-**Details:** See [MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md#issue-9)
+**Details:** See [../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md#issue-9)
 
 ## Next Steps (If Addressing Phase 5 Deferred Issues)
 
@@ -88,8 +88,8 @@ export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib
 
 ## References
 
-- **Manual Test Observations:** [MANUAL_TEST_OBSERVATIONS.md](MANUAL_TEST_OBSERVATIONS.md)
-- **Detailed Plan:** [archived/ISSUE_FIXING_PLAN_DETAILED.md](archived/ISSUE_FIXING_PLAN_DETAILED.md)
+- **Manual Test Observations:** [../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md)
+- **Detailed Plan:** [../archived/ISSUE_FIXING_PLAN_DETAILED.md](../archived/ISSUE_FIXING_PLAN_DETAILED.md)
 - **FD Leak Fix:** PR #62 (commits 2e6700f, 9b2a3b1, etc.)
 - **Issue #2 Template:** Commit e155aba
-- **Resource Monitoring:** [INTERRUPT_HANDLING.md](INTERRUPT_HANDLING.md), CLAUDE.md
+- **Resource Monitoring:** [../INTERRUPT_HANDLING.md](../INTERRUPT_HANDLING.md), CLAUDE.md

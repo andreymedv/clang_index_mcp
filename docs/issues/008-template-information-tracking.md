@@ -352,7 +352,7 @@ CREATE TABLE template_specializations (
 
 **Related Documentation:**
 - [CLAUDE.md](../../CLAUDE.md) - Development guide
-- [ANALYSIS_STORAGE_ARCHITECTURE.md](../ANALYSIS_STORAGE_ARCHITECTURE.md) - Database architecture
+- [ANALYSIS_STORAGE_ARCHITECTURE.md](../development/ANALYSIS_STORAGE_ARCHITECTURE.md) - Database architecture
 
 **Code References:**
 - `mcp_server/cpp_analyzer.py:_process_cursor()` - Symbol extraction (needs template detection)

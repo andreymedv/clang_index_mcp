@@ -84,7 +84,7 @@ For CMake projects:
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B build
 ```
 
-For other build systems, see [COMPILE_COMMANDS_INTEGRATION.md](COMPILE_COMMANDS_INTEGRATION.md)
+For other build systems, see [../COMPILE_COMMANDS_INTEGRATION.md](../COMPILE_COMMANDS_INTEGRATION.md)
 
 **Expected behavior:**
 - If `compile_commands.json` exists: Analyzer uses project-specific compilation flags

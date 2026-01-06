@@ -3,7 +3,7 @@
 **Date:** 2025-11-17
 **Status:** Design Update after Rebase
 **Base Branch:** `origin/compile_commands-support` (commit `ecf67b5`)
-**Related:** [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
+**Related:** IMPLEMENTATION_PLAN.md (archived)
 
 ---
 

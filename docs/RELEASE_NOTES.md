@@ -179,13 +179,13 @@ python3 scripts/migrate_cache.py --verbose
 ### 📚 Documentation
 
 **New Documentation:**
-- [Migration Guide](docs/MIGRATION_GUIDE.md) - Complete guide for migrating to SQLite
-- [SQLite Architecture](ANALYSIS_STORAGE_ARCHITECTURE.md#sqlite-cache-backend-architecture-v300) - Technical details
+- SQLite Migration Guide - Complete guide for migrating to SQLite (see README.md for details)
+- [SQLite Architecture](development/ANALYSIS_STORAGE_ARCHITECTURE.md#sqlite-cache-backend-architecture-v300) - Technical details
 
 **Updated Documentation:**
-- [README.md](README.md#high-performance-sqlite-cache-new-in-v300) - SQLite cache section
-- [CONFIGURATION.md](CONFIGURATION.md#sqlite-cache-configuration-new-in-v300) - Configuration options
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md#sqlite-cache-issues-new-in-v300) - SQLite troubleshooting
+- [README.md](../README.md#high-performance-sqlite-cache-new-in-v300) - SQLite cache section
+- [CONFIGURATION.md](../CONFIGURATION.md#sqlite-cache-configuration-new-in-v300) - Configuration options
+- [TROUBLESHOOTING.md](../TROUBLESHOOTING.md#sqlite-cache-issues-new-in-v300) - SQLite troubleshooting
 
 ### 🙏 Acknowledgments
 

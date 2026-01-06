@@ -4,7 +4,7 @@
 **Test Suite Status**: ✅ Production Ready
 **Pass Rate**: 100% (544+ tests passed)
 
-> **Note:** For detailed test coverage analysis of incremental analysis feature, see [archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md](archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md)
+> **Note:** For detailed test coverage analysis of incremental analysis feature, see [../archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md](../archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md)
 
 ---
 
