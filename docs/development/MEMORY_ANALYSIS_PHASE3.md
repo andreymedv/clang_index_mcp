@@ -222,7 +222,7 @@ This provides immediate relief without architectural changes.
 3. **Benchmark with different worker counts:**
    ```bash
    for workers in 4 8 16 32; do
-       CPP_ANALYZER_MAX_WORKERS=$workers python scripts/memory_profile_indexing.py
+       CPP_ANALYZER_MAX_WORKERS=$workers python scripts/archived/memory_profile_indexing.py
    done
    ```
 

@@ -444,7 +444,7 @@ def test_large_project():
 
 **Error**: `[FATAL] clang package not found` or `ImportError: No module named 'clang.cindex'`
 
-**🔧 Comprehensive Solution**: See **[CLANG_TROUBLESHOOTING.md](docs/CLANG_TROUBLESHOOTING.md)** for detailed diagnosis and fixes.
+**🔧 Comprehensive Solution**: See **[CLANG_TROUBLESHOOTING.md](../CLANG_TROUBLESHOOTING.md)** for detailed diagnosis and fixes.
 
 **Quick Diagnosis**:
 ```bash
@@ -597,7 +597,7 @@ jobs:
 ## Additional Resources
 
 - [Test Coverage](./TEST_COVERAGE.md) - Detailed test coverage analysis
-- [Requirements](./REQUIREMENTS.md) - System requirements
+- [Requirements](../REQUIREMENTS.md) - System requirements
 - [pytest Documentation](https://docs.pytest.org/) - Official pytest docs
 
 ---

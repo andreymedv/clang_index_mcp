@@ -481,8 +481,8 @@ Based on existing architecture documentation:
 
 **Related Documentation:**
 - [CLAUDE.md](../../CLAUDE.md) - Architecture, resource management section
-- [docs/CLAUDE_TESTING_GUIDE.md](../CLAUDE_TESTING_GUIDE.md) - Testing methodology
-- [docs/MANUAL_TEST_OBSERVATIONS.md](../MANUAL_TEST_OBSERVATIONS.md) - Issue tracking
+- [do../testing/CLAUDE_TESTING_GUIDE.md](../testing/CLAUDE_TESTING_GUIDE.md) - Testing methodology
+- [do../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md) - Issue tracking
 
 **Code References:**
 - `mcp_server/cpp_analyzer.py:72-131` - Worker function and cleanup

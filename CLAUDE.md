@@ -93,10 +93,10 @@ Use the `/test-mcp` skill for automated MCP server testing:
 ```
 
 **Documentation:**
-- [User Guide](docs/TEST_MCP_USER_GUIDE.md) - Complete usage guide
-- [Command Reference](docs/TEST_MCP_COMMAND_REFERENCE.md) - All commands
-- [FAQ](docs/TEST_MCP_FAQ.md) - Troubleshooting
-- [Development Docs](docs/archived/MCP_TESTING_SKILL.md) - Technical specification (archived)
+- [User Guide](docs/testing/TEST_MCP_USER_GUIDE.md) - Complete usage guide
+- [Command Reference](docs/testing/TEST_MCP_COMMAND_REFERENCE.md) - All commands
+- [FAQ](docs/testing/TEST_MCP_FAQ.md) - Troubleshooting
+- [Development Docs](docs/testing/MCP_TESTING_SKILL.md) - Technical specification
 
 **Manual Testing (Advanced):**
 
@@ -111,7 +111,7 @@ curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{...}}' | jq
 ```
 
-See [docs/CLAUDE_TESTING_GUIDE.md](docs/CLAUDE_TESTING_GUIDE.md) for detailed manual testing approaches.
+See [docs/testing/CLAUDE_TESTING_GUIDE.md](docs/testing/CLAUDE_TESTING_GUIDE.md) for detailed manual testing approaches.
 
 ### Building and Distribution
 ```bash
@@ -154,7 +154,7 @@ make ie                         # install-editable
 └───────────────────┬────────────────────────────┘
                     │ MCP Protocol (stdio/http/sse)
 ┌───────────────────▼────────────────────────────┐
-│       cpp_mcp_server.py (16 MCP Tools)         │
+│       cpp_mcp_server.py (18 MCP Tools)         │
 │  Entry point, tool definitions, validation     │
 └───────────────────┬────────────────────────────┘
                     │
@@ -517,7 +517,7 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ```
 mcp_server/
-├── cpp_mcp_server.py           # MCP server entry point (16 tools, stdio/http/sse)
+├── cpp_mcp_server.py           # MCP server entry point (18 tools, stdio/http/sse)
 ├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation

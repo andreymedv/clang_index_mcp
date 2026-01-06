@@ -427,6 +427,6 @@ SSE connections may timeout due to network or proxy settings. Implement reconnec
 
 ## Next Steps
 
-- See [REQUIREMENTS_HTTP_SUPPORT.md](REQUIREMENTS_HTTP_SUPPORT.md) for technical details
+- See [REQUIREMENTS_HTTP_SUPPORT.md](archived/REQUIREMENTS_HTTP_SUPPORT.md) for technical details
 - Run tests: `pytest tests/test_http_transport.py tests/test_sse_transport.py`
 - Check the main README for C++ analyzer functionality

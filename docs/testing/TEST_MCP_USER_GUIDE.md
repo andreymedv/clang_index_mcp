@@ -273,7 +273,7 @@ steps:
 
 ### YAML Format Reference
 
-See [YAML_SCENARIO_SPEC.md](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) for complete format specification.
+See [YAML_SCENARIO_SPEC.md](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) for complete format specification.
 
 **Key features:**
 - Special variables: `$PROJECT_PATH`, `$PROJECT_NAME`, `$BUILD_DIR`
@@ -419,6 +419,6 @@ cat .test-results/<latest>/results.json | jq
 ## Next Steps
 
 - Read [Command Reference](TEST_MCP_COMMAND_REFERENCE.md) for detailed command documentation
-- Read [YAML Scenario Spec](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) for custom scenario format
+- Read [YAML Scenario Spec](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) for custom scenario format
 - Check [FAQ and Troubleshooting](TEST_MCP_FAQ.md) for common issues
 - See example scenarios in `.test-scenarios/` directory

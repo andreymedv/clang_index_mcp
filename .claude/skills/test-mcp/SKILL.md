@@ -1,6 +1,7 @@
-# MCP Testing Skill
-
-Automated testing framework for C++ MCP Server.
+---
+name: mcp-skill
+description: Automated framework for testing of 'cpp_mcp_server' server over stdio/SSE/HTTP protocols with test projects
+---
 
 ## Quick Start
 
@@ -13,25 +14,25 @@ Automated testing framework for C++ MCP Server.
 
 # Reproduce an issue
 /test-mcp test=issue-13 tier=2
+
+# Create new test project from github repository user/repo
+/test-mcp setup-project url=https://github.com/user/repo
+
+# Run custom scenario described by YAML file
+/test-mcp test=custom scenario=.test-scenarios/my-test.yaml
 ```
 
 ## Documentation
 
-See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL.md`
-
-## Implementation Status
-
-- ✅ Phase 1: MVP - Basic Skill with tier1/tier2 (COMPLETE)
-- ✅ Phase 2: Project Management (COMPLETE)
-- [ ] Phase 3: Extended Test Scenarios
-- [ ] Phase 4: Advanced Features
-- [ ] Phase 5: Polish & Documentation
+[Full specification](../../../docs/testing/MCP_TESTING_SKILL.md)
+[YAML scenario specification](YAML_SCENARIO_SPEC.md)
 
 ## Structure
 
 ```
 .claude/skills/test-mcp/
-├── README.md                    # This file
+├── SKILL.md                     # This file
+├── YAML_SCENARIO_SPEC.md        # YAML-based test scenario specification
 ├── __init__.py                  # Skill entry point
 ├── project_manager.py           # Project registry and management
 ├── server_manager.py            # MCP server lifecycle
@@ -47,24 +48,8 @@ See full specification: `/home/andrey/repos/cplusplus_mcp/docs/MCP_TESTING_SKILL
     └── cmake_helper.py          # CMake operations
 ```
 
-## Current Status
+## Direct framework usage
 
-**Status:** Phase 1 & 2 COMPLETE ✅
-
-**Working Features:**
-- ✅ Server lifecycle management (HTTP transport)
-- ✅ MCP protocol initialization handshake
-- ✅ `list-projects` command
-- ✅ `setup-project` command - Clone and configure from GitHub
-- ✅ `validate-project` command
-- ✅ `remove-project` command
-- ✅ CMake auto-detection and configuration
-- ✅ `test=basic-indexing` scenario (tier1, ~5-10s)
-- ✅ `test=issue-13` scenario (tier2, ~5-15min)
-- ✅ Automated result analysis and formatting
-- ✅ Detailed test logs in `.test-results/`
-
-**Usage:**
 ```bash
 # List available projects
 python .claude/skills/test-mcp/__init__.py list-projects
@@ -74,8 +59,4 @@ python .claude/skills/test-mcp/__init__.py setup-project url=https://github.com/
 
 # Run tests
 python .claude/skills/test-mcp/__init__.py test test=basic-indexing tier=1 protocol=http
-
-# Or via Claude Code (when skill is registered)
-/test-mcp test=basic-indexing tier=1
-/test-mcp setup-project url=https://github.com/user/repo
 ```

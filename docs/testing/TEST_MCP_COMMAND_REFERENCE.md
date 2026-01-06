@@ -472,5 +472,5 @@ cat .test-results/$(ls -t .test-results/ | head -1)/results.json | jq
 ## See Also
 
 - [User Guide](TEST_MCP_USER_GUIDE.md) - Comprehensive usage guide
-- [YAML Scenario Spec](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) - Custom scenario format
+- [YAML Scenario Spec](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) - Custom scenario format
 - [FAQ](TEST_MCP_FAQ.md) - Common questions and troubleshooting

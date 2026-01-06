@@ -198,7 +198,7 @@ python scripts/diagnose_cache.py
 ### More Information
 
 - **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
-- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](docs/ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
+- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](docs/development/ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
 
 ## Intelligent Incremental Analysis (New in v3.1.0)
@@ -268,8 +268,7 @@ Re-analyzes everything from scratch. Use this after major configuration changes 
 ### More Information
 
 - **User Guide**: See [CONFIGURATION.md](CONFIGURATION.md#incremental-analysis) for detailed usage instructions
-- **Architecture**: See [docs/INCREMENTAL_ANALYSIS_DESIGN.md](docs/INCREMENTAL_ANALYSIS_DESIGN.md) for technical details
-- **Implementation**: See [docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md](docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md) for status
+- **Architecture**: See [docs/development/INCREMENTAL_ANALYSIS_DESIGN.md](docs/development/INCREMENTAL_ANALYSIS_DESIGN.md) for technical details
 
 ## Client Configuration
 
@@ -408,7 +407,7 @@ The server supports using `compile_commands.json` to provide accurate compilatio
    - Run the installation test to identify issues:
      ```bash
      source mcp_env/bin/activate  # Linux/macOS
-     python -m mcp_server.test_installation
+     python scripts/test_installation.py
      ```
 
 3. **Claude doesn't recognize the server**

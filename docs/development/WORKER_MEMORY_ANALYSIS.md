@@ -361,10 +361,10 @@ _worker_analyzer.header_tracker.clear_all()
 
 ```bash
 # Monitor worker memory during indexing
-scripts/memory_profile_indexing.py /path/to/project
+scripts/archived/memory_profile_indexing.py /path/to/project
 
 # Analyze structure growth
-scripts/analyze_structure_growth.py /path/to/project
+scripts/archived/analyze_structure_growth.py /path/to/project
 ```
 
 **Benefits**:
@@ -519,5 +519,5 @@ scripts/analyze_structure_growth.py /path/to/project
 - **Worker Implementation**: `mcp_server/cpp_analyzer.py` lines 73-171
 - **Main Process Handling**: `mcp_server/cpp_analyzer.py` lines 1857-1970
 - **Header Tracker**: `mcp_server/header_tracker.py`
-- **Memory Profiling Script**: `scripts/memory_profile_indexing.py`
-- **Structure Analysis Script**: `scripts/analyze_structure_growth.py`
+- **Memory Profiling Script**: `scripts/archived/memory_profile_indexing.py` (archived - Phase 3/4 work)
+- **Structure Analysis Script**: `scripts/archived/analyze_structure_growth.py` (archived - Phase 3/4 work)

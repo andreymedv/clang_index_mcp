@@ -29,7 +29,7 @@ deadlocks in the child.
 
 **Analysis:** Same root cause as Issue #002 - ProcessPoolExecutor using fork() in multi-threaded process
 
-**Resolution:** See [TEST_FREEZE_ISSUE.md](TEST_FREEZE_ISSUE.md) and [Issue #002](issues/002-test-freeze-concurrent-cache.md)
+**Resolution:** See [TEST_FREEZE_ISSUE.md](TEST_FREEZE_ISSUE.md) and [Issue #002](../issues/002-test-freeze-concurrent-cache.md)
 
 **Fix:** Set multiprocessing to use 'spawn' in tests/conftest.py
 
