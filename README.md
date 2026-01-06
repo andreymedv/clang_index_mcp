@@ -198,7 +198,7 @@ python scripts/diagnose_cache.py
 ### More Information
 
 - **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
-- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](docs/ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
+- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](docs/development/ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
 
 ## Intelligent Incremental Analysis (New in v3.1.0)
@@ -268,7 +268,7 @@ Re-analyzes everything from scratch. Use this after major configuration changes 
 ### More Information
 
 - **User Guide**: See [CONFIGURATION.md](CONFIGURATION.md#incremental-analysis) for detailed usage instructions
-- **Architecture**: See [docs/INCREMENTAL_ANALYSIS_DESIGN.md](docs/INCREMENTAL_ANALYSIS_DESIGN.md) for technical details
+- **Architecture**: See [docs/development/INCREMENTAL_ANALYSIS_DESIGN.md](docs/development/INCREMENTAL_ANALYSIS_DESIGN.md) for technical details
 
 ## Client Configuration
 
