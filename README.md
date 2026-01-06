@@ -269,7 +269,6 @@ Re-analyzes everything from scratch. Use this after major configuration changes 
 
 - **User Guide**: See [CONFIGURATION.md](CONFIGURATION.md#incremental-analysis) for detailed usage instructions
 - **Architecture**: See [docs/INCREMENTAL_ANALYSIS_DESIGN.md](docs/INCREMENTAL_ANALYSIS_DESIGN.md) for technical details
-- **Implementation**: See [docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md](docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md) for status
 
 ## Client Configuration
 
@@ -408,7 +407,7 @@ The server supports using `compile_commands.json` to provide accurate compilatio
    - Run the installation test to identify issues:
      ```bash
      source mcp_env/bin/activate  # Linux/macOS
-     python -m mcp_server.test_installation
+     python scripts/test_installation.py
      ```
 
 3. **Claude doesn't recognize the server**

@@ -21,7 +21,7 @@ This guide covers everything you need to know to develop and contribute to Clang
 clang_index_mcp/
 ├── mcp_server/                 # Main server package
 │   ├── __init__.py
-│   ├── cpp_mcp_server.py      # MCP server entry point (13 tools)
+│   ├── cpp_mcp_server.py      # MCP server entry point (18 tools)
 │   ├── cpp_analyzer.py        # Core C++ analysis engine
 │   ├── cache_manager.py       # Caching system
 │   ├── call_graph.py          # Call graph analysis
@@ -149,7 +149,7 @@ pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
 2. CompileCommandsManager loads compile_commands.json (if available)
 3. FileScanner finds all C++ files
 4. Files filtered by config (exclude patterns)
-5. Parallel parsing with ThreadPoolExecutor
+5. Parallel parsing with ProcessPoolExecutor (default) or ThreadPoolExecutor (if `CPP_ANALYZER_USE_THREADS=true`)
 6. CompileCommandsManager provides compilation args per file
 7. libclang parses each file → AST (with project-specific build args)
 8. AST traversal extracts symbols
@@ -389,13 +389,6 @@ self._processed: Dict[Tuple[str, str], str] = {}
 - More accurate but adds significant complexity
 - Only beneficial for projects with inconsistent build configurations
 
-#### Implementation Checklist Reference
-
-For step-by-step implementation tasks, see:
-- **Architecture**: `HEADER_EXTRACTION_ARCHITECTURE.md`
-- **Implementation Plan**: `HEADER_EXTRACTION_IMPLEMENTATION_PLAN.md`
-- **Requirements**: `docs/REQUIREMENTS.md` Section 10
-
 ## Common Development Tasks
 
 ### Running the Server
@@ -634,9 +627,19 @@ To update the package version:
 ```
 tests/
 ├── __init__.py
+├── conftest.py                         # Pytest configuration and shared fixtures
+├── test_infrastructure.py              # Test framework utilities
+├── base_functionality/                 # Core analyzer functionality tests
+├── security/                           # Security and input validation tests
+├── robustness/                         # Error handling and edge case tests
+├── edge_cases/                         # Boundary condition tests
+├── platform/                           # Platform-specific tests
+├── integration/                        # End-to-end integration tests
+├── performance/                        # Performance and benchmarking tests
 ├── test_analyzer_integration.py        # Analyzer integration tests
 ├── test_compile_commands_manager.py    # Compile commands tests
 ├── test_runner.py                      # Test runner script
+├── utils/                              # Test utilities
 └── fixtures/                           # Test data
     └── sample_project/
 ```

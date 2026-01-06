@@ -171,9 +171,10 @@ def _validate_scenario_schema(scenario):
     supported_tools = {
         "set_project_directory", "get_indexing_status", "wait_for_indexing",
         "search_classes", "search_functions", "search_symbols",
-        "get_class_info", "find_callers", "find_references",
-        "find_derived_classes", "find_implementations", "find_in_file",
-        "get_call_graph", "refresh_project", "get_project_config"
+        "get_class_info", "get_function_signature", "find_in_file",
+        "refresh_project", "get_server_status", "get_class_hierarchy",
+        "get_derived_classes", "find_callers", "find_callees",
+        "get_call_sites", "get_files_containing_symbol", "get_call_path"
     }
 
     # Validate each step
