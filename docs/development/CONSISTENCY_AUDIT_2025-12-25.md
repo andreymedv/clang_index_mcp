@@ -167,12 +167,19 @@ tests/
 - cache_stats.py
 - diagnose_gil.py
 - test_interrupt_cleanup.py
-- test_issue_10.py (should move to tests/)
 
-**✅ Archived (Obsolete):**
+**✅ Archived (Obsolete/Debug):**
+- debug_args.py (superseded by diagnose_args.py)
+- debug_cursor_location.py (libclang debugging, no current use)
+- debug_declarations.py (Issue #10 debugging, fix is complete)
 - debug_issue8.py
 - debug_issue8_detailed.py
-- test_issue8.py
+- analyze_structure_growth.py (Phase 3/4 memory analysis, complete)
+- memory_growth_analyzer.py (Phase 3/4 memory analysis, complete)
+- memory_profile_indexing.py (Phase 3/4 memory profiling, complete)
+- test_issue_8.py
+- test_issue_10.py (Issue #10 debugging, fix is complete)
+- test_skill_direct.py (redundant with /test-mcp skill)
 - test_deletion_fix.py
 
 **⚠️ Need Fixing:**
