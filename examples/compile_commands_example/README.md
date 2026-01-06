@@ -317,6 +317,6 @@ To support additional file types:
 
 ## Related Files
 
-- [COMPILE_COMMANDS_INTEGRATION.md](../../COMPILE_COMMANDS_INTEGRATION.md) - Detailed documentation
+- [COMPILE_COMMANDS_INTEGRATION.md](../../docs/COMPILE_COMMANDS_INTEGRATION.md) - Detailed documentation
 - [../../cpp-analyzer-config.json](../../cpp-analyzer-config.json) - Default configuration
 - [../../mcp_server/compile_commands_manager.py](../../mcp_server/compile_commands_manager.py) - Implementation

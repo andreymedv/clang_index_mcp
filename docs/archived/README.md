@@ -92,4 +92,4 @@ For current, actively-used documentation, see the main `docs/` directory:
 - `INTERRUPT_HANDLING.md` - Interrupt handling documentation
 - `TESTING.md`, `TESTING_GUIDE.md` - General testing documentation
 
-**See [/CLAUDE.md](/CLAUDE.md) for complete project documentation and architecture overview.**
+**See [/CLAUDE.md](../../CLAUDE.md) for complete project documentation and architecture overview.**

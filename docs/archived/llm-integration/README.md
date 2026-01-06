@@ -261,9 +261,9 @@ All new fields are optional (NULL allowed):
 ## References
 
 ### Project Documentation
-- [CLAUDE.md](/CLAUDE.md) - Main project documentation with Phase 1-3 details
-- [REQUIREMENTS.md](/docs/archived/REQUIREMENTS.md) - Original requirements (archived)
-- [INCREMENTAL_ANALYSIS_DESIGN.md](/docs/INCREMENTAL_ANALYSIS_DESIGN.md) - Incremental analysis architecture
+- [CLAUDE.md](../../../CLAUDE.md) - Main project documentation with Phase 1-3 details
+- [REQUIREMENTS.md](../../REQUIREMENTS.md) - Original requirements
+- [INCREMENTAL_ANALYSIS_DESIGN.md](../../development/INCREMENTAL_ANALYSIS_DESIGN.md) - Incremental analysis architecture
 
 ### Implementation Files
 - `mcp_server/cpp_analyzer.py` - Core analyzer with Phase 1 & 2 implementation
@@ -292,7 +292,7 @@ When adding new phases:
 For questions or issues related to LLM integration:
 1. Check the phase-specific requirements documents
 2. Review the verification reports for completed phases
-3. See [CLAUDE.md](/CLAUDE.md) for implementation details
+3. See [CLAUDE.md](../../../CLAUDE.md) for implementation details
 4. Open an issue at https://github.com/andreymedv/clang_index_mcp/issues
 
 ---

@@ -63,7 +63,7 @@ A: Create a YAML file in `.test-scenarios/` and run:
 /test-mcp test=custom scenario=my-test.yaml tier=1
 ```
 
-See [YAML_SCENARIO_SPEC.md](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) for format.
+See [YAML_SCENARIO_SPEC.md](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) for format.
 
 ---
 
@@ -546,7 +546,7 @@ If you're still having issues:
 2. **Read documentation:**
    - [User Guide](TEST_MCP_USER_GUIDE.md)
    - [Command Reference](TEST_MCP_COMMAND_REFERENCE.md)
-   - [YAML Scenario Spec](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md)
+   - [YAML Scenario Spec](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md)
 
 3. **Try simple test first:**
    ```bash
@@ -579,4 +579,4 @@ If you're still having issues:
 
 - [User Guide](TEST_MCP_USER_GUIDE.md) - Comprehensive usage guide
 - [Command Reference](TEST_MCP_COMMAND_REFERENCE.md) - Detailed command documentation
-- [YAML Scenario Spec](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) - Custom scenario format
+- [YAML Scenario Spec](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) - Custom scenario format

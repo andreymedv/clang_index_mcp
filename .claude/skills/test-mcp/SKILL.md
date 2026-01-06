@@ -24,7 +24,7 @@ description: Automated framework for testing of 'cpp_mcp_server' server over std
 
 ## Documentation
 
-[Full specification](../../docs/testing/MCP_TESTING_SKILL.md)
+[Full specification](../../../docs/testing/MCP_TESTING_SKILL.md)
 [YAML scenario specification](YAML_SCENARIO_SPEC.md)
 
 ## Structure

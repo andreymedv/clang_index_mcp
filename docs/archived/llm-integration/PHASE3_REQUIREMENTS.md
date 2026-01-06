@@ -614,7 +614,7 @@ The removed sub-phases (cross-references and parameter documentation) are enhanc
 - [PHASE1_REQUIREMENTS.md](PHASE1_REQUIREMENTS.md)
 - [PHASE2_REQUIREMENTS.md](PHASE2_REQUIREMENTS.md)
 - [PHASE3_TEST_PLAN.md](PHASE3_TEST_PLAN.md) (to be created)
-- [CLAUDE.md](/CLAUDE.md)
+- [CLAUDE.md](../../../CLAUDE.md)
 
 ---
 

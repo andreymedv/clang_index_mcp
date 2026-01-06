@@ -436,10 +436,10 @@ All 5 phases of the `/test-mcp` skill implementation are now complete:
 
 ### Documentation Links
 
-- [User Guide](TEST_MCP_USER_GUIDE.md) - Comprehensive usage guide
-- [Command Reference](TEST_MCP_COMMAND_REFERENCE.md) - Complete command documentation
-- [FAQ & Troubleshooting](TEST_MCP_FAQ.md) - Common questions and solutions
-- [YAML Scenario Spec](.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) - Custom scenario format
+- [User Guide](../testing/TEST_MCP_USER_GUIDE.md) - Comprehensive usage guide
+- [Command Reference](../testing/TEST_MCP_COMMAND_REFERENCE.md) - Complete command documentation
+- [FAQ & Troubleshooting](../testing/TEST_MCP_FAQ.md) - Common questions and solutions
+- [YAML Scenario Spec](../../.claude/skills/test-mcp/YAML_SCENARIO_SPEC.md) - Custom scenario format
 
 ---
 

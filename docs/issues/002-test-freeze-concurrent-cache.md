@@ -26,7 +26,7 @@ Multi-threaded process using `fork()` in ProcessPoolExecutor leads to deadlock i
 
 ## Detailed Analysis
 
-See [TEST_FREEZE_ISSUE.md](../TEST_FREEZE_ISSUE.md) for comprehensive analysis including:
+See [TEST_FREEZE_ISSUE.md](../testing/TEST_FREEZE_ISSUE.md) for comprehensive analysis including:
 - Full error traces
 - Root cause analysis
 - Multiple solution options
@@ -76,7 +76,7 @@ if multiprocessing.get_start_method(allow_none=True) != 'spawn':
 - ✅ All 7 affected tests now pass without freezing
 - ✅ Test suite unblocked
 
-**See:** [ISSUE_002_VALIDATION_RESULTS.md](../../ISSUE_002_VALIDATION_RESULTS.md)
+**See:** [ISSUE_002_VALIDATION_RESULTS.md](../../docs/archived/ISSUE_002_VALIDATION_RESULTS.md)
 
 ---
 
@@ -90,4 +90,4 @@ if multiprocessing.get_start_method(allow_none=True) != 'spawn':
 
 **Reported:** 2025-12-25
 **Resolved:** 2025-12-26
-**Documentation:** [TEST_FREEZE_ISSUE.md](../TEST_FREEZE_ISSUE.md)
+**Documentation:** [TEST_FREEZE_ISSUE.md](../testing/TEST_FREEZE_ISSUE.md)

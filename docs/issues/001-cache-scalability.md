@@ -28,7 +28,7 @@
 
 **See:**
 - [RELEASE_NOTES.md](../RELEASE_NOTES.md) - Version 3.0.0 details
-- [ANALYSIS_STORAGE_ARCHITECTURE.md](../ANALYSIS_STORAGE_ARCHITECTURE.md#sqlite-cache-backend-architecture-v300) - Current SQLite architecture
+- [ANALYSIS_STORAGE_ARCHITECTURE.md](../development/ANALYSIS_STORAGE_ARCHITECTURE.md#sqlite-cache-backend-architecture-v300) - Current SQLite architecture
 - [design/sqlite-cache-architecture.md](../design/sqlite-cache-architecture.md) - Design document
 
 ---
@@ -361,7 +361,7 @@ If full SQLite migration is too risky, consider **Option 5** (Compression) as im
 ## References
 
 **Related Documentation:**
-- [ANALYSIS_STORAGE_ARCHITECTURE.md](../../ANALYSIS_STORAGE_ARCHITECTURE.md)
+- [ANALYSIS_STORAGE_ARCHITECTURE.md](../development/ANALYSIS_STORAGE_ARCHITECTURE.md)
 - [mcp_server/cache_manager.py](../../mcp_server/cache_manager.py)
 
 **External Resources:**
