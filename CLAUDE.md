@@ -96,7 +96,7 @@ Use the `/test-mcp` skill for automated MCP server testing:
 - [User Guide](docs/TEST_MCP_USER_GUIDE.md) - Complete usage guide
 - [Command Reference](docs/TEST_MCP_COMMAND_REFERENCE.md) - All commands
 - [FAQ](docs/TEST_MCP_FAQ.md) - Troubleshooting
-- [Development Docs](docs/archived/MCP_TESTING_SKILL.md) - Technical specification (archived)
+- [Development Docs](docs/MCP_TESTING_SKILL.md) - Technical specification
 
 **Manual Testing (Advanced):**
 
