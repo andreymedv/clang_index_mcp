@@ -434,6 +434,6 @@ Phase 1 is complete when:
 ## References
 
 - LLM Integration Strategy: `docs/LLM_INTEGRATION_STRATEGY.md`
-- Implementation Details: `docs/llm-integration/IMPLEMENTATION_DETAILS.md`
+- Implementation Details: `../llm-integration/IMPLEMENTATION_DETAILS.md`
 - libclang API: https://libclang.readthedocs.io/
 - SQLite FTS5: https://www.sqlite.org/fts5.html
