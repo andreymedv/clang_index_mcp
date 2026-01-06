@@ -300,7 +300,7 @@ python3 scripts/diagnose_cache.py
 
 **See Also**:
 - [Troubleshooting](TROUBLESHOOTING.md) - Cache-specific issues
-- [Architecture](docs/ANALYSIS_STORAGE_ARCHITECTURE.md) - Technical details
+- [Architecture](docs/development/ANALYSIS_STORAGE_ARCHITECTURE.md) - Technical details
 
 ## Creating a Configuration File
 
@@ -762,6 +762,5 @@ Example:
 
 ### Related Documentation
 
-- **Design**: See [docs/INCREMENTAL_ANALYSIS_DESIGN.md](docs/INCREMENTAL_ANALYSIS_DESIGN.md) for architecture details
-- **Implementation**: See [docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md](docs/INCREMENTAL_ANALYSIS_IMPLEMENTATION_CHECKLIST.md) for implementation status
+- **Design**: See [docs/development/INCREMENTAL_ANALYSIS_DESIGN.md](docs/development/INCREMENTAL_ANALYSIS_DESIGN.md) for architecture details
 - **Cache Backend**: See [SQLite Cache Configuration](#sqlite-cache-configuration-new-in-v300) section above

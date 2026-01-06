@@ -31,7 +31,7 @@ if multiprocessing.get_start_method(allow_none=True) != 'spawn':
 - ✅ All 7 affected tests now pass without freezing
 - ✅ Test suite completely unblocked
 
-**See:** [ISSUE_002_VALIDATION_RESULTS.md](../ISSUE_002_VALIDATION_RESULTS.md) for detailed validation
+**See:** [ISSUE_002_VALIDATION_RESULTS.md](../archived/ISSUE_002_VALIDATION_RESULTS.md) for detailed validation
 
 ---
 
@@ -242,7 +242,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ## Related Issues
 
-- **Issue #002:** This issue is tracked in [issues/002-test-freeze-concurrent-cache.md](issues/002-test-freeze-concurrent-cache.md)
+- **Issue #002:** This issue is tracked in [../issues/002-test-freeze-concurrent-cache.md](../issues/002-test-freeze-concurrent-cache.md)
 - **Fork Deprecation Warnings:** See [TEST_WARNINGS_RESOURCE_LEAKS.md](TEST_WARNINGS_RESOURCE_LEAKS.md#1--fork-deprecation-warning-critical---see-issue-002)
   - 7 tests produce fork() deprecation warnings
   - All will be resolved by switching to 'spawn' multiprocessing method

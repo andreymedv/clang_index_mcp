@@ -270,7 +270,7 @@ ALTER TABLE symbols ADD COLUMN alias_kind TEXT DEFAULT NULL;
 
 **Related Documentation:**
 - [CLAUDE.md](../../CLAUDE.md) - Development guide
-- [ANALYSIS_STORAGE_ARCHITECTURE.md](../ANALYSIS_STORAGE_ARCHITECTURE.md) - Database architecture
+- [ANALYSIS_STORAGE_ARCHITECTURE.md](../development/ANALYSIS_STORAGE_ARCHITECTURE.md) - Database architecture
 
 **Code References:**
 - `mcp_server/cpp_analyzer.py:_process_cursor()` - Symbol extraction (will need alias handling)

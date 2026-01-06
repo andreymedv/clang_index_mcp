@@ -169,9 +169,9 @@ steps:
       - type: has_field
         field: "file_path"
 
-  - tool: find_derived_classes
+  - tool: get_derived_classes
     args:
-      base_class: "BaseClass"
+      class_name: "BaseClass"
     expect:
       - type: count
         operator: ">="

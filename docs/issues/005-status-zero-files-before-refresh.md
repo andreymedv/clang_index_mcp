@@ -317,7 +317,7 @@ def get_indexing_status(self):
 
 **Related Documentation:**
 - [CLAUDE.md](../../CLAUDE.md) - Architecture, cache management
-- [docs/MANUAL_TEST_OBSERVATIONS.md](../MANUAL_TEST_OBSERVATIONS.md) - Issue tracking
+- [do../development/MANUAL_TEST_OBSERVATIONS.md](../development/MANUAL_TEST_OBSERVATIONS.md) - Issue tracking
 
 **Code References:**
 - `mcp_server/cpp_analyzer.py:set_project_directory()` - Project initialization

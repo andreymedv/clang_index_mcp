@@ -496,7 +496,7 @@ Phase 2 is complete when:
 ## References
 
 - LLM Integration Strategy: `docs/LLM_INTEGRATION_STRATEGY.md`
-- Implementation Details: `docs/llm-integration/IMPLEMENTATION_DETAILS.md`
-- Phase 1 Requirements: `docs/llm-integration/PHASE1_REQUIREMENTS.md`
+- Implementation Details: `../llm-integration/IMPLEMENTATION_DETAILS.md`
+- Phase 1 Requirements: `../llm-integration/PHASE1_REQUIREMENTS.md`
 - libclang Comment APIs: https://libclang.readthedocs.io/
 - Doxygen Documentation: https://www.doxygen.nl/manual/docblocks.html

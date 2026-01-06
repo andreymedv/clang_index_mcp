@@ -1,7 +1,7 @@
 # Manual Testing Observations - Summary
 
 **Status:** ✅ All critical issues resolved (Phases 1-3 complete)
-**Detailed Version:** See [archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md](archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md) for full investigation details
+**Detailed Version:** See [archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md](../archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md) for full investigation details
 
 ## Test Sessions
 
@@ -91,4 +91,4 @@ export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib
 ---
 
 **For detailed investigation notes, root cause analysis, and validation details:**
-See [archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md](archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md)
+See [archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md](../archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md)

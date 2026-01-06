@@ -1,10 +1,10 @@
 # Test Coverage Summary
 
-**Last Updated**: 2025-12-25
+**Last Updated**: 2026-01-06
 **Test Suite Status**: ✅ Production Ready
 **Pass Rate**: 100% (544+ tests passed)
 
-> **Note:** For detailed test coverage analysis of incremental analysis feature, see [archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md](archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md)
+> **Note:** For detailed test coverage analysis of incremental analysis feature, see [../archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md](../archived/TEST_COVERAGE_INCREMENTAL_ANALYSIS.md)
 
 ---
 
@@ -84,7 +84,7 @@ Tests are organized by category:
 - `tests/test_performance_optimizations.py`
 
 ### 2. MCP Tools (REQ-4.x)
-**Tests**: ~30 | **Status**: ✅ All 16 Tools Tested
+**Tests**: ~30 | **Status**: ✅ All 18 Tools Tested
 
 | Tool | Test Coverage | Status |
 |------|--------------|--------|
@@ -103,6 +103,8 @@ Tests are organized by category:
 | get_derived_classes | ✅ Derived | Pass |
 | find_callers | ✅ Call graph | Pass |
 | find_callees | ✅ Call graph | Pass |
+| get_call_sites | ✅ Call sites | Pass |
+| get_files_containing_symbol | ✅ File search | Pass |
 | get_call_path | ✅ Path finding | Pass |
 
 **Key Files**:
