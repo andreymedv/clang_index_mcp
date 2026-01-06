@@ -936,35 +936,30 @@ SELECT * FROM symbols WHERE namespace_components LIKE '%"ui"%';
 
 #### Tasks
 
-**3.1 Namespace Parameter (4 days)**
-- [ ] Add `namespace` parameter to search tools
-- [ ] Implement prefix matching (e.g., "app" matches "app::core::X")
-- [ ] Update tool schemas with new parameter
-- [ ] Add validation for namespace format
-
-**3.2 get_class_info / get_function_info Update (3 days)**
+**3.1 get_class_info / get_function_info Update (3 days)** *(renumbered)*
 - [ ] Support qualified names in `class_name` / `function_name` parameters
 - [ ] Handle ambiguity when unqualified name provided
 - [ ] Return warning if multiple matches exist
-- [ ] Add `prefer_namespace` parameter (optional)
+- [ ] ~~Add `prefer_namespace` parameter~~ *(removed per Q5 decision)*
 
-**3.3 Call Graph Tools Update (3 days)**
+**3.2 Call Graph Tools Update (3 days)** *(renumbered)*
 - [ ] Update `find_callers` / `find_callees` to support qualified names
 - [ ] Store qualified names for call sites (if not already)
 - [ ] Test with overloaded functions
 
-**3.4 Derived/Base Classes Tools (2 days)**
+**3.3 Derived/Base Classes Tools (2 days)** *(renumbered)*
 - [ ] Update `get_derived_classes` to support qualified names
 - [ ] Update `get_base_classes` to support qualified names
 - [ ] Test with template specializations
 
-**3.5 Documentation and Examples (2 days)**
+**3.4 Documentation and Examples (3 days)** *(renumbered, extended +1 day)*
 - [ ] Update tool descriptions in MCP schema
 - [ ] Add examples of qualified vs unqualified usage
+- [ ] Document regex patterns for namespace filtering (replaces removed parameter)
 - [ ] Update README and CLAUDE.md
 - [ ] Create user guide for qualified name patterns
 
-**3.6 Edge Cases and Polish (2 days)**
+**3.5 Edge Cases and Polish (2 days)** *(renumbered)*
 - [ ] Anonymous namespaces handling
 - [ ] Global namespace (`::`) edge cases
 - [ ] Very long qualified names (>500 chars)
@@ -974,9 +969,11 @@ SELECT * FROM symbols WHERE namespace_components LIKE '%"ui"%';
 
 **Success Criteria:**
 - All tools support qualified and unqualified modes
-- Namespace filtering works
-- Documentation complete
+- ~~Namespace filtering parameter works~~ Regex patterns enable namespace filtering
+- Documentation complete (including regex pattern guide)
 - Ready for production use
+
+**Note:** Task 3.1 "Namespace Parameter" removed per Q5 decision (2026-01-06). Use regex patterns for namespace filtering instead.
 
 ---
 
@@ -1002,25 +999,33 @@ SELECT * FROM symbols WHERE namespace_components LIKE '%"ui"%';
 
 ## Open Questions
 
-### Q1: Partial Qualification Matching Rules ⚠️ CRITICAL
+### Q1: Partial Qualification Matching Rules ✅ RESOLVED
 
-**Question:** What should `"ui::View"` match?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Option A (Strict Suffix Matching) with component-based implementation
 
-**Option A: Suffix Matching (RECOMMENDED)**
-- Matches: `app::ui::View`, `legacy::ui::View`
-- Does NOT match: `app::ui::core::View` (not a suffix)
-- Rationale: Most intuitive, similar to filesystem paths
+**Final Specification:**
 
-**Option B: Anywhere Matching**
-- Matches: `app::ui::View`, `app::ui::core::View`
-- Rationale: More flexible, finds all occurrences
+**Component-Based Suffix Matching:**
+- Pattern matches if qualified_name ends with the same sequence of components
+- Each `::` is a hard boundary (component `"app"` does NOT match `"myapp"`)
+- Leading `::` means exact match (see Q4)
 
-**Option C: Component-wise Matching**
-- `"ui::View"` only matches if `ui` is immediate parent namespace
-- Does NOT match: `app::nested::ui::View`
-- Rationale: More precise, less surprising
+**Examples:**
+- Pattern `"ui::View"`:
+  - ✅ Matches: `app::ui::View`, `legacy::ui::View`, `ui::View`
+  - ❌ Does NOT match: `app::ui::internal::View`, `myapp::View`
 
-**Decision needed before Phase 2 implementation.**
+**No Separate `namespace` Parameter:**
+- Decision: Do NOT add `namespace` parameter to search tools
+- Rationale: Creates ambiguity, increases cognitive load
+- Use regex patterns instead: `"app::core::.*"` for namespace filtering
+
+**Empty Results on No Match:**
+- No suggestions or partial matches
+- Return empty list if no exact suffix matches found
+
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q1-partial-qualification-matching-rules-) for detailed rationale and implementation.
 
 ---
 
@@ -1079,44 +1084,60 @@ template<typename T> class Container {};
 
 ---
 
-### Q4: Leading `::` Semantics
+### Q4: Leading `::` Semantics ✅ RESOLVED
 
-**Question:** What does `"::View"` mean?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Option A (Global Namespace Only)
 
-**Option A: Global Namespace Only**
-- `"::View"` matches only `View` in global namespace
-- `"View"` matches View in any namespace
-- C++-like semantics
+**Final Specification:**
 
-**Option B: No Special Meaning**
-- `"::View"` treated same as `"View"`
-- Leading `::` stripped
+**Leading `::` = Absolute Name (Exact Match):**
+- Pattern `"::View"` matches only `View` in global namespace
+- Equivalent to regex `^View$` (exact match)
+- Pattern `"View"` (no leading `::`) uses suffix matching (see Q1)
 
-**Recommendation:** Option A (global namespace explicit)
-- Aligns with C++ syntax
-- Provides way to disambiguate global vs namespaced
+**Examples:**
+- `"::View"` matches only `View` (global namespace)
+- `"::app::ui::View"` matches only `app::ui::View` (if app is in global namespace)
+
+**Rationale:**
+- Aligns with C++ syntax semantics
+- Provides mechanism to disambiguate global vs namespaced symbols
+
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q4-leading--semantics-) for details.
 
 ---
 
-### Q5: Namespace Filtering Scope
+### Q5: Namespace Filtering Scope ✅ RESOLVED
 
-**Question:** Should `namespace="app"` parameter match child namespaces?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** No separate `namespace` parameter - use qualified patterns instead
 
-**Option A: Prefix Matching (RECOMMENDED)**
-- `namespace="app"` matches `app::X`, `app::core::Y`, `app::ui::View`
-- Intuitive, useful for scoping searches
+**Final Specification:**
 
-**Option B: Exact Matching**
-- `namespace="app"` matches only `app::X`, not `app::core::Y`
-- More precise but less useful
+**No `namespace` parameter will be added to search tools.**
 
-**Recommendation:** Option A with ability to opt-out
+**Rationale:**
+- Separate parameter creates ambiguity (namespace vs parent class)
+- Increases cognitive load on users (must distinguish component types)
+- Requires additional LLM tokens to parse qualified names
+- Regex patterns already provide this functionality
+
+**Use qualified patterns instead:**
 ```json
-{
-  "namespace": "app",
-  "namespace_exact": false  // Default: prefix matching
-}
+// All classes in ui namespace (any level)
+search_classes({"pattern": "ui::.*"})
+
+// All classes in app::core and children
+search_classes({"pattern": "app::core::.*"})
+
+// Specific class in namespace
+search_classes({"pattern": "app::core::Config"})
 ```
+
+**Impact:** Remove Phase 3 Task 3.1 "Namespace Parameter" from implementation plan.
+
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q5-namespace-filtering-scope-) for rationale.
 
 ---
 
@@ -1576,20 +1597,32 @@ SELECT * FROM symbols_fts WHERE qualified_name MATCH 'ns1::ui::View';
 
 ## Questions for Next Discussion
 
+**Discussion in progress** - See [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md) for details.
+
+### Resolved (2026-01-06) ✅
+
+1. ~~**Partial qualification rules (Q1):**~~ ✅ Component-based suffix matching
+2. ~~**Namespace filtering (Q5):**~~ ✅ No separate parameter, use regex patterns
+3. ~~**Leading `::` semantics (Q4):**~~ ✅ Global namespace (exact match)
+
+### Pending Discussion 🔄
+
 Based on this proposal, please provide feedback on:
 
-1. **Partial qualification rules (Q1):** Suffix matching vs anywhere matching?
-2. **Backward compatibility approach:** Dual mode vs explicit parameter vs versioning?
-3. **Performance targets:** What search latency is acceptable?
-4. **Scope for v1:** All three phases or just Phase 1 + 2?
-5. **Function signature matching (Q2):** Defer to v2 or include in v1?
-6. **Template semantics (Q3):** How should `"Container"` behave vs `"Container<int>"`?
-7. **Namespace filtering (Q5):** Prefix matching default or exact matching?
-8. **Timeline:** Is 6-8 weeks realistic given team capacity?
+1. **Function signature matching (Q2):** Defer to v2 or include in v1?
+2. **Template semantics (Q3):** How should `"Container"` behave vs `"Container<int>"`?
+3. **Backward compatibility approach:** Dual mode vs explicit parameter vs versioning?
+4. **Performance targets (Q6):** What search latency is acceptable?
+5. **Anonymous namespaces (Q7):** libclang representation as-is or custom?
+6. **Nested classes (Q8):** Just qualified_name or add parent_class field?
+7. **Schema migration (Q9):** Auto-recreation or implement migration?
+8. **Tool descriptions (Q10):** Detailed vs concise?
+9. **Scope for v1:** All three phases or just Phase 1 + 2?
+10. **Timeline:** Is 6-8 weeks realistic given team capacity?
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2026-01-05
-**Status:** Draft - Awaiting Discussion
-**Next Review:** After user feedback and validation testing
+**Document Version:** 1.1
+**Last Updated:** 2026-01-06
+**Status:** Discussion in Progress - Q1, Q4, Q5 Resolved
+**Next Review:** Resume at Q2 (Function Overload Identification)
