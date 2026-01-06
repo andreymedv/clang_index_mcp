@@ -475,7 +475,7 @@ python -m mcp_server.cpp_mcp_server --transport http --host 0.0.0.0 --port 8000
 #### SSE Transport
 
 ```bash
-# Start SSE server on default port 8080
+# Start SSE server on port 8080 (default is 8000)
 python -m mcp_server.cpp_mcp_server --transport sse --port 8080
 
 # Start on custom port

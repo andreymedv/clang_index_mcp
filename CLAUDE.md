@@ -154,7 +154,7 @@ make ie                         # install-editable
 └───────────────────┬────────────────────────────┘
                     │ MCP Protocol (stdio/http/sse)
 ┌───────────────────▼────────────────────────────┐
-│       cpp_mcp_server.py (16 MCP Tools)         │
+│       cpp_mcp_server.py (18 MCP Tools)         │
 │  Entry point, tool definitions, validation     │
 └───────────────────┬────────────────────────────┘
                     │
@@ -517,7 +517,7 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ```
 mcp_server/
-├── cpp_mcp_server.py           # MCP server entry point (16 tools, stdio/http/sse)
+├── cpp_mcp_server.py           # MCP server entry point (18 tools, stdio/http/sse)
 ├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
