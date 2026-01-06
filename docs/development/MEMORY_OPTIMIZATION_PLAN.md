@@ -675,7 +675,7 @@ Worker Process:
 
 ### Phase 3 Investigation
 - Detailed analysis: `docs/MEMORY_ANALYSIS_PHASE3.md`
-- Memory profiling script: `scripts/memory_profile_indexing.py`
+- Memory profiling script: `scripts/archived/memory_profile_indexing.py` (archived - Phase 3/4 work)
 
 ### Key Files for Phase 3 Implementation
 - `mcp_server/cpp_analyzer.py:73-170` - Worker function (`_process_file_worker`)
@@ -837,5 +837,5 @@ for file in files:
 ---
 
 ## Phase 4 Investigation Files
-- Analysis script: `scripts/analyze_structure_growth.py`
-- Memory growth analyzer: `scripts/memory_growth_analyzer.py`
+- Analysis script: `scripts/archived/analyze_structure_growth.py` (archived - Phase 3/4 work)
+- Memory growth analyzer: `scripts/archived/memory_growth_analyzer.py` (archived - Phase 3/4 work)
