@@ -11,21 +11,22 @@
 ### Completed Questions ✅
 
 - **Q1: Partial Qualification Matching Rules** ✅ RESOLVED
+- **Q2: Function Overload Identification** ✅ RESOLVED
 - **Q4: Leading `::` Semantics** ✅ RESOLVED (discussed alongside Q1)
 - **Q5: Namespace Filtering Scope** ✅ RESOLVED (discussed alongside Q1)
 
 ### Next Question to Discuss ⏭️
 
-**Q2: Function Overload Identification** - Resume discussion from here
+**Q3: Template Specialization Qualified Names** - Resume discussion from here
 
 ### Pending Questions
 
-- Q3: Template Specialization Qualified Names
 - Q6: Performance vs Precision Trade-offs
 - Q7: Anonymous Namespace Handling
 - Q8: Nested Class Qualified Names
 - Q9: Backward Compatibility - Schema Migration
 - Q10: LLM Guidance - Tool Descriptions
+- Q11: Template Function Search Logic (NEW - separate research track)
 
 ---
 
@@ -174,6 +175,106 @@ search_classes({"pattern": "app::core::Config"})
 
 ---
 
+### Q2: Function Overload Identification ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** Option A (Simple Return All) for v1
+
+#### Final Specification
+
+**For v1 Implementation:**
+
+1. **Return all non-template overloads** without limits
+   - When `get_function_info("ns::foo")` finds multiple overloads, return all
+   - No artificial cap on number of results
+
+2. **Metadata for context:**
+   ```json
+   {
+     "data": [
+       {"signature": "void foo(int)", "is_template_specialization": false, ...},
+       {"signature": "void foo(double)", "is_template_specialization": false, ...}
+     ],
+     "metadata": {
+       "total_overloads": 2
+     }
+   }
+   ```
+
+3. **Template distinction:**
+   - Add `is_template_specialization: bool` field to distinguish from template instantiations
+   - Helps LLM understand what type of overload they're seeing
+
+4. **NO file-based filtering parameter (deferred):**
+   - Don't add `file_path` filtering to function lookup tools yet
+   - Add only if/when large result sets become problematic
+   - LLM already uses file context naturally in some queries
+
+#### Deferred to Later Phase
+
+**Full Signature Matching:**
+- Syntax: `get_function_info({"function_name": "foo(int, std::string)"})`
+- Requires signature parsing, normalization, qualified type resolution
+- Complexity estimate: 10-14 days (>10% of Phase 1-3 timeline)
+- Will be discussed during overall planning after Q3-Q10
+
+**Rationale for deferral:**
+- No blocking scenarios identified
+- Qualified names (Q1) + metadata solve 80%+ cases
+- Can collect v1 feedback to inform v2 design
+
+#### Separate Research Track: Q11
+
+**NEW QUESTION: Template Function Search Logic**
+
+**Scope:** Separate investigation, not part of Q2
+
+**Problem identified during Q2 discussion:**
+- Template functions are fundamentally different from simple overloads
+- Three distinct cases:
+  1. **Non-template overloads:** 2-10+ variants (typical: 2-5)
+  2. **Implicit template instantiations:** Hundreds of compiler-generated variants
+  3. **Explicit template specializations:** Dozens of hand-written variants
+
+**Real-world scale from testing project (~5700 files):**
+- Intensively used template functions: **hundreds** of instantiations
+- Explicit specializations: **dozens** per function (for a few critical functions)
+- Overloaded operators: 10+ overloads common
+- Token economy: **critical** for lightweight LLMs
+
+**Why separate track:**
+- Related to Issues #85 (Template Information Tracking), #99, #101
+- Requires user scenario collection and analysis
+- Search behavior must be intuitive: `foo`, `foo<int>`, `foo<T>(args)` - different expectations
+- Goal: Remove cognitive load from both users and LLMs
+- Likely Phase 3+ or parallel feature development
+
+**Key insights from discussion:**
+- Users think of template functions as logical entities
+- Natural query: "Show derived classes of `TemplateBase`" → expect ALL specializations
+- Current model (explicit per-specialization queries) doesn't match mental model
+- Solution should encapsulate template→specialization logic inside tools (save LLM tokens)
+
+#### Context from Real Project
+
+**Project characteristics:**
+- ~5700 files, complex C++ codebase
+- Heavy use of templates, CRTP patterns
+- Overloaded operators widespread (10+ overloads)
+- Lightweight LLMs: qwen3-4b, qwen3-30b, gpt-oss-20b
+
+**LLM behavior observations:**
+- Ignore tool parameter descriptions
+- Copy name form from user request directly
+- Require explicit system prompt instructions
+- High reasoning token cost when results ambiguous
+
+**Token economy critical:**
+- Returning hundreds of template instantiations = token catastrophe
+- Must be prevented at API level, not expected from LLM filtering
+
+---
+
 ## Key Insights from Discussion
 
 ### 1. System Prompt Complexity as API Design Signal
@@ -219,20 +320,25 @@ Lightweight LLMs CAN extract qualified names from ambiguous results and match ag
 
 ### When resuming discussion, start with:
 
-**Q2: Function Overload Identification**
+**Q3: Template Specialization Qualified Names**
 
-Location in proposal: Lines 1027-1049
+Location in proposal: Lines 1056-1084
 
-**Key question:** How to identify specific function overload when multiple exist?
+**Key question:** How to represent template argument types in qualified names?
+
+**Current problem (Issue #102):**
+- Template args shown with unqualified names: `Container<Foo>` (ambiguous)
+- Should be: `Container<ns1::Foo>` (precise)
 
 **Options to discuss:**
-- Option A: Return all overloads, user inspects signatures (v1)
-- Option B: Signature matching in pattern (v2, complex)
+- Option A: Qualified template args (fixes #102, straightforward)
+- Option B: Template USR (unique but not human-readable)
 
-**Context needed:**
-- How do lightweight LLMs handle multiple overloads in results?
-- Is signature parsing feasible/desirable in v1?
-- What's the practical use case - analyzing specific overload vs all overloads?
+**Context needed from domain expert:**
+- How critical is this ambiguity issue in practice?
+- Typical complexity/nesting depth of template arguments?
+- Readability vs precision trade-off
+- Search behavior expectations for template specializations
 
 ---
 
@@ -246,4 +352,4 @@ This log captures design decisions and rationale from expert discussions. It sup
 4. Provide historical context for future design reviews
 
 **Last Updated:** 2026-01-06
-**Next Session:** Resume at Q2: Function Overload Identification
+**Next Session:** Resume at Q3: Template Specialization Qualified Names

@@ -1029,28 +1029,26 @@ SELECT * FROM symbols WHERE namespace_components LIKE '%"ui"%';
 
 ---
 
-### Q2: Function Overload Identification
+### Q2: Function Overload Identification ✅ RESOLVED
 
-**Question:** How to identify specific overload when multiple exist?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Option A (Simple Return All) for v1, full signature matching deferred
 
-```cpp
-namespace ns {
-  void foo(int);
-  void foo(double);
-}
-```
+**Final Specification:**
 
-**Option A: Return All Overloads (v1)**
-- `get_function_info({"function_name": "ns::foo"})` returns both
-- User inspects `signature` field to distinguish
-- Simple, no signature parsing needed
+**For v1:**
+- Return all non-template overloads without limits
+- Add `is_template_specialization: bool` field to results
+- Include `total_overloads` in metadata
+- No `file_path` filtering parameter (add only if needed)
 
-**Option B: Signature Matching (v2)**
-- `get_function_info({"function_name": "ns::foo(int)"})` returns specific overload
-- Requires signature parsing and normalization
-- Complex but more precise
+**Deferred to later phase:**
+- Full signature matching: `get_function_info({"function_name": "ns::foo(int)"})`
+- Complexity: 10-14 days, will be planned after Q3-Q10 discussion
 
-**Recommendation:** Option A for v1, consider Option B for future
+**Separate research track created:** Q11 (Template Function Search Logic)
+
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q2-function-overload-identification-) for detailed rationale and Q11 scope.
 
 ---
 
@@ -1602,27 +1600,34 @@ SELECT * FROM symbols_fts WHERE qualified_name MATCH 'ns1::ui::View';
 ### Resolved (2026-01-06) ✅
 
 1. ~~**Partial qualification rules (Q1):**~~ ✅ Component-based suffix matching
-2. ~~**Namespace filtering (Q5):**~~ ✅ No separate parameter, use regex patterns
+2. ~~**Function overload identification (Q2):**~~ ✅ Return all for v1, signature matching deferred
 3. ~~**Leading `::` semantics (Q4):**~~ ✅ Global namespace (exact match)
+4. ~~**Namespace filtering (Q5):**~~ ✅ No separate parameter, use regex patterns
 
 ### Pending Discussion 🔄
 
 Based on this proposal, please provide feedback on:
 
-1. **Function signature matching (Q2):** Defer to v2 or include in v1?
-2. **Template semantics (Q3):** How should `"Container"` behave vs `"Container<int>"`?
-3. **Backward compatibility approach:** Dual mode vs explicit parameter vs versioning?
-4. **Performance targets (Q6):** What search latency is acceptable?
-5. **Anonymous namespaces (Q7):** libclang representation as-is or custom?
-6. **Nested classes (Q8):** Just qualified_name or add parent_class field?
-7. **Schema migration (Q9):** Auto-recreation or implement migration?
-8. **Tool descriptions (Q10):** Detailed vs concise?
-9. **Scope for v1:** All three phases or just Phase 1 + 2?
-10. **Timeline:** Is 6-8 weeks realistic given team capacity?
+1. **Template specialization qualified names (Q3):** Qualified args vs USR?
+2. **Performance targets (Q6):** What search latency is acceptable?
+3. **Anonymous namespaces (Q7):** libclang representation as-is or custom?
+4. **Nested classes (Q8):** Just qualified_name or add parent_class field?
+5. **Schema migration (Q9):** Auto-recreation or implement migration?
+6. **Tool descriptions (Q10):** Detailed vs concise?
+7. **Backward compatibility approach:** Dual mode vs explicit parameter vs versioning?
+8. **Scope for v1:** All three phases or just Phase 1 + 2?
+9. **Timeline:** Is 6-8 weeks realistic given team capacity?
+
+### New Research Tracks 🔬
+
+10. **Template function search logic (Q11):** Separate investigation for template function search behavior
+    - User scenario collection needed
+    - Related to Issues #85, #99, #101
+    - Not blocking for v1 qualified name support
 
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2026-01-06
-**Status:** Discussion in Progress - Q1, Q4, Q5 Resolved
-**Next Review:** Resume at Q2 (Function Overload Identification)
+**Status:** Discussion in Progress - Q1, Q2, Q4, Q5 Resolved
+**Next Review:** Resume at Q3 (Template Specialization Qualified Names)
