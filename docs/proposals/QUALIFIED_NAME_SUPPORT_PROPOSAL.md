@@ -1052,33 +1052,25 @@ SELECT * FROM symbols WHERE namespace_components LIKE '%"ui"%';
 
 ---
 
-### Q3: Template Specialization Qualified Names
+### Q3: Template Specialization Qualified Names ✅ RESOLVED
 
-**Question:** How to represent template specializations?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Qualified Canonical Template Args (without full alias support)
 
-```cpp
-namespace ns1 { class Foo {}; }
-template<typename T> class Container {};
-```
+**Final Specification:**
 
-**Current (Issue #102):**
-- `Container<Foo>` (ambiguous)
+**For qualified name support:**
+- Store canonical types: `cursor.type.get_canonical()`
+- Return fully qualified canonical names: `Container<std::unique_ptr<ns1::Foo>>`
+- Type identity ensured by libclang's canonical types
+- Fixes Issue #102 (unqualified template args)
 
-**Option A: Qualified Template Args**
-- `Container<ns1::Foo>` (precise)
-- Fixes Issue #102
-- Straightforward
+**Type aliases NOT supported:**
+- Documented limitation: "Search by canonical names (aliases expanded)"
+- Not blocking for basic usage
+- Deferred to Q12 (Type Alias Support) - separate 3-4 week research track
 
-**Option B: Template USR**
-- Use libclang USR for templates
-- USR is unique but not human-readable
-- Good for internal use, bad for API
-
-**Recommendation:** Option A (qualified template args)
-
-**Follow-up:** Should generic template be searchable separately from specializations?
-- `"Container"` → generic template only, or all specializations?
-- See Issue #99 for full discussion
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q3-template-specialization-qualified-names-) for type alias problem analysis and Q12 scope.
 
 ---
 
@@ -1139,113 +1131,86 @@ search_classes({"pattern": "app::core::Config"})
 
 ---
 
-### Q6: Performance vs Precision Trade-offs
+### Q6: Performance vs Precision Trade-offs ✅ RESOLVED
 
-**Question:** Acceptable performance degradation for qualified name support?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Precision First, Performance Later
 
-**Scenarios:**
-- Unqualified search: Currently ~2-5ms for 100K symbols (FTS5)
-- Qualified suffix matching: Requires `LIKE '%::pattern'` (slower, no index)
-- Regex matching: O(n) Python-side filtering
+**Final Specification:**
+- Acceptable latency: 100ms per query
+- Regex searches: 100-200ms acceptable
+- No premature optimization
+- LLM reasoning 1-2 orders of magnitude slower than tools (not the bottleneck)
+- Database: >500K symbols (8000+ cpp files, 14000 total)
+- Defer optimization until actual performance problems emerge
 
-**Options:**
-- **Option A: Accept slowdown** (10-50ms) for qualified searches
-- **Option B: Optimize with specialized indexes** (complex)
-- **Option C: Cache common qualified patterns** (memory overhead)
-
-**Need input:** What is acceptable latency?
-
----
-
-### Q7: Anonymous Namespace Handling
-
-**Question:** How to represent anonymous namespaces?
-
-```cpp
-namespace { class Internal {}; }  // Anonymous namespace
-```
-
-**libclang representation:**
-- `qualified_name` might be `"(anonymous namespace)::Internal"`
-- Or use unique identifier per file
-
-**Options:**
-- **Option A:** Use libclang's representation as-is
-- **Option B:** Custom representation: `"<anonymous>::Internal"`
-- **Option C:** Include file path: `"file.cpp::<anonymous>::Internal"`
-
-**Recommendation:** Option A (libclang as-is) for v1, evaluate if issues arise
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q6-performance-vs-precision-trade-offs-) for rationale and project scale.
 
 ---
 
-### Q8: Nested Class Qualified Names
+### Q7: Anonymous Namespace Handling ✅ RESOLVED
 
-**Question:** How to handle nested classes?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** libclang as-is (Option A)
 
-```cpp
-namespace ns {
-  class Outer {
-    class Inner {};
-  };
-}
-```
+**Final Specification:**
+- Use standard representation: `"(anonymous namespace)::Internal"`
+- No custom formatting
+- Actively used for file-scope entities in real projects
+- Sufficient for known use cases
 
-**Qualified name:** `"ns::Outer::Inner"`
-
-**Question:** Should this be treated like:
-- Namespace + class name? (`namespace="ns::Outer", name="Inner"`)
-- Or just qualified_name? (`qualified_name="ns::Outer::Inner"`)
-
-**Current approach:** Just qualified_name (simpler)
-**Issue:** Cannot easily query "all classes in Outer" (they're not in a namespace)
-
-**Recommendation:** Keep simple for v1, add `parent_class` field in future if needed
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q7-anonymous-namespace-handling-) for details.
 
 ---
 
-### Q9: Backward Compatibility - Schema Migration
+### Q8: Nested Class Qualified Names ✅ RESOLVED
 
-**Question:** How to handle existing caches when schema changes?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Just qualified_name (no separate parent_class field)
 
-**Current behavior:**
-- Schema version mismatch → auto-delete and recreate cache
-- Works for development, but loses data
+**Final Specification:**
+- Store: `qualified_name: "ns::Outer::Inner"`, `namespace: "ns::Outer"`
+- No distinction between namespace and parent class components
+- Simpler schema, sufficient for rare nested class usage
+- No known scenarios requiring separate parent_class field
 
-**Options:**
-- **Option A: Continue auto-recreation** (acceptable for v1)
-  - Pro: Simple
-  - Con: Users lose cached data on upgrade
-- **Option B: Implement migration**
-  - Migrate old schema to new (add columns, populate)
-  - Pro: Preserve data
-  - Con: Complex, error-prone
-- **Option C: Dual-cache approach**
-  - Keep old cache, create new, migrate asynchronously
-  - Pro: No downtime
-  - Con: Very complex
-
-**Recommendation:** Option A for initial release, consider B for stable version
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q8-nested-class-qualified-names-) for rationale.
 
 ---
 
-### Q10: LLM Guidance - Tool Descriptions
+### Q9: Backward Compatibility - Schema Migration ✅ RESOLVED
 
-**Question:** How much detail in tool descriptions vs documentation?
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Auto-recreation (Option A)
 
-**Options:**
-- **Option A: Detailed tool descriptions**
-  - Each tool's description explains qualified vs unqualified
-  - Examples in description
-  - Pro: LLM sees info directly
-  - Con: Verbose, token-heavy
+**Final Specification:**
+- Continue current behavior: version mismatch → delete and re-index
+- No migration implementation
+- Appropriate for MVP/experimental phase
+- Analogy: clean build directories in C++ projects
 
-- **Option B: Concise descriptions + external docs**
-  - Brief mention in tool description
-  - Link to documentation
-  - Pro: Cleaner API
-  - Con: LLM might not follow links
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q9-backward-compatibility---schema-migration-) and Project Development Philosophy.
 
-**Recommendation:** Option A (detailed) for critical tools, B for less common ones
+---
+
+### Q10: LLM Guidance - Tool Descriptions ✅ RESOLVED
+
+**Status:** ✅ **DECIDED** (2026-01-06)
+**Decision:** Detailed with Lightweight LLM Adaptation (Modified Option A)
+
+**Final Specification:**
+- NOT simply verbose (token-heavy, ineffective)
+- NOT concise with links (LLMs ignore links)
+- **Adapt language for lightweight LLM interpretation**
+- Explicit, simple language vs technical terms
+- Clear examples
+- Avoid assumptions about C++ knowledge
+- Iterative refinement based on reasoning log analysis
+
+**Problem:** Lightweight LLMs poorly trained on C++ qualified name concepts
+**Solution:** Dual approach - adapted tool descriptions + explicit system prompt
+
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md#q10-llm-guidance---tool-descriptions-) for lightweight LLM behavior analysis.
 
 ---
 
@@ -1597,37 +1562,48 @@ SELECT * FROM symbols_fts WHERE qualified_name MATCH 'ns1::ui::View';
 
 **Discussion in progress** - See [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md) for details.
 
-### Resolved (2026-01-06) ✅
+### Discussion Complete ✅ (2026-01-06)
+
+**All core questions (Q1-Q10) resolved:**
 
 1. ~~**Partial qualification rules (Q1):**~~ ✅ Component-based suffix matching
 2. ~~**Function overload identification (Q2):**~~ ✅ Return all for v1, signature matching deferred
-3. ~~**Leading `::` semantics (Q4):**~~ ✅ Global namespace (exact match)
-4. ~~**Namespace filtering (Q5):**~~ ✅ No separate parameter, use regex patterns
+3. ~~**Template specialization (Q3):**~~ ✅ Canonical qualified args, aliases deferred to Q12
+4. ~~**Leading `::` semantics (Q4):**~~ ✅ Global namespace (exact match)
+5. ~~**Namespace filtering (Q5):**~~ ✅ No separate parameter, use regex patterns
+6. ~~**Performance targets (Q6):**~~ ✅ Precision first, 100ms acceptable
+7. ~~**Anonymous namespaces (Q7):**~~ ✅ libclang as-is
+8. ~~**Nested classes (Q8):**~~ ✅ Just qualified_name
+9. ~~**Schema migration (Q9):**~~ ✅ Auto-recreation
+10. ~~**Tool descriptions (Q10):**~~ ✅ Lightweight LLM-adapted
 
-### Pending Discussion 🔄
+### New Research Tracks Identified 🔬
 
-Based on this proposal, please provide feedback on:
+**Q11: Template Function Search Logic**
+- Separate investigation (related to #85, #99, #101)
+- Problem: Hundreds of instantiations, token economy critical
+- Scope: User scenario collection, intuitive search behavior
+- Not blocking for qualified name support
 
-1. **Template specialization qualified names (Q3):** Qualified args vs USR?
-2. **Performance targets (Q6):** What search latency is acceptable?
-3. **Anonymous namespaces (Q7):** libclang representation as-is or custom?
-4. **Nested classes (Q8):** Just qualified_name or add parent_class field?
-5. **Schema migration (Q9):** Auto-recreation or implement migration?
-6. **Tool descriptions (Q10):** Detailed vs concise?
-7. **Backward compatibility approach:** Dual mode vs explicit parameter vs versioning?
-8. **Scope for v1:** All three phases or just Phase 1 + 2?
-9. **Timeline:** Is 6-8 weeks realistic given team capacity?
+**Q12: Type Alias Support**
+- Separate investigation (identified during Q3)
+- Problem: Intensive alias usage, canonical names unreadable
+- Scope: Alias tracking, USR mapping, search by alias names
+- Complexity: 3-4 weeks
+- Not blocking for basic usage
 
-### New Research Tracks 🔬
+### Next Steps
 
-10. **Template function search logic (Q11):** Separate investigation for template function search behavior
-    - User scenario collection needed
-    - Related to Issues #85, #99, #101
-    - Not blocking for v1 qualified name support
+1. **Prioritization session:** Review all identified features/improvements
+2. **Implementation planning:** Sequence by technical dependencies
+3. **libclang experiments:** Validate assumptions (e.g., alias handling)
+4. **Implementation:** Begin according to continuous delivery philosophy
+
+**See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md) for complete decisions and [Project Development Philosophy](#project-development-philosophy-).
 
 ---
 
-**Document Version:** 1.2
+**Document Version:** 2.0
 **Last Updated:** 2026-01-06
-**Status:** Discussion in Progress - Q1, Q2, Q4, Q5 Resolved
-**Next Review:** Resume at Q3 (Template Specialization Qualified Names)
+**Status:** Discussion Complete - Ready for Implementation Planning
+**Next Phase:** Prioritization and Sequencing

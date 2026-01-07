@@ -12,21 +12,19 @@
 
 - **Q1: Partial Qualification Matching Rules** ✅ RESOLVED
 - **Q2: Function Overload Identification** ✅ RESOLVED
+- **Q3: Template Specialization Qualified Names** ✅ RESOLVED
 - **Q4: Leading `::` Semantics** ✅ RESOLVED (discussed alongside Q1)
 - **Q5: Namespace Filtering Scope** ✅ RESOLVED (discussed alongside Q1)
+- **Q6: Performance vs Precision Trade-offs** ✅ RESOLVED
+- **Q7: Anonymous Namespace Handling** ✅ RESOLVED
+- **Q8: Nested Class Qualified Names** ✅ RESOLVED
+- **Q9: Backward Compatibility - Schema Migration** ✅ RESOLVED
+- **Q10: LLM Guidance - Tool Descriptions** ✅ RESOLVED
 
-### Next Question to Discuss ⏭️
+### New Research Tracks 🔬
 
-**Q3: Template Specialization Qualified Names** - Resume discussion from here
-
-### Pending Questions
-
-- Q6: Performance vs Precision Trade-offs
-- Q7: Anonymous Namespace Handling
-- Q8: Nested Class Qualified Names
-- Q9: Backward Compatibility - Schema Migration
-- Q10: LLM Guidance - Tool Descriptions
-- Q11: Template Function Search Logic (NEW - separate research track)
+- **Q11: Template Function Search Logic** - Separate investigation (related to #85, #99, #101)
+- **Q12: Type Alias Support** - Separate investigation (identified during Q3 discussion)
 
 ---
 
@@ -275,6 +273,354 @@ search_classes({"pattern": "app::core::Config"})
 
 ---
 
+### Q3: Template Specialization Qualified Names ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** Qualified Canonical Template Args (without full alias support in v1)
+
+#### Final Specification
+
+**1. Store and return canonical (expanded) types:**
+```cpp
+// In code:
+using FooPtr = std::unique_ptr<ns1::Foo>;
+class A : public Container<FooPtr> {};
+
+// What libclang provides:
+cursor.type.get_canonical().spelling → "Container<std::unique_ptr<ns1::Foo>>"
+
+// What we store and return:
+{
+  "base_classes": ["Container<std::unique_ptr<ns1::Foo>>"]
+}
+```
+
+**2. Search matching:**
+- `Container<FooPtr>` and `Container<std::unique_ptr<ns1::Foo>>` → same type (one result)
+- libclang's canonical type ensures type identity
+- No manual USR mapping needed in v1
+
+**3. Display strategy:**
+- Return fully qualified canonical names to LLM
+- LLM decides what to show user (per system prompt rules)
+
+**4. Type aliases NOT supported in v1:**
+- **Documented limitation:** "Search by canonical type names (aliases expanded)"
+- Users must use expanded form in searches
+- NOT blocking for basic usage
+
+**5. Implementation:**
+- Use `cursor.type.get_canonical()` for all template arguments
+- Store fully qualified canonical names
+- ~2-3 days implementation
+
+#### Deferred to Q12: Type Alias Support
+
+**Scope of Q12 (separate research track):**
+
+**Problem identified:**
+- Intensive use of type aliases in real projects (containers, smart pointers, tagged types)
+- Nested aliases: `using A = B; using B = C;`
+- Template aliases: `template<T> using Vec = vector<T>;`
+- Alias collisions: same alias name in different namespaces/classes
+- Deep template nesting with aliases: `optional<vector<variant<Type1<int>, Type2<double>>>>`
+
+**Real-world characteristics:**
+- Deep nesting typical, not exception
+- Solved in code by intensive alias usage
+- Canonical names unreadable (multi-line compiler errors)
+- Multiple as-written forms per type possible
+
+**Scope for Q12:**
+- Track alias declarations: `using Ptr = unique_ptr<Foo>`
+- Store alias→canonical→USR mappings
+- Support search by alias name
+- Multiple as-written representations per type
+- Chain resolution (alias→alias→type)
+- Simple, template, and nested aliases
+
+**Complexity estimate:** 3-4 weeks (separate from qualified name support)
+
+**Not blocking:** Q3.9 - absence doesn't block MCP server usage
+
+**To be prioritized:** After Q1-Q10 completion, when forming full feature list
+
+---
+
+### Q6: Performance vs Precision Trade-offs ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** Precision First, Performance Later
+
+#### Final Specification
+
+**1. Performance targets:**
+- Acceptable latency: **100ms per query**
+- Regex searches: **100-200ms acceptable**
+- No premature optimization in v1
+
+**2. Rationale:**
+- LLM reasoning: **1-2 orders of magnitude slower** than tool execution
+- Tool latency **not the bottleneck** in overall workflow
+- Database size: **>500K symbols** (8000+ cpp files, 14000 total files)
+- Focus on **correctness and precision**, not speed
+
+**3. Implementation approach:**
+- Use straightforward algorithms (Python string methods for patterns)
+- SQLite FTS5 for full-text search (already fast enough)
+- LIKE queries acceptable for qualified name suffix matching
+- Regex filtering in Python acceptable (simple, maintainable)
+
+**4. Optimization strategy:**
+- **Defer optimization** until performance becomes actual problem
+- If needed later: Add specialized indexes, caching, etc.
+- Benchmark on real project, not theoretical concerns
+
+**5. Pattern optimization note:**
+- Regex patterns like `".*::View"`, `"app::core::.*"` can use Python string methods
+- `startswith()`, `endswith()`, `in` - faster than full regex
+- Implement smart detection: use string methods when possible, fallback to regex
+
+**Decision:** No performance optimization work in initial phases. Ship functionality first, optimize if needed.
+
+---
+
+### Q7: Anonymous Namespace Handling ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** libclang as-is (Option A)
+
+#### Final Specification
+
+**1. Use standard libclang representation:**
+- Store and return: `"(anonymous namespace)::Internal"`
+- No custom formatting or special handling
+
+**2. Context from real project:**
+- Actively used for file-scope entities
+- No scenarios requiring distinction between anonymous namespaces in different files
+- Potential use: understanding symbol has file scope (no access from other files)
+- This information implicit in `"(anonymous namespace)"` representation
+
+**3. Implementation:**
+- Accept libclang's naming as-is
+- No additional processing needed
+
+**Decision:** Simple, standard approach sufficient for known use cases.
+
+---
+
+### Q8: Nested Class Qualified Names ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** Just qualified_name (no separate parent_class field)
+
+#### Final Specification
+
+**1. Storage:**
+```cpp
+namespace ns {
+  class Outer {
+    class Inner {};
+  };
+}
+
+// Store as:
+qualified_name: "ns::Outer::Inner"
+namespace: "ns::Outer"  // includes parent class
+```
+
+**2. No separate parent_class field:**
+- No distinction between namespace components and parent class components
+- `namespace` field contains full prefix (namespaces + parent classes)
+- Simpler schema, sufficient for use cases
+
+**3. Context from real project:**
+- Nested classes rare
+- Some actively used inner types (e.g., `Outer::Inner`)
+- Typically referenced with parent class name
+- No scenarios requiring explicit namespace/class distinction
+- No concerns with fully qualified name approach
+
+**4. Implementation:**
+- Store `qualified_name` as-is from libclang
+- No special processing for nested classes
+
+**Decision:** Simplicity over complexity. No known use cases require separate parent_class field.
+
+---
+
+### Q9: Backward Compatibility - Schema Migration ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** Auto-recreation (Option A)
+
+#### Final Specification
+
+**1. Current behavior (continue):**
+- Schema version mismatch → auto-delete cache and re-index
+- No migration implementation
+- Clean slate on schema changes
+
+**2. Rationale:**
+- Project in MVP/experimental phase (see Development Philosophy below)
+- Schema changes frequent during development
+- Re-indexing already optimized (multi-process parallelism)
+- Few users work with truly large codebases
+- Full re-indexing not frequent task
+
+**3. Analogy:**
+- Similar to clean build directories and full rebuild in C++ projects
+- Developers not afraid of occasional full rebuilds
+- Cache regeneration is similar concept
+
+**4. Future consideration:**
+- Can add migration when project stabilizes (post-MVP)
+- Not priority for continuous delivery approach
+
+**Decision:** Auto-recreation sufficient for current development phase and user base.
+
+---
+
+### Q10: LLM Guidance - Tool Descriptions ✅
+
+**Decision Date:** 2026-01-06
+**Decision:** Detailed with Lightweight LLM Adaptation (Modified Option A)
+
+#### Final Specification
+
+**1. Approach: Adaptive detailed descriptions**
+- NOT simply verbose descriptions (token-heavy, ineffective)
+- NOT concise with external links (LLMs ignore links)
+- **Adapted language for lightweight LLM interpretation**
+
+**2. Problem identified:**
+- Lightweight LLMs poorly trained on C++ qualified name concepts
+- What's obvious to Opus/Sonnet/Haiku has low weight for qwen3-4b/30b, gpt-oss-20b
+- Technical terminology may not match their training
+- Core issue: understanding qualified → unqualified extraction
+
+**3. Strategy:**
+- Analyze lightweight LLM interpretation patterns
+- Use explicit, simple language vs technical terms
+- Provide clear examples in descriptions
+- Avoid assumptions about C++ knowledge
+- Test descriptions with target LLMs
+
+**4. Iterative improvement:**
+- Post-deployment: analyze reasoning logs
+- Identify misinterpretations
+- Refine descriptions based on observed LLM behavior
+- Continuous adaptation to lightweight LLM capabilities
+
+**5. Critical constraints in system prompt:**
+- Tool descriptions alone insufficient (as observed)
+- Explicit system prompt instructions for critical behaviors
+- Dual approach: tool descriptions + system prompt
+
+**Decision:** Detailed descriptions optimized for lightweight LLM comprehension, with iterative refinement based on observed behavior.
+
+---
+
+## Project Development Philosophy 🎯
+
+**Documented:** 2026-01-06
+**Source:** Domain expert guidance during Q6 discussion
+
+### Continuous Delivery Approach
+
+**1. Project Status:**
+- **MVP/Experimental phase** - not production-ready
+- Active experimentation and major changes ongoing
+- Recent stabilization efforts = making testable after big changes
+- NOT formal releases - working checkpoints
+
+**2. Development Mindset:**
+
+**❌ NOT thinking in terms of:**
+- "What must be in v1/v2/v3"
+- Formal version numbers and release planning
+- Feature-complete milestones
+
+**✅ YES thinking in terms of:**
+- "What is higher priority"
+- "What order is technically most efficient"
+- "What enables other work" (technical dependencies)
+- Continuous incremental improvements
+
+**3. Prioritization Criteria:**
+
+**A. Low-hanging fruit:**
+- Small effort, high value → **do immediately**
+- Don't defer simple improvements
+- Quick wins compound
+
+**B. Technical dependencies:**
+- What enables other work comes first
+- Build foundation before dependent features
+- Minimize blocking relationships
+
+**C. Maintain working state:**
+- Usable after intermediate steps
+- Can use project during development
+- Temporary degradation acceptable if needed
+
+**D. Avoid throwaway work:**
+- Minimize rework and refactoring
+- Choose architecture that won't require major changes
+- Incremental evolution over replacements
+
+**4. Acceptable Trade-offs:**
+
+**Temporary functionality degradation:**
+- OK if needed for progress toward better solution
+- Document what's temporarily missing
+- Plan restoration/improvement
+
+**Partial features:**
+- OK if they don't break existing usage
+- Deliver incrementally
+- Document known limitations
+
+**Documented limitations:**
+- Better than half-baked implementations
+- Clear communication of current state
+- Plan for future improvement
+
+**5. Stability Points:**
+
+**Not formal releases:**
+- Working checkpoints between features
+- Testable state after major changes
+- Allows real-world usage and feedback
+
+**When to stabilize:**
+- After major architectural changes
+- Before starting next significant feature
+- When accumulated changes need validation
+
+**6. Example Application:**
+
+> "If we can add something with small effort - do it. Otherwise, choose sequence that minimizes rework and keeps project working at intermediate steps."
+
+**Translation to decisions:**
+- Don't defer Q6 performance optimization → will optimize if/when needed
+- Don't over-engineer Q9 schema migration → auto-recreation sufficient for now
+- Do implement Q1-Q5 properly → foundation for everything else
+- Do document Q12 (type aliases) limitation → plan for future, don't block now
+
+**7. Contrast with Traditional Approach:**
+
+| Traditional | Continuous Delivery (Our Approach) |
+|-------------|-----------------------------------|
+| Plan all features for v1 | Implement by priority |
+| Feature-complete releases | Working checkpoints |
+| Avoid breaking changes | Acceptable if needed for progress |
+| Formal versioning | Experimental/stable states |
+| Complete before ship | Ship and iterate |
+
+---
+
 ## Key Insights from Discussion
 
 ### 1. System Prompt Complexity as API Design Signal
@@ -316,29 +662,37 @@ Lightweight LLMs CAN extract qualified names from ambiguous results and match ag
 
 ---
 
-## Notes for Continuation
+## Discussion Complete ✅
 
-### When resuming discussion, start with:
+**Status:** All questions (Q1-Q10) resolved
+**Date completed:** 2026-01-06
 
-**Q3: Template Specialization Qualified Names**
+### Summary of Decisions
 
-Location in proposal: Lines 1056-1084
+**Core Qualified Name Support (Q1-Q5):**
+- ✅ Component-based suffix matching
+- ✅ Return all function overloads
+- ✅ Canonical template args (aliases deferred to Q12)
+- ✅ Leading `::` = exact match
+- ✅ No separate namespace parameter (use regex)
 
-**Key question:** How to represent template argument types in qualified names?
+**Implementation Approach (Q6-Q10):**
+- ✅ Precision first, optimize later (100ms acceptable)
+- ✅ libclang as-is for anonymous namespaces
+- ✅ Simple qualified_name for nested classes
+- ✅ Auto-recreation for schema changes
+- ✅ Lightweight LLM-adapted tool descriptions
 
-**Current problem (Issue #102):**
-- Template args shown with unqualified names: `Container<Foo>` (ambiguous)
-- Should be: `Container<ns1::Foo>` (precise)
+**New Research Tracks Identified:**
+- 🔬 Q11: Template Function Search Logic (hundreds of instantiations, token economy)
+- 🔬 Q12: Type Alias Support (3-4 weeks, intensive real-world usage)
 
-**Options to discuss:**
-- Option A: Qualified template args (fixes #102, straightforward)
-- Option B: Template USR (unique but not human-readable)
+### Next Steps
 
-**Context needed from domain expert:**
-- How critical is this ambiguity issue in practice?
-- Typical complexity/nesting depth of template arguments?
-- Readability vs precision trade-off
-- Search behavior expectations for template specializations
+1. **Prioritization session:** Review all identified features/improvements
+2. **Implementation sequencing:** Order by technical dependencies and value
+3. **libclang experiments:** Validate assumptions (after prioritization)
+4. **Update proposal document:** Reflect all decisions
 
 ---
 
@@ -346,10 +700,10 @@ Location in proposal: Lines 1056-1084
 
 This log captures design decisions and rationale from expert discussions. It supplements the main proposal document and will be used to:
 
-1. Update proposal with finalized decisions
-2. Guide implementation phase planning
-3. Inform documentation and system prompt design
-4. Provide historical context for future design reviews
+1. Guide implementation phase planning
+2. Inform documentation and system prompt design
+3. Provide historical context for future design reviews
+4. Support prioritization of Q11, Q12, and other improvements
 
 **Last Updated:** 2026-01-06
-**Next Session:** Resume at Q3: Template Specialization Qualified Names
+**Status:** Discussion complete - ready for prioritization and planning
