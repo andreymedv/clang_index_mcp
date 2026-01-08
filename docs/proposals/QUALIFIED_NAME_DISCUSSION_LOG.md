@@ -522,6 +522,140 @@ namespace: "ns::Outer"  // includes parent class
 
 ---
 
+## libclang Assumptions Validation ✅
+
+**Validation Date:** 2026-01-06
+**Method:** Automated experiments using test_libclang_behavior.py
+**Status:** All critical assumptions validated
+
+### Experiment Execution
+
+**Decision Point:**
+During Q3-Q10 discussion, domain expert correctly identified that libclang experiments should happen BEFORE prioritization session (not after), because TC4 results could significantly affect Q3/Q12 dependency relationship.
+
+**Experiment Framework Created:**
+- `docs/experiments/LIBCLANG_VALIDATION_EXPERIMENT.md` - Detailed experiment guide
+- `scripts/experiments/test_libclang_behavior.py` - Automated test script
+- `docs/experiments/LIBCLANG_EXPERIMENT_RESULTS_TEMPLATE.md` - Results template
+- `docs/experiments/README.md` - Quick start guide
+
+**Test Cases:**
+- TC1: Simple Type Alias
+- TC2: Nested Type Aliases
+- TC3: Template Type Alias
+- TC4: Base Class with Alias (CRITICAL)
+- TC5: Template Function Detection
+- TC6: Template Class Specialization
+
+### Critical Finding: TC4 (Base Class with Alias)
+
+**Test Code:**
+```cpp
+namespace ns1 { class Foo {}; }
+using FooPtr = std::unique_ptr<ns1::Foo>;
+template<typename T> class Container {};
+class Derived : public Container<FooPtr> {};
+```
+
+**Question Tested:**
+Does `cursor.type.get_canonical()` expand type aliases AND preserve namespace qualification in template arguments?
+
+**Result:**
+```
+canonical_spelling: Container<std::unique_ptr<ns1::Foo>>
+verdict: ALIAS EXPANDED + QUALIFIED - Q3 works!
+```
+
+**What This Validates:**
+- ✅ Type aliases ARE expanded by libclang canonical types
+- ✅ Namespace qualification IS preserved in template arguments (ns1::Foo)
+- ✅ Q3 assumption (store canonical types) is correct
+- ✅ Q12 (Type Alias Support) does NOT block Q3 implementation
+- ✅ Phase 1 timeline unchanged (~2-3 weeks)
+
+### Template Function Detection: TC5
+
+**Test Code:**
+```cpp
+template<typename T> void func(T);        // Generic template
+template<> void func<int>(int);           // Explicit specialization
+void func(double);                        // Regular overload
+```
+
+**Question Tested:**
+Can libclang distinguish template functions from specializations from regular overloads?
+
+**Result:**
+```
+functions: [
+  {kind: "FUNCTION_TEMPLATE", ...},           // Generic template
+  {kind: "FUNCTION_DECL", displayname: "func<int>", ...},  // Specialization
+  {kind: "FUNCTION_DECL", displayname: "func", ...}        // Overload
+]
+```
+
+**What This Validates:**
+- ✅ `cursor.kind` successfully distinguishes templates (FUNCTION_TEMPLATE) from regular functions (FUNCTION_DECL)
+- ✅ Explicit specializations can be identified by `<>` in displayname
+- ⚠️ `cursor.specialized_cursor_template()` less reliable (returns 'unknown' in tests)
+- ✅ Q2 `is_template_specialization` field feasible using `cursor.kind` + displayname analysis
+
+### Impact on Q2 Implementation
+
+**Original approach (from Q2 discussion):**
+Use `cursor.specialized_cursor_template()` to detect template specializations.
+
+**Validated approach (from experiments):**
+Use simpler detection:
+```python
+def is_template_specialization(cursor) -> bool:
+    if cursor.kind == CursorKind.FUNCTION_TEMPLATE:
+        return False  # Generic template
+    if cursor.kind == CursorKind.FUNCTION_DECL:
+        # Check displayname for template arguments
+        return '<' in cursor.displayname and '>' in cursor.displayname
+    return False
+```
+
+**Rationale:**
+- More reliable (tested in practice)
+- Simpler implementation
+- No dependency on potentially unreliable API
+- Distinguishes generic templates, specializations, regular overloads
+
+### Impact on Q3 Implementation
+
+**No changes needed:**
+- Original Q3 decision (use canonical types) validated by experiments
+- Implementation can proceed as planned
+- No workarounds or adjustments required
+- Q12 (Type Alias Support) confirmed as separate concern
+
+### Summary of Validated Assumptions
+
+**Type Alias Resolution (TC1-TC4):**
+- ✅ Simple aliases expanded: `IntPtr` → `int*`
+- ✅ Nested aliases resolved: `Ptr2` → `Ptr1` → `int*`
+- ✅ Template aliases expanded: `Vec<int>` → `std::vector<int>`
+- ✅ Aliases in template args expanded AND qualified
+
+**Template Metadata (TC5-TC6):**
+- ✅ Template function detection feasible via `cursor.kind`
+- ✅ Specialization detection via displayname analysis
+- ✅ Foundation for Q2 `is_template_specialization` field
+
+**Prioritization Impact:**
+- ✅ Q3 implementation: no blockers, proceed as planned
+- ✅ Q12 (Type Alias Support): stays deferred (NOT blocking)
+- ✅ Phase 1 timeline: no changes (~2-3 weeks)
+- ✅ Q2 implementation: simplified approach using cursor.kind
+
+**Experiment Time:**
+- Estimated: 2-3 hours
+- Actual: ~40 minutes (automated script + quick execution)
+
+---
+
 ## Project Development Philosophy 🎯
 
 **Documented:** 2026-01-06
@@ -664,8 +798,9 @@ Lightweight LLMs CAN extract qualified names from ambiguous results and match ag
 
 ## Discussion Complete ✅
 
-**Status:** All questions (Q1-Q10) resolved
+**Status:** All questions (Q1-Q10) resolved + libclang assumptions validated
 **Date completed:** 2026-01-06
+**Experiments completed:** 2026-01-06
 
 ### Summary of Decisions
 
@@ -689,10 +824,10 @@ Lightweight LLMs CAN extract qualified names from ambiguous results and match ag
 
 ### Next Steps
 
-1. **Prioritization session:** Review all identified features/improvements
-2. **Implementation sequencing:** Order by technical dependencies and value
-3. **libclang experiments:** Validate assumptions (after prioritization)
-4. **Update proposal document:** Reflect all decisions
+1. ✅ **libclang experiments:** Assumptions validated - Q3 works, Q12 stays deferred
+2. **Prioritization session:** Review all identified features/improvements
+3. **Implementation sequencing:** Order by technical dependencies and value
+4. **Implementation planning:** Begin Phase 1 planning based on validated decisions
 
 ---
 
