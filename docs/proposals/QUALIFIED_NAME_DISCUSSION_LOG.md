@@ -825,9 +825,228 @@ Lightweight LLMs CAN extract qualified names from ambiguous results and match ag
 ### Next Steps
 
 1. ✅ **libclang experiments:** Assumptions validated - Q3 works, Q12 stays deferred
-2. **Prioritization session:** Review all identified features/improvements
-3. **Implementation sequencing:** Order by technical dependencies and value
-4. **Implementation planning:** Begin Phase 1 planning based on validated decisions
+2. ✅ **Prioritization session:** Completed - implementation sequence defined
+3. **Implementation planning:** Begin Phase 1 detailed planning
+4. **Implementation:** Execute according to prioritized plan
+
+---
+
+## Prioritization and Implementation Sequencing ✅
+
+**Prioritization Date:** 2026-01-06
+**Status:** ✅ Agreed and Finalized
+
+### Features Overview
+
+**Defined Features:**
+- **F1:** Базовая поддержка квалифицированных имен (store & return qualified names)
+- **F2:** Гибкий поиск по паттернам (partial qualification, component-based suffix matching)
+- **F3:** Семантика leading `::` (exact match for global namespace)
+- **F4:** Различение function overloads (is_template_specialization metadata)
+- **F5:** Квалифицированные template arguments (canonical types with qualification)
+- **F6:** Anonymous namespaces (libclang as-is, automatic with F1)
+- **F7:** Nested classes (qualified_name without separate parent_class, automatic with F1)
+
+**Out of Scope (Research Tracks):**
+- **F8 (Q11):** Template Function Search Logic - separate investigation
+- **F9 (Q12):** Type Alias Support - separate investigation (3-4 weeks)
+
+### Problems → Features Mapping
+
+| Problem | Solved By | Coverage |
+|---------|-----------|----------|
+| P1: Namespace Ambiguity (Issues #98, #100, #102) | F1, F2 | ✅ 100% |
+| P2: Search Pattern Failures | F1, F2, F3 | ✅ 100% |
+| P3: Incorrect LLM Analysis Chains | F1, F2 | ✅ 100% |
+| P4: System Prompt Workarounds | F1, F2 | ✅ 80-90% |
+| P5: Template Specialization Ambiguity (Issue #85) | F5 | ✅ 100% |
+| P6: Template Overload Explosion (Issues #99, #101) | Q11 (research) | 🔬 Out of scope |
+| P7: Type Alias Opacity | Q12 (research) | 🔬 Out of scope |
+| P8: Missing Overload Context | F4 | ✅ 100% |
+
+**Current scope coverage:** 6 of 8 problems (75%) solved by F1-F7
+
+### Prioritization Criteria
+
+**1. Technical Dependencies (Blocking Relationships):**
+```
+F1 (Foundation)
+  ↓ BLOCKS
+  ├─→ F2 (Search - needs qualified names in DB)
+  ├─→ F3 (Leading :: - part of F2 pattern matching)
+  └─→ F5 (Template args - needs qualified name extraction)
+
+F4 - INDEPENDENT (can be done anytime)
+F6, F7 - AUTOMATIC (free with F1)
+```
+
+**2. Code Locality (Minimize Rework):**
+- **F1 + F5:** Modify same extraction logic (_process_cursor, _extract_symbol_info)
+  - Doing together = one pass through code
+  - Doing separately = reopening extraction logic (+1 week rework)
+- **F2 + F3:** Same pattern matching engine implementation
+  - F3 is part of F2 algorithm (leading :: detection)
+
+**3. Problem Criticality:**
+- **CRITICAL:** P1, P2 (blocking usage) → F1, F2
+- **HIGH:** P3, P4, P5 (quality degradation) → F1, F2, F5
+- **MEDIUM:** P8 (nice-to-have metadata) → F4
+
+**4. Validated by Experiments:**
+- ✅ F5: TC4 validated canonical type expansion
+- ✅ F4: TC5 validated cursor.kind detection
+- No implementation risks
+
+**5. Low-Hanging Fruit:**
+- F6, F7: 0 days (automatic)
+- F4: 2-3 days (simple, independent)
+
+### Agreed Implementation Sequence
+
+#### **Phase 1: Foundation & Template Support** (2-3 недели)
+
+**Scope:** F1 + F5 + F6 + F7
+
+**Rationale:**
+- F1 + F5 modify same extraction logic → do together to minimize rework
+- F6, F7 automatic with F1 → free delivery
+- Establishes foundation for all subsequent work
+
+**Tasks:**
+- T1.1: Qualified Name Extraction
+- T1.2: Schema Changes
+- T1.3: Storage Updates
+- T3.2: Template Args Qualification
+
+**Deliverables:**
+- ✅ Qualified names stored and returned
+- ✅ Template arguments qualified in base classes
+- ✅ Anonymous namespaces represented
+- ✅ Nested classes with full qualified names
+- ✅ Backward compatibility maintained
+
+**Problems Solved:** P1 (partial), P3 (partial), P5 (complete)
+
+**Usable State After Phase 1:**
+- Results contain qualified names → reduces ambiguity
+- Template inheritance analysis works → enables template analysis
+- Qualified search patterns don't work yet → limitation documented
+
+---
+
+#### **Phase 2: Search Capabilities** (1-2 недели)
+
+**Scope:** F2 + F3
+
+**Rationale:**
+- Depends on F1 (needs qualified names in database)
+- F3 is part of F2 (leading :: handled in same pattern matching engine)
+- Completes core qualified name support functionality
+
+**Tasks:**
+- T2.1: Pattern Matching Engine
+- T2.2: Update Search Tools
+- T2.3: Dual-Mode Support
+
+**Deliverables:**
+- ✅ Component-based suffix matching
+- ✅ Leading `::` semantics (exact match)
+- ✅ Regex pattern support
+- ✅ Qualified pattern search works end-to-end
+
+**Problems Solved:** P1 (complete), P2 (complete), P3 (complete), P4 (complete)
+
+**Usable State After Phase 2:**
+- **Fully functional qualified name support**
+- Ready for production usage
+- All critical problems solved
+
+---
+
+#### **Phase 3: Overload Metadata** (2-3 дня)
+
+**Scope:** F4
+
+**Rationale:**
+- Independent feature (not blocking, not blocked)
+- Quick win with small effort
+- Can be done in parallel with Phase 2 if resources available
+- Completes feature set for qualified name support
+
+**Tasks:**
+- T3.3: Function Overload Metadata
+
+**Deliverables:**
+- ✅ `is_template_specialization: bool` field
+- ✅ `total_overloads` metadata
+- ✅ Clear distinction: templates vs specializations vs overloads
+
+**Problems Solved:** P8 (complete)
+
+**Usable State After Phase 3:**
+- Feature-complete qualified name support
+- All in-scope problems solved
+
+---
+
+#### **Phase 4: Testing & Documentation** (1 неделя)
+
+**Scope:** Integration tests, tool descriptions, migration docs
+
+**Tasks:**
+- T4.1: Integration Tests
+- T4.2: Tool Description Updates
+- T4.3: Migration Documentation
+
+---
+
+### Timeline Summary
+
+| Phase | Features | Duration | Cumulative |
+|-------|----------|----------|------------|
+| Phase 1 | F1+F5+F6+F7 | 2-3 weeks | 2-3 weeks |
+| Phase 2 | F2+F3 | 1-2 weeks | 3-5 weeks |
+| Phase 3 | F4 | 2-3 days | 3-5 weeks |
+| Phase 4 | Testing & Docs | 1 week | 4-6 weeks |
+
+**Total Effort:** 4-6 weeks (vs 6-8 weeks in original estimate)
+
+**Time Savings:** F5 in Phase 1 avoids +1 week rework
+
+**Critical Path:** F1 → F2 → Core functionality complete
+
+---
+
+### Alternative Options Considered
+
+**Option A: F5 in Phase 3 (after F2)**
+- ❌ Rejected: Requires reopening extraction logic (+1 week rework)
+- Would delay P5 solution
+- No benefits over doing with F1
+
+**Option B: F4 in Phase 1**
+- 🔵 Neutral: Would work but extends Phase 1 duration
+- F4 not blocking anything → better to defer
+- Current sequence maintains focus on critical path
+
+**Option C: F2 before F5**
+- ❌ Rejected: Search needs extraction complete first
+- F5 in separate phase = code reopening overhead
+
+---
+
+### Key Decisions
+
+1. ✅ **F5 bundled with F1** - minimize rework, same extraction logic modifications
+2. ✅ **F2+F3 together** - single pattern matching engine implementation
+3. ✅ **F4 separate mini-phase** - independent, non-blocking, quick win
+4. ✅ **F6, F7 automatic** - zero additional effort
+
+**Decision Rationale:** Follows Project Development Philosophy
+- Minimize rework (F1+F5 together)
+- Maintain usable intermediate states (after each phase)
+- Low-hanging fruit included (F6, F7 free)
+- Quick wins identified (F4 = 2-3 days)
 
 ---
 
@@ -841,4 +1060,4 @@ This log captures design decisions and rationale from expert discussions. It sup
 4. Support prioritization of Q11, Q12, and other improvements
 
 **Last Updated:** 2026-01-06
-**Status:** Discussion complete - ready for prioritization and planning
+**Status:** Discussion complete + Prioritization finalized - ready for detailed implementation planning

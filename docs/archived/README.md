@@ -2,7 +2,44 @@
 
 This directory contains historical documentation from earlier development phases and completed work that has been archived to reduce token usage. These files are preserved for reference but are no longer actively used in day-to-day development.
 
-## Recently Archived (2025-12-29)
+## Recently Archived (2026-01-08)
+
+### Qualified Name Support - Design Phase Artifacts (Token Savings: ~15K)
+
+Located in `experiments/` and `experiment-scripts/` subdirectories:
+
+- **experiments/LIBCLANG_VALIDATION_EXPERIMENT.md** (8.5K) - Detailed experiment guide for validating libclang assumptions
+  - 6 test cases (TC1-TC6) for type alias expansion, template detection
+  - Decision points, expected outcomes, validation criteria
+  - **Results:** All assumptions validated, documented in QUALIFIED_NAME_DISCUSSION_LOG.md
+
+- **experiments/LIBCLANG_EXPERIMENT_RESULTS_TEMPLATE.md** (4.4K) - Results documentation template
+  - Structure for recording experiment findings
+  - **Actual results:** Documented in discussion log, template no longer needed
+
+- **experiments/README.md** (2.1K) - Quick start guide for running experiments
+  - 40-minute experiment execution plan
+  - **Status:** Experiments complete, results validated
+
+- **experiment-scripts/test_libclang_behavior.py** (16.4K) - Automated validation script
+  - Tests type alias resolution, template function detection, canonical type handling
+  - **Key findings:** TC4 (aliases expanded + qualified), TC5 (cursor.kind detection)
+  - **Status:** Validation complete, no longer needed for implementation
+
+**Why archived:**
+- Design phase complete - all decisions made (Q1-Q10 resolved)
+- Experiments validated critical assumptions (TC4: Q3 works, TC5: F4 works)
+- Results documented in `docs/proposals/QUALIFIED_NAME_DISCUSSION_LOG.md`
+- Implementation planning phase begins - experiments artifacts no longer needed
+
+**When to reference:**
+- Understanding rationale for Q2 (template detection via cursor.kind)
+- Understanding rationale for Q3 (canonical type expansion)
+- Replicating validation methodology for future features
+
+---
+
+## Previously Archived (2025-12-29)
 
 ### Testing Framework Development (Token Savings: ~100K)
 - **MCP_TESTING_SKILL.md** (715 lines) - Complete technical specification for /test-mcp skill
@@ -57,7 +94,9 @@ These were temporary development session notes documenting specific bug fixes an
 
 ## Token Savings Summary
 
-Archiving these files saves approximately **98K+ tokens** when working with documentation:
+Archiving these files saves approximately **113K+ tokens** when working with documentation:
+- Qualified name support design artifacts (2026-01-08): ~15K tokens
+- Testing framework development: ~100K tokens (archived 2025-12-29)
 - Development session documents: ~21K tokens
 - Test coverage analysis (incremental-specific): ~7K tokens
 - Issue #3 investigation files: ~6K tokens
