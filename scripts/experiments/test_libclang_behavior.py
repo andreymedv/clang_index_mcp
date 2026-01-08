@@ -129,7 +129,13 @@ class LibclangTester:
         """Verify libclang is available and working"""
         print("Setting up libclang...")
         print(f"  Python clang module: {clx.__file__}")
-        print(f"  libclang version: {clx.version.__version__}")
+
+        # Try to get libclang version
+        try:
+            version = clx.conf.lib.clang_getClangVersion()
+            print(f"  libclang version: {version}")
+        except:
+            print(f"  libclang version: (unable to detect, but library loaded)")
 
         # Try to parse simple code
         try:
