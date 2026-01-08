@@ -1,7 +1,9 @@
 # Proposal: Qualified Name Addressing for C++ Symbols
 
-**Status:** 🟡 Draft - Awaiting Discussion
+**Status:** ✅ Discussion Complete - Ready for Prioritization
 **Created:** 2026-01-05
+**Discussion Completed:** 2026-01-06
+**Experiments Validated:** 2026-01-06
 **Author:** System Analysis (based on manual testing observations)
 **Related Issues:** #98, #100, #102, #85, #99, #101
 
@@ -1592,18 +1594,40 @@ SELECT * FROM symbols_fts WHERE qualified_name MATCH 'ns1::ui::View';
 - Complexity: 3-4 weeks
 - Not blocking for basic usage
 
+### Experiment Validation ✅ (2026-01-06)
+
+**Critical assumptions validated through automated testing:**
+
+**TC4 (Base Class with Alias):**
+- ✅ `cursor.type.get_canonical()` DOES expand type aliases
+- ✅ Namespace qualification preserved in template arguments
+- ✅ Result: `Container<std::unique_ptr<ns1::Foo>>` (not `Container<FooPtr>`)
+- ✅ Verdict: Q3 works as planned, Q12 stays deferred
+
+**TC5 (Template Function Detection):**
+- ✅ `cursor.kind` successfully distinguishes templates from overloads
+- ✅ Q2 `is_template_specialization` field feasible
+- ⚠️ Simplified approach: use `cursor.kind` + displayname (not `specialized_cursor_template()`)
+
+**Impact:**
+- ✅ No blocking dependencies discovered
+- ✅ Phase 1 timeline unchanged (~2-3 weeks)
+- ✅ All Q1-Q10 decisions validated by experiments
+
+**See:** Experiment framework in `docs/experiments/` directory
+
 ### Next Steps
 
-1. **Prioritization session:** Review all identified features/improvements
-2. **Implementation planning:** Sequence by technical dependencies
-3. **libclang experiments:** Validate assumptions (e.g., alias handling)
+1. ✅ **libclang experiments:** Completed - all assumptions validated
+2. **Prioritization session:** Review all identified features/improvements
+3. **Implementation planning:** Sequence by technical dependencies
 4. **Implementation:** Begin according to continuous delivery philosophy
 
 **See:** [Discussion Log](./QUALIFIED_NAME_DISCUSSION_LOG.md) for complete decisions and [Project Development Philosophy](#project-development-philosophy-).
 
 ---
 
-**Document Version:** 2.0
+**Document Version:** 2.1
 **Last Updated:** 2026-01-06
-**Status:** Discussion Complete - Ready for Implementation Planning
-**Next Phase:** Prioritization and Sequencing
+**Status:** Discussion Complete + Experiments Validated - Ready for Prioritization
+**Next Phase:** Prioritization and Implementation Sequencing
