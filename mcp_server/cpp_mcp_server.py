@@ -264,7 +264,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Class/struct name to search for. **Empty string matches all** - useful with file_name filter to get all classes in a file. **Default behavior: exact match** (case-insensitive). For example, 'View' returns only the class named 'View', not 'ViewManager' or 'ListView'. **For pattern matching**, use regex metacharacters: '.*View.*' matches all classes containing 'View', 'View.*' matches classes starting with 'View', etc. Pattern examples: 'My.*Class' matches MyBaseClass, MyDerivedClass.",
+                        "description": "Class/struct name to search for. **Empty string matches all** - useful with file_name filter to get all classes in a file. **Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): 'View' matches View in any namespace. 2) **Qualified suffix**: 'ui::View' matches app::ui::View, legacy::ui::View (component-based suffix). 3) **Exact match**: '::View' matches only global namespace (leading ::). 4) **Regex**: 'app::.*::View' uses regex with metacharacters. Examples: 'View' (any namespace), 'ui::View' (suffix match), '::View' (global only), '.*View.*' (regex contains).",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -287,7 +287,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Function/method name to search for. **Empty string matches all** - useful with file_name filter to get all functions in a file. **Default behavior: exact match** (case-insensitive). For example, 'getValue' returns only functions named 'getValue', not 'getValueFromCache'. **For pattern matching**, use regex metacharacters: 'get.*' matches all functions starting with 'get', '.*Value.*' matches all functions containing 'Value', etc.",
+                        "description": "Function/method name to search for. **Empty string matches all** - useful with file_name filter to get all functions in a file. **Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): 'foo' matches foo in any namespace/class. 2) **Qualified suffix**: 'ns::foo' or 'Class::method' matches with component-based suffix. 3) **Exact match**: '::foo' matches only global namespace (leading ::). 4) **Regex**: 'test.*' uses regex (matches name OR qualified_name for backward compatibility). Examples: 'getValue' (any namespace), 'Database::save' (method suffix), '::main' (global only), 'get.*' (regex starts with).",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -346,7 +346,7 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for. **Empty string matches all symbols** of the specified types. Supports exact matching (default) and regex patterns. Searches across all symbol types unless filtered by symbol_types parameter.",
+                        "description": "Symbol name pattern to search for. **Empty string matches all symbols** of the specified types. **Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): matches symbol in any namespace. 2) **Qualified suffix**: 'ns::Symbol' matches with component-based suffix. 3) **Exact match**: '::Symbol' matches only global namespace (leading ::). 4) **Regex**: uses regex with metacharacters. Searches across all symbol types unless filtered by symbol_types parameter. Examples: 'Config' (any namespace), 'app::Config' (suffix match), '::Config' (global only), '.*Config.*' (regex contains).",
                     },
                     "project_only": {
                         "type": "boolean",
@@ -377,7 +377,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for within the file. **Empty string matches all symbols** in the file. Supports exact matching (default) and regex patterns.",
+                        "description": "Symbol name pattern to search for within the file. **Empty string matches all symbols** in the file. **Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): matches symbol in any namespace within file. 2) **Qualified suffix**: 'ns::Symbol' matches with component-based suffix within file. 3) **Exact match**: '::Symbol' matches only global namespace symbols in file (leading ::). 4) **Regex**: uses regex with metacharacters. Examples: 'View' (all View symbols), 'ui::View' (suffix match), '::View' (global only), '.*View.*' (regex contains).",
                     },
                 },
                 "required": ["file_path", "pattern"],
