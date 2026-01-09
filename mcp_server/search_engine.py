@@ -59,6 +59,47 @@ class SearchEngine:
             # Exact matching: case-insensitive equality
             return name.lower() == pattern.lower()
 
+    @staticmethod
+    def _detect_pattern_type(pattern: str) -> str:
+        """
+        Detect pattern type for qualified name search optimization.
+
+        Phase 2 (Qualified Names): Component-based pattern matching.
+
+        Returns:
+            "exact": Leading :: means exact match in global namespace (e.g., "::View")
+            "unqualified": No :: means match unqualified name only (e.g., "View")
+            "suffix": Contains :: means component-based suffix match (e.g., "ui::View")
+            "regex": Contains regex metacharacters (e.g., "app::.*::View")
+
+        Examples:
+            _detect_pattern_type("::View") → "exact"
+            _detect_pattern_type("View") → "unqualified"
+            _detect_pattern_type("ui::View") → "suffix"
+            _detect_pattern_type("app::.*::View") → "regex"
+
+        Task: T2.1.2 (Qualified Names Phase 2)
+        """
+        # Empty pattern handled by caller
+        if not pattern:
+            return "unqualified"
+
+        # Leading :: → exact match in global namespace
+        if pattern.startswith("::"):
+            return "exact"
+
+        # Check for regex metacharacters
+        regex_chars = set(".*+?[]{}()|\\^$")
+        if any(c in pattern for c in regex_chars):
+            return "regex"
+
+        # No :: → match unqualified name
+        if "::" not in pattern:
+            return "unqualified"
+
+        # Contains :: but not leading, no regex → component-based suffix match
+        return "suffix"
+
     def search_classes(
         self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
