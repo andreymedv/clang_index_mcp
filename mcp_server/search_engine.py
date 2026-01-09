@@ -261,16 +261,57 @@ class SearchEngine:
     ) -> List[Dict[str, Any]]:
         """Search for functions matching a pattern.
 
+        Phase 2 (Qualified Names): Supports qualified pattern matching.
+
         Pattern matching modes:
         - Empty string ("") matches ALL functions (useful with file_name filter)
-        - Plain text (no regex metacharacters) performs exact match (case-insensitive)
-        - Regex patterns (with .*+?[]{}()| etc.) use anchored full-match
+        - Unqualified ("foo") matches foo in any namespace (case-insensitive)
+        - Qualified ("ns::foo") matches with component-based suffix (e.g., app::ns::foo)
+        - Member functions ("Class::method") supported
+        - Exact ("::foo") matches only global namespace (leading ::)
+        - Regex ("ns::.*") uses regex fullmatch semantics
+
+        Args:
+            pattern: Search pattern (qualified, unqualified, or regex)
+            project_only: Only return symbols from project files
+            class_name: Optional class name filter (for methods)
+            file_name: Optional file name filter
+
+        Returns:
+            List of matching function dictionaries with qualified_name and namespace fields
+
+        Task: T2.2.2 (Qualified Names Phase 2)
         """
-        # Validate pattern for ReDoS prevention (only if it's a regex pattern)
-        if self._is_pattern(pattern):
+        # Validate regex patterns for ReDoS prevention
+        pattern_type = self._detect_pattern_type(pattern)
+        if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
         results = []
+
+        # Helper to create result dict
+        def _create_result(info: SymbolInfo) -> Dict[str, Any]:
+            return {
+                "name": info.name,
+                "qualified_name": info.qualified_name,  # Phase 2: Qualified name
+                "namespace": info.namespace,  # Phase 2: Namespace portion
+                "kind": info.kind,
+                "file": info.file,
+                "line": info.line,
+                "signature": info.signature,
+                "is_project": info.is_project,
+                "parent_class": info.parent_class,
+                # Phase 1: Line ranges
+                "start_line": info.start_line,
+                "end_line": info.end_line,
+                "header_file": info.header_file,
+                "header_line": info.header_line,
+                "header_start_line": info.header_start_line,
+                "header_end_line": info.header_end_line,
+                # Phase 2: Documentation
+                "brief": info.brief,
+                "doc_comment": info.doc_comment,
+            }
 
         # CRITICAL FIX FOR ISSUE #8:
         # When file_name is specified, search file_index instead of function_index
@@ -288,67 +329,50 @@ class SearchEngine:
                     if info.kind not in ("function", "method"):
                         continue
 
+                    # Use qualified pattern matching (Phase 2)
+                    # Fallback to info.name if qualified_name is empty (backward compatibility)
+                    qualified_name = info.qualified_name if info.qualified_name else info.name
+
+                    # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
+                    # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
+                    matches = self.matches_qualified_pattern(qualified_name, pattern)
+                    if not matches and pattern_type == "regex":
+                        # Also try matching against unqualified name for backward compatibility
+                        matches = self.matches_qualified_pattern(info.name, pattern)
+
+                    if not matches:
+                        continue
+
                     if not project_only or info.is_project:
                         # Filter by class name if specified
                         if class_name and info.parent_class != class_name:
                             continue
 
-                        # Filter by pattern
-                        if not self._matches(pattern, info.name):
-                            continue
-
-                        results.append(
-                            {
-                                "name": info.name,
-                                "kind": info.kind,
-                                "file": info.file,
-                                "line": info.line,
-                                "signature": info.signature,
-                                "is_project": info.is_project,
-                                "parent_class": info.parent_class,
-                                # Phase 1: Line ranges
-                                "start_line": info.start_line,
-                                "end_line": info.end_line,
-                                "header_file": info.header_file,
-                                "header_line": info.header_line,
-                                "header_start_line": info.header_start_line,
-                                "header_end_line": info.header_end_line,
-                                # Phase 2: Documentation
-                                "brief": info.brief,
-                                "doc_comment": info.doc_comment,
-                            }
-                        )
+                        results.append(_create_result(info))
         else:
             # Original logic: search function_index
             for name, infos in self.function_index.items():
-                if self._matches(pattern, name):
-                    for info in infos:
-                        if not project_only or info.is_project:
-                            # Filter by class name if specified
-                            if class_name and info.parent_class != class_name:
-                                continue
+                for info in infos:
+                    # Use qualified pattern matching (Phase 2)
+                    # Fallback to info.name if qualified_name is empty (backward compatibility)
+                    qualified_name = info.qualified_name if info.qualified_name else info.name
 
-                            results.append(
-                                {
-                                    "name": info.name,
-                                    "kind": info.kind,
-                                    "file": info.file,
-                                    "line": info.line,
-                                    "signature": info.signature,
-                                    "is_project": info.is_project,
-                                    "parent_class": info.parent_class,
-                                    # Phase 1: Line ranges
-                                    "start_line": info.start_line,
-                                    "end_line": info.end_line,
-                                    "header_file": info.header_file,
-                                    "header_line": info.header_line,
-                                    "header_start_line": info.header_start_line,
-                                    "header_end_line": info.header_end_line,
-                                    # Phase 2: Documentation
-                                    "brief": info.brief,
-                                    "doc_comment": info.doc_comment,
-                                }
-                            )
+                    # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
+                    # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
+                    matches = self.matches_qualified_pattern(qualified_name, pattern)
+                    if not matches and pattern_type == "regex":
+                        # Also try matching against unqualified name for backward compatibility
+                        matches = self.matches_qualified_pattern(info.name, pattern)
+
+                    if not matches:
+                        continue
+
+                    if not project_only or info.is_project:
+                        # Filter by class name if specified
+                        if class_name and info.parent_class != class_name:
+                            continue
+
+                        results.append(_create_result(info))
 
         return results
 
