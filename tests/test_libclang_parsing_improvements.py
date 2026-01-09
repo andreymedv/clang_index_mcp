@@ -191,11 +191,30 @@ class TestUnknownCursorKindHandling:
         from clang.cindex import CursorKind
         child_cursor.kind = CursorKind.FUNCTION_DECL
         child_cursor.location.file.name = f"{temp_project}/test.cpp"
+        child_cursor.location.line = 10
+        child_cursor.location.column = 5
         child_cursor.get_children = Mock(return_value=[])
         child_cursor.spelling = "child_function"
         child_cursor.get_usr = Mock(return_value="usr_child")
-        child_cursor.location.line = 10
-        child_cursor.location.column = 5
+
+        # Setup extent for _extract_line_range_info()
+        child_cursor.extent.start.file.name = f"{temp_project}/test.cpp"
+        child_cursor.extent.start.line = 10
+        child_cursor.extent.end.file.name = f"{temp_project}/test.cpp"
+        child_cursor.extent.end.line = 15
+
+        # Setup type for signature extraction
+        child_cursor.type.spelling = "void ()"
+
+        # Setup raw_comment for _extract_documentation()
+        child_cursor.raw_comment = None
+
+        # Setup semantic_parent chain to terminate at TRANSLATION_UNIT
+        # This is needed for _get_qualified_name() to work correctly
+        translation_unit_cursor = Mock()
+        translation_unit_cursor.kind = CursorKind.TRANSLATION_UNIT
+        translation_unit_cursor.spelling = ""
+        child_cursor.semantic_parent = translation_unit_cursor
 
         # Mock parent cursor where accessing .kind raises ValueError
         parent_cursor = Mock()

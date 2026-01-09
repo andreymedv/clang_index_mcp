@@ -13,9 +13,10 @@ class SymbolInfo:
     file: str
     line: int
     column: int
+    qualified_name: str = ""  # Fully qualified name (e.g., "ns1::ns2::Class")
     signature: str = ""
     is_project: bool = True
-    namespace: str = ""
+    namespace: str = ""  # Namespace portion (e.g., "ns1::ns2" from "ns1::ns2::Class")
     access: str = "public"  # public, private, protected
     parent_class: str = ""  # For methods, the containing class
     base_classes: List[str] = field(default_factory=list)  # For classes
@@ -44,6 +45,7 @@ class SymbolInfo:
         """Convert to dictionary for JSON serialization"""
         return {
             "name": self.name,
+            "qualified_name": self.qualified_name,
             "kind": self.kind,
             "file": self.file,
             "line": self.line,
