@@ -148,10 +148,10 @@ class SearchEngine:
             # Remove leading :: from pattern and compare with qualified_name
             return qualified_name == pattern[2:]
 
-        # 2. Regex match
+        # 2. Regex match (case-insensitive for consistency with other modes)
         if pattern_type == "regex":
             try:
-                return bool(re.fullmatch(pattern, qualified_name))
+                return bool(re.fullmatch(pattern, qualified_name, re.IGNORECASE))
             except re.error:
                 # Invalid regex → no match
                 return False
@@ -381,10 +381,29 @@ class SearchEngine:
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Search for any symbols matching a pattern.
 
+        Phase 2 (Qualified Names): Supports qualified pattern matching.
+
         Pattern matching modes:
         - Empty string ("") matches ALL symbols of specified types
-        - Plain text (no regex metacharacters) performs exact match (case-insensitive)
-        - Regex patterns (with .*+?[]{}()| etc.) use anchored full-match
+        - Unqualified ("View") matches View in any namespace (case-insensitive)
+        - Qualified ("ui::View") matches with component-based suffix (e.g., app::ui::View)
+        - Exact ("::View") matches only global namespace (leading ::)
+        - Regex ("app::.*::View") uses regex fullmatch semantics
+
+        Args:
+            pattern: Search pattern (qualified, unqualified, or regex)
+            project_only: Only return symbols from project files
+            symbol_types: Optional list of symbol types to filter (e.g., ["class", "function"])
+
+        Returns:
+            Dictionary with "classes" and "functions" keys containing matching symbols
+            Each symbol includes qualified_name and namespace fields (Phase 2)
+
+        Note:
+            Delegates to search_classes() and search_functions() which implement
+            qualified pattern matching. See those methods for detailed behavior.
+
+        Task: T2.2.3 (Qualified Names Phase 2)
         """
         results = {"classes": [], "functions": []}
 
