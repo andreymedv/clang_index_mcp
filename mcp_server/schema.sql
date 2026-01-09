@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 9.0
+-- Version: 10.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v10.0: Added qualified_name field for namespace-aware search (Qualified Names Phase 1)
 -- Changelog v9.0: Removed calls/called_by columns from symbols table (memory optimization Task 1.2)
 -- Changelog v8.0: Added call_sites, cross_references, parameter_docs tables for call graph enhancement (Phase 3: LLM Integration)
 -- Changelog v7.0: Added brief and doc_comment fields for documentation extraction (Phase 2: LLM Integration)
@@ -34,13 +35,14 @@ VALUES (1, julianday('now'), 'Initial schema with FTS5 support');
 CREATE TABLE IF NOT EXISTS symbols (
     usr TEXT PRIMARY KEY,              -- Unified Symbol Resolution (unique ID)
     name TEXT NOT NULL,                -- Symbol name (e.g., "Vector", "push_back")
+    qualified_name TEXT DEFAULT '',    -- Fully qualified name (e.g., "std::vector", "ns1::ns2::Class")
     kind TEXT NOT NULL,                -- "class", "function", "method", "struct"
     file TEXT NOT NULL,                -- Source file path (absolute)
     line INTEGER NOT NULL,             -- Line number
     column INTEGER NOT NULL,           -- Column number
     signature TEXT DEFAULT '',         -- Function signature
     is_project BOOLEAN NOT NULL DEFAULT 1,  -- True for project code, False for dependencies
-    namespace TEXT DEFAULT '',         -- Namespace (e.g., "std", "myapp::utils")
+    namespace TEXT DEFAULT '',         -- Namespace portion (e.g., "std", "ns1::ns2" from "ns1::ns2::Class")
     access TEXT DEFAULT 'public',      -- "public", "private", "protected"
     parent_class TEXT DEFAULT '',      -- For methods: containing class name
     base_classes TEXT DEFAULT '[]',    -- JSON array of base class names
@@ -69,6 +71,7 @@ CREATE TABLE IF NOT EXISTS symbols (
 
 -- Indexes for fast lookups (critical for performance)
 CREATE INDEX IF NOT EXISTS idx_symbol_name ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_symbol_qualified_name ON symbols(qualified_name);
 CREATE INDEX IF NOT EXISTS idx_symbol_kind ON symbols(kind);
 CREATE INDEX IF NOT EXISTS idx_symbol_file ON symbols(file);
 CREATE INDEX IF NOT EXISTS idx_symbol_parent ON symbols(parent_class);
@@ -84,17 +87,18 @@ CREATE INDEX IF NOT EXISTS idx_symbols_range ON symbols(file, start_line, end_li
 
 -- Full-text search index (FTS5)
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
-    name,           -- Tokenized for full-text search
+    name,                -- Tokenized for full-text search
+    qualified_name,      -- Qualified name for namespace-aware search
     kind,
-    usr UNINDEXED,  -- Store but don't index
+    usr UNINDEXED,       -- Store but don't index
     content=symbols,
     content_rowid=rowid
 );
 
 -- Triggers to keep FTS index in sync with symbols table
 CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
-    INSERT INTO symbols_fts(rowid, name, kind, usr)
-    VALUES (new.rowid, new.name, new.kind, new.usr);
+    INSERT INTO symbols_fts(rowid, name, qualified_name, kind, usr)
+    VALUES (new.rowid, new.name, new.qualified_name, new.kind, new.usr);
 END;
 
 CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
@@ -102,7 +106,7 @@ CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
-    UPDATE symbols_fts SET name = new.name, kind = new.kind
+    UPDATE symbols_fts SET name = new.name, qualified_name = new.qualified_name, kind = new.kind
     WHERE rowid = old.rowid;
 END;
 
@@ -129,7 +133,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"9.0"', julianday('now')),
+    ('version', '"10.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
