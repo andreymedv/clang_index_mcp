@@ -910,8 +910,20 @@ class CppAnalyzer:
         """
         parts = []
         current = cursor
+        max_depth = 100  # Safety limit to prevent infinite loops
+        depth = 0
+        visited = set()  # Detect circular references
 
-        while current:
+        while current and depth < max_depth:
+            # Check for circular reference (should never happen, but safety first)
+            cursor_id = id(current)
+            if cursor_id in visited:
+                diagnostics.warning(
+                    f"Circular reference detected in semantic parent chain for {cursor.spelling}"
+                )
+                break
+            visited.add(cursor_id)
+
             if current.kind == CursorKind.TRANSLATION_UNIT:
                 break
 
@@ -923,6 +935,12 @@ class CppAnalyzer:
                 parts.append("(anonymous namespace)")
 
             current = current.semantic_parent
+            depth += 1
+
+        if depth >= max_depth:
+            diagnostics.warning(
+                f"Maximum depth ({max_depth}) exceeded when building qualified name for {cursor.spelling}"
+            )
 
         parts.reverse()
         return "::".join(parts) if parts else cursor.spelling
