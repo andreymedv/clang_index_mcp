@@ -183,48 +183,72 @@ class SearchEngine:
     ) -> List[Dict[str, Any]]:
         """Search for classes matching a pattern.
 
+        Phase 2 (Qualified Names): Supports qualified pattern matching.
+
         Pattern matching modes:
         - Empty string ("") matches ALL classes (useful with file_name filter)
-        - Plain text (no regex metacharacters) performs exact match (case-insensitive)
-        - Regex patterns (with .*+?[]{}()| etc.) use anchored full-match
+        - Unqualified ("View") matches View in any namespace (case-insensitive)
+        - Qualified ("ui::View") matches with component-based suffix (e.g., app::ui::View)
+        - Exact ("::View") matches only global namespace (leading ::)
+        - Regex ("app::.*::View") uses regex fullmatch semantics
+
+        Args:
+            pattern: Search pattern (qualified, unqualified, or regex)
+            project_only: Only return symbols from project files
+            file_name: Optional file name filter
+
+        Returns:
+            List of matching class dictionaries with qualified_name and namespace fields
+
+        Task: T2.2.1 (Qualified Names Phase 2)
         """
-        # Validate pattern for ReDoS prevention (only if it's a regex pattern)
-        if self._is_pattern(pattern):
+        # Validate regex patterns for ReDoS prevention
+        pattern_type = self._detect_pattern_type(pattern)
+        if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
         results = []
 
+        # Iterate all classes and use qualified pattern matching
         for name, infos in self.class_index.items():
-            if self._matches(pattern, name):
-                for info in infos:
-                    if not project_only or info.is_project:
-                        # Filter by file name if specified
-                        if file_name:
-                            # Match if the file path ends with the specified file_name
-                            # This supports full paths, relative paths, or just filenames
-                            if not info.file.endswith(file_name):
-                                continue
+            for info in infos:
+                # Use qualified pattern matching (Phase 2)
+                # Fallback to info.name if qualified_name is empty (backward compatibility)
+                qualified_name = info.qualified_name if info.qualified_name else info.name
+                if not self.matches_qualified_pattern(qualified_name, pattern):
+                    continue
 
-                        results.append(
-                            {
-                                "name": info.name,
-                                "kind": info.kind,
-                                "file": info.file,
-                                "line": info.line,
-                                "is_project": info.is_project,
-                                "base_classes": info.base_classes,
-                                # Phase 1: Line ranges
-                                "start_line": info.start_line,
-                                "end_line": info.end_line,
-                                "header_file": info.header_file,
-                                "header_line": info.header_line,
-                                "header_start_line": info.header_start_line,
-                                "header_end_line": info.header_end_line,
-                                # Phase 2: Documentation
-                                "brief": info.brief,
-                                "doc_comment": info.doc_comment,
-                            }
-                        )
+                # Apply filters
+                if not project_only or info.is_project:
+                    # Filter by file name if specified
+                    if file_name:
+                        # Match if the file path ends with the specified file_name
+                        # This supports full paths, relative paths, or just filenames
+                        if not info.file.endswith(file_name):
+                            continue
+
+                    results.append(
+                        {
+                            "name": info.name,
+                            "qualified_name": info.qualified_name,  # Phase 2: Qualified name
+                            "namespace": info.namespace,  # Phase 2: Namespace portion
+                            "kind": info.kind,
+                            "file": info.file,
+                            "line": info.line,
+                            "is_project": info.is_project,
+                            "base_classes": info.base_classes,
+                            # Phase 1: Line ranges
+                            "start_line": info.start_line,
+                            "end_line": info.end_line,
+                            "header_file": info.header_file,
+                            "header_line": info.header_line,
+                            "header_start_line": info.header_start_line,
+                            "header_end_line": info.header_end_line,
+                            # Phase 2: Documentation
+                            "brief": info.brief,
+                            "doc_comment": info.doc_comment,
+                        }
+                    )
 
         return results
 
