@@ -891,17 +891,93 @@ class CppAnalyzer:
         self.file_scanner.include_dependencies = include_dependencies
         return self.file_scanner.find_cpp_files()
 
+    def _get_qualified_name(self, cursor) -> str:
+        """
+        Build fully qualified name by walking up semantic parent chain.
+
+        Handles:
+        - Nested namespaces: ns1::ns2::ClassName
+        - Nested classes: Outer::Inner::method
+        - Anonymous namespaces: (anonymous namespace)::Internal
+        - Global namespace: just the symbol name
+
+        Args:
+            cursor: libclang cursor
+
+        Returns:
+            Qualified name like "ns1::ns2::ClassName::method"
+            For global namespace: just cursor.spelling
+        """
+        parts = []
+        current = cursor
+
+        while current:
+            if current.kind == CursorKind.TRANSLATION_UNIT:
+                break
+
+            # Add this cursor's name to the path
+            if current.spelling:
+                parts.append(current.spelling)
+            elif current.kind == CursorKind.NAMESPACE and current.is_anonymous():
+                # Represent anonymous namespaces explicitly
+                parts.append("(anonymous namespace)")
+
+            current = current.semantic_parent
+
+        parts.reverse()
+        return "::".join(parts) if parts else cursor.spelling
+
+    def _extract_namespace(self, qualified_name: str) -> str:
+        """
+        Extract namespace portion from qualified name.
+
+        Includes parent classes in namespace (Q8 decision from design).
+
+        Examples:
+            "ns1::ns2::Class" → "ns1::ns2"
+            "ns1::Outer::Inner" → "ns1::Outer" (includes parent class)
+            "GlobalClass" → ""
+
+        Args:
+            qualified_name: Fully qualified name
+
+        Returns:
+            Namespace portion (empty string for global namespace)
+        """
+        if "::" not in qualified_name:
+            return ""
+
+        parts = qualified_name.split("::")
+        return "::".join(parts[:-1])
+
     def _get_base_classes(self, cursor) -> List[str]:
-        """Extract base class names from a class cursor"""
+        """
+        Extract base class names from a class cursor.
+
+        Uses canonical type to ensure template arguments include qualified names.
+        For example: Container<ns1::Foo> instead of Container<Foo>
+
+        Task T3.2.1: Qualified Names Phase 1
+        """
         base_classes = []
         for child in cursor.get_children():
             if child.kind == CursorKind.CXX_BASE_SPECIFIER:
-                # Get the referenced class name
-                base_type = child.type.spelling
-                # Clean up the type name (remove "class " prefix if present)
-                if base_type.startswith("class "):
-                    base_type = base_type[6:]
-                base_classes.append(base_type)
+                # Get the referenced class type
+                base_type = child.type
+
+                # Use canonical type for template args expansion + qualification
+                # This ensures template arguments have fully qualified names
+                # Example: Container<FooPtr> → Container<std::unique_ptr<ns1::Foo>>
+                canonical_type = base_type.get_canonical()
+                base_name_qualified = canonical_type.spelling
+
+                # Clean up the type name (remove "class " or "struct " prefix if present)
+                if base_name_qualified.startswith("class "):
+                    base_name_qualified = base_name_qualified[6:]
+                elif base_name_qualified.startswith("struct "):
+                    base_name_qualified = base_name_qualified[7:]
+
+                base_classes.append(base_name_qualified)
         return base_classes
 
     def _extract_line_range_info(self, cursor) -> dict:
@@ -1138,6 +1214,10 @@ class CppAnalyzer:
         # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
             if cursor.spelling and should_extract:
+                # Extract qualified name and namespace (Qualified Names Phase 1)
+                qualified_name = self._get_qualified_name(cursor)
+                namespace = self._extract_namespace(qualified_name)
+
                 # Get base classes
                 base_classes = self._get_base_classes(cursor)
 
@@ -1153,9 +1233,11 @@ class CppAnalyzer:
                     file=loc_info["file"],
                     line=loc_info["line"],
                     column=loc_info["column"],
+                    qualified_name=qualified_name,
                     is_project=(
                         self._is_project_file(loc_info["file"]) if loc_info["file"] else False
                     ),
+                    namespace=namespace,
                     parent_class="",  # Classes don't have parent classes in this context
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else "",
@@ -1197,6 +1279,10 @@ class CppAnalyzer:
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
 
+                # Extract qualified name and namespace (Qualified Names Phase 1)
+                qualified_name = self._get_qualified_name(cursor)
+                namespace = self._extract_namespace(qualified_name)
+
                 # Extract line range and location info (Phase 1: LLM Integration)
                 loc_info = self._extract_line_range_info(cursor)
 
@@ -1209,10 +1295,12 @@ class CppAnalyzer:
                     file=loc_info["file"],
                     line=loc_info["line"],
                     column=loc_info["column"],
+                    qualified_name=qualified_name,
                     signature=signature,
                     is_project=(
                         self._is_project_file(loc_info["file"]) if loc_info["file"] else False
                     ),
+                    namespace=namespace,
                     parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
                     usr=function_usr,
                     # Phase 1: Line ranges

@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "9.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "10.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -403,6 +403,7 @@ class SqliteCacheBackend:
         return (
             symbol.usr,
             symbol.name,
+            symbol.qualified_name,  # v10.0: Qualified Names Phase 1
             symbol.kind,
             symbol.file,
             symbol.line,
@@ -439,6 +440,9 @@ class SqliteCacheBackend:
         """
         return SymbolInfo(
             name=row["name"],
+            qualified_name=(
+                row["qualified_name"] if "qualified_name" in row.keys() else ""
+            ),  # v10.0: Qualified Names
             kind=row["kind"],
             file=row["file"],
             line=row["line"],
@@ -484,14 +488,14 @@ class SqliteCacheBackend:
                 self.conn.execute(
                     """
                     INSERT OR REPLACE INTO symbols (
-                        usr, name, kind, file, line, column, signature,
+                        usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
                         base_classes,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol),
                 )
@@ -525,14 +529,14 @@ class SqliteCacheBackend:
                 self.conn.executemany(
                     """
                     INSERT OR REPLACE INTO symbols (
-                        usr, name, kind, file, line, column, signature,
+                        usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
                         base_classes,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols],
                 )
@@ -1499,14 +1503,14 @@ class SqliteCacheBackend:
                 self.conn.execute(
                     """
                     INSERT OR REPLACE INTO symbols (
-                        usr, name, kind, file, line, column, signature,
+                        usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
                         base_classes,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol),
                 )
