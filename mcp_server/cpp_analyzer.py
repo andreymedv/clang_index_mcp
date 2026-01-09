@@ -3249,10 +3249,40 @@ class CppAnalyzer:
         return paths
 
     def find_in_file(self, file_path: str, pattern: str) -> List[Dict[str, Any]]:
-        """Search for symbols within a specific file"""
+        """Search for symbols within a specific file.
+
+        Phase 2 (Qualified Names): Supports qualified pattern matching.
+
+        Pattern matching modes:
+        - Empty string ("") matches ALL symbols in the file
+        - Unqualified ("View") matches View in any namespace (case-insensitive)
+        - Qualified ("ui::View") matches with component-based suffix
+        - Exact ("::View") matches only global namespace symbols
+        - Regex ("test.*") uses case-insensitive regex fullmatch
+
+        Args:
+            file_path: Path to file (absolute or relative)
+            pattern: Search pattern (qualified, unqualified, or regex)
+
+        Returns:
+            List of matching symbols (classes and functions) in the specified file
+            Each symbol includes qualified_name and namespace fields (Phase 2)
+
+        Examples:
+            find_in_file("view.h", "View") - all View symbols
+            find_in_file("view.h", "ui::View") - only ui::View
+            find_in_file("view.h", "") - all symbols in file
+
+        Note:
+            Delegates to search_classes() and search_functions() which implement
+            qualified pattern matching, then filters by file path.
+
+        Task: T2.2.4 (Qualified Names Phase 2)
+        """
         results = []
 
         # Search in both class and function results
+        # These already support qualified pattern matching (T2.2.1, T2.2.2)
         all_classes = self.search_classes(pattern, project_only=False)
         all_functions = self.search_functions(pattern, project_only=False)
 
