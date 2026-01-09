@@ -79,7 +79,8 @@ def _process_file_worker(args_tuple):
     This avoids creating a new analyzer (and new DB connection) for every file.
 
     Args:
-        args_tuple: (project_root, config_file, file_path, force, include_dependencies)
+        args_tuple: (project_root, config_file, file_path, force, include_dependencies, compile_args)
+            where compile_args is a list of compilation arguments for the file (Phase 3 Memory Optimization)
 
     Returns:
         (file_path, success, was_cached, symbols, call_sites, processed_headers)
@@ -87,15 +88,18 @@ def _process_file_worker(args_tuple):
         call_sites is a list of call site dicts (Phase 3),
         and processed_headers is a dict mapping header paths to file hashes
     """
-    project_root, config_file, file_path, force, include_dependencies = args_tuple
+    project_root, config_file, file_path, force, include_dependencies, compile_args = args_tuple
     global _worker_analyzer
 
     # Create a single analyzer instance per worker process (process-local)
     # Use skip_schema_recreation=True to avoid race conditions with main process
     # Main process ensures schema is current before spawning workers
+    # Task 3.2: use_compile_commands_manager=False to skip loading compile_commands.json (~6-10 GB savings)
     if _worker_analyzer is None:
         diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
-        _worker_analyzer = CppAnalyzer(project_root, config_file, skip_schema_recreation=True)
+        _worker_analyzer = CppAnalyzer(
+            project_root, config_file, skip_schema_recreation=True, use_compile_commands_manager=False
+        )
         # Ensure cleanup is called when the worker process exits
         atexit.register(_cleanup_worker_analyzer)
 
@@ -107,6 +111,9 @@ def _process_file_worker(args_tuple):
     # Mark this instance as isolated (no shared memory, locks not needed)
     # This is a worker process with its own memory space
     _worker_analyzer._needs_locking = False
+
+    # Task 3.2: Set precomputed compile args (avoids loading CompileCommandsManager in worker)
+    _worker_analyzer._provided_compile_args = compile_args
 
     # Parse the file
     success, was_cached = _worker_analyzer.index_file(file_path, force)
@@ -186,6 +193,7 @@ class CppAnalyzer:
         project_root: str,
         config_file: Optional[str] = None,
         skip_schema_recreation: bool = False,
+        use_compile_commands_manager: bool = True,
     ):
         """
         Initialize C++ Analyzer.
@@ -196,6 +204,8 @@ class CppAnalyzer:
             skip_schema_recreation: If True, skip database recreation on schema mismatch.
                                    Used by worker processes to avoid race conditions.
                                    Workers should rely on main process to ensure schema is current.
+            use_compile_commands_manager: If False, skip CompileCommandsManager initialization.
+                                         Used by worker processes that receive precomputed compile args (Task 3.2).
 
         Note:
             Project identity is determined by (source_directory, config_file) pair.
@@ -283,11 +293,20 @@ class CppAnalyzer:
         self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
         self.cache_loaded = False  # Track whether cache was successfully loaded
 
-        # Initialize compile commands manager with config and cache directory
-        compile_commands_config = self.config.get_compile_commands_config()
-        self.compile_commands_manager = CompileCommandsManager(
-            self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
-        )
+        # Task 3.2: Memory Optimization - Support for precomputed compile args
+        # When set, index_file() will use these args instead of querying CompileCommandsManager
+        # This allows workers to skip loading large compile_commands.json files (~6-10 GB savings)
+        self._provided_compile_args = None
+
+        # Task 3.2: Initialize compile commands manager only if needed
+        # Workers skip this to save ~6-10 GB memory by using precomputed args from main process
+        if use_compile_commands_manager:
+            compile_commands_config = self.config.get_compile_commands_config()
+            self.compile_commands_manager = CompileCommandsManager(
+                self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
+            )
+        else:
+            self.compile_commands_manager = None  # Worker mode: use precomputed args
 
         # Initialize header processing tracker for first-win strategy
         self.header_tracker = HeaderProcessingTracker()
@@ -319,19 +338,24 @@ class CppAnalyzer:
         )
 
         # Print compile commands configuration status
-        if self.compile_commands_manager.enabled:
-            cc_path = self.project_root / compile_commands_config["compile_commands_path"]
-            if cc_path.exists():
-                # This message will be followed by actual load message from CompileCommandsManager
-                diagnostics.debug(
-                    f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}"
-                )
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is not None:
+            if self.compile_commands_manager.enabled:
+                compile_commands_config = self.config.get_compile_commands_config()
+                cc_path = self.project_root / compile_commands_config["compile_commands_path"]
+                if cc_path.exists():
+                    # This message will be followed by actual load message from CompileCommandsManager
+                    diagnostics.debug(
+                        f"Compile commands enabled: using {compile_commands_config['compile_commands_path']}"
+                    )
+                else:
+                    diagnostics.debug(
+                        f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args"
+                    )
             else:
-                diagnostics.debug(
-                    f"Compile commands enabled: {compile_commands_config['compile_commands_path']} not found, will use fallback args"
-                )
+                diagnostics.debug("Compile commands disabled in configuration")
         else:
-            diagnostics.debug("Compile commands disabled in configuration")
+            diagnostics.debug("Worker mode: using precomputed compile args from main process")
 
     def close(self):
         """
@@ -411,7 +435,8 @@ class CppAnalyzer:
         Implements:
             REQ-10.4.1: Calculate and store hash of compile_commands.json
         """
-        if not self.compile_commands_manager.enabled:
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is None or not self.compile_commands_manager.enabled:
             self.compile_commands_hash = ""
             return
 
@@ -878,7 +903,8 @@ class CppAnalyzer:
         listed in it. Otherwise, scans for all C++ files based on extensions.
         """
         # If compile_commands.json is loaded and has entries, use only those files
-        if self.compile_commands_manager.enabled:
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
             compile_commands_files = self.compile_commands_manager.get_all_files()
             if compile_commands_files:
                 diagnostics.debug(
@@ -1514,25 +1540,31 @@ class CppAnalyzer:
         current_hash = self._get_file_hash(file_path)
 
         # Get compilation arguments to compute hash (needed for cache validation)
+        # Task 3.2: Use precomputed args if provided (worker mode), otherwise query CompileCommandsManager
         file_path_obj = Path(file_path)
-        args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+        if self._provided_compile_args is not None:
+            # Worker mode: use compile args provided by main process
+            args = self._provided_compile_args
+        else:
+            # Main process mode: query CompileCommandsManager
+            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
 
-        # If compile commands are not available and we're using fallback, add vcpkg includes
-        if not self.compile_commands_manager.is_file_supported(file_path_obj):
-            # Add vcpkg includes if available
-            vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-            if vcpkg_include.exists():
-                args.append(f"-I{vcpkg_include}")
+            # If compile commands are not available and we're using fallback, add vcpkg includes
+            if not self.compile_commands_manager.is_file_supported(file_path_obj):
+                # Add vcpkg includes if available
+                vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                if vcpkg_include.exists():
+                    args.append(f"-I{vcpkg_include}")
 
-            # Add common vcpkg paths
-            vcpkg_paths = [
-                "C:/vcpkg/installed/x64-windows/include",
-                "C:/dev/vcpkg/installed/x64-windows/include",
-            ]
-            for path in vcpkg_paths:
-                if Path(path).exists():
-                    args.append(f"-I{path}")
-                    break
+                # Add common vcpkg paths
+                vcpkg_paths = [
+                    "C:/vcpkg/installed/x64-windows/include",
+                    "C:/dev/vcpkg/installed/x64-windows/include",
+                ]
+                for path in vcpkg_paths:
+                    if Path(path).exists():
+                        args.append(f"-I{path}")
+                        break
 
         # Compute hash of compilation arguments for cache validation
         compile_args_hash = self._compute_compile_args_hash(args)
@@ -1680,18 +1712,22 @@ class CppAnalyzer:
                 if any("-std=c++" in arg for arg in args):
                     std_args = [arg for arg in args if "-std=c++" in arg]
                     hints.append(f"C++ standard specified: {std_args}")
-                if not self.compile_commands_manager.clang_resource_dir:
-                    hints.append(
-                        "Clang resource directory not detected - system headers may be missing"
-                    )
-                if self.compile_commands_manager.is_file_supported(Path(file_path)):
-                    hints.append(
-                        "Using args from compile_commands.json - check if they are libclang-compatible"
-                    )
+                # Task 3.2: Check CompileCommandsManager only if initialized
+                if self.compile_commands_manager is not None:
+                    if not self.compile_commands_manager.clang_resource_dir:
+                        hints.append(
+                            "Clang resource directory not detected - system headers may be missing"
+                        )
+                    if self.compile_commands_manager.is_file_supported(Path(file_path)):
+                        hints.append(
+                            "Using args from compile_commands.json - check if they are libclang-compatible"
+                        )
+                    else:
+                        hints.append(
+                            "Using fallback compilation args - compile_commands.json may be needed"
+                        )
                 else:
-                    hints.append(
-                        "Using fallback compilation args - compile_commands.json may be needed"
-                    )
+                    hints.append("Using precomputed compile args from main process")
 
                 if hints:
                     diagnostics.error("  Possible issues:")
@@ -1938,6 +1974,33 @@ class CppAnalyzer:
                     if self.project_identity.config_file_path
                     else None
                 )
+
+                # Task 3.2: Prepare compile args for each file in main process
+                # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
+                file_compile_args = {}
+                for file_path in files:
+                    file_path_obj = Path(file_path)
+                    args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+
+                    # If compile commands are not available and we're using fallback, add vcpkg includes
+                    if not self.compile_commands_manager.is_file_supported(file_path_obj):
+                        # Add vcpkg includes if available
+                        vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        if vcpkg_include.exists():
+                            args.append(f"-I{vcpkg_include}")
+
+                        # Add common vcpkg paths
+                        vcpkg_paths = [
+                            "C:/vcpkg/installed/x64-windows/include",
+                            "C:/dev/vcpkg/installed/x64-windows/include",
+                        ]
+                        for path in vcpkg_paths:
+                            if Path(path).exists():
+                                args.append(f"-I{path}")
+                                break
+
+                    file_compile_args[file_path] = args
+
                 future_to_file = {
                     executor.submit(
                         _process_file_worker,
@@ -1947,6 +2010,7 @@ class CppAnalyzer:
                             os.path.abspath(file_path),
                             force,
                             include_dependencies,
+                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
                         ),
                     ): os.path.abspath(file_path)
                     for file_path in files
@@ -2286,8 +2350,13 @@ class CppAnalyzer:
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
 
         # Get current compile_commands.json info
-        cc_path = self.project_root / self.compile_commands_manager.compile_commands_path
-        cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is not None:
+            cc_path = self.project_root / self.compile_commands_manager.compile_commands_path
+            cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+        else:
+            cc_path = None
+            cc_mtime = None
 
         self.cache_manager.save_cache(
             self.class_index,
@@ -2322,8 +2391,13 @@ class CppAnalyzer:
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
 
         # Get current compile_commands.json info
-        cc_path = self.project_root / self.compile_commands_manager.compile_commands_path
-        cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is not None:
+            cc_path = self.project_root / self.compile_commands_manager.compile_commands_path
+            cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+        else:
+            cc_path = None
+            cc_mtime = None
 
         cache_data = self.cache_manager.load_cache(
             self.include_dependencies,
@@ -2457,7 +2531,8 @@ class CppAnalyzer:
             }
 
             # Add compile commands statistics if enabled
-            if self.compile_commands_manager.enabled:
+            # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+            if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
                 compile_stats = self.compile_commands_manager.get_stats()
                 stats.update(
                     {
@@ -2471,7 +2546,8 @@ class CppAnalyzer:
 
     def get_compile_commands_stats(self) -> Dict[str, Any]:
         """Get compile commands statistics"""
-        if not self.compile_commands_manager.enabled:
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is None or not self.compile_commands_manager.enabled:
             return {"enabled": False}
 
         return self.compile_commands_manager.get_stats()
@@ -2492,7 +2568,8 @@ class CppAnalyzer:
         start_time = time.time()
 
         # Refresh compile commands if needed
-        if self.compile_commands_manager.enabled:
+        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+        if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
             compile_commands_refreshed = self.compile_commands_manager.refresh_if_needed()
             if compile_commands_refreshed:
                 diagnostics.debug("Compile commands refreshed")
@@ -2595,6 +2672,33 @@ class CppAnalyzer:
                     else None
                 )
 
+                # Task 3.2: Prepare compile args for all files in main process
+                # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
+                all_files_to_process = list(modified_files) + list(new_files)
+                file_compile_args = {}
+                for file_path in all_files_to_process:
+                    file_path_obj = Path(file_path)
+                    args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+
+                    # If compile commands are not available and we're using fallback, add vcpkg includes
+                    if not self.compile_commands_manager.is_file_supported(file_path_obj):
+                        # Add vcpkg includes if available
+                        vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        if vcpkg_include.exists():
+                            args.append(f"-I{vcpkg_include}")
+
+                        # Add common vcpkg paths
+                        vcpkg_paths = [
+                            "C:/vcpkg/installed/x64-windows/include",
+                            "C:/dev/vcpkg/installed/x64-windows/include",
+                        ]
+                        for path in vcpkg_paths:
+                            if Path(path).exists():
+                                args.append(f"-I{path}")
+                                break
+
+                    file_compile_args[file_path] = args
+
                 # Submit modified files (force=True)
                 for file_path in modified_files:
                     abs_path = os.path.abspath(file_path)
@@ -2606,6 +2710,7 @@ class CppAnalyzer:
                             abs_path,
                             True,  # force=True for modified files
                             self.include_dependencies,
+                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
                         ),
                     )
                     future_to_file[future] = file_path
@@ -2621,6 +2726,7 @@ class CppAnalyzer:
                             abs_path,
                             False,  # force=False for new files
                             self.include_dependencies,
+                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
                         ),
                     )
                     future_to_file[future] = file_path
