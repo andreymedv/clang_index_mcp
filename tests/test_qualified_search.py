@@ -160,5 +160,102 @@ class TestQualifiedPatternMatching:
         assert SearchEngine.matches_qualified_pattern("", "View") is False
 
 
+class TestFindInFileQualifiedPatterns:
+    """Test T2.2.4: find_in_file() with qualified pattern matching."""
+
+    def test_find_in_file_delegates_to_search_methods(self):
+        """find_in_file() should delegate to search_classes() and search_functions()."""
+        # This test verifies that find_in_file() inherits qualified pattern matching
+        # by delegating to the already-updated search methods.
+        # The actual integration testing happens in integration tests.
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create minimal test project
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace app {
+    namespace ui {
+        class View {};
+    }
+}
+
+class View {};
+void testFunc() {}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Test unqualified pattern
+            results = analyzer.find_in_file(str(test_file), "View")
+            assert len(results) >= 1
+            names = [r["name"] for r in results]
+            assert "View" in names
+
+            # Test empty pattern (all symbols)
+            all_results = analyzer.find_in_file(str(test_file), "")
+            assert len(all_results) >= 2  # At least 2 View classes + testFunc
+
+            # Verify results include qualified_name field
+            for result in all_results:
+                assert "qualified_name" in result
+                assert "namespace" in result
+
+    def test_find_in_file_qualified_patterns_integration(self):
+        """Test find_in_file() with various qualified patterns."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create test project with namespaced classes
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace app {
+    namespace ui {
+        class View {};
+        class ListView {};
+    }
+}
+
+namespace legacy {
+    namespace ui {
+        class View {};
+    }
+}
+
+class View {};
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Test unqualified: should find all 3 View classes
+            unqualified_results = analyzer.find_in_file(str(test_file), "View")
+            view_results = [r for r in unqualified_results if r["name"] == "View"]
+            assert len(view_results) == 3
+
+            # Test qualified suffix: ui::View should find 2 (app::ui::View and legacy::ui::View)
+            suffix_results = analyzer.find_in_file(str(test_file), "ui::View")
+            assert len(suffix_results) == 2
+            qualified_names = {r["qualified_name"] for r in suffix_results}
+            assert "app::ui::View" in qualified_names
+            assert "legacy::ui::View" in qualified_names
+
+            # Test exact: ::View should find only global View
+            exact_results = analyzer.find_in_file(str(test_file), "::View")
+            assert len(exact_results) == 1
+            assert exact_results[0]["qualified_name"] == "View"
+            assert exact_results[0]["namespace"] == ""
+
+            # Test regex: .*ListView should find ListView
+            regex_results = analyzer.find_in_file(str(test_file), ".*ListView")
+            assert len(regex_results) >= 1
+            assert any(r["name"] == "ListView" for r in regex_results)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
