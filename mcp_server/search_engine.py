@@ -100,6 +100,84 @@ class SearchEngine:
         # Contains :: but not leading, no regex → component-based suffix match
         return "suffix"
 
+    @staticmethod
+    def matches_qualified_pattern(qualified_name: str, pattern: str) -> bool:
+        """
+        Match qualified name against pattern using component-based suffix matching.
+
+        Phase 2 (Qualified Names): Intelligent pattern matching with 4 modes.
+
+        Matching Rules:
+            1. Leading "::" → exact match (global namespace)
+               "::View" matches only "View" (not "ns::View")
+
+            2. No "::" → match unqualified name only
+               "View" matches "View", "ns::View", "ns1::ns2::View"
+
+            3. "::" in pattern → component-based suffix match
+               "ui::View" matches "app::ui::View", "legacy::ui::View"
+               but NOT "myui::View" (component boundary respected)
+
+            4. Regex metacharacters → regex fullmatch
+               "app::.*::View" matches "app::core::View", "app::ui::View"
+
+        Args:
+            qualified_name: Fully qualified symbol name (e.g., "app::ui::View")
+            pattern: Search pattern (e.g., "ui::View", "::View", "View", ".*::View")
+
+        Returns:
+            True if qualified_name matches pattern, False otherwise
+
+        Examples:
+            matches_qualified_pattern("app::ui::View", "ui::View") → True (suffix)
+            matches_qualified_pattern("app::ui::View", "::View") → False (not global)
+            matches_qualified_pattern("app::ui::View", "View") → True (unqualified)
+            matches_qualified_pattern("app::ui::View", "app::.*::View") → True (regex)
+            matches_qualified_pattern("myui::View", "ui::View") → False (boundary)
+
+        Task: T2.1.1 (Qualified Names Phase 2)
+        """
+        # Empty pattern matches everything
+        if not pattern:
+            return True
+
+        pattern_type = SearchEngine._detect_pattern_type(pattern)
+
+        # 1. Exact match: leading ::
+        if pattern_type == "exact":
+            # Remove leading :: from pattern and compare with qualified_name
+            return qualified_name == pattern[2:]
+
+        # 2. Regex match
+        if pattern_type == "regex":
+            try:
+                return bool(re.fullmatch(pattern, qualified_name))
+            except re.error:
+                # Invalid regex → no match
+                return False
+
+        # 3. Unqualified match: no ::
+        if pattern_type == "unqualified":
+            # Extract unqualified name from qualified_name
+            unqualified = qualified_name.split("::")[-1]
+            return unqualified.lower() == pattern.lower()
+
+        # 4. Suffix match: component-based
+        if pattern_type == "suffix":
+            q_parts = qualified_name.split("::")
+            p_parts = pattern.split("::")
+
+            # Pattern longer than name → cannot match
+            if len(p_parts) > len(q_parts):
+                return False
+
+            # Check that last N components match (case-insensitive)
+            q_suffix = q_parts[-len(p_parts):]
+            return [p.lower() for p in q_suffix] == [p.lower() for p in p_parts]
+
+        # Fallback (should never reach here)
+        return False
+
     def search_classes(
         self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
