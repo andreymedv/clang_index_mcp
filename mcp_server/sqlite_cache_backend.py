@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "10.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "10.1"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -415,6 +415,7 @@ class SqliteCacheBackend:
             symbol.parent_class,
             json.dumps(symbol.base_classes),
             # v9.0: calls/called_by removed - use call_sites table
+            symbol.is_template_specialization,  # v10.1: Phase 3 Qualified Names
             symbol.start_line,  # v5.0: Line ranges
             symbol.end_line,  # v5.0: Line ranges
             symbol.header_file,  # v5.0: Header location
@@ -454,6 +455,12 @@ class SqliteCacheBackend:
             parent_class=row["parent_class"] or "",
             base_classes=json.loads(row["base_classes"]) if row["base_classes"] else [],
             usr=row["usr"] or "",
+            # v10.1: Phase 3 Qualified Names - Overload metadata
+            is_template_specialization=(
+                bool(row["is_template_specialization"])
+                if "is_template_specialization" in row.keys()
+                else False
+            ),
             # v9.0: calls/called_by removed - use call graph API
             # v5.0: Line ranges and header location
             start_line=row["start_line"] if "start_line" in row.keys() else None,
@@ -490,12 +497,12 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes,
+                        base_classes, is_template_specialization,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol),
                 )
@@ -531,12 +538,12 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes,
+                        base_classes, is_template_specialization,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols],
                 )
@@ -1505,12 +1512,12 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO symbols (
                         usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
-                        base_classes,
+                        base_classes, is_template_specialization,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol),
                 )

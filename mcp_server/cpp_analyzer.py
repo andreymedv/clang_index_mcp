@@ -1168,6 +1168,51 @@ class CppAnalyzer:
 
         return result
 
+    def _detect_template_specialization(self, cursor) -> bool:
+        """
+        Detect if cursor represents a template specialization.
+
+        Uses cursor.kind + displayname analysis to distinguish:
+        - Generic templates (FUNCTION_TEMPLATE): False
+        - Explicit specializations (displayname contains '<>'): True
+        - Regular overloads (no template arguments): False
+
+        This metadata helps distinguish between:
+        - template<typename T> void foo(T) → False (generic template)
+        - template<> void foo<int>(int) → True (specialization)
+        - void foo(double) → False (regular overload)
+
+        Returns:
+            True if this is a template specialization, False otherwise
+
+        Implements:
+            Phase 3 (T3.3.2): Function overload metadata
+        """
+        try:
+            kind = cursor.kind
+        except ValueError:
+            # Unknown cursor kind (version mismatch)
+            return False
+
+        # Generic templates are not specializations
+        if kind == CursorKind.FUNCTION_TEMPLATE:
+            return False
+
+        # Check for template arguments in display name
+        if kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
+            try:
+                displayname = cursor.displayname
+                # Template specializations have '<' and '>' in their display name
+                # e.g., "foo<int>" vs "foo"
+                # Check that displayname is a string (not Mock or other non-iterable)
+                if isinstance(displayname, str):
+                    return '<' in displayname and '>' in displayname
+            except (AttributeError, TypeError):
+                # Handle cases where displayname is not accessible or not iterable
+                return False
+
+        return False
+
     def _process_cursor(
         self,
         cursor,
@@ -1307,6 +1352,9 @@ class CppAnalyzer:
                 # Extract documentation (Phase 2: LLM Integration)
                 doc_info = self._extract_documentation(cursor)
 
+                # Detect template specialization (Phase 3: Qualified Names)
+                is_template_spec = self._detect_template_specialization(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
@@ -1321,6 +1369,8 @@ class CppAnalyzer:
                     namespace=namespace,
                     parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
                     usr=function_usr,
+                    # Phase 3: Overload metadata
+                    is_template_specialization=is_template_spec,
                     # Phase 1: Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
