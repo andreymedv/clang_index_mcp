@@ -257,5 +257,156 @@ class View {};
             assert any(r["name"] == "ListView" for r in regex_results)
 
 
+class TestBackwardCompatibility:
+    """Test T2.3.1: Backward compatibility with unqualified patterns."""
+
+    def test_unqualified_pattern_still_works(self):
+        """Old-style unqualified search must work."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class View {};
+}
+
+namespace ns2 {
+    class View {};
+}
+
+class View {};
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Old-style unqualified search should find all Views
+            results = analyzer.search_classes("View")
+            assert len(results) >= 3  # At least 3 View classes
+
+    def test_qualified_pattern_narrows_results(self):
+        """Qualified pattern should reduce ambiguity."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class View {};
+}
+
+namespace ns2 {
+    class View {};
+}
+
+class View {};
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Unqualified search finds all
+            all_views = analyzer.search_classes("View")
+            # Qualified search narrows down
+            ns1_views = analyzer.search_classes("ns1::View")
+
+            assert len(ns1_views) <= len(all_views)
+            assert len(ns1_views) >= 1
+            # Verify it's the right one
+            assert any(r["qualified_name"] == "ns1::View" for r in ns1_views)
+
+    def test_leading_colon_exact_match(self):
+        """Leading :: means exact match in global namespace."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class GlobalClass {};
+}
+
+class GlobalClass {};
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Leading :: should find only global namespace
+            results = analyzer.search_classes("::GlobalClass")
+            assert len(results) == 1
+            assert results[0]["namespace"] == ""
+            assert results[0]["qualified_name"] == "GlobalClass"
+
+    def test_regex_patterns(self):
+        """Regex patterns work with qualified names."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace app {
+    namespace core {
+        class Config {};
+    }
+    namespace ui {
+        class Config {};
+    }
+}
+
+class Config {};
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Regex pattern
+            results = analyzer.search_classes("app::.*::Config")
+
+            # Should find app::core::Config and app::ui::Config, but not global Config
+            assert len(results) == 2
+            for r in results:
+                assert r["qualified_name"].startswith("app::")
+                assert r["qualified_name"].endswith("::Config")
+
+    def test_case_insensitive_backward_compatibility(self):
+        """Case-insensitive matching works for all pattern types."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace MyApp {
+    class MyClass {};
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Unqualified: case-insensitive
+            assert len(analyzer.search_classes("myclass")) >= 1
+            assert len(analyzer.search_classes("MYCLASS")) >= 1
+
+            # Qualified: case-insensitive
+            assert len(analyzer.search_classes("myapp::myclass")) >= 1
+            assert len(analyzer.search_classes("MYAPP::MYCLASS")) >= 1
+
+            # Regex: case-insensitive
+            assert len(analyzer.search_classes("myapp::.*")) >= 1
+            assert len(analyzer.search_classes("MYAPP::.*")) >= 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
