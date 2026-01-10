@@ -1295,13 +1295,37 @@ Examples:
 
     args = parser.parse_args()
 
+    async def cleanup():
+        """Cleanup resources on shutdown"""
+        global background_indexer
+
+        diagnostics.debug("Starting cleanup...")
+
+        # Cancel background indexing if running
+        if background_indexer and background_indexer.is_indexing():
+            diagnostics.debug("Canceling background indexing...")
+            await background_indexer.cancel()
+
+        # Shutdown default executor to allow clean exit
+        # This is necessary because BackgroundIndexer uses run_in_executor(None, ...)
+        # which creates a default ThreadPoolExecutor that needs explicit shutdown
+        loop = asyncio.get_event_loop()
+        if hasattr(loop, "_default_executor") and loop._default_executor:
+            diagnostics.debug("Shutting down default executor...")
+            loop._default_executor.shutdown(wait=False, cancel_futures=True)
+
+        diagnostics.debug("Cleanup complete")
+
     # Run with selected transport
     if args.transport == "stdio":
         # Import here to avoid issues if mcp package not installed
         from mcp.server.stdio import stdio_server
 
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(read_stream, write_stream, server.create_initialization_options())
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                await server.run(read_stream, write_stream, server.create_initialization_options())
+        finally:
+            await cleanup()
 
     elif args.transport in ("http", "sse"):
         # Import HTTP server module
@@ -1310,8 +1334,11 @@ Examples:
         except ImportError:
             from http_server import run_http_server
 
-        # Run HTTP/SSE server
-        await run_http_server(server, args.host, args.port, args.transport)
+        # Run HTTP/SSE server with cleanup on shutdown
+        try:
+            await run_http_server(server, args.host, args.port, args.transport)
+        finally:
+            await cleanup()
 
     else:
         diagnostics.fatal(f"Unknown transport: {args.transport}")
