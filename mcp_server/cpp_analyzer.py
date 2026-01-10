@@ -708,7 +708,8 @@ class CppAnalyzer:
                         continue
 
                 # New symbol or replacement - add to all indexes
-                if info.kind in ("class", "struct"):
+                # Issue #99: Include template kinds in class_index
+                if info.kind in ("class", "struct", "class_template", "partial_specialization"):
                     self.class_index[info.name].append(info)
                 else:
                     self.function_index[info.name].append(info)
@@ -1027,6 +1028,102 @@ class CppAnalyzer:
                 base_classes.append(base_name_qualified)
         return base_classes
 
+    def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
+        """
+        Extract the base template name from a USR.
+
+        USR Format Examples:
+        - Generic Template:        c:@ST>1#T@Container
+        - Explicit Specialization: c:@S@Container>#I
+        - Partial Specialization:  c:@SP>1#T@Container>#*t0.0
+
+        Args:
+            usr: Unified Symbol Resolution string
+
+        Returns:
+            Base template name (e.g., "Container") or None if not a template-related USR
+
+        Task: Issue #99 Phase 3 - Template→Specialization linkage
+        """
+        if not usr:
+            return None
+
+        import re
+
+        # Pattern 1: Generic template - c:@ST>...@ClassName
+        match = re.search(r'c:@ST>[^@]*@(\w+)', usr)
+        if match:
+            return match.group(1)
+
+        # Pattern 2: Regular class (potential specialization) - c:@S@ClassName
+        match = re.search(r'c:@S@(\w+)', usr)
+        if match:
+            return match.group(1)
+
+        # Pattern 3: Partial specialization - c:@SP>...@ClassName
+        match = re.search(r'c:@SP>[^@]*@(\w+)', usr)
+        if match:
+            return match.group(1)
+
+        return None
+
+    def _find_template_specializations(self, base_name: str) -> List[SymbolInfo]:
+        """
+        Find all specializations of a template by base name.
+
+        Searches for:
+        1. Generic template definition (kind=class_template, function_template)
+        2. Explicit full specializations (kind=class, function with template args in USR)
+        3. Partial specializations (kind=partial_specialization)
+
+        Args:
+            base_name: Template base name (e.g., "Container")
+
+        Returns:
+            List of SymbolInfo objects for template and all its specializations
+
+        Task: Issue #99 Phase 3 - Template→Specialization linkage
+        """
+        results = []
+
+        with self.index_lock:
+            # Check class_index for class templates and specializations
+            if base_name in self.class_index:
+                for symbol in self.class_index[base_name]:
+                    # Include if it's a template or a specialization
+                    if symbol.kind in (
+                        "class_template",
+                        "partial_specialization",
+                        "class",
+                        "struct",
+                    ):
+                        # For regular classes, verify they're template specializations by USR
+                        if symbol.kind in ("class", "struct"):
+                            # Check if USR indicates it's a template specialization
+                            # Template specializations have >#... in their USR
+                            if symbol.usr and ">#" in symbol.usr:
+                                results.append(symbol)
+                        else:
+                            # Templates and partial specializations always included
+                            results.append(symbol)
+
+            # Check function_index for function templates and specializations
+            if base_name in self.function_index:
+                for symbol in self.function_index[base_name]:
+                    if symbol.kind in ("function_template", "function", "method"):
+                        # For regular functions, verify template specialization by USR or flag
+                        if symbol.kind in ("function", "method"):
+                            # Check is_template_specialization flag or USR pattern
+                            if symbol.is_template_specialization or (
+                                symbol.usr and ("<#" in symbol.usr or ">#" in symbol.usr)
+                            ):
+                                results.append(symbol)
+                        else:
+                            # Function templates always included
+                            results.append(symbol)
+
+        return results
+
     def _extract_line_range_info(self, cursor) -> dict:
         """
         Extract line range and location information from a cursor.
@@ -1303,6 +1400,73 @@ class CppAnalyzer:
                 )
             return
 
+        # Process template classes (generic and partial specializations)
+        # Issue #99: Template Class Search and Specialization Discovery
+        if kind in (
+            CursorKind.CLASS_TEMPLATE,
+            CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+        ):
+            if cursor.spelling and should_extract:
+                # Extract qualified name and namespace
+                qualified_name = self._get_qualified_name(cursor)
+                namespace = self._extract_namespace(qualified_name)
+
+                # Get base classes (templates can inherit too)
+                base_classes = self._get_base_classes(cursor)
+
+                # Extract line range and location info
+                loc_info = self._extract_line_range_info(cursor)
+
+                # Extract documentation
+                doc_info = self._extract_documentation(cursor)
+
+                # Determine kind based on cursor type
+                if kind == CursorKind.CLASS_TEMPLATE:
+                    symbol_kind = "class_template"
+                else:  # CLASS_TEMPLATE_PARTIAL_SPECIALIZATION
+                    symbol_kind = "partial_specialization"
+
+                info = SymbolInfo(
+                    name=cursor.spelling,
+                    kind=symbol_kind,
+                    file=loc_info["file"],
+                    line=loc_info["line"],
+                    column=loc_info["column"],
+                    qualified_name=qualified_name,
+                    is_project=(
+                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
+                    ),
+                    namespace=namespace,
+                    parent_class="",
+                    base_classes=base_classes,
+                    usr=cursor.get_usr() if cursor.get_usr() else "",
+                    # Line ranges
+                    start_line=loc_info["start_line"],
+                    end_line=loc_info["end_line"],
+                    header_file=loc_info["header_file"],
+                    header_line=loc_info["header_line"],
+                    header_start_line=loc_info["header_start_line"],
+                    header_end_line=loc_info["header_end_line"],
+                    # Definition-wins logic
+                    is_definition=cursor.is_definition(),
+                    # Documentation
+                    brief=doc_info["brief"],
+                    doc_comment=doc_info["doc_comment"],
+                )
+
+                # Collect symbol in thread-local buffer
+                symbols_buffer.append(info)
+
+            # Always process children (template members, nested types, etc.)
+            for child in cursor.get_children():
+                self._process_cursor(
+                    child,
+                    should_extract_from_file,
+                    cursor.spelling if should_extract else parent_class,
+                    parent_function_usr,
+                )
+            return  # Don't process children again below
+
         # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
             if cursor.spelling and should_extract:
@@ -1358,6 +1522,70 @@ class CppAnalyzer:
                     should_extract_from_file,
                     cursor.spelling if should_extract else parent_class,
                     parent_function_usr,
+                )
+            return  # Don't process children again below
+
+        # Process template functions
+        # Issue #99: Template Class Search and Specialization Discovery
+        elif kind == CursorKind.FUNCTION_TEMPLATE:
+            if cursor.spelling and should_extract:
+                # Get function signature
+                signature = ""
+                if cursor.type:
+                    signature = cursor.type.spelling
+
+                function_usr = cursor.get_usr() if cursor.get_usr() else ""
+
+                # Extract qualified name and namespace
+                qualified_name = self._get_qualified_name(cursor)
+                namespace = self._extract_namespace(qualified_name)
+
+                # Extract line range and location info
+                loc_info = self._extract_line_range_info(cursor)
+
+                # Extract documentation
+                doc_info = self._extract_documentation(cursor)
+
+                info = SymbolInfo(
+                    name=cursor.spelling,
+                    kind="function_template",
+                    file=loc_info["file"],
+                    line=loc_info["line"],
+                    column=loc_info["column"],
+                    qualified_name=qualified_name,
+                    signature=signature,
+                    is_project=(
+                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
+                    ),
+                    namespace=namespace,
+                    parent_class=parent_class,  # Could be template method
+                    usr=function_usr,
+                    # Template functions are not specializations themselves
+                    is_template_specialization=False,
+                    # Line ranges
+                    start_line=loc_info["start_line"],
+                    end_line=loc_info["end_line"],
+                    header_file=loc_info["header_file"],
+                    header_line=loc_info["header_line"],
+                    header_start_line=loc_info["header_start_line"],
+                    header_end_line=loc_info["header_end_line"],
+                    # Definition-wins logic
+                    is_definition=cursor.is_definition(),
+                    # Documentation
+                    brief=doc_info["brief"],
+                    doc_comment=doc_info["doc_comment"],
+                )
+
+                # Collect symbol in thread-local buffer
+                symbols_buffer.append(info)
+
+            # Process children for function body
+            for child in cursor.get_children():
+                self._process_cursor(
+                    child,
+                    should_extract_from_file,
+                    parent_class,
+                    cursor.get_usr() if cursor.get_usr() else parent_function_usr,
                 )
             return  # Don't process children again below
 
@@ -1850,7 +2078,8 @@ class CppAnalyzer:
                 if file_path in self.file_index:
                     # Remove old entries from class and function indexes
                     for info in self.file_index[file_path]:
-                        if info.kind in ("class", "struct"):
+                        # Issue #99: Include template kinds in class_index
+                        if info.kind in ("class", "struct", "class_template", "partial_specialization"):
                             self.class_index[info.name] = [
                                 i for i in self.class_index[info.name] if i.file != file_path
                             ]
@@ -2104,7 +2333,8 @@ class CppAnalyzer:
                                         # Definition-wins: if new is definition and existing is not, replace
                                         if symbol.is_definition and not existing.is_definition:
                                             # Remove old declaration from class/function index
-                                            if existing.kind in ("class", "struct"):
+                                            # Issue #99: Include template kinds in class_index
+                                            if existing.kind in ("class", "struct", "class_template", "partial_specialization"):
                                                 if existing.name in self.class_index:
                                                     try:
                                                         self.class_index[existing.name].remove(
@@ -2131,7 +2361,8 @@ class CppAnalyzer:
 
                                     if not skip_symbol:
                                         # Add to appropriate index
-                                        if symbol.kind in ("class", "struct"):
+                                        # Issue #99: Include template kinds in class_index
+                                        if symbol.kind in ("class", "struct", "class_template", "partial_specialization"):
                                             self.class_index[symbol.name].append(symbol)
                                         else:
                                             self.function_index[symbol.name].append(symbol)
@@ -2827,7 +3058,8 @@ class CppAnalyzer:
                                 if file_path in self.file_index:
                                     for old_symbol in self.file_index[file_path]:
                                         # Remove from class_index or function_index
-                                        if old_symbol.kind in ("class", "struct"):
+                                        # Issue #99: Include template kinds in class_index
+                                        if old_symbol.kind in ("class", "struct", "class_template", "partial_specialization"):
                                             if old_symbol.name in self.class_index:
                                                 self.class_index[old_symbol.name] = [
                                                     s
@@ -2991,7 +3223,8 @@ class CppAnalyzer:
 
             # Remove from class_index
             for symbol in symbols_to_remove:
-                if symbol.kind in ("class", "struct"):
+                # Issue #99: Include template kinds in class_index
+                if symbol.kind in ("class", "struct", "class_template", "partial_specialization"):
                     if symbol.name in self.class_index:
                         self.class_index[symbol.name] = [
                             info for info in self.class_index[symbol.name] if info.file != file_path
@@ -3066,39 +3299,73 @@ class CppAnalyzer:
         """
         Get all classes that derive from the given class.
 
+        Issue #99 Phase 3: Template-aware derived class queries
+        If class_name is a template, finds classes derived from ANY specialization:
+        - Container → finds classes derived from Container<T>, Container<int>, Container<double>, etc.
+        - Enables CRTP pattern discovery
+
         Args:
-            class_name: Name of the base class
+            class_name: Name of the base class (can be template name)
             project_only: Only include project classes (exclude dependencies)
 
         Returns:
-            List of classes that inherit from the given class
+            List of classes that inherit from the given class or any of its specializations
         """
         derived_classes = []
+
+        # Issue #99 Phase 3: Check if this is a template and get all specializations
+        template_patterns = []
+        with self.index_lock:
+            # Check if class_name exists in class_index
+            if class_name in self.class_index:
+                for symbol in self.class_index[class_name]:
+                    # If any symbol is a template, get all specializations
+                    if symbol.kind in ("class_template", "partial_specialization"):
+                        # Find all specializations of this template
+                        specializations = self._find_template_specializations(class_name)
+                        # Build patterns to match in base_classes
+                        # Matches: "Container", "Container<int>", "Container<double>", etc.
+                        template_patterns.append(class_name)  # Exact match
+                        template_patterns.append(f"{class_name}<")  # Prefix match for specializations
+                        break  # Only need to detect template once
+
+            # If not a template, just use exact match
+            if not template_patterns:
+                template_patterns = [class_name]
 
         with self.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
                     if not project_only or info.is_project:
-                        # Check if this class inherits from the target class
-                        if class_name in info.base_classes:
-                            derived_classes.append(
-                                {
-                                    "name": info.name,
-                                    "kind": info.kind,
-                                    "file": info.file,
-                                    "line": info.line,
-                                    "column": info.column,
-                                    "is_project": info.is_project,
-                                    "base_classes": info.base_classes,
-                                    # Phase 1: Line ranges
-                                    "start_line": info.start_line,
-                                    "end_line": info.end_line,
-                                    "header_file": info.header_file,
-                                    "header_line": info.header_line,
-                                    "header_start_line": info.header_start_line,
-                                    "header_end_line": info.header_end_line,
-                                }
-                            )
+                        # Check if this class inherits from the target class or any specialization
+                        for base_class in info.base_classes:
+                            match_found = False
+                            for pattern in template_patterns:
+                                # Exact match or template specialization prefix match
+                                if base_class == pattern or base_class.startswith(pattern):
+                                    match_found = True
+                                    break
+
+                            if match_found:
+                                derived_classes.append(
+                                    {
+                                        "name": info.name,
+                                        "kind": info.kind,
+                                        "file": info.file,
+                                        "line": info.line,
+                                        "column": info.column,
+                                        "is_project": info.is_project,
+                                        "base_classes": info.base_classes,
+                                        # Phase 1: Line ranges
+                                        "start_line": info.start_line,
+                                        "end_line": info.end_line,
+                                        "header_file": info.header_file,
+                                        "header_line": info.header_line,
+                                        "header_start_line": info.header_start_line,
+                                        "header_end_line": info.header_end_line,
+                                    }
+                                )
+                                break  # Found a match, no need to check other base classes
 
         return derived_classes
 

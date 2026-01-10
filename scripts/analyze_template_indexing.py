@@ -58,14 +58,14 @@ def analyze_template_indexing():
     conn.row_factory = sqlite3.Row  # Enable column access by name
     cursor = conn.cursor()
 
-    # Query classes
-    print("\n   === CLASSES ===")
+    # Query classes and templates
+    print("\n   === CLASSES AND TEMPLATES ===")
     cursor.execute("""
         SELECT name, qualified_name, kind, file, line, usr
         FROM symbols
-        WHERE kind = 'class'
+        WHERE kind IN ('class', 'struct', 'class_template', 'partial_specialization')
           AND (name LIKE '%Container%' OR name LIKE '%Pair%' OR name LIKE '%Base%' OR name LIKE '%Tuple%')
-        ORDER BY name, line
+        ORDER BY kind, name, line
     """)
 
     classes = cursor.fetchall()
@@ -78,25 +78,36 @@ def analyze_template_indexing():
 
     print(f"\n   Total classes found: {len(classes)}")
 
-    # Query functions
-    print("\n\n   === FUNCTIONS ===")
+    # Query functions and templates
+    print("\n\n   === FUNCTIONS AND TEMPLATES ===")
     cursor.execute("""
-        SELECT name, qualified_name, signature, file, line, usr
+        SELECT name, qualified_name, signature, kind, file, line, usr
         FROM symbols
-        WHERE kind IN ('function', 'method')
+        WHERE kind IN ('function', 'method', 'function_template')
           AND name LIKE '%max%'
-        ORDER BY name, line
+        ORDER BY kind, name, line
     """)
 
     functions = cursor.fetchall()
     for row in functions:
         print(f"\n   Name: {row['name']}")
         print(f"   Qualified: {row['qualified_name']}")
+        print(f"   Kind: {row['kind']}")
         print(f"   Signature: {row['signature']}")
         print(f"   USR: {row['usr']}")
         print(f"   Location: {Path(row['file']).name}:{row['line']}")
 
     print(f"\n   Total functions found: {len(functions)}")
+
+    # Debug: Check class_index contents
+    print("\n\n4.5. DEBUG: Checking class_index contents...")
+    print(f"   class_index keys: {list(analyzer.class_index.keys())}")
+    if 'Container' in analyzer.class_index:
+        print(f"   Container entries in class_index: {len(analyzer.class_index['Container'])}")
+        for info in analyzer.class_index['Container']:
+            print(f"     - {info.name} (kind={info.kind}, USR={info.usr})")
+    else:
+        print("   'Container' not found in class_index!")
 
     # Search via analyzer
     print("\n\n5. Testing search functionality...")
@@ -124,6 +135,36 @@ def analyze_template_indexing():
     print(f"   Found {len(results)} results:")
     for r in results:
         print(f"     - {r.get('qualified_name', r.get('name'))} - {r.get('signature', 'unknown')}")
+
+    # Test cross-specialization derived class queries (Phase 3)
+    print("\n\n6. Testing cross-specialization derived class queries (Phase 3)...")
+
+    print("\n   Querying derived classes of 'Container' (template):")
+    derived = analyzer.get_derived_classes("Container")
+    print(f"   Found {len(derived)} derived classes:")
+    for d in derived:
+        print(f"     - {d['name']} inherits from {d.get('base_classes', [])}")
+
+    print("\n   Querying derived classes of 'Base' (CRTP template):")
+    derived = analyzer.get_derived_classes("Base")
+    print(f"   Found {len(derived)} derived classes:")
+    for d in derived:
+        print(f"     - {d['name']} inherits from {d.get('base_classes', [])}")
+
+    # Test _find_template_specializations directly
+    print("\n\n7. Testing _find_template_specializations() method...")
+
+    print("\n   Finding all specializations of 'Container':")
+    specs = analyzer._find_template_specializations("Container")
+    print(f"   Found {len(specs)} specializations:")
+    for spec in specs:
+        print(f"     - {spec.name} (kind={spec.kind}, USR={spec.usr})")
+
+    print("\n   Finding all specializations of 'Pair':")
+    specs = analyzer._find_template_specializations("Pair")
+    print(f"   Found {len(specs)} specializations:")
+    for spec in specs:
+        print(f"     - {spec.name} (kind={spec.kind}, USR={spec.usr})")
 
     conn.close()
 
