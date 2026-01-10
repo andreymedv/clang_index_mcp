@@ -1682,9 +1682,10 @@ class SqliteCacheBackend:
 
             for row in cursor:
                 symbol = self._row_to_symbol(row)
-                if symbol.kind in ("class", "struct", "union", "enum"):
+                # Issue #99: Include template kinds in class_index
+                if symbol.kind in ("class", "struct", "union", "enum", "class_template", "partial_specialization"):
                     class_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
-                elif symbol.kind in ("function", "method", "constructor", "destructor"):
+                elif symbol.kind in ("function", "method", "constructor", "destructor", "function_template"):
                     function_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
 
             # Load file hashes
