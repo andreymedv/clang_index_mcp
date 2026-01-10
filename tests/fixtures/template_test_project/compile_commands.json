@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "/home/andrey/repos/cplusplus_mcp/tests/fixtures/template_test_project",
+    "command": "/usr/bin/c++ -std=c++17 -I. -c main.cpp -o main.o",
+    "file": "main.cpp"
+  },
+  {
+    "directory": "/home/andrey/repos/cplusplus_mcp/tests/fixtures/template_test_project",
+    "command": "/usr/bin/c++ -std=c++17 -I. -c templates.h -o templates.h.o",
+    "file": "templates.h"
+  }
+]
