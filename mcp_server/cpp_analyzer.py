@@ -2551,11 +2551,15 @@ class CppAnalyzer:
         )
 
     def search_classes(
-        self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
+        self,
+        pattern: str,
+        project_only: bool = True,
+        file_name: Optional[str] = None,
+        namespace: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search for classes matching pattern"""
         try:
-            return self.search_engine.search_classes(pattern, project_only, file_name)
+            return self.search_engine.search_classes(pattern, project_only, file_name, namespace)
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
@@ -2566,10 +2570,13 @@ class CppAnalyzer:
         project_only: bool = True,
         class_name: Optional[str] = None,
         file_name: Optional[str] = None,
+        namespace: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search for functions matching pattern, optionally within a specific class"""
         try:
-            return self.search_engine.search_functions(pattern, project_only, class_name, file_name)
+            return self.search_engine.search_functions(
+                pattern, project_only, class_name, file_name, namespace
+            )
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
@@ -3028,7 +3035,11 @@ class CppAnalyzer:
         return self.search_engine.get_function_signature(function_name, class_name)
 
     def search_symbols(
-        self, pattern: str, project_only: bool = True, symbol_types: Optional[List[str]] = None
+        self,
+        pattern: str,
+        project_only: bool = True,
+        symbol_types: Optional[List[str]] = None,
+        namespace: Optional[str] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Search for all symbols (classes and functions) matching pattern.
@@ -3038,12 +3049,13 @@ class CppAnalyzer:
             project_only: Only include project files (exclude dependencies)
             symbol_types: List of symbol types to include. Options: ['class', 'struct', 'function', 'method']
                          If None, includes all types.
+            namespace: Optional namespace filter (exact match, case-sensitive)
 
         Returns:
             Dictionary with keys 'classes' and 'functions' containing matching symbols
         """
         try:
-            return self.search_engine.search_symbols(pattern, project_only, symbol_types)
+            return self.search_engine.search_symbols(pattern, project_only, symbol_types, namespace)
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
