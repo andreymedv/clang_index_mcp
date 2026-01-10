@@ -9,6 +9,7 @@ while indexing is in progress without timing out or blocking.
 import asyncio
 import pytest
 import json
+import threading
 from pathlib import Path
 
 from mcp_server.cpp_analyzer import CppAnalyzer
@@ -363,3 +364,141 @@ async def test_get_indexing_status_immediately_after_set_project_directory(large
     # Verify no error occurred
     assert "error" not in response_text.lower(), "Should not contain error message"
     assert "not set" not in response_text.lower(), "Should not say 'not set'"
+
+
+def test_no_runtime_error_during_concurrent_search(large_cpp_project):
+    """
+    Test for Issue #cplusplus_mcp-4p2: Verify no RuntimeError during concurrent indexing and queries
+
+    This test specifically targets the "dictionary changed size during iteration" error
+    that occurred when SearchEngine iterated over shared dictionaries without lock protection.
+
+    The test:
+    1. Starts indexing in a background thread
+    2. Repeatedly queries while indexing is active
+    3. Verifies no RuntimeError is raised
+
+    Before the fix: RuntimeError: dictionary changed size during iteration
+    After the fix: Queries work safely during indexing (may return partial results)
+    """
+    analyzer = CppAnalyzer(str(large_cpp_project))
+
+    # Track if any RuntimeError occurred
+    errors = []
+    indexing_complete = threading.Event()
+
+    def indexing_thread():
+        """Background thread that performs indexing"""
+        try:
+            analyzer.index_project()
+        except Exception as e:
+            errors.append(("indexing", e))
+        finally:
+            indexing_complete.set()
+
+    def query_thread():
+        """Repeatedly query while indexing is active"""
+        try:
+            # Query repeatedly until indexing completes
+            for _ in range(100):
+                if indexing_complete.is_set():
+                    break
+
+                # Try all search methods to ensure they're all protected
+                try:
+                    analyzer.search_classes("")  # Empty pattern matches all
+                except RuntimeError as e:
+                    if "dictionary changed size" in str(e):
+                        errors.append(("search_classes", e))
+                        break
+
+                try:
+                    analyzer.search_functions("")
+                except RuntimeError as e:
+                    if "dictionary changed size" in str(e):
+                        errors.append(("search_functions", e))
+                        break
+
+                try:
+                    analyzer.search_symbols("")
+                except RuntimeError as e:
+                    if "dictionary changed size" in str(e):
+                        errors.append(("search_symbols", e))
+                        break
+
+        except Exception as e:
+            errors.append(("query_thread", e))
+
+    # Start indexing in background
+    idx_thread = threading.Thread(target=indexing_thread, daemon=True)
+    idx_thread.start()
+
+    # Start multiple query threads to stress test
+    query_threads = [
+        threading.Thread(target=query_thread, daemon=True)
+        for _ in range(5)
+    ]
+
+    for t in query_threads:
+        t.start()
+
+    # Wait for indexing to complete
+    idx_thread.join(timeout=30)
+
+    # Wait for query threads to finish
+    for t in query_threads:
+        t.join(timeout=5)
+
+    # Verify no RuntimeError occurred
+    runtime_errors = [
+        (source, err) for source, err in errors
+        if isinstance(err, RuntimeError) and "dictionary changed size" in str(err)
+    ]
+
+    if runtime_errors:
+        # Format error message showing which operation failed
+        source, err = runtime_errors[0]
+        pytest.fail(
+            f"RuntimeError during {source}: {err}\n"
+            f"This indicates dictionary iteration is not protected by lock.\n"
+            f"Check that SearchEngine methods wrap iterations with self.index_lock."
+        )
+
+    # Also check for any other unexpected errors
+    if errors:
+        other_errors = [e for e in errors if e not in runtime_errors]
+        if other_errors:
+            source, err = other_errors[0]
+            pytest.fail(f"Unexpected error during {source}: {err}")
+
+
+def test_lock_performance_impact_is_minimal(large_cpp_project):
+    """
+    Test that adding index_lock does not significantly slow down queries
+
+    Lock overhead should be < 1ms per query on average
+    """
+    import time
+
+    analyzer = CppAnalyzer(str(large_cpp_project))
+    analyzer.index_project()  # Complete indexing first
+
+    # Warm up
+    for _ in range(10):
+        analyzer.search_classes("Module")
+
+    # Benchmark query performance
+    iterations = 1000
+    start = time.time()
+
+    for _ in range(iterations):
+        results = analyzer.search_classes("Module")
+
+    elapsed = time.time() - start
+    avg_time_ms = (elapsed / iterations) * 1000
+
+    # Lock overhead should be minimal (< 1ms average)
+    assert avg_time_ms < 1.0, (
+        f"Query too slow with lock: {avg_time_ms:.3f}ms average\n"
+        f"Lock overhead may be excessive or there's a performance regression"
+    )
