@@ -98,7 +98,10 @@ def _process_file_worker(args_tuple):
     if _worker_analyzer is None:
         diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
         _worker_analyzer = CppAnalyzer(
-            project_root, config_file, skip_schema_recreation=True, use_compile_commands_manager=False
+            project_root,
+            config_file,
+            skip_schema_recreation=True,
+            use_compile_commands_manager=False,
         )
         # Ensure cleanup is called when the worker process exits
         atexit.register(_cleanup_worker_analyzer)
@@ -1232,7 +1235,7 @@ class CppAnalyzer:
                 # e.g., "foo<int>" vs "foo"
                 # Check that displayname is a string (not Mock or other non-iterable)
                 if isinstance(displayname, str):
-                    return '<' in displayname and '>' in displayname
+                    return "<" in displayname and ">" in displayname
             except (AttributeError, TypeError):
                 # Handle cases where displayname is not accessible or not iterable
                 return False
@@ -2030,12 +2033,16 @@ class CppAnalyzer:
                 file_compile_args = {}
                 for file_path in files:
                     file_path_obj = Path(file_path)
-                    args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+                    args = self.compile_commands_manager.get_compile_args_with_fallback(
+                        file_path_obj
+                    )
 
                     # If compile commands are not available and we're using fallback, add vcpkg includes
                     if not self.compile_commands_manager.is_file_supported(file_path_obj):
                         # Add vcpkg includes if available
-                        vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        vcpkg_include = (
+                            self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        )
                         if vcpkg_include.exists():
                             args.append(f"-I{vcpkg_include}")
 
@@ -2728,12 +2735,16 @@ class CppAnalyzer:
                 file_compile_args = {}
                 for file_path in all_files_to_process:
                     file_path_obj = Path(file_path)
-                    args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+                    args = self.compile_commands_manager.get_compile_args_with_fallback(
+                        file_path_obj
+                    )
 
                     # If compile commands are not available and we're using fallback, add vcpkg includes
                     if not self.compile_commands_manager.is_file_supported(file_path_obj):
                         # Add vcpkg includes if available
-                        vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        vcpkg_include = (
+                            self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        )
                         if vcpkg_include.exists():
                             args.append(f"-I{vcpkg_include}")
 

@@ -401,12 +401,19 @@ class IncrementalAnalyzer:
                 file_compile_args = {}
                 for file_path in file_list:
                     file_path_obj = Path(file_path)
-                    args = self.analyzer.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+                    args = self.analyzer.compile_commands_manager.get_compile_args_with_fallback(
+                        file_path_obj
+                    )
 
                     # If compile commands are not available and we're using fallback, add vcpkg includes
                     if not self.analyzer.compile_commands_manager.is_file_supported(file_path_obj):
                         # Add vcpkg includes if available
-                        vcpkg_include = self.analyzer.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        vcpkg_include = (
+                            self.analyzer.project_root
+                            / "vcpkg_installed"
+                            / "x64-windows"
+                            / "include"
+                        )
                         if vcpkg_include.exists():
                             args.append(f"-I{vcpkg_include}")
 

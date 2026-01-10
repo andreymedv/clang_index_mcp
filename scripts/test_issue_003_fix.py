@@ -9,6 +9,7 @@ from pathlib import Path
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+
 def test_libclang_path_env_variable():
     """Test LIBCLANG_PATH environment variable override"""
     print("Test 1: LIBCLANG_PATH environment variable")
@@ -90,7 +91,7 @@ def test_search_order():
         print("❌ FAIL: Not all steps found in source\n")
         return False
 
-    correct_order = (env_pos < smart_pos < system_pos < bundled_pos)
+    correct_order = env_pos < smart_pos < system_pos < bundled_pos
 
     if correct_order:
         print(f"✓ Step 1 (env): line ~{source[:env_pos].count(chr(10))}")
