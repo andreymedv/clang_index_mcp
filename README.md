@@ -28,6 +28,14 @@ Context-efficient C++ code analysis:
 - **find_callees** - Find all functions called by a specific function
 - **get_call_path** - Find call paths from one function to another
 
+**Qualified Names Support** (v10.1):
+- **Namespace-Aware Search**: Search by qualified patterns like `"ui::View"`, `"app::Database::save"`
+- **Four Pattern Modes**: Unqualified, qualified suffix, exact match (`::`), and regex
+- **Template Specialization Detection**: Distinguish `template<> void foo<int>()` from generic `template<typename T> void foo(T)`
+- **Disambiguation**: All results include `qualified_name` and `namespace` fields
+- **Performance**: Sub-10ms queries even with 1000+ classes
+- **See**: [Migration Guide](docs/QUALIFIED_NAMES_MIGRATION.md) for detailed examples
+
 **Additional Capabilities:**
 - **Automatic Header Analysis**: When using `compile_commands.json`, project headers are automatically analyzed when included by source files
 - **Smart Deduplication**: Headers included by multiple source files are processed only once for optimal performance
