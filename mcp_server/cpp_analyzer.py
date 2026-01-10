@@ -234,17 +234,17 @@ class CppAnalyzer:
         # Initialize call graph analyzer
         self.call_graph_analyzer = CallGraphAnalyzer()
 
+        # Threading/Processing
+        self.index_lock = threading.RLock()
+
         # Initialize search engine
         self.search_engine = SearchEngine(
-            self.class_index, self.function_index, self.file_index, self.usr_index
+            self.class_index, self.function_index, self.file_index, self.usr_index, self.index_lock
         )
 
         # Track indexed files
         self.translation_units: Dict[str, TranslationUnit] = {}
         self.file_hashes: Dict[str, str] = {}
-
-        # Threading/Processing
-        self.index_lock = threading.Lock()
         self._no_op_lock = _NoOpLock()  # Reusable no-op lock for isolated processes
         self._thread_local = threading.local()
         cpu_count = os.cpu_count() or 1
