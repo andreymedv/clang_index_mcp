@@ -385,6 +385,7 @@ class IncrementalAnalyzer:
             if use_processes:
                 # ProcessPoolExecutor: use worker function (same as index_project)
                 from mcp_server.cpp_analyzer import _process_file_worker
+                from pathlib import Path
 
                 # Get project configuration for workers
                 project_root = str(self.analyzer.project_root)
@@ -394,6 +395,32 @@ class IncrementalAnalyzer:
                     else None
                 )
                 include_dependencies = self.analyzer.include_dependencies
+
+                # Task 3.2: Prepare compile args for all files in main process
+                # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
+                file_compile_args = {}
+                for file_path in file_list:
+                    file_path_obj = Path(file_path)
+                    args = self.analyzer.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+
+                    # If compile commands are not available and we're using fallback, add vcpkg includes
+                    if not self.analyzer.compile_commands_manager.is_file_supported(file_path_obj):
+                        # Add vcpkg includes if available
+                        vcpkg_include = self.analyzer.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                        if vcpkg_include.exists():
+                            args.append(f"-I{vcpkg_include}")
+
+                        # Add common vcpkg paths
+                        vcpkg_paths = [
+                            "C:/vcpkg/installed/x64-windows/include",
+                            "C:/dev/vcpkg/installed/x64-windows/include",
+                        ]
+                        for path in vcpkg_paths:
+                            if Path(path).exists():
+                                args.append(f"-I{path}")
+                                break
+
+                    file_compile_args[file_path] = args
 
                 # Submit all files to worker processes
                 future_to_file = {
@@ -405,6 +432,7 @@ class IncrementalAnalyzer:
                             os.path.abspath(file_path),
                             True,  # force=True for refresh
                             include_dependencies,
+                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
                         ),
                     ): file_path
                     for file_path in file_list
