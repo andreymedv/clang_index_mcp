@@ -7,9 +7,10 @@ import json
 from pathlib import Path
 
 # Add the mcp_server directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'mcp_server'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "mcp_server"))
 
 from compile_commands_manager import CompileCommandsManager
+
 
 def diagnose_file_args(project_root: str, file_path: str):
     """Diagnose compilation arguments for a specific file."""
@@ -45,25 +46,25 @@ def diagnose_file_args(project_root: str, file_path: str):
     while i < len(args):
         arg = args[i]
 
-        if arg == '-I' and i + 1 < len(args):
+        if arg == "-I" and i + 1 < len(args):
             include_paths.append(args[i + 1])
             i += 2
-        elif arg.startswith('-I'):
+        elif arg.startswith("-I"):
             include_paths.append(arg[2:])
             i += 1
-        elif arg == '-isystem' and i + 1 < len(args):
+        elif arg == "-isystem" and i + 1 < len(args):
             isystem_paths.append(args[i + 1])
             i += 2
-        elif arg.startswith('-isystem'):
+        elif arg.startswith("-isystem"):
             isystem_paths.append(arg[8:])
             i += 1
-        elif arg.startswith('-D'):
+        elif arg.startswith("-D"):
             defines.append(arg)
             i += 1
-        elif arg.startswith('-std='):
+        elif arg.startswith("-std="):
             standards.append(arg)
             i += 1
-        elif arg.startswith('-W'):
+        elif arg.startswith("-W"):
             warnings.append(arg)
             i += 1
         else:
@@ -130,6 +131,7 @@ def diagnose_file_args(project_root: str, file_path: str):
         print(f"{i:3d}. {arg}")
 
     return 0
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:

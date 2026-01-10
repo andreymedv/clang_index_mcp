@@ -25,7 +25,9 @@ class SymbolInfo:
     # Call graph data is now stored in call_sites table and queried on-demand
 
     # Overload metadata (Phase 3: Qualified Names Support)
-    is_template_specialization: bool = False  # True for template specializations (e.g., template<> void foo<int>())
+    is_template_specialization: bool = (
+        False  # True for template specializations (e.g., template<> void foo<int>())
+    )
 
     # Line ranges (Phase 1: LLM Integration)
     start_line: Optional[int] = None  # First line of symbol definition
