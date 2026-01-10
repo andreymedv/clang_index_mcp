@@ -182,7 +182,11 @@ class SearchEngine:
         return False
 
     def search_classes(
-        self, pattern: str, project_only: bool = True, file_name: Optional[str] = None
+        self,
+        pattern: str,
+        project_only: bool = True,
+        file_name: Optional[str] = None,
+        namespace: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search for classes matching a pattern.
 
@@ -199,6 +203,8 @@ class SearchEngine:
             pattern: Search pattern (qualified, unqualified, or regex)
             project_only: Only return symbols from project files
             file_name: Optional file name filter
+            namespace: Optional namespace filter (exact match, case-sensitive)
+                      Use empty string "" to match global namespace only
 
         Returns:
             List of matching class dictionaries with qualified_name and namespace fields
@@ -229,6 +235,12 @@ class SearchEngine:
                             # Match if the file path ends with the specified file_name
                             # This supports full paths, relative paths, or just filenames
                             if not info.file.endswith(file_name):
+                                continue
+
+                        # Filter by namespace if specified
+                        if namespace is not None:
+                            # Exact match (case-sensitive) for namespace disambiguation
+                            if info.namespace != namespace:
                                 continue
 
                         results.append(
@@ -264,6 +276,7 @@ class SearchEngine:
         project_only: bool = True,
         class_name: Optional[str] = None,
         file_name: Optional[str] = None,
+        namespace: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search for functions matching a pattern.
 
@@ -282,6 +295,9 @@ class SearchEngine:
             project_only: Only return symbols from project files
             class_name: Optional class name filter (for methods)
             file_name: Optional file name filter
+            namespace: Optional namespace filter (exact match, case-sensitive)
+                      For methods, matches the namespace + class (e.g., "app::Database")
+                      Use empty string "" to match global namespace only
 
         Returns:
             List of matching function dictionaries with qualified_name and namespace fields
@@ -357,6 +373,12 @@ class SearchEngine:
                             if class_name and info.parent_class != class_name:
                                 continue
 
+                            # Filter by namespace if specified
+                            if namespace is not None:
+                                # Exact match (case-sensitive) for namespace disambiguation
+                                if info.namespace != namespace:
+                                    continue
+
                             results.append(_create_result(info))
         else:
             # Original logic: search function_index
@@ -382,12 +404,22 @@ class SearchEngine:
                             if class_name and info.parent_class != class_name:
                                 continue
 
+                            # Filter by namespace if specified
+                            if namespace is not None:
+                                # Exact match (case-sensitive) for namespace disambiguation
+                                if info.namespace != namespace:
+                                    continue
+
                             results.append(_create_result(info))
 
         return results
 
     def search_symbols(
-        self, pattern: str, project_only: bool = True, symbol_types: Optional[List[str]] = None
+        self,
+        pattern: str,
+        project_only: bool = True,
+        symbol_types: Optional[List[str]] = None,
+        namespace: Optional[str] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Search for any symbols matching a pattern.
 
@@ -404,6 +436,8 @@ class SearchEngine:
             pattern: Search pattern (qualified, unqualified, or regex)
             project_only: Only return symbols from project files
             symbol_types: Optional list of symbol types to filter (e.g., ["class", "function"])
+            namespace: Optional namespace filter (exact match, case-sensitive)
+                      Use empty string "" to match global namespace only
 
         Returns:
             Dictionary with "classes" and "functions" keys containing matching symbols
@@ -424,10 +458,10 @@ class SearchEngine:
         )
 
         if search_classes:
-            results["classes"] = self.search_classes(pattern, project_only)
+            results["classes"] = self.search_classes(pattern, project_only, namespace=namespace)
 
         if search_functions:
-            results["functions"] = self.search_functions(pattern, project_only)
+            results["functions"] = self.search_functions(pattern, project_only, namespace=namespace)
 
         return results
 
