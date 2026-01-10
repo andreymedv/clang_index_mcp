@@ -237,6 +237,8 @@ class SearchEngine:
                             "line": info.line,
                             "is_project": info.is_project,
                             "base_classes": info.base_classes,
+                            # Phase 3: Overload metadata
+                            "is_template_specialization": info.is_template_specialization,
                             # Phase 1: Line ranges
                             "start_line": info.start_line,
                             "end_line": info.end_line,
@@ -301,6 +303,8 @@ class SearchEngine:
                 "signature": info.signature,
                 "is_project": info.is_project,
                 "parent_class": info.parent_class,
+                # Phase 3: Overload metadata
+                "is_template_specialization": info.is_template_specialization,
                 # Phase 1: Line ranges
                 "start_line": info.start_line,
                 "end_line": info.end_line,
@@ -445,6 +449,8 @@ class SearchEngine:
                             "signature": func_info.signature,
                             "access": func_info.access,
                             "line": func_info.line,
+                            # Phase 3: Overload metadata
+                            "is_template_specialization": func_info.is_template_specialization,
                             # Phase 1: Line ranges for methods
                             "start_line": func_info.start_line,
                             "end_line": func_info.end_line,
