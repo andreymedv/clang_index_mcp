@@ -24,6 +24,11 @@ class SymbolInfo:
     # Note: calls/called_by fields removed in v9.0 (Task 1.2 memory optimization)
     # Call graph data is now stored in call_sites table and queried on-demand
 
+    # Overload metadata (Phase 3: Qualified Names Support)
+    is_template_specialization: bool = (
+        False  # True for template specializations (e.g., template<> void foo<int>())
+    )
+
     # Line ranges (Phase 1: LLM Integration)
     start_line: Optional[int] = None  # First line of symbol definition
     end_line: Optional[int] = None  # Last line of symbol definition
@@ -57,6 +62,8 @@ class SymbolInfo:
             "parent_class": self.parent_class,
             "base_classes": self.base_classes,
             "usr": self.usr,
+            # Overload metadata (Phase 3)
+            "is_template_specialization": self.is_template_specialization,
             # Note: calls/called_by removed in v9.0 - use call graph API
             # Line ranges (Phase 1)
             "start_line": self.start_line,

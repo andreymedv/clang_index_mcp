@@ -55,9 +55,7 @@ def test_mcp_server(project_path: str):
     if analyzer.cache_manager and analyzer.cache_manager.backend:
         try:
             # Query SQLite for total call sites count
-            cursor = analyzer.cache_manager.backend.conn.execute(
-                "SELECT COUNT(*) FROM call_sites"
-            )
+            cursor = analyzer.cache_manager.backend.conn.execute("SELECT COUNT(*) FROM call_sites")
             call_sites_count = cursor.fetchone()[0]
         except Exception:
             call_sites_count = 0  # Silently ignore if table doesn't exist

@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 10.0
+-- Version: 10.1
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v10.1: Added is_template_specialization field for overload distinction (Qualified Names Phase 3)
 -- Changelog v10.0: Added qualified_name field for namespace-aware search (Qualified Names Phase 1)
 -- Changelog v9.0: Removed calls/called_by columns from symbols table (memory optimization Task 1.2)
 -- Changelog v8.0: Added call_sites, cross_references, parameter_docs tables for call graph enhancement (Phase 3: LLM Integration)
@@ -48,6 +49,9 @@ CREATE TABLE IF NOT EXISTS symbols (
     base_classes TEXT DEFAULT '[]',    -- JSON array of base class names
     -- Note: calls/called_by columns removed in v9.0 (Task 1.2 memory optimization)
     -- Call graph data is now stored in call_sites table
+
+    -- Overload metadata (v10.1: Phase 3 Qualified Names Support)
+    is_template_specialization BOOLEAN NOT NULL DEFAULT 0,  -- True for template specializations
 
     -- Line ranges (v5.0: Phase 1 LLM Integration)
     start_line INTEGER,                -- First line of symbol definition
@@ -133,7 +137,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"10.0"', julianday('now')),
+    ('version', '"10.1"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
