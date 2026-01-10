@@ -270,6 +270,28 @@ class BackgroundIndexer:
         if self._indexing_task:
             await asyncio.wait_for(self._indexing_task, timeout=timeout)
 
+    async def cancel(self):
+        """
+        Cancel background indexing if running
+
+        Attempts to gracefully cancel the indexing task and interrupt
+        the analyzer's indexing operation.
+        """
+        if self._indexing_task and not self._indexing_task.done():
+            # Try to interrupt the analyzer's indexing
+            # This sets the interrupt flag which the analyzer checks during indexing
+            if hasattr(self.analyzer, "_interrupt_indexing"):
+                self.analyzer._interrupt_indexing = True
+
+            # Cancel the task
+            self._indexing_task.cancel()
+            try:
+                await self._indexing_task
+            except asyncio.CancelledError:
+                pass  # Expected when canceling
+
+            self._indexing_task = None
+
 
 class QueryBehaviorPolicy(Enum):
     """Policy for handling queries during indexing"""
