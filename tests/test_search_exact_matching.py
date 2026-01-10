@@ -165,12 +165,15 @@ class TestSearchEngineIntegration(unittest.TestCase):
             "processData": [self._create_function_info("processData", "MyProject/processor.cpp", 130)],
         }
 
-        # Create search engine
+        # Create search engine with lock
+        import threading
+        self.index_lock = threading.RLock()
         self.search_engine = SearchEngine(
             class_index=self.class_symbols,
             function_index=self.function_symbols,
             file_index={},
-            usr_index={}
+            usr_index={},
+            index_lock=self.index_lock
         )
 
     def _create_class_info(self, name, file, line):

@@ -1,6 +1,7 @@
 """Search functionality for C++ symbols."""
 
 import re
+import threading
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
 from .symbol_info import SymbolInfo
@@ -16,11 +17,13 @@ class SearchEngine:
         function_index: Dict[str, List[SymbolInfo]],
         file_index: Dict[str, List[SymbolInfo]],
         usr_index: Dict[str, SymbolInfo],
+        index_lock: threading.RLock,
     ):
         self.class_index = class_index
         self.function_index = function_index
         self.file_index = file_index
         self.usr_index = usr_index
+        self.index_lock = index_lock
 
     @staticmethod
     def _is_pattern(text: str) -> bool:
@@ -210,47 +213,48 @@ class SearchEngine:
         results = []
 
         # Iterate all classes and use qualified pattern matching
-        for name, infos in self.class_index.items():
-            for info in infos:
-                # Use qualified pattern matching (Phase 2)
-                # Fallback to info.name if qualified_name is empty (backward compatibility)
-                qualified_name = info.qualified_name if info.qualified_name else info.name
-                if not self.matches_qualified_pattern(qualified_name, pattern):
-                    continue
+        with self.index_lock:
+            for name, infos in self.class_index.items():
+                for info in infos:
+                    # Use qualified pattern matching (Phase 2)
+                    # Fallback to info.name if qualified_name is empty (backward compatibility)
+                    qualified_name = info.qualified_name if info.qualified_name else info.name
+                    if not self.matches_qualified_pattern(qualified_name, pattern):
+                        continue
 
-                # Apply filters
-                if not project_only or info.is_project:
-                    # Filter by file name if specified
-                    if file_name:
-                        # Match if the file path ends with the specified file_name
-                        # This supports full paths, relative paths, or just filenames
-                        if not info.file.endswith(file_name):
-                            continue
+                    # Apply filters
+                    if not project_only or info.is_project:
+                        # Filter by file name if specified
+                        if file_name:
+                            # Match if the file path ends with the specified file_name
+                            # This supports full paths, relative paths, or just filenames
+                            if not info.file.endswith(file_name):
+                                continue
 
-                    results.append(
-                        {
-                            "name": info.name,
-                            "qualified_name": info.qualified_name,  # Phase 2: Qualified name
-                            "namespace": info.namespace,  # Phase 2: Namespace portion
-                            "kind": info.kind,
-                            "file": info.file,
-                            "line": info.line,
-                            "is_project": info.is_project,
-                            "base_classes": info.base_classes,
-                            # Phase 3: Overload metadata
-                            "is_template_specialization": info.is_template_specialization,
-                            # Phase 1: Line ranges
-                            "start_line": info.start_line,
-                            "end_line": info.end_line,
-                            "header_file": info.header_file,
-                            "header_line": info.header_line,
-                            "header_start_line": info.header_start_line,
-                            "header_end_line": info.header_end_line,
-                            # Phase 2: Documentation
-                            "brief": info.brief,
-                            "doc_comment": info.doc_comment,
-                        }
-                    )
+                        results.append(
+                            {
+                                "name": info.name,
+                                "qualified_name": info.qualified_name,  # Phase 2: Qualified name
+                                "namespace": info.namespace,  # Phase 2: Namespace portion
+                                "kind": info.kind,
+                                "file": info.file,
+                                "line": info.line,
+                                "is_project": info.is_project,
+                                "base_classes": info.base_classes,
+                                # Phase 3: Overload metadata
+                                "is_template_specialization": info.is_template_specialization,
+                                # Phase 1: Line ranges
+                                "start_line": info.start_line,
+                                "end_line": info.end_line,
+                                "header_file": info.header_file,
+                                "header_line": info.header_line,
+                                "header_start_line": info.header_start_line,
+                                "header_end_line": info.header_end_line,
+                                # Phase 2: Documentation
+                                "brief": info.brief,
+                                "doc_comment": info.doc_comment,
+                            }
+                        )
 
         return results
 
@@ -323,60 +327,62 @@ class SearchEngine:
         # removed them from function_index
         if file_name:
             # Search file_index for file-specific queries
-            for file_path, infos in self.file_index.items():
-                # Match if the file path ends with the specified file_name
-                if not file_path.endswith(file_name):
-                    continue
-
-                for info in infos:
-                    # Only include functions (not classes)
-                    if info.kind not in ("function", "method"):
+            with self.index_lock:
+                for file_path, infos in self.file_index.items():
+                    # Match if the file path ends with the specified file_name
+                    if not file_path.endswith(file_name):
                         continue
 
-                    # Use qualified pattern matching (Phase 2)
-                    # Fallback to info.name if qualified_name is empty (backward compatibility)
-                    qualified_name = info.qualified_name if info.qualified_name else info.name
-
-                    # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
-                    # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
-                    matches = self.matches_qualified_pattern(qualified_name, pattern)
-                    if not matches and pattern_type == "regex":
-                        # Also try matching against unqualified name for backward compatibility
-                        matches = self.matches_qualified_pattern(info.name, pattern)
-
-                    if not matches:
-                        continue
-
-                    if not project_only or info.is_project:
-                        # Filter by class name if specified
-                        if class_name and info.parent_class != class_name:
+                    for info in infos:
+                        # Only include functions (not classes)
+                        if info.kind not in ("function", "method"):
                             continue
 
-                        results.append(_create_result(info))
+                        # Use qualified pattern matching (Phase 2)
+                        # Fallback to info.name if qualified_name is empty (backward compatibility)
+                        qualified_name = info.qualified_name if info.qualified_name else info.name
+
+                        # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
+                        # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
+                        matches = self.matches_qualified_pattern(qualified_name, pattern)
+                        if not matches and pattern_type == "regex":
+                            # Also try matching against unqualified name for backward compatibility
+                            matches = self.matches_qualified_pattern(info.name, pattern)
+
+                        if not matches:
+                            continue
+
+                        if not project_only or info.is_project:
+                            # Filter by class name if specified
+                            if class_name and info.parent_class != class_name:
+                                continue
+
+                            results.append(_create_result(info))
         else:
             # Original logic: search function_index
-            for name, infos in self.function_index.items():
-                for info in infos:
-                    # Use qualified pattern matching (Phase 2)
-                    # Fallback to info.name if qualified_name is empty (backward compatibility)
-                    qualified_name = info.qualified_name if info.qualified_name else info.name
+            with self.index_lock:
+                for name, infos in self.function_index.items():
+                    for info in infos:
+                        # Use qualified pattern matching (Phase 2)
+                        # Fallback to info.name if qualified_name is empty (backward compatibility)
+                        qualified_name = info.qualified_name if info.qualified_name else info.name
 
-                    # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
-                    # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
-                    matches = self.matches_qualified_pattern(qualified_name, pattern)
-                    if not matches and pattern_type == "regex":
-                        # Also try matching against unqualified name for backward compatibility
-                        matches = self.matches_qualified_pattern(info.name, pattern)
+                        # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
+                        # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
+                        matches = self.matches_qualified_pattern(qualified_name, pattern)
+                        if not matches and pattern_type == "regex":
+                            # Also try matching against unqualified name for backward compatibility
+                            matches = self.matches_qualified_pattern(info.name, pattern)
 
-                    if not matches:
-                        continue
-
-                    if not project_only or info.is_project:
-                        # Filter by class name if specified
-                        if class_name and info.parent_class != class_name:
+                        if not matches:
                             continue
 
-                        results.append(_create_result(info))
+                        if not project_only or info.is_project:
+                            # Filter by class name if specified
+                            if class_name and info.parent_class != class_name:
+                                continue
+
+                            results.append(_create_result(info))
 
         return results
 
@@ -427,41 +433,44 @@ class SearchEngine:
 
     def get_symbols_in_file(self, file_path: str) -> List[SymbolInfo]:
         """Get all symbols in a specific file"""
-        return self.file_index.get(file_path, [])
+        with self.index_lock:
+            # Return a copy to prevent concurrent modification during iteration
+            return list(self.file_index.get(file_path, []))
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a class"""
-        infos = self.class_index.get(class_name, [])
-        if not infos:
-            return None
+        with self.index_lock:
+            infos = self.class_index.get(class_name, [])
+            if not infos:
+                return None
 
-        # Return the first match (could be enhanced to handle multiple matches)
-        info = infos[0]
+            # Return the first match (could be enhanced to handle multiple matches)
+            info = infos[0]
 
-        # Find all methods of this class
-        methods = []
-        for name, func_infos in self.function_index.items():
-            for func_info in func_infos:
-                if func_info.parent_class == class_name:
-                    methods.append(
-                        {
-                            "name": func_info.name,
-                            "signature": func_info.signature,
-                            "access": func_info.access,
-                            "line": func_info.line,
-                            # Phase 3: Overload metadata
-                            "is_template_specialization": func_info.is_template_specialization,
-                            # Phase 1: Line ranges for methods
-                            "start_line": func_info.start_line,
-                            "end_line": func_info.end_line,
-                            "header_line": func_info.header_line,
-                            "header_start_line": func_info.header_start_line,
-                            "header_end_line": func_info.header_end_line,
-                            # Phase 2: Documentation for methods
-                            "brief": func_info.brief,
-                            "doc_comment": func_info.doc_comment,
-                        }
-                    )
+            # Find all methods of this class
+            methods = []
+            for name, func_infos in self.function_index.items():
+                for func_info in func_infos:
+                    if func_info.parent_class == class_name:
+                        methods.append(
+                            {
+                                "name": func_info.name,
+                                "signature": func_info.signature,
+                                "access": func_info.access,
+                                "line": func_info.line,
+                                # Phase 3: Overload metadata
+                                "is_template_specialization": func_info.is_template_specialization,
+                                # Phase 1: Line ranges for methods
+                                "start_line": func_info.start_line,
+                                "end_line": func_info.end_line,
+                                "header_line": func_info.header_line,
+                                "header_start_line": func_info.header_start_line,
+                                "header_end_line": func_info.header_end_line,
+                                # Phase 2: Documentation for methods
+                                "brief": func_info.brief,
+                                "doc_comment": func_info.doc_comment,
+                            }
+                        )
 
         return {
             "name": info.name,
@@ -490,11 +499,12 @@ class SearchEngine:
         """Get function signatures matching the name"""
         signatures = []
 
-        for info in self.function_index.get(function_name, []):
-            if class_name is None or info.parent_class == class_name:
-                if info.parent_class:
-                    signatures.append(f"{info.parent_class}::{info.name}{info.signature}")
-                else:
-                    signatures.append(f"{info.name}{info.signature}")
+        with self.index_lock:
+            for info in self.function_index.get(function_name, []):
+                if class_name is None or info.parent_class == class_name:
+                    if info.parent_class:
+                        signatures.append(f"{info.parent_class}::{info.name}{info.signature}")
+                    else:
+                        signatures.append(f"{info.name}{info.signature}")
 
         return signatures
