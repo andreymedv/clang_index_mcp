@@ -275,6 +275,10 @@ async def list_tools() -> List[Tool]:
                         "type": "string",
                         "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'network.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
                     },
+                    "namespace": {
+                        "type": "string",
+                        "description": "Optional: Filter results to only classes in the specified namespace (exact match, case-sensitive). **Use this to disambiguate** when multiple namespaces have the same class name (e.g., ns1::View vs ns2::View). Examples: 'app::ui' returns only classes in app::ui namespace, '' (empty string) returns only global namespace classes. If not specified, returns all matches regardless of namespace.",
+                    },
                 },
                 "required": ["pattern"],
             },
@@ -301,6 +305,10 @@ async def list_tools() -> List[Tool]:
                     "file_name": {
                         "type": "string",
                         "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'network.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "description": "Optional: Filter results to only functions/methods in the specified namespace (exact match, case-sensitive). **Use this to disambiguate** when multiple namespaces have the same function name. For methods, matches namespace + class (e.g., 'app::Database'). Examples: 'app' returns only functions in app namespace, 'app::Database' returns only methods of app::Database class, '' (empty string) returns only global namespace functions. If not specified, returns all matches regardless of namespace.",
                     },
                 },
                 "required": ["pattern"],
@@ -360,6 +368,10 @@ async def list_tools() -> List[Tool]:
                             "enum": ["class", "struct", "function", "method"],
                         },
                         "description": "Filter results to specific symbol types. Options: 'class' (class definitions), 'struct' (struct definitions), 'function' (standalone functions), 'method' (class member functions). If omitted, both 'classes' and 'functions' arrays will be populated.",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "description": "Optional: Filter results to only symbols in the specified namespace (exact match, case-sensitive). **Use this to disambiguate** when multiple namespaces have the same symbol name. For methods, matches namespace + class. Examples: 'app' returns only symbols in app namespace, 'app::Database' returns only Database class members, '' (empty string) returns only global namespace symbols. If not specified, returns all matches regardless of namespace.",
                     },
                 },
                 "required": ["pattern"],
@@ -877,9 +889,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             project_only = arguments.get("project_only", True)
             pattern = arguments["pattern"]
             file_name = arguments.get("file_name", None)
+            namespace = arguments.get("namespace", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None, lambda: analyzer.search_classes(pattern, project_only, file_name)
+                None, lambda: analyzer.search_classes(pattern, project_only, file_name, namespace)
             )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(
@@ -891,11 +904,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             project_only = arguments.get("project_only", True)
             class_name = arguments.get("class_name", None)
             file_name = arguments.get("file_name", None)
+            namespace = arguments.get("namespace", None)
             pattern = arguments["pattern"]
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.search_functions(pattern, project_only, class_name, file_name),
+                lambda: analyzer.search_functions(
+                    pattern, project_only, class_name, file_name, namespace
+                ),
             )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(
@@ -938,9 +954,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             pattern = arguments["pattern"]
             project_only = arguments.get("project_only", True)
             symbol_types = arguments.get("symbol_types", None)
+            namespace = arguments.get("namespace", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None, lambda: analyzer.search_symbols(pattern, project_only, symbol_types)
+                None, lambda: analyzer.search_symbols(pattern, project_only, symbol_types, namespace)
             )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(
