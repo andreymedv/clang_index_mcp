@@ -172,7 +172,7 @@ class SearchEngine:
                 return False
 
             # Check that last N components match (case-insensitive)
-            q_suffix = q_parts[-len(p_parts):]
+            q_suffix = q_parts[-len(p_parts) :]
             return [p.lower() for p in q_suffix] == [p.lower() for p in p_parts]
 
         # Fallback (should never reach here)
