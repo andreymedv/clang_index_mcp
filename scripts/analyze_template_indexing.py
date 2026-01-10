@@ -136,6 +136,36 @@ def analyze_template_indexing():
     for r in results:
         print(f"     - {r.get('qualified_name', r.get('name'))} - {r.get('signature', 'unknown')}")
 
+    # Test cross-specialization derived class queries (Phase 3)
+    print("\n\n6. Testing cross-specialization derived class queries (Phase 3)...")
+
+    print("\n   Querying derived classes of 'Container' (template):")
+    derived = analyzer.get_derived_classes("Container")
+    print(f"   Found {len(derived)} derived classes:")
+    for d in derived:
+        print(f"     - {d['name']} inherits from {d.get('base_classes', [])}")
+
+    print("\n   Querying derived classes of 'Base' (CRTP template):")
+    derived = analyzer.get_derived_classes("Base")
+    print(f"   Found {len(derived)} derived classes:")
+    for d in derived:
+        print(f"     - {d['name']} inherits from {d.get('base_classes', [])}")
+
+    # Test _find_template_specializations directly
+    print("\n\n7. Testing _find_template_specializations() method...")
+
+    print("\n   Finding all specializations of 'Container':")
+    specs = analyzer._find_template_specializations("Container")
+    print(f"   Found {len(specs)} specializations:")
+    for spec in specs:
+        print(f"     - {spec.name} (kind={spec.kind}, USR={spec.usr})")
+
+    print("\n   Finding all specializations of 'Pair':")
+    specs = analyzer._find_template_specializations("Pair")
+    print(f"   Found {len(specs)} specializations:")
+    for spec in specs:
+        print(f"     - {spec.name} (kind={spec.kind}, USR={spec.usr})")
+
     conn.close()
 
     print("\n" + "=" * 80)
