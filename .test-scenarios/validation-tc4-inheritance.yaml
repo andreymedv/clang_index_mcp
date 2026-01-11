@@ -1,0 +1,48 @@
+# TC4: Template-Based Inheritance Testing
+# Tests if inheritance through template parameters is detected
+
+name: "TC4: Template-Based Inheritance"
+description: "Test template-based inheritance detection"
+project: template_test
+protocol: http
+timeout: 120
+
+steps:
+  - tool: set_project_directory
+    args:
+      project_path: "$PROJECT_PATH"
+    description: "Set project directory"
+
+  - tool: wait_for_indexing
+    timeout: 30
+    description: "Wait for indexing to complete"
+
+  # TC4.1: get_derived_classes for IInterface
+  - tool: get_derived_classes
+    args:
+      class_name: "IInterface"
+    description: "TC4.1: get_derived_classes('IInterface') - should find ConcreteImpl (ideally, through ImplementationBase)"
+
+  # TC4.2: get_class_info for ConcreteImpl
+  - tool: get_class_info
+    args:
+      class_name: "ConcreteImpl"
+    description: "TC4.2: get_class_info('ConcreteImpl') - should show ImplementationBase<IInterface> as base"
+
+  # TC4.3: get_class_info for ImplementationBase<IInterface>
+  - tool: get_class_info
+    args:
+      class_name: "ImplementationBase<IInterface>"
+    description: "TC4.3: get_class_info('ImplementationBase<IInterface>') - should show IInterface as base"
+
+  # TC4.4: get_derived_classes for ImplementationBase
+  - tool: get_derived_classes
+    args:
+      class_name: "ImplementationBase"
+    description: "TC4.4: get_derived_classes('ImplementationBase') - should find derived classes"
+
+  # TC4.5: Check if ImplementationBase is stored
+  - tool: search_classes
+    args:
+      pattern: "ImplementationBase"
+    description: "TC4.5: search_classes('ImplementationBase') - check if template base is indexed"
