@@ -125,11 +125,13 @@ class TestBulkSymbolWrites(unittest.TestCase):
             analyzer._init_thread_local_buffers()
 
             # Check buffers exist and are empty
-            symbols, calls = analyzer._get_thread_local_buffers()
+            symbols, calls, aliases = analyzer._get_thread_local_buffers()
             self.assertIsInstance(symbols, list)
             self.assertIsInstance(calls, list)
+            self.assertIsInstance(aliases, list)
             self.assertEqual(len(symbols), 0)
             self.assertEqual(len(calls), 0)
+            self.assertEqual(len(aliases), 0)
 
     def test_bulk_write_with_empty_buffers(self):
         """Bulk write with empty buffers should return 0"""
@@ -158,7 +160,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
             )
 
             # Add to buffer
-            symbols, _ = analyzer._get_thread_local_buffers()
+            symbols, _, _ = analyzer._get_thread_local_buffers()
             symbols.append(test_symbol)
 
             # Bulk write
@@ -197,7 +199,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
             )
 
             # Add both to buffer
-            symbols, _ = analyzer._get_thread_local_buffers()
+            symbols, _, _ = analyzer._get_thread_local_buffers()
             symbols.append(symbol1)
             symbols.append(symbol2)
 
