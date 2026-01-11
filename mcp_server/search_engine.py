@@ -18,12 +18,14 @@ class SearchEngine:
         file_index: Dict[str, List[SymbolInfo]],
         usr_index: Dict[str, SymbolInfo],
         index_lock: threading.RLock,
+        cache_manager=None,  # Phase 1.3: Type Alias Tracking support
     ):
         self.class_index = class_index
         self.function_index = function_index
         self.file_index = file_index
         self.usr_index = usr_index
         self.index_lock = index_lock
+        self.cache_manager = cache_manager  # Phase 1.3: For alias lookups
 
     @staticmethod
     def _is_pattern(text: str) -> bool:
@@ -180,6 +182,67 @@ class SearchEngine:
 
         # Fallback (should never reach here)
         return False
+
+    def expand_type_name(self, type_name: str) -> List[str]:
+        """
+        Expand a type name to include all equivalent type names (aliases and canonical).
+
+        Phase 1.3: Type Alias Tracking - Infrastructure for automatic search unification
+
+        This method enables future parameter type filtering to automatically find functions
+        using both aliases and canonical types. For example, searching for "ErrorCallback"
+        will also find functions using "std::function<void(const Error&)>".
+
+        Args:
+            type_name: Type name to expand (can be alias or canonical type)
+
+        Returns:
+            List of equivalent type names including:
+            - The original type name
+            - All aliases pointing to it (if it's a canonical type)
+            - The canonical type (if it's an alias)
+
+        Example:
+            type_name = "ErrorCallback"
+            returns ["ErrorCallback", "std::function<void(const Error&)>"]
+
+            type_name = "std::function<void(const Error&)>"
+            returns ["std::function<void(const Error&)>", "ErrorCallback"]
+        """
+        if not self.cache_manager:
+            # No cache manager available, return original name only
+            return [type_name]
+
+        expanded_names = [type_name]
+
+        try:
+            # Check if this is an alias (has a canonical type)
+            canonical = self.cache_manager.get_canonical_for_alias(type_name)
+            if canonical and canonical != type_name:
+                expanded_names.append(canonical)
+
+            # Check if this is a canonical type (has aliases)
+            aliases = self.cache_manager.get_aliases_for_canonical(type_name)
+            if aliases:
+                for alias in aliases:
+                    if alias not in expanded_names:
+                        expanded_names.append(alias)
+
+            # Also check if the canonical type itself has aliases
+            if canonical:
+                aliases_of_canonical = self.cache_manager.get_aliases_for_canonical(canonical)
+                if aliases_of_canonical:
+                    for alias in aliases_of_canonical:
+                        if alias not in expanded_names:
+                            expanded_names.append(alias)
+
+        except Exception as e:
+            # Alias lookup failures are not critical, just log and continue
+            from . import diagnostics
+
+            diagnostics.debug(f"Failed to expand type name '{type_name}': {e}")
+
+        return expanded_names
 
     def search_classes(
         self,

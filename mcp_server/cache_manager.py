@@ -591,3 +591,69 @@ class CacheManager:
         except Exception as e:
             print(f"Failed to clear error log: {e}", file=sys.stderr)
             return 0
+
+    # -------------------------------------------------------------------------
+    # Type Aliases (Phase 1.3: Type Alias Tracking)
+    # -------------------------------------------------------------------------
+
+    def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
+        """
+        Batch save type aliases to cache.
+
+        Phase 1.3: Type Alias Tracking - Wrapper for backend storage
+
+        Args:
+            aliases: List of alias dictionaries
+
+        Returns:
+            Number of aliases successfully saved
+        """
+        return self._safe_backend_call(
+            "save_type_aliases_batch", lambda: self.backend.save_type_aliases_batch(aliases)
+        )
+
+    def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
+        """
+        Get all alias names that resolve to a canonical type.
+
+        Phase 1.3: Type Alias Tracking - Search unification support
+
+        Args:
+            canonical_type: Canonical type to look up
+
+        Returns:
+            List of alias names
+        """
+        return self._safe_backend_call(
+            "get_aliases_for_canonical",
+            lambda: self.backend.get_aliases_for_canonical(canonical_type),
+        )
+
+    def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
+        """
+        Get canonical type for an alias name.
+
+        Phase 1.3: Type Alias Tracking - Hybrid response format support
+
+        Args:
+            alias_name: Alias name to look up
+
+        Returns:
+            Canonical type string, or None if not found
+        """
+        return self._safe_backend_call(
+            "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
+        )
+
+    def get_all_alias_mappings(self) -> Dict[str, str]:
+        """
+        Get all alias → canonical type mappings.
+
+        Phase 1.3: Type Alias Tracking - Bulk lookup for search expansion
+
+        Returns:
+            Dictionary mapping alias names to canonical types
+        """
+        return self._safe_backend_call(
+            "get_all_alias_mappings", lambda: self.backend.get_all_alias_mappings()
+        )

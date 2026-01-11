@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "10.1"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "11.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -1683,9 +1683,22 @@ class SqliteCacheBackend:
             for row in cursor:
                 symbol = self._row_to_symbol(row)
                 # Issue #99: Include template kinds in class_index
-                if symbol.kind in ("class", "struct", "union", "enum", "class_template", "partial_specialization"):
+                if symbol.kind in (
+                    "class",
+                    "struct",
+                    "union",
+                    "enum",
+                    "class_template",
+                    "partial_specialization",
+                ):
                     class_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
-                elif symbol.kind in ("function", "method", "constructor", "destructor", "function_template"):
+                elif symbol.kind in (
+                    "function",
+                    "method",
+                    "constructor",
+                    "destructor",
+                    "function_template",
+                ):
                     function_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
 
             # Load file hashes
@@ -2064,3 +2077,181 @@ class SqliteCacheBackend:
         except Exception as e:
             diagnostics.error(f"Failed to load call sites from database: {e}")
             return []
+
+    # -------------------------------------------------------------------------
+    # Type Aliases Storage and Lookup (Phase 1.3: Type Alias Tracking)
+    # -------------------------------------------------------------------------
+
+    def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
+        """
+        Batch insert type aliases using transaction.
+
+        Phase 1.3: Type Alias Tracking - Store aliases extracted during parsing
+
+        Args:
+            aliases: List of alias dictionaries with keys:
+                - alias_name: Short name (e.g., "WidgetAlias")
+                - qualified_name: Fully qualified (e.g., "foo::WidgetAlias")
+                - target_type: Immediate target spelling
+                - canonical_type: Final resolved type spelling
+                - file: File where alias is defined
+                - line: Line number
+                - column: Column number
+                - alias_kind: 'using' or 'typedef'
+                - namespace: Namespace portion
+                - is_template_alias: Boolean (False for Phase 1)
+                - created_at: Unix timestamp
+
+        Returns:
+            Number of aliases successfully saved
+        """
+        if not aliases:
+            return 0
+
+        try:
+            self._ensure_connected()
+
+            # Batch insert in a single transaction
+            with self.conn:
+                self.conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO type_aliases (
+                        alias_name, qualified_name, target_type, canonical_type,
+                        file, line, column, alias_kind, namespace,
+                        is_template_alias, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            alias["alias_name"],
+                            alias["qualified_name"],
+                            alias["target_type"],
+                            alias["canonical_type"],
+                            alias["file"],
+                            alias["line"],
+                            alias["column"],
+                            alias["alias_kind"],
+                            alias["namespace"],
+                            1 if alias.get("is_template_alias", False) else 0,
+                            alias["created_at"],
+                        )
+                        for alias in aliases
+                    ],
+                )
+
+            diagnostics.debug(f"Saved {len(aliases)} type aliases to database")
+            return len(aliases)
+
+        except Exception as e:
+            diagnostics.error(f"Failed to batch save {len(aliases)} type aliases: {e}")
+            return 0
+
+    def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
+        """
+        Get all alias names that resolve to a given canonical type.
+
+        Phase 1.3: Type Alias Tracking - Search unification support
+
+        Example:
+            canonical_type = "Widget"
+            returns ["WidgetAlias", "WidgetPtr", "foo::WidgetAlias"]
+
+        Args:
+            canonical_type: Canonical type to search for
+
+        Returns:
+            List of alias names (both short names and qualified names)
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                """
+                SELECT alias_name, qualified_name
+                FROM type_aliases
+                WHERE canonical_type = ?
+                """,
+                (canonical_type,),
+            )
+
+            # Return both short names and qualified names
+            alias_names = []
+            for row in cursor.fetchall():
+                alias_names.append(row["alias_name"])
+                # Add qualified name if different from short name
+                if row["qualified_name"] != row["alias_name"]:
+                    alias_names.append(row["qualified_name"])
+
+            return alias_names
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get aliases for canonical type '{canonical_type}': {e}")
+            return []
+
+    def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
+        """
+        Get canonical type for a given alias name.
+
+        Phase 1.3: Type Alias Tracking - Lookup support for hybrid response format
+
+        Args:
+            alias_name: Alias name to look up (can be short or qualified)
+
+        Returns:
+            Canonical type string, or None if not found
+        """
+        try:
+            self._ensure_connected()
+
+            # Try exact match first (short name or qualified name)
+            cursor = self.conn.execute(
+                """
+                SELECT canonical_type
+                FROM type_aliases
+                WHERE alias_name = ? OR qualified_name = ?
+                LIMIT 1
+                """,
+                (alias_name, alias_name),
+            )
+
+            row = cursor.fetchone()
+            if row:
+                return row["canonical_type"]
+
+            return None
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get canonical type for alias '{alias_name}': {e}")
+            return None
+
+    def get_all_alias_mappings(self) -> Dict[str, str]:
+        """
+        Get all alias → canonical mappings.
+
+        Phase 1.3: Type Alias Tracking - Bulk lookup for search expansion
+
+        Returns:
+            Dictionary mapping alias names to canonical types
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self.conn.execute(
+                """
+                SELECT alias_name, qualified_name, canonical_type
+                FROM type_aliases
+                """
+            )
+
+            # Build mapping: both short and qualified names point to canonical type
+            mappings = {}
+            for row in cursor.fetchall():
+                mappings[row["alias_name"]] = row["canonical_type"]
+                if row["qualified_name"] != row["alias_name"]:
+                    mappings[row["qualified_name"]] = row["canonical_type"]
+
+            return mappings
+
+        except Exception as e:
+            diagnostics.error(f"Failed to get all alias mappings: {e}")
+            return {}

@@ -957,7 +957,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             namespace = arguments.get("namespace", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None, lambda: analyzer.search_symbols(pattern, project_only, symbol_types, namespace)
+                None,
+                lambda: analyzer.search_symbols(pattern, project_only, symbol_types, namespace),
             )
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(

@@ -42,10 +42,12 @@ def print_cursor_info(cursor, depth=0):
     print(f"{indent}USR: {cursor.get_usr()}")
 
     # Check if it's a template
-    print(f"{indent}Is Template: {cursor.kind in [clang.CursorKind.CLASS_TEMPLATE, clang.CursorKind.FUNCTION_TEMPLATE]}")
+    print(
+        f"{indent}Is Template: {cursor.kind in [clang.CursorKind.CLASS_TEMPLATE, clang.CursorKind.FUNCTION_TEMPLATE]}"
+    )
 
     # Check for specialization (if attribute exists)
-    if hasattr(cursor, 'specialized_cursor_template'):
+    if hasattr(cursor, "specialized_cursor_template"):
         specialized_cursor = cursor.specialized_cursor_template
         if specialized_cursor and specialized_cursor != cursor:
             print(f"{indent}Is Specialization: YES")
@@ -57,7 +59,7 @@ def print_cursor_info(cursor, depth=0):
         print(f"{indent}Is Specialization: (attribute not available)")
 
     # Check template specialization kind
-    if hasattr(cursor, 'get_template_specialization_kind'):
+    if hasattr(cursor, "get_template_specialization_kind"):
         try:
             spec_kind = cursor.get_template_specialization_kind()
             print(f"{indent}Template Specialization Kind: {spec_kind}")
@@ -87,7 +89,7 @@ def analyze_templates(file_path, compile_args=None):
     index = clang.Index.create()
 
     if compile_args is None:
-        compile_args = ['-std=c++17', '-I.']
+        compile_args = ["-std=c++17", "-I."]
 
     print(f"Compile args: {compile_args}")
     print()
@@ -96,8 +98,8 @@ def analyze_templates(file_path, compile_args=None):
         tu = index.parse(
             file_path,
             args=compile_args,
-            options=clang.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD |
-                    clang.TranslationUnit.PARSE_INCOMPLETE
+            options=clang.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+            | clang.TranslationUnit.PARSE_INCOMPLETE,
         )
     except clang.TranslationUnitLoadError as e:
         print(f"Error parsing file: {e}")
@@ -127,27 +129,33 @@ def analyze_templates(file_path, compile_args=None):
 
         # Check if this is a template-related node
         is_template_related = (
-            cursor.kind == clang.CursorKind.CLASS_TEMPLATE or
-            cursor.kind == clang.CursorKind.FUNCTION_TEMPLATE or
-            cursor.kind == clang.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION or
-            cursor.kind == clang.CursorKind.TYPE_ALIAS_TEMPLATE_DECL
+            cursor.kind == clang.CursorKind.CLASS_TEMPLATE
+            or cursor.kind == clang.CursorKind.FUNCTION_TEMPLATE
+            or cursor.kind == clang.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION
+            or cursor.kind == clang.CursorKind.TYPE_ALIAS_TEMPLATE_DECL
         )
 
         # Check for specializations (if attribute exists)
-        if hasattr(cursor, 'specialized_cursor_template'):
+        if hasattr(cursor, "specialized_cursor_template"):
             is_template_related = is_template_related or (
-                (cursor.kind == clang.CursorKind.CLASS_DECL and cursor.specialized_cursor_template) or
-                (cursor.kind == clang.CursorKind.FUNCTION_DECL and cursor.specialized_cursor_template)
+                (cursor.kind == clang.CursorKind.CLASS_DECL and cursor.specialized_cursor_template)
+                or (
+                    cursor.kind == clang.CursorKind.FUNCTION_DECL
+                    and cursor.specialized_cursor_template
+                )
             )
 
         # Only print template-related entities or classes/functions with template keywords
-        if is_template_related or (cursor.spelling and 'Container' in cursor.spelling) or \
-           (cursor.spelling and 'Pair' in cursor.spelling) or \
-           (cursor.spelling and 'Base' in cursor.spelling) or \
-           (cursor.spelling and 'Tuple' in cursor.spelling):
+        if (
+            is_template_related
+            or (cursor.spelling and "Container" in cursor.spelling)
+            or (cursor.spelling and "Pair" in cursor.spelling)
+            or (cursor.spelling and "Base" in cursor.spelling)
+            or (cursor.spelling and "Tuple" in cursor.spelling)
+        ):
 
             # Skip if from system header
-            if cursor.location.file and 'template_test_project' in str(cursor.location.file.name):
+            if cursor.location.file and "template_test_project" in str(cursor.location.file.name):
                 print(f"{'=' * 80}")
                 print(f"FOUND: {cursor.spelling} (line {cursor.location.line})")
                 print(f"{'=' * 80}")
@@ -187,14 +195,15 @@ def main():
     if compile_commands_path.exists():
         # Load compile args from compile_commands.json
         import json
+
         with open(compile_commands_path) as f:
             commands = json.load(f)
             for entry in commands:
-                if entry['file'] == Path(file_path).name:
+                if entry["file"] == Path(file_path).name:
                     # Extract args from command
-                    command = entry['command']
+                    command = entry["command"]
                     # Simple extraction - just get -std and -I flags
-                    compile_args = ['-std=c++17', f'-I{Path(file_path).parent}']
+                    compile_args = ["-std=c++17", f"-I{Path(file_path).parent}"]
                     break
 
     analyze_templates(file_path, compile_args)
