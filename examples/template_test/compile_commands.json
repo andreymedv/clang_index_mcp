@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "/home/andrey/repos/cplusplus_mcp/examples/template_test",
+    "command": "g++ -std=c++17 -c main.cpp -o main.o",
+    "file": "main.cpp"
+  }
+]

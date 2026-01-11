@@ -1,0 +1,52 @@
+# TC1: Qualified Names Testing
+# Tests if qualified names work in search tools
+
+name: "TC1: Qualified Names"
+description: "Test qualified name support in search tools"
+project: template_test
+protocol: http
+timeout: 120
+
+steps:
+  - tool: set_project_directory
+    args:
+      project_path: "$PROJECT_PATH"
+    description: "Set project directory"
+
+  - tool: wait_for_indexing
+    timeout: 30
+    description: "Wait for indexing to complete"
+
+  # TC1.1: search_classes with qualified name ns1::View
+  - tool: search_classes
+    args:
+      pattern: "ns1::View"
+    description: "TC1.1: search_classes with qualified name ns1::View"
+
+  # TC1.2: search_classes with unqualified name View
+  - tool: search_classes
+    args:
+      pattern: "View"
+    expect:
+      - type: count
+        operator: ">="
+        value: 1
+    description: "TC1.2: search_classes with unqualified name View (should find at least 1)"
+
+  # TC1.3: search_functions with qualified name ns1::render
+  - tool: search_functions
+    args:
+      pattern: "ns1::render"
+    description: "TC1.3: search_functions with qualified name ns1::render"
+
+  # TC1.4: search_symbols with qualified name ns1::globalVar
+  - tool: search_symbols
+    args:
+      pattern: "ns1::globalVar"
+    description: "TC1.4: search_symbols with qualified name ns1::globalVar"
+
+  # TC1.5: Regex pattern with namespace
+  - tool: search_classes
+    args:
+      pattern: ".*::View"
+    description: "TC1.5: search_classes with regex .*::View"
