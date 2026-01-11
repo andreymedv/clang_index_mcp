@@ -363,7 +363,7 @@ class TestThreadLocalBuffers(unittest.TestCase):
 
             def worker(thread_id):
                 analyzer._init_thread_local_buffers()
-                symbols, calls = analyzer._get_thread_local_buffers()
+                symbols, calls, aliases = analyzer._get_thread_local_buffers()
                 # Add unique symbol to this thread's buffer
                 symbols.append(SymbolInfo(
                     name=f"Class{thread_id}",
