@@ -24,12 +24,12 @@ API clarity: ⚠️ **Needs improvement** - unintuitive behaviors, silent failur
 
 ---
 
-### ⚠️ Observation #2: Qualified Names Don't Work
-**Status:** UX Issue
-**Severity:** Medium
+### ✅ Observation #2: Qualified Names Don't Work - **REFUTED**
+**Status:** ~~UX Issue~~ **WORKING** (as of 2026-01-10 validation testing)
+**Severity:** ~~Medium~~ N/A
 **Tools affected:** `search_classes`, possibly `search_functions`
 
-**Behavior:**
+**Original Behavior (LM Studio testing):**
 ```json
 // This returns empty list:
 search_classes({"pattern": "myapp::View"})
@@ -38,45 +38,95 @@ search_classes({"pattern": "myapp::View"})
 search_classes({"pattern": "View"})
 ```
 
-**Workaround:** Added to system prompt: "Always use unqualified names (no namespace prefix)"
+**VALIDATION RESULTS (2026-01-10):**
+✅ **Qualified names ARE SUPPORTED** - Feature was implemented in Phase 2
 
-**Root cause hypothesis:** Pattern matching operates on `symbol_info.name` field which contains only unqualified names. The `::` in pattern simply doesn't match anything.
+**Evidence:**
+- Implementation: `mcp_server/search_engine.py:107-182` (`matches_qualified_pattern()`)
+- Supports 4 matching modes:
+  1. Leading `::` → exact match in global namespace
+  2. No `::` → match unqualified name only
+  3. `::` in pattern → component-based suffix match (e.g., `"ui::View"` matches `"app::ui::View"`)
+  4. Regex metacharacters → regex fullmatch
+- Tested and working in validation test case TC1
 
-**User impact:**
-- Unintuitive - users naturally want to specify fully qualified names
-- LLM models don't understand this requirement without explicit prompting
-- Silent failure (empty results, no error message)
+**Pattern Examples:**
+```python
+# These all work correctly:
+search_classes({"pattern": "View"})           # Matches all View classes (any namespace)
+search_classes({"pattern": "ui::View"})       # Matches app::ui::View, legacy::ui::View (suffix)
+search_classes({"pattern": "::View"})         # Matches only global namespace View
+search_classes({"pattern": "app::.*::View"})  # Regex match
+```
+
+**Root Cause of Original Observation:**
+- Original testing likely predates Phase 2 implementation
+- OR testing methodology didn't account for suffix matching behavior
+- Qualified names fully functional as of current codebase
+
+**Recommendation:**
+- ✅ No action needed - feature already implemented
+- 📝 Update MCP tool descriptions to showcase qualified name pattern examples
 
 ---
 
-### ⚠️ Observation #3: No Namespace Filtering → Ambiguous Results
-**Status:** Feature Gap
-**Severity:** High (causes incorrect analysis chains)
-**Related to:** Observation #2
+### ✅ Observation #3: No Namespace Filtering → Ambiguous Results - **REFUTED**
+**Status:** ~~Feature Gap~~ **WORKING** (as of 2026-01-10 validation testing)
+**Severity:** ~~High~~ N/A
+**Related to:** Observation #2 (both refuted)
 
-**Scenario:**
+**Original Scenario (LM Studio testing):**
 1. User asks: "Find information about `ns2::View`"
 2. LLM tries: `search_classes({"pattern": "ns2::View"})` → empty results (Obs #2)
 3. LLM retries: `search_classes({"pattern": "View"})` → returns `[ns1::View, ns2::View]`
 4. LLM picks first result (`ns1::View`) → **wrong class analyzed**
 
-**Root cause:** No API mechanism to filter by namespace or qualified name
+**VALIDATION RESULTS (2026-01-10):**
+✅ **Namespace filtering IS AVAILABLE** - `namespace` parameter exists
 
-**User impact:**
-- In large codebases with common class names across namespaces, results are ambiguous
-- LLM makes wrong assumptions about which class user meant
-- Requires additional system prompt instructions for LLM to verify qualified names
+**Evidence:**
+- Parameter: `search_classes(..., namespace="ns2")` filters by exact namespace
+- Implementation: `mcp_server/search_engine.py:240-244`
+- Tested and working in validation test case TC2
 
-**Workaround (added to system prompt):**
+**Function Signature:**
+```python
+def search_classes(
+    self,
+    pattern: str,
+    project_only: bool = True,
+    file_name: Optional[str] = None,
+    namespace: Optional[str] = None,  # <-- Namespace filter parameter
+) -> List[Dict[str, Any]]:
 ```
-After getting search results, ALWAYS verify the qualified name
-matches user's request before proceeding with analysis.
+
+**Correct Usage (now possible):**
+```python
+# Filter by exact namespace:
+search_classes({"pattern": "View", "namespace": "ns2"})  # Returns only ns2::View
+
+# Use qualified pattern (suffix match):
+search_classes({"pattern": "ns2::View"})  # Matches ns2::View, app::ns2::View, etc.
+
+# Get all results and inspect qualified_name:
+results = search_classes({"pattern": "View"})
+# Each result includes 'qualified_name' and 'namespace' fields
 ```
+
+**Root Cause of Original Observation:**
+- Original testing predates Phase 2 implementation
+- `namespace` parameter was not documented or known to testers
+- Feature already exists and works correctly
+
+**Recommendation:**
+- ✅ No action needed - feature already implemented
+- 📝 Add examples to MCP tool descriptions showing `namespace` parameter usage
+- 📝 Consider case-insensitive namespace matching for better UX
 
 ---
 
-### ⚠️ Observation #4: Template-Based Inheritance Not Detected
-**Status:** Functional Gap
+### ❌ Observation #4: Template-Based Inheritance Not Detected - **CONFIRMED**
+**Status:** Functional Gap (validated 2026-01-10)
 **Severity:** Medium-High
 **Tool affected:** `get_derived_classes`
 
@@ -97,22 +147,51 @@ get_derived_classes({"class_name": "IInterface"})
 // Expected: [{"name": "Concrete", ...}] (through TemplateBase<IInterface>)
 ```
 
-**Root cause hypothesis:**
-- libclang reports `Concrete`'s direct base class as `TemplateBase<IInterface>` (the specialization)
-- System doesn't "unwrap" template specializations to discover transitive inheritance through template parameters
-- Requires deep template analysis: `TemplateBase<IInterface>` → `TemplateBase` inherits from `T` → `T=IInterface`
+**VALIDATION RESULTS (2026-01-10 - TC4):**
+❌ **CONFIRMED** - Transitive inheritance through template parameters NOT detected
 
-**User impact:**
-- Common pattern in tested codebase: interfaces passed as template params to CRTP-like base classes
+**Evidence from SQLite:**
+```sql
+SELECT name, base_classes FROM symbols
+WHERE name IN ('IInterface', 'ImplementationBase', 'ConcreteImpl');
+-- IInterface        | []
+-- ImplementationBase | ["type-parameter-0-0"]  # Template parameter, not IInterface
+-- ConcreteImpl      | ["ImplementationBase<IInterface>"]
+```
+
+**Observations:**
+- Template base class shows `"type-parameter-0-0"` (libclang's template parameter representation)
+- Direct inheritance (`ConcreteImpl` → `ImplementationBase<IInterface>`) stored correctly
+- Transitive link missing: no connection between `IInterface` and `ConcreteImpl`
+
+**Root Cause (validated):**
+- **Location:** `mcp_server/cpp_analyzer.py` (inheritance tracking)
+- **Issue:** To detect transitive inheritance, analyzer would need to:
+  1. Parse template specializations (`ImplementationBase<IInterface>`)
+  2. Match template parameter `Interface` with substituted type `IInterface`
+  3. Build transitive inheritance graph through template instantiation
+- **Complexity:** HIGH - requires template-aware AST analysis
+
+**User Impact:**
+- Common pattern in modern C++ (CRTP, mixin-based inheritance)
 - Inheritance chains invisible to tools
+- `get_derived_classes()` returns incomplete results for interface-based architectures
 - Manual code inspection required
+
+**Recommendations:**
+- 🔧 **Prerequisite:** Issue #85 (Template Information Tracking) - P2
+- 🔧 **New Issue:** "Template-Based Transitive Inheritance Detection" - P2 priority
+  - Effort: 2-3 weeks
+  - Depends on Issue #85
+  - Implement template parameter substitution analysis
+- 📝 **Documentation:** Document limitation in MCP tool descriptions
 
 ---
 
-### ⚠️ Observation #5: Template Classes Not Found by Name
-**Status:** Functional Gap
-**Severity:** High
-**Tools affected:** `get_class_info`, likely all class lookup tools
+### ⚠️ Observation #5: Template Classes Not Found by Name - **PARTIALLY CONFIRMED**
+**Status:** Functional Gap (validated 2026-01-10 - TC3)
+**Severity:** Medium (not as severe as originally thought)
+**Tools affected:** `get_class_info`, class lookup tools
 
 **Example:**
 ```cpp
@@ -123,7 +202,7 @@ class ConcreteA : public WithParaBaseProps<int> { };
 class ConcreteB : public WithParaBaseProps<std::string> { };
 ```
 
-**Behavior:**
+**Original Behavior:**
 ```json
 get_class_info({"class_name": "WithParaBaseProps"})
 // Returns: {"data": null, "metadata": {...}}
@@ -133,73 +212,111 @@ get_class_info({"class_name": "WithParaBaseProps<int>"})
 // Returns: actual class info for the specialization
 ```
 
-**Pattern matching attempts:**
-```json
-// Doesn't work (returns empty or no matches):
-search_classes({"pattern": "WithParaBaseProps"})
+**VALIDATION RESULTS (2026-01-10 - TC3):**
+⚠️ **PARTIAL** - Templates ARE indexed but naming limitations exist
 
-// Doesn't work:
-search_classes({"pattern": "WithParaBaseProps.*"})
-
-// Works (but requires knowing exact specialization):
-search_classes({"pattern": "WithParaBaseProps<ConcreteType>"})
+**Evidence from SQLite:**
+```sql
+SELECT name, qualified_name, kind, line FROM symbols WHERE name = 'Container';
+-- Container | Container | class_template          | 3   # Template definition
+-- Container | Container | class                   | 11  # Explicit specialization <int>
+-- Container | Container | partial_specialization  | 20  # Partial specialization <T*>
 ```
 
-**Root cause hypothesis:**
-- libclang stores specializations with full names: `WithParaBaseProps<int>`, `WithParaBaseProps<std::string>`
-- Generic template definition `WithParaBaseProps` either not stored, or stored separately without linkage
-- Pattern matching on `"WithParaBaseProps"` doesn't match `"WithParaBaseProps<int>"`
-- Regex `"WithParaBaseProps.*"` anchored match doesn't work because `<>` characters?
+**Observations:**
+1. **Template Base:** Stored with `kind='class_template'` ✅
+2. **Explicit Specializations:** Stored with `kind='class'` (e.g., `Container<int>`) ✅
+3. **Partial Specializations:** Stored with `kind='partial_specialization'` ✅
+4. **Name Limitation:** All have same `qualified_name` - no template arguments in name ⚠️
+5. **Derived Classes:** Store full template args in base_classes (e.g., `["Container<int>"]`) ✅
 
-**User impact - CRITICAL:**
-- Users think in terms of template classes as logical entities
-- Natural user request: "Show me derived classes of `WithParaBaseProps`"
-- Natural expectation: system shows `ConcreteA`, `ConcreteB` (all classes derived from any specialization)
-- Current behavior: must know and query each specialization individually
-- LLM models don't understand they need to search for specializations
+**Root Cause (validated):**
+- **Location:** `mcp_server/cpp_analyzer.py` (symbol extraction)
+- **Issue:** libclang's `cursor.spelling` returns unqualified template name without arguments
+- **Impact:** Cannot search for specific specializations like "Container<int>" by qualified_name
+- **Workaround:** Search by `kind` field or query derived classes
 
-**Two perspectives:**
-1. **User perspective:** Template class is a logical unit; derived classes from specializations ARE derived from the template
-2. **LLM perspective:** Needs to discover specializations exist, then query each separately (token-expensive)
+**Implications:**
+1. `get_class_info("Container")` returns first match (arbitrary - likely template base)
+2. `get_class_info("Container<int>")` might not work if specialized name not stored
+3. LLMs cannot distinguish between template base and specializations from search results
+4. `get_derived_classes("Container")` returns classes derived from ANY Container variant
 
-**Ideal behavior suggestion:**
-- Query `get_class_info("WithParaBaseProps")` should:
-  - Detect it's a template (or try template-aware search)
-  - Return info about template + list of known specializations
-  - For `get_derived_classes("WithParaBaseProps")`: return derived classes from ALL specializations
-- Encapsulate template→specialization logic inside tools (saves LLM tokens)
+**User Impact - MODERATE:**
+- Templates ARE indexed (better than originally thought)
+- But cannot distinguish template base from specializations by name alone
+- Requires template metadata tracking (Issue #85)
+
+**Recommendations:**
+- 🔧 **Issue #85:** Implement template metadata tracking (P2 priority):
+  - `is_template` flag
+  - `template_parameters` field (e.g., `["T"]`, `["typename T", "int N"]`)
+  - Store specialized names with arguments (e.g., `"Container<int>"`)
+- 🔧 **Short-term:** Document `kind` field in tool responses for LLM disambiguation
+- 🔧 **Consider:** Add `template_info` field to search results with template metadata
 
 ---
 
-### ⚠️ Observation #6: Template Argument Names Are Unqualified (Ambiguous)
-**Status:** Data Quality Issue
-**Severity:** Medium
-**Related to:** Observation #2
+### ✅ Observation #6: Template Argument Names Are Unqualified (Ambiguous) - **REFUTED**
+**Status:** ~~Data Quality Issue~~ **WORKING** (validated 2026-01-11 with TC5)
+**Severity:** ~~Medium~~ N/A
+**Related to:** Observations #2 (refuted), #5 (validated)
 
-**Example:**
-```cpp
-namespace ns1 { class FooClass { }; }
-namespace ns2 { class FooClass { }; }
-
-template<typename T> class BarClass : public T { };
-
-// Somewhere in code:
-class X : public BarClass<ns1::FooClass> { };
-```
-
-**Behavior:**
+**Original Behavior (LM Studio testing):**
 ```json
 get_derived_classes({"class_name": "BarClass<ns1::FooClass>"})
 // Returns info, but base class shown as: "BarClass<FooClass>"
 //                                                    ^^^^^^^^^ unqualified!
 ```
 
-**Root cause:** libclang returns unqualified names for template arguments in some contexts (displayname vs qualified name)
+**VALIDATION RESULTS (2026-01-11 - TC5):**
+✅ **Namespace qualification IS PRESERVED** - Original observation was incorrect
 
-**User impact:**
-- Ambiguous when multiple classes have same unqualified name
-- Can't definitively determine which `FooClass` is used in the specialization
-- Affects understanding of dependencies and inheritance chains
+**Evidence from TC5 Dedicated Test:**
+```cpp
+// Test file: examples/template_test/template_args.h
+namespace ns1 { class FooClass { }; }
+namespace ns2 { class FooClass { }; }
+template<typename T> class BarClass : public T { };
+class Example1 : public BarClass<ns1::FooClass> { };
+class Example2 : public BarClass<ns2::FooClass> { };
+```
+
+**SQLite Results:**
+```sql
+SELECT name, base_classes FROM symbols WHERE name IN ('Example1', 'Example2');
+-- Example1 | ["BarClass<ns1::FooClass>"]  ✅ Namespace preserved!
+-- Example2 | ["BarClass<ns2::FooClass>"]  ✅ Namespace preserved!
+```
+
+**Additional Evidence from TC3/TC4:**
+```sql
+-- TC3: Builtin types preserved
+SELECT name, base_classes FROM symbols WHERE name LIKE '%Container';
+-- IntContainer | ["Container<int>"]        ✅
+-- PtrContainer | ["Container<void *>"]     ✅
+
+-- TC4: Global namespace classes preserved
+SELECT name, base_classes FROM symbols WHERE name LIKE '%Impl';
+-- ConcreteImpl | ["ImplementationBase<IInterface>"] ✅
+```
+
+**Root Cause of Original Observation:**
+- **Original observation was incorrect** - likely based on misinterpretation or outdated testing
+- libclang DOES provide qualified names for template arguments
+- Current implementation in `mcp_server/cpp_analyzer.py` correctly preserves qualification
+- Works for builtin types, pointers, global namespace, and nested namespace classes
+
+**Impact:** **POSITIVE** - No ambiguity, full qualification preserved
+
+**User Impact:**
+- ✅ CAN distinguish `BarClass<ns1::FooClass>` from `BarClass<ns2::FooClass>`
+- ✅ Dependencies and inheritance chains are clear and unambiguous
+- ✅ Template instantiations show complete type information
+
+**Recommendation:**
+- ✅ No action needed - feature already working correctly
+- 📝 Update documentation to clarify template argument qualification works
 
 ---
 

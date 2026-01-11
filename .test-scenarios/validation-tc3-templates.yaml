@@ -1,0 +1,54 @@
+# TC3: Template Class Search Testing
+# Tests if template classes can be found and queried
+
+name: "TC3: Template Class Search"
+description: "Test template class search and info retrieval"
+project: template_test
+protocol: http
+timeout: 120
+
+steps:
+  - tool: set_project_directory
+    args:
+      project_path: "$PROJECT_PATH"
+    description: "Set project directory"
+
+  - tool: wait_for_indexing
+    timeout: 30
+    description: "Wait for indexing to complete"
+
+  # TC3.1: search_classes for Container
+  - tool: search_classes
+    args:
+      pattern: "Container"
+    description: "TC3.1: search_classes('Container') - find template base or specializations"
+
+  # TC3.2: get_class_info for Container
+  - tool: get_class_info
+    args:
+      class_name: "Container"
+    description: "TC3.2: get_class_info('Container') - should return template base info"
+
+  # TC3.3: get_class_info for Container<int>
+  - tool: get_class_info
+    args:
+      class_name: "Container<int>"
+    description: "TC3.3: get_class_info('Container<int>') - should return specialization info"
+
+  # TC3.4: Regex pattern for templates
+  - tool: search_classes
+    args:
+      pattern: "Container.*"
+    description: "TC3.4: search_classes('Container.*') - should match Container variants"
+
+  # TC3.5: get_derived_classes for Container
+  - tool: get_derived_classes
+    args:
+      class_name: "Container"
+    description: "TC3.5: get_derived_classes('Container') - should find IntContainer, DoubleContainer, PtrContainer"
+
+  # TC3.6: get_derived_classes for Container<int>
+  - tool: get_derived_classes
+    args:
+      class_name: "Container<int>"
+    description: "TC3.6: get_derived_classes('Container<int>') - should find IntContainer"
