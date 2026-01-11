@@ -237,11 +237,6 @@ class CppAnalyzer:
         # Threading/Processing
         self.index_lock = threading.RLock()
 
-        # Initialize search engine
-        self.search_engine = SearchEngine(
-            self.class_index, self.function_index, self.file_index, self.usr_index, self.index_lock
-        )
-
         # Track indexed files
         self.translation_units: Dict[str, TranslationUnit] = {}
         self.file_hashes: Dict[str, str] = {}
@@ -276,6 +271,16 @@ class CppAnalyzer:
             self.project_identity, skip_schema_recreation=self._skip_schema_recreation
         )
         self.file_scanner = FileScanner(self.project_root)
+
+        # Initialize search engine (Phase 1.3: needs cache_manager for type alias lookups)
+        self.search_engine = SearchEngine(
+            self.class_index,
+            self.function_index,
+            self.file_index,
+            self.usr_index,
+            self.index_lock,
+            cache_manager=self.cache_manager,
+        )
 
         # Memory optimization: enable lazy loading of call sites from SQLite
         # Instead of loading ALL call sites at startup (~150-200 MB for large projects),
@@ -585,12 +590,17 @@ class CppAnalyzer:
         """Initialize thread-local buffers for collecting symbols during parsing."""
         self._thread_local.collected_symbols = []
         self._thread_local.collected_calls = []
+        self._thread_local.collected_aliases = []
 
     def _get_thread_local_buffers(self):
         """Get thread-local buffers, initializing if needed."""
         if not hasattr(self._thread_local, "collected_symbols"):
             self._init_thread_local_buffers()
-        return self._thread_local.collected_symbols, self._thread_local.collected_calls
+        return (
+            self._thread_local.collected_symbols,
+            self._thread_local.collected_calls,
+            self._thread_local.collected_aliases,
+        )
 
     def _remove_symbol_from_indexes(self, symbol: SymbolInfo):
         """
@@ -647,9 +657,9 @@ class CppAnalyzer:
         Returns:
             Number of symbols actually added (after deduplication)
         """
-        symbols_buffer, calls_buffer = self._get_thread_local_buffers()
+        symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
 
-        if not symbols_buffer and not calls_buffer:
+        if not symbols_buffer and not calls_buffer and not aliases_buffer:
             return 0
 
         added_count = 0
@@ -758,9 +768,16 @@ class CppAnalyzer:
                 else:
                     diagnostics.warning(f"Unexpected call_info format: {call_info}")
 
+            # Add all collected type aliases (Phase 1.3: Type Alias Tracking)
+            if aliases_buffer:
+                diagnostics.debug(f"Processing {len(aliases_buffer)} type aliases from buffer")
+                saved_count = self.cache_manager.save_type_aliases_batch(aliases_buffer)
+                diagnostics.debug(f"Saved {saved_count} type aliases to cache")
+
         # Clear buffers for next use
         symbols_buffer.clear()
         calls_buffer.clear()
+        aliases_buffer.clear()
 
         return added_count
 
@@ -1051,17 +1068,17 @@ class CppAnalyzer:
         import re
 
         # Pattern 1: Generic template - c:@ST>...@ClassName
-        match = re.search(r'c:@ST>[^@]*@(\w+)', usr)
+        match = re.search(r"c:@ST>[^@]*@(\w+)", usr)
         if match:
             return match.group(1)
 
         # Pattern 2: Regular class (potential specialization) - c:@S@ClassName
-        match = re.search(r'c:@S@(\w+)', usr)
+        match = re.search(r"c:@S@(\w+)", usr)
         if match:
             return match.group(1)
 
         # Pattern 3: Partial specialization - c:@SP>...@ClassName
-        match = re.search(r'c:@SP>[^@]*@(\w+)', usr)
+        match = re.search(r"c:@SP>[^@]*@(\w+)", usr)
         if match:
             return match.group(1)
 
@@ -1294,6 +1311,80 @@ class CppAnalyzer:
 
         return result
 
+    def _extract_alias_info(self, cursor) -> dict:
+        """
+        Extract type alias information from TYPEDEF_DECL or TYPE_ALIAS_DECL cursor.
+
+        Phase 1.3: Type Alias Tracking - Alias information extraction
+
+        Args:
+            cursor: libclang cursor (must be TYPEDEF_DECL or TYPE_ALIAS_DECL)
+
+        Returns:
+            Dictionary with:
+                - alias_name: Short name (e.g., "WidgetAlias")
+                - qualified_name: Fully qualified (e.g., "foo::WidgetAlias")
+                - target_type: Immediate target spelling
+                - canonical_type: Final resolved type spelling
+                - file: File where alias is defined
+                - line: Line number
+                - column: Column number
+                - alias_kind: 'using' or 'typedef'
+                - namespace: Namespace portion (e.g., "foo")
+                - is_template_alias: False for Phase 1 (simple aliases only)
+                - created_at: Unix timestamp
+        """
+        import time
+
+        # Extract basic alias name
+        alias_name = cursor.spelling
+
+        # Extract qualified name and namespace
+        qualified_name = self._get_qualified_name(cursor)
+        namespace = self._extract_namespace(qualified_name)
+
+        # Extract target type and canonical type
+        # For TYPE_ALIAS_DECL: using Alias = Target
+        # For TYPEDEF_DECL: typedef Target Alias
+        try:
+            # Get underlying typedef type (works for both using and typedef)
+            underlying_type = cursor.underlying_typedef_type
+            target_type = underlying_type.spelling
+            canonical_type = underlying_type.get_canonical().spelling
+        except AttributeError:
+            # Fallback: use cursor.type if underlying_typedef_type not available
+            target_type = cursor.type.spelling
+            canonical_type = cursor.type.get_canonical().spelling
+
+        # Determine alias kind based on cursor kind
+        from clang.cindex import CursorKind
+
+        if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
+            alias_kind = "using"
+        elif cursor.kind == CursorKind.TYPEDEF_DECL:
+            alias_kind = "typedef"
+        else:
+            alias_kind = "unknown"
+
+        # Extract location info
+        file_path = str(cursor.location.file.name) if cursor.location.file else ""
+        line = cursor.location.line
+        column = cursor.location.column
+
+        return {
+            "alias_name": alias_name,
+            "qualified_name": qualified_name,
+            "target_type": target_type,
+            "canonical_type": canonical_type,
+            "file": file_path,
+            "line": line,
+            "column": column,
+            "alias_kind": alias_kind,
+            "namespace": namespace,
+            "is_template_alias": False,  # Phase 1: simple aliases only
+            "created_at": time.time(),
+        }
+
     def _detect_template_specialization(self, cursor) -> bool:
         """
         Detect if cursor represents a template specialization.
@@ -1368,7 +1459,7 @@ class CppAnalyzer:
             REQ-10.1.6: Use cursor.location.file to determine which file symbol belongs to
         """
         # Get thread-local buffers for lock-free collection
-        symbols_buffer, calls_buffer = self._get_thread_local_buffers()
+        symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
 
         # Determine if we should extract from this cursor's file
         should_extract = True
@@ -1653,6 +1744,35 @@ class CppAnalyzer:
             for child in cursor.get_children():
                 self._process_cursor(
                     child, should_extract_from_file, parent_class, current_function_usr
+                )
+            return  # Don't process children again below
+
+        # Process type aliases (Phase 1.3: Type Alias Tracking)
+        elif kind in (CursorKind.TYPEDEF_DECL, CursorKind.TYPE_ALIAS_DECL):
+            if cursor.spelling and should_extract:
+                try:
+                    # Extract alias information
+                    alias_info = self._extract_alias_info(cursor)
+
+                    # Collect alias in thread-local buffer (no lock needed)
+                    aliases_buffer.append(alias_info)
+
+                    diagnostics.debug(
+                        f"Extracted alias: {alias_info['alias_name']} -> {alias_info['canonical_type']} "
+                        f"(kind: {alias_info['alias_kind']}, file: {alias_info['file']}:{alias_info['line']})"
+                    )
+                except Exception as e:
+                    # Alias extraction failures are not critical, just log and continue
+                    diagnostics.warning(
+                        f"Failed to extract alias info for {cursor.spelling} at "
+                        f"{cursor.location.file.name if cursor.location.file else 'unknown'}:"
+                        f"{cursor.location.line}: {e}"
+                    )
+
+            # Process children (nested declarations within namespace, etc.)
+            for child in cursor.get_children():
+                self._process_cursor(
+                    child, should_extract_from_file, parent_class, parent_function_usr
                 )
             return  # Don't process children again below
 
@@ -2079,7 +2199,12 @@ class CppAnalyzer:
                     # Remove old entries from class and function indexes
                     for info in self.file_index[file_path]:
                         # Issue #99: Include template kinds in class_index
-                        if info.kind in ("class", "struct", "class_template", "partial_specialization"):
+                        if info.kind in (
+                            "class",
+                            "struct",
+                            "class_template",
+                            "partial_specialization",
+                        ):
                             self.class_index[info.name] = [
                                 i for i in self.class_index[info.name] if i.file != file_path
                             ]
@@ -2334,7 +2459,12 @@ class CppAnalyzer:
                                         if symbol.is_definition and not existing.is_definition:
                                             # Remove old declaration from class/function index
                                             # Issue #99: Include template kinds in class_index
-                                            if existing.kind in ("class", "struct", "class_template", "partial_specialization"):
+                                            if existing.kind in (
+                                                "class",
+                                                "struct",
+                                                "class_template",
+                                                "partial_specialization",
+                                            ):
                                                 if existing.name in self.class_index:
                                                     try:
                                                         self.class_index[existing.name].remove(
@@ -2362,7 +2492,12 @@ class CppAnalyzer:
                                     if not skip_symbol:
                                         # Add to appropriate index
                                         # Issue #99: Include template kinds in class_index
-                                        if symbol.kind in ("class", "struct", "class_template", "partial_specialization"):
+                                        if symbol.kind in (
+                                            "class",
+                                            "struct",
+                                            "class_template",
+                                            "partial_specialization",
+                                        ):
                                             self.class_index[symbol.name].append(symbol)
                                         else:
                                             self.function_index[symbol.name].append(symbol)
@@ -3059,7 +3194,12 @@ class CppAnalyzer:
                                     for old_symbol in self.file_index[file_path]:
                                         # Remove from class_index or function_index
                                         # Issue #99: Include template kinds in class_index
-                                        if old_symbol.kind in ("class", "struct", "class_template", "partial_specialization"):
+                                        if old_symbol.kind in (
+                                            "class",
+                                            "struct",
+                                            "class_template",
+                                            "partial_specialization",
+                                        ):
                                             if old_symbol.name in self.class_index:
                                                 self.class_index[old_symbol.name] = [
                                                     s
@@ -3326,7 +3466,9 @@ class CppAnalyzer:
                         # Build patterns to match in base_classes
                         # Matches: "Container", "Container<int>", "Container<double>", etc.
                         template_patterns.append(class_name)  # Exact match
-                        template_patterns.append(f"{class_name}<")  # Prefix match for specializations
+                        template_patterns.append(
+                            f"{class_name}<"
+                        )  # Prefix match for specializations
                         break  # Only need to detect template once
 
             # If not a template, just use exact match
