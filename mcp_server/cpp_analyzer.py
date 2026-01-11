@@ -3407,6 +3407,163 @@ class CppAnalyzer:
         """Get signature details for functions with given name, optionally within a specific class"""
         return self.search_engine.get_function_signature(function_name, class_name)
 
+    def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
+        """
+        Get comprehensive type alias information for a given type name.
+
+        Phase 1.6: MCP Tool Integration
+
+        This method resolves type aliases bidirectionally:
+        - If type_name is an alias, returns canonical type + all other aliases
+        - If type_name is a canonical type, returns it + all its aliases
+        - Supports unqualified, partially qualified, and fully qualified names
+        - Detects and reports ambiguous type names
+
+        Args:
+            type_name: Type name to query (unqualified, partially qualified, or fully qualified)
+                      Examples: "Widget", "ui::Widget", "::ui::Widget"
+
+        Returns:
+            Dictionary with type alias information:
+            - Success case: canonical_type, qualified_name, namespace, file, line,
+                           input_was_alias, is_ambiguous, aliases[]
+            - Ambiguous case: error, is_ambiguous, matches[], suggestion
+            - Not found case: error, canonical_type=null, aliases=[]
+
+        Examples:
+            # Input is canonical type
+            get_type_alias_info("ui::Widget")
+            → {"canonical_type": "ui::Widget", "aliases": [...], "input_was_alias": false}
+
+            # Input is alias
+            get_type_alias_info("WidgetAlias")
+            → {"canonical_type": "ui::Widget", "aliases": [...], "input_was_alias": true}
+
+            # Ambiguous unqualified name
+            get_type_alias_info("Widget")
+            → {"error": "Ambiguous type name 'Widget'", "is_ambiguous": true, "matches": [...]}
+        """
+        from .search_engine import SearchEngine
+
+        # Step 1: Check if input is an alias first
+        input_was_alias = False
+        input_canonical = self.cache_manager.get_canonical_for_alias(type_name)
+        if input_canonical:
+            input_was_alias = True
+            # Resolve alias to canonical type for search
+            search_type_name = input_canonical
+        else:
+            search_type_name = type_name
+
+        # Step 2: Find canonical type(s) matching the pattern
+        matches = []
+        with self.index_lock:
+            for name, infos in self.class_index.items():
+                for info in infos:
+                    # Use qualified pattern matching (same as search_classes)
+                    qualified_name = info.qualified_name if info.qualified_name else info.name
+                    if SearchEngine.matches_qualified_pattern(qualified_name, search_type_name):
+                        matches.append(info)
+
+        # Step 3: Check for ambiguity (multiple matches with different qualified names)
+        if len(matches) > 1:
+            # Check if all matches have the same qualified_name (duplicates from forward decls)
+            unique_qualified_names = set(
+                m.qualified_name if m.qualified_name else m.name for m in matches
+            )
+            if len(unique_qualified_names) > 1:
+                # Ambiguous - multiple different types match
+                return {
+                    "error": f"Ambiguous type name '{type_name}'",
+                    "is_ambiguous": True,
+                    "matches": [
+                        {
+                            "canonical_type": m.name,
+                            "qualified_name": m.qualified_name if m.qualified_name else m.name,
+                            "namespace": m.namespace,
+                            "file": m.file,
+                            "line": m.line,
+                        }
+                        for m in matches
+                    ],
+                    "suggestion": "Use qualified name (e.g., 'ui::Widget')",
+                }
+
+        # Step 4: Handle not found case
+        if len(matches) == 0:
+            return {
+                "error": f"Type '{type_name}' not found",
+                "canonical_type": None,
+                "aliases": [],
+            }
+
+        # Step 5: We have exactly one match (or multiple with same qualified_name)
+        # Use the first match (prefer definitions over declarations)
+        canonical_info = matches[0]
+        for m in matches:
+            if m.is_definition:
+                canonical_info = m
+                break
+
+        canonical_type = (
+            canonical_info.qualified_name if canonical_info.qualified_name else canonical_info.name
+        )
+
+        # Step 6: Get all aliases for the canonical type
+        alias_names = self.cache_manager.get_aliases_for_canonical(canonical_type)
+
+        # Step 7: Build detailed alias information
+        aliases = []
+        if alias_names:
+            # Query type_aliases table for file/line info
+            # Use backend's connection directly
+            try:
+                self.cache_manager.backend._ensure_connected()
+                for alias_name in alias_names:
+                    cursor = self.cache_manager.backend.conn.execute(
+                        """
+                        SELECT alias_name, canonical_type, file, line, namespace
+                        FROM type_aliases
+                        WHERE alias_name = ? OR qualified_name = ?
+                        """,
+                        (alias_name, alias_name),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        # Build qualified name
+                        qualified_alias = (
+                            f"{row['namespace']}::{row['alias_name']}"
+                            if row["namespace"]
+                            else row["alias_name"]
+                        )
+                        aliases.append(
+                            {
+                                "name": row["alias_name"],
+                                "qualified_name": qualified_alias,
+                                "file": row["file"],
+                                "line": row["line"],
+                            }
+                        )
+            except Exception as e:
+                # Log error but continue
+                diagnostics.debug(f"Failed to get alias details: {e}")
+
+        # Step 8: Return success result
+        return {
+            "canonical_type": canonical_type,
+            "qualified_name": (
+                canonical_info.qualified_name
+                if canonical_info.qualified_name
+                else canonical_info.name
+            ),
+            "namespace": canonical_info.namespace,
+            "file": canonical_info.file,
+            "line": canonical_info.line,
+            "input_was_alias": input_was_alias,
+            "is_ambiguous": False,
+            "aliases": aliases,
+        }
+
     def search_symbols(
         self,
         pattern: str,

@@ -347,6 +347,20 @@ async def list_tools() -> List[Tool]:
             },
         ),
         Tool(
+            name="get_type_alias_info",
+            description="Get comprehensive type alias information for a C++ type. Resolves type aliases (using/typedef) bidirectionally and detects ambiguous type names. **Use this when**: user wants to know if a type is an alias, find the real type behind an alias, or find all aliases for a canonical type.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\n**Pattern Matching** (same as search_classes):\n- Unqualified: 'Widget' → matches Widget in any namespace\n- Qualified: 'ui::Widget' → component-based suffix matching\n- Exact: '::Widget' → matches only global namespace\n\n**Returns** (success case): canonical_type (the real type name), qualified_name (fully qualified canonical type), namespace, file (where canonical type is defined), line, input_was_alias (true if input was an alias), is_ambiguous (false), aliases (array of all aliases pointing to this type, each with name, qualified_name, file, line).\n\n**Returns** (ambiguous case): error message, is_ambiguous (true), matches (array of all matching types with canonical_type, qualified_name, namespace, file, line), suggestion ('Use qualified name').\n\n**Returns** (not found): error message, canonical_type (null), aliases (empty array).\n\n**Example 1** - Query canonical type:\n  Input: 'ui::Widget'\n  Output: canonical_type='ui::Widget', aliases=[{name='WidgetAlias', file='types.h', line=42}], input_was_alias=false\n\n**Example 2** - Query alias:\n  Input: 'WidgetAlias'\n  Output: canonical_type='ui::Widget', aliases=[{name='WidgetAlias'}, {name='WPtr'}], input_was_alias=true\n\n**Example 3** - Ambiguous:\n  Input: 'Widget' (exists in multiple namespaces)\n  Output: error='Ambiguous type name', is_ambiguous=true, matches=[{qualified_name='Widget'}, {qualified_name='ui::Widget'}]",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "type_name": {
+                        "type": "string",
+                        "description": "Type name to query (unqualified, partially qualified, or fully qualified). Examples: 'Widget', 'ui::Widget', '::ui::Widget'",
+                    }
+                },
+                "required": ["type_name"],
+            },
+        ),
+        Tool(
             name="search_symbols",
             description="Unified search across multiple C++ symbol types (classes, structs, functions, methods) using a single pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a dictionary with two keys: 'classes' (array of class/struct results) and 'functions' (array of function/method results). Each result includes name, qualified_name (fully qualified e.g. 'ns::Class'), namespace, kind, file location, line number, is_template_specialization (for templates), complete line ranges (start_line, end_line), header location (header_file, header_start_line, header_end_line), brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null), and other metadata. Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. This is a convenient alternative to calling search_classes and search_functions separately. Use symbol_types to filter which categories are populated.",
             inputSchema={
@@ -867,6 +881,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             "search_functions",
             "get_class_info",
             "get_function_signature",
+            "get_type_alias_info",
             "search_symbols",
             "find_in_file",
             "get_class_hierarchy",
@@ -947,6 +962,18 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Wrap with metadata
             enhanced_result = EnhancedQueryResult.create_from_state(
                 results, state_manager, "get_function_signature"
+            )
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+
+        elif name == "get_type_alias_info":
+            type_name = arguments["type_name"]
+            # Run synchronous method in executor to avoid blocking event loop
+            result = await loop.run_in_executor(
+                None, lambda: analyzer.get_type_alias_info(type_name)
+            )
+            # Wrap with metadata
+            enhanced_result = EnhancedQueryResult.create_from_state(
+                result, state_manager, "get_type_alias_info"
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
