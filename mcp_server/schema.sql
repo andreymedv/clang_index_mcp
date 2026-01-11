@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 10.1
+-- Version: 11.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v11.0: Added type_aliases table for type alias tracking (Issue #84, Phase 1: Simple Aliases)
 -- Changelog v10.1: Added is_template_specialization field for overload distinction (Qualified Names Phase 3)
 -- Changelog v10.0: Added qualified_name field for namespace-aware search (Qualified Names Phase 1)
 -- Changelog v9.0: Removed calls/called_by columns from symbols table (memory optimization Task 1.2)
@@ -137,7 +138,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"10.1"', julianday('now')),
+    ('version', '"11.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
@@ -208,3 +209,36 @@ CREATE INDEX IF NOT EXISTS idx_call_sites_caller ON call_sites(caller_usr);
 CREATE INDEX IF NOT EXISTS idx_call_sites_callee ON call_sites(callee_usr);
 CREATE INDEX IF NOT EXISTS idx_call_sites_file ON call_sites(file);
 CREATE INDEX IF NOT EXISTS idx_call_sites_line ON call_sites(file, line);
+
+-- Phase 1: Type Alias Tracking (v11.0, Issue #84)
+
+-- Type aliases table: Tracks using/typedef declarations
+-- Enables automatic search unification (searching for alias finds canonical type and vice versa)
+-- Phase 1 scope: Simple non-template aliases (class, struct, enum, pointers, references, built-ins)
+CREATE TABLE IF NOT EXISTS type_aliases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias_name TEXT NOT NULL,           -- Short name (e.g., "WidgetAlias", "ErrorCallback")
+    qualified_name TEXT NOT NULL,       -- Fully qualified (e.g., "foo::WidgetAlias", "bar::ErrorCallback")
+    target_type TEXT NOT NULL,          -- Immediate target (e.g., "Widget", "AliasOne" in chains)
+    canonical_type TEXT NOT NULL,       -- Final resolved type (e.g., "RealClass" for A→B→RealClass)
+    file TEXT NOT NULL,                 -- File where alias is defined
+    line INTEGER NOT NULL,              -- Line number
+    column INTEGER NOT NULL,            -- Column number
+    alias_kind TEXT NOT NULL,           -- 'using' or 'typedef'
+    namespace TEXT DEFAULT '',          -- Namespace portion (e.g., "foo" from "foo::WidgetAlias")
+    is_template_alias BOOLEAN NOT NULL DEFAULT 0,  -- True for template aliases (Phase 2, not v11.0)
+    created_at REAL NOT NULL,           -- Unix timestamp
+
+    -- Unique constraint: one alias declaration per location
+    UNIQUE(file, line, column)
+);
+
+-- Indexes for fast alias lookup and search unification
+CREATE INDEX IF NOT EXISTS idx_type_aliases_name ON type_aliases(alias_name);
+CREATE INDEX IF NOT EXISTS idx_type_aliases_qualified ON type_aliases(qualified_name);
+CREATE INDEX IF NOT EXISTS idx_type_aliases_canonical ON type_aliases(canonical_type);
+CREATE INDEX IF NOT EXISTS idx_type_aliases_file ON type_aliases(file);
+CREATE INDEX IF NOT EXISTS idx_type_aliases_namespace ON type_aliases(namespace);
+
+-- Composite index for common query: find all aliases for a canonical type
+CREATE INDEX IF NOT EXISTS idx_canonical_name ON type_aliases(canonical_type, alias_name);
