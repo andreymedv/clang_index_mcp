@@ -65,6 +65,42 @@ class SearchEngine:
             return name.lower() == pattern.lower()
 
     @staticmethod
+    def _normalize_template_whitespace(name: str) -> str:
+        """
+        Normalize whitespace in template arguments for consistent matching.
+
+        libclang stores template arguments with spaces around pointer/reference operators
+        (e.g., 'Container<Widget *>' not 'Container<Widget*>'), but users naturally
+        search without spaces. This method normalizes both to enable matching.
+
+        Args:
+            name: Type name or pattern that may contain template arguments
+
+        Returns:
+            Name with normalized whitespace in template arguments
+
+        Examples:
+            'Container<Widget *>' → 'Container<Widget*>'
+            'Container<Widget * const &>' → 'Container<Widget*const&>'
+            'std::vector<int *>' → 'std::vector<int*>'
+            'Container<Widget*>' → 'Container<Widget*>' (unchanged)
+
+        Note:
+            Only normalizes spaces around *, &, and && operators.
+            Preserves spaces in type names like 'unsigned int', 'const char'.
+        """
+        # Remove spaces before * and & operators
+        name = re.sub(r'\s+\*', '*', name)
+        name = re.sub(r'\s+&', '&', name)
+
+        # Remove spaces after * and & operators (but keep meaningful spaces)
+        # Use lookahead to avoid removing spaces before keywords/types
+        name = re.sub(r'\*\s+', '*', name)
+        name = re.sub(r'&\s+', '&', name)
+
+        return name
+
+    @staticmethod
     def _detect_pattern_type(pattern: str) -> str:
         """
         Detect pattern type for qualified name search optimization.
@@ -140,11 +176,21 @@ class SearchEngine:
             matches_qualified_pattern("app::ui::View", "app::.*::View") → True (regex)
             matches_qualified_pattern("myui::View", "ui::View") → False (boundary)
 
+        Template whitespace normalization:
+            Handles libclang's spacing in template arguments:
+            - "Container<Widget *>" matches pattern "Container<Widget*>"
+            - "PointerHolder<Widget *>" matches pattern "PointerHolder<Widget*>"
+
         Task: T2.1.1 (Qualified Names Phase 2)
         """
         # Empty pattern matches everything
         if not pattern:
             return True
+
+        # Normalize whitespace in template arguments for both name and pattern
+        # This allows "Container<Widget*>" to match "Container<Widget *>"
+        qualified_name = SearchEngine._normalize_template_whitespace(qualified_name)
+        pattern = SearchEngine._normalize_template_whitespace(pattern)
 
         pattern_type = SearchEngine._detect_pattern_type(pattern)
 
