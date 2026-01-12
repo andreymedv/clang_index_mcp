@@ -264,7 +264,30 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Class/struct name to search for. **Empty string matches all** - useful with file_name filter to get all classes in a file.\n\n**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n1. **Unqualified (no ::)**: Matches class in any namespace\n   - Example: 'View' → matches global::View, app::ui::View, legacy::ui::View\n\n2. **Qualified Suffix (with ::)**: Component-based suffix matching\n   - Example: 'ui::View' → matches app::ui::View, legacy::ui::View\n   - Example: 'app::ui::View' → matches only app::ui::View\n   - Note: Does NOT match 'myui::View' (requires component boundary)\n\n3. **Exact Global Match (leading ::)**: Matches only global namespace\n   - Example: '::View' → matches only global::View (not app::ui::View)\n\n4. **Regex (with metacharacters)**: Full regex matching\n   - Example: 'app::.*::View' → matches app::ui::View, app::core::View\n   - Example: '.*View.*' → matches anything containing 'View'\n\n**Tip**: Use the 'namespace' parameter for exact namespace filtering (e.g., namespace='ui' returns only classes in exactly the 'ui' namespace).",
+                        "description": (
+                            'Class/struct name to search for. **Empty string "" matches ALL classes** - '
+                            'useful with file_name filter (e.g., pattern="", file_name="network.h" '
+                            "returns all classes in that file).\n\n"
+                            "**C++ Note**: Unlike Java, C++ has NO enforced naming convention linking class "
+                            "names to file names. A class 'UserManager' could be in user_manager.h, users.h, "
+                            "or any file. Always search by class name first, then check the 'file' field in "
+                            "results.\n\n"
+                            "**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n"
+                            "1. **Unqualified (no ::)**: Matches class in any namespace\n"
+                            "   - Example: 'Handler' → matches global::Handler, app::ui::Handler, "
+                            "legacy::ui::Handler\n\n"
+                            "2. **Qualified Suffix (with ::)**: Component-based suffix matching\n"
+                            "   - Example: 'ui::Handler' → matches app::ui::Handler, legacy::ui::Handler\n"
+                            "   - Example: 'app::ui::Handler' → matches only app::ui::Handler\n"
+                            "   - Note: Does NOT match 'myui::Handler' (requires component boundary)\n\n"
+                            "3. **Exact Global Match (leading ::)**: Matches only global namespace\n"
+                            "   - Example: '::Handler' → matches only global::Handler (not app::ui::Handler)\n\n"
+                            "4. **Regex (with metacharacters)**: Full regex matching\n"
+                            "   - Example: 'app::.*::Handler' → matches app::ui::Handler, app::core::Handler\n"
+                            "   - Example: '.*Manager.*' → matches anything containing 'Manager'\n\n"
+                            "**Tip**: Use the 'namespace' parameter for exact namespace filtering (e.g., "
+                            "namespace='ui' returns only classes in exactly the 'ui' namespace)."
+                        ),
                     },
                     "project_only": {
                         "type": "boolean",
@@ -277,7 +300,14 @@ async def list_tools() -> List[Tool]:
                     },
                     "namespace": {
                         "type": "string",
-                        "description": "Optional: Filter results to only classes in the specified namespace (exact match, case-sensitive). **Use this to disambiguate** when multiple namespaces have the same class name (e.g., ns1::View vs ns2::View). Examples: 'app::ui' returns only classes in app::ui namespace, '' (empty string) returns only global namespace classes. If not specified, returns all matches regardless of namespace.",
+                        "description": (
+                            "Optional: Filter results to only classes in the specified namespace (exact "
+                            "match, case-sensitive). **Use this to disambiguate** when multiple namespaces "
+                            "have the same class name (e.g., ns1::Handler vs ns2::Handler). Examples: "
+                            "'app::ui' returns only classes in app::ui namespace, '' (empty string) returns "
+                            "only global namespace classes. If not specified, returns all matches regardless "
+                            "of namespace."
+                        ),
                     },
                 },
                 "required": ["pattern"],
@@ -291,7 +321,29 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Function/method name to search for. **Empty string matches all** - useful with file_name filter to get all functions in a file.\n\n**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n1. **Unqualified (no ::)**: Matches function/method in any namespace or class\n   - Example: 'save' → matches global::save(), app::save(), Database::save()\n\n2. **Qualified Suffix (with ::)**: Component-based suffix matching\n   - Example: 'Database::save' → matches app::Database::save, legacy::Database::save\n   - Example: 'app::Database::save' → matches only app::Database::save\n   - Works for namespaces: 'app::init' → matches functions in app namespace\n\n3. **Exact Global Match (leading ::)**: Matches only global namespace functions\n   - Example: '::main' → matches only global::main (not app::main)\n\n4. **Regex (with metacharacters)**: Full regex matching\n   - Example: 'get.*' → matches getValue, getData, getConfig\n   - Example: '.*Test.*' → matches anything containing 'Test'\n\n**Tip**: Use the 'namespace' parameter for exact namespace/class filtering (e.g., namespace='app::Database' returns only methods of app::Database class).",
+                        "description": (
+                            'Function/method name to search for. **Empty string "" matches ALL functions** - '
+                            'useful with file_name filter (e.g., pattern="", file_name="network.cpp" '
+                            "returns all functions in that file).\n\n"
+                            "**C++ Note**: Unlike Java, C++ has NO enforced naming convention. Functions can "
+                            "be declared/defined in any file, not necessarily matching their name or class.\n\n"
+                            "**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n"
+                            "1. **Unqualified (no ::)**: Matches function/method in any namespace or class\n"
+                            "   - Example: 'process' → matches global::process(), app::process(), "
+                            "Handler::process()\n\n"
+                            "2. **Qualified Suffix (with ::)**: Component-based suffix matching\n"
+                            "   - Example: 'Handler::process' → matches app::Handler::process, "
+                            "legacy::Handler::process\n"
+                            "   - Example: 'app::Handler::process' → matches only app::Handler::process\n"
+                            "   - Works for namespaces: 'app::init' → matches functions in app namespace\n\n"
+                            "3. **Exact Global Match (leading ::)**: Matches only global namespace functions\n"
+                            "   - Example: '::main' → matches only global::main (not app::main)\n\n"
+                            "4. **Regex (with metacharacters)**: Full regex matching\n"
+                            "   - Example: 'get.*' → matches getValue, getData, getConfig\n"
+                            "   - Example: '.*Test.*' → matches anything containing 'Test'\n\n"
+                            "**Tip**: Use the 'namespace' parameter for exact namespace/class filtering (e.g., "
+                            "namespace='app::Handler' returns only methods of app::Handler class)."
+                        ),
                     },
                     "project_only": {
                         "type": "boolean",
@@ -300,7 +352,12 @@ async def list_tools() -> List[Tool]:
                     },
                     "class_name": {
                         "type": "string",
-                        "description": "Optional: Only populate if user specifically mentions a class (e.g., 'find save method in Database class'). Limits search to only methods belonging to this specific class. **Leave empty** (which is typical) to search all functions and methods across the codebase.",
+                        "description": (
+                            "Optional: Only populate if user specifically mentions a class (e.g., 'find "
+                            "process method in Handler class'). Limits search to only methods belonging to "
+                            "this specific class. **Leave empty** (which is typical) to search all functions "
+                            "and methods across the codebase."
+                        ),
                     },
                     "file_name": {
                         "type": "string",
@@ -308,7 +365,15 @@ async def list_tools() -> List[Tool]:
                     },
                     "namespace": {
                         "type": "string",
-                        "description": "Optional: Filter results to only functions/methods in the specified namespace (exact match, case-sensitive). **Use this to disambiguate** when multiple namespaces have the same function name. For methods, matches namespace + class (e.g., 'app::Database'). Examples: 'app' returns only functions in app namespace, 'app::Database' returns only methods of app::Database class, '' (empty string) returns only global namespace functions. If not specified, returns all matches regardless of namespace.",
+                        "description": (
+                            "Optional: Filter results to only functions/methods in the specified namespace "
+                            "(exact match, case-sensitive). **Use this to disambiguate** when multiple "
+                            "namespaces have the same function name. For methods, matches namespace + class "
+                            "(e.g., 'app::Handler'). Examples: 'app' returns only functions in app namespace, "
+                            "'app::Handler' returns only methods of app::Handler class, '' (empty string) "
+                            "returns only global namespace functions. If not specified, returns all matches "
+                            "regardless of namespace."
+                        ),
                     },
                 },
                 "required": ["pattern"],
@@ -368,7 +433,25 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for. **Empty string matches all symbols** of the specified types. Searches across all symbol types unless filtered by symbol_types parameter.\n\n**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n1. **Unqualified (no ::)**: Matches symbol in any namespace or class\n   - Example: 'Config' → matches global::Config, app::Config, Database::Config\n\n2. **Qualified Suffix (with ::)**: Component-based suffix matching\n   - Example: 'app::Config' → matches app::Config, legacy::app::Config\n   - Works for classes and methods: 'Database::save' → matches methods too\n\n3. **Exact Global Match (leading ::)**: Matches only global namespace\n   - Example: '::Config' → matches only global::Config\n\n4. **Regex (with metacharacters)**: Full regex matching\n   - Example: '.*Config.*' → matches anything containing 'Config'\n   - Example: 'get.*|set.*' → matches all getters and setters\n\n**Tip**: Use the 'namespace' parameter for exact namespace filtering across all symbol types.",
+                        "description": (
+                            'Symbol name pattern to search for. **Empty string "" matches ALL symbols** of '
+                            "the specified types - useful for listing all classes or functions in a file.\n\n"
+                            "**C++ Note**: C++ has NO enforced naming conventions. Symbols can be in any file, "
+                            "regardless of their name.\n\n"
+                            "**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n"
+                            "1. **Unqualified (no ::)**: Matches symbol in any namespace or class\n"
+                            "   - Example: 'Config' → matches global::Config, app::Config, Handler::Config\n\n"
+                            "2. **Qualified Suffix (with ::)**: Component-based suffix matching\n"
+                            "   - Example: 'app::Config' → matches app::Config, legacy::app::Config\n"
+                            "   - Works for classes and methods: 'Handler::process' → matches methods too\n\n"
+                            "3. **Exact Global Match (leading ::)**: Matches only global namespace\n"
+                            "   - Example: '::Config' → matches only global::Config\n\n"
+                            "4. **Regex (with metacharacters)**: Full regex matching\n"
+                            "   - Example: '.*Config.*' → matches anything containing 'Config'\n"
+                            "   - Example: 'get.*|set.*' → matches all getters and setters\n\n"
+                            "**Tip**: Use the 'namespace' parameter for exact namespace filtering across all "
+                            "symbol types."
+                        ),
                     },
                     "project_only": {
                         "type": "boolean",
@@ -385,7 +468,14 @@ async def list_tools() -> List[Tool]:
                     },
                     "namespace": {
                         "type": "string",
-                        "description": "Optional: Filter results to only symbols in the specified namespace (exact match, case-sensitive). **Use this to disambiguate** when multiple namespaces have the same symbol name. For methods, matches namespace + class. Examples: 'app' returns only symbols in app namespace, 'app::Database' returns only Database class members, '' (empty string) returns only global namespace symbols. If not specified, returns all matches regardless of namespace.",
+                        "description": (
+                            "Optional: Filter results to only symbols in the specified namespace (exact match, "
+                            "case-sensitive). **Use this to disambiguate** when multiple namespaces have the "
+                            "same symbol name. For methods, matches namespace + class. Examples: 'app' returns "
+                            "only symbols in app namespace, 'app::Handler' returns only Handler class members, "
+                            "'' (empty string) returns only global namespace symbols. If not specified, returns "
+                            "all matches regardless of namespace."
+                        ),
                     },
                 },
                 "required": ["pattern"],
@@ -403,7 +493,17 @@ async def list_tools() -> List[Tool]:
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Symbol name pattern to search for within the file. **Empty string matches all symbols** in the file. **Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): matches symbol in any namespace within file. 2) **Qualified suffix**: 'ns::Symbol' matches with component-based suffix within file. 3) **Exact match**: '::Symbol' matches only global namespace symbols in file (leading ::). 4) **Regex**: uses regex with metacharacters. Examples: 'View' (all View symbols), 'ui::View' (suffix match), '::View' (global only), '.*View.*' (regex contains).",
+                        "description": (
+                            'Symbol name pattern to search for within the file. **Empty string "" matches ALL '
+                            "symbols** in the file - useful for listing all classes/functions in a file.\n\n"
+                            "**Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): matches "
+                            "symbol in any namespace within file. 2) **Qualified suffix**: 'ns::Symbol' matches "
+                            "with component-based suffix within file. 3) **Exact match**: '::Symbol' matches "
+                            "only global namespace symbols in file (leading ::). 4) **Regex**: uses regex with "
+                            "metacharacters.\n\n"
+                            "Examples: 'Handler' (all Handler symbols), 'ui::Handler' (suffix match), "
+                            "'::Handler' (global only), '.*Manager.*' (regex contains)."
+                        ),
                     },
                 },
                 "required": ["file_path", "pattern"],
