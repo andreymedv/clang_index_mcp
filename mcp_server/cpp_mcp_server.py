@@ -434,18 +434,56 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="refresh_project",
-            description="Manually refresh the project index to detect and re-parse files that have been modified, added, or deleted since the last index. The analyzer does NOT automatically detect file changes - you must call this tool whenever source files are modified (whether by you, external editor, git checkout, build system, or any other means) to ensure the index reflects the current state of the codebase.\n\nSupports two modes:\n- Incremental (default): Analyzes only changed files using dependency tracking\n- Full: Re-analyzes all files (use force_full=true)\n\n**Non-blocking operation:** Refresh runs in the background. This tool returns immediately while the refresh continues. Use 'get_indexing_status' to monitor progress. Tools remain available during refresh and will return results based on the current cache state.",
+            description=(
+                "Manually refresh the project index to detect and re-parse files that have been "
+                "modified, added, or deleted since the last index. The analyzer does NOT "
+                "automatically detect file changes - you must call this tool whenever source files "
+                "are modified (whether by you, external editor, git checkout, build system, or any "
+                "other means) to ensure the index reflects the current state of the codebase.\n\n"
+                "Supports two modes:\n"
+                "- Incremental (default): Analyzes only changed files using dependency tracking\n"
+                "- Full: Re-analyzes all files (use force_full=true)\n\n"
+                "**IMPORTANT:** ALWAYS use incremental mode (default) unless absolutely necessary. "
+                "Incremental refresh is fast (30-300x faster) and reliable. NEVER set force_full=true "
+                "without explicit user permission - it can take 5-10 minutes on large projects "
+                "(5000+ files) vs seconds for incremental.\n\n"
+                "**Workflow guidance for common scenarios:**\n"
+                "- Class/function not found: First try incremental refresh. If still not found, "
+                "the symbol may be in a file not yet indexed (check project configuration) or use "
+                "different qualified name.\n"
+                "- After git checkout: Use incremental refresh (default) - it detects all file "
+                "changes automatically.\n"
+                "- After configuration changes: Only use force_full=true if you modified "
+                "cpp-analyzer-config.json or compile_commands.json.\n"
+                "- Symbol information outdated: Use incremental refresh (default) - sufficient for "
+                "99% of cases.\n\n"
+                "**Non-blocking operation:** Refresh runs in the background. This tool returns "
+                "immediately while the refresh continues. Use 'get_indexing_status' to monitor "
+                "progress. Tools remain available during refresh and will return results based on "
+                "the current cache state."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "incremental": {
                         "type": "boolean",
-                        "description": "When true (default), performs incremental analysis by detecting changes and re-analyzing only affected files. When false, performs full re-analysis of all files.",
+                        "description": (
+                            "When true (default), performs incremental analysis by detecting "
+                            "changes and re-analyzing only affected files. When false, performs "
+                            "full re-analysis of all files. ALWAYS use true (default) unless "
+                            "force_full is set."
+                        ),
                         "default": True,
                     },
                     "force_full": {
                         "type": "boolean",
-                        "description": "When true, forces full re-analysis of all files regardless of incremental setting. Use after major configuration changes or to rebuild index from scratch.",
+                        "description": (
+                            "CAUTION: Forces full re-analysis of ALL files (5-10 minutes for 5000+ "
+                            "files). NEVER use without explicit user permission. Only needed after "
+                            "major configuration file changes (cpp-analyzer-config.json, "
+                            "compile_commands.json). For all other cases (file changes, git "
+                            "operations, missing symbols), use incremental mode."
+                        ),
                         "default": False,
                     },
                 },
@@ -1009,6 +1047,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "refresh_project":
             incremental = arguments.get("incremental", True)
             force_full = arguments.get("force_full", False)
+
+            # Issue #7: Warn if force_full is used (should be rare)
+            if force_full:
+                diagnostics.warning(
+                    "force_full=true was requested - this will re-analyze ALL files and may "
+                    "take 5-10 minutes on large projects. Incremental mode is 30-300x faster "
+                    "and sufficient for 99% of cases."
+                )
 
             # Start refresh in background (non-blocking, similar to set_project_directory)
             async def run_background_refresh():

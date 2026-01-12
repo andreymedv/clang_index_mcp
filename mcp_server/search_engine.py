@@ -90,13 +90,13 @@ class SearchEngine:
             Preserves spaces in type names like 'unsigned int', 'const char'.
         """
         # Remove spaces before * and & operators
-        name = re.sub(r'\s+\*', '*', name)
-        name = re.sub(r'\s+&', '&', name)
+        name = re.sub(r"\s+\*", "*", name)
+        name = re.sub(r"\s+&", "&", name)
 
         # Remove spaces after * and & operators (but keep meaningful spaces)
         # Use lookahead to avoid removing spaces before keywords/types
-        name = re.sub(r'\*\s+', '*', name)
-        name = re.sub(r'&\s+', '&', name)
+        name = re.sub(r"\*\s+", "*", name)
+        name = re.sub(r"&\s+", "&", name)
 
         return name
 
