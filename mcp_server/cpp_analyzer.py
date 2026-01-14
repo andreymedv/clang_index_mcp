@@ -1313,17 +1313,18 @@ class CppAnalyzer:
 
     def _extract_alias_info(self, cursor) -> dict:
         """
-        Extract type alias information from TYPEDEF_DECL or TYPE_ALIAS_DECL cursor.
+        Extract type alias information from TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL cursor.
 
         Phase 1.3: Type Alias Tracking - Alias information extraction
+        Phase 2.0: Template Alias Tracking - Template parameter extraction
 
         Args:
-            cursor: libclang cursor (must be TYPEDEF_DECL or TYPE_ALIAS_DECL)
+            cursor: libclang cursor (must be TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL)
 
         Returns:
             Dictionary with:
-                - alias_name: Short name (e.g., "WidgetAlias")
-                - qualified_name: Fully qualified (e.g., "foo::WidgetAlias")
+                - alias_name: Short name (e.g., "WidgetAlias", "Ptr")
+                - qualified_name: Fully qualified (e.g., "foo::WidgetAlias", "utils::Ptr")
                 - target_type: Immediate target spelling
                 - canonical_type: Final resolved type spelling
                 - file: File where alias is defined
@@ -1331,45 +1332,105 @@ class CppAnalyzer:
                 - column: Column number
                 - alias_kind: 'using' or 'typedef'
                 - namespace: Namespace portion (e.g., "foo")
-                - is_template_alias: False for Phase 1 (simple aliases only)
+                - is_template_alias: True for template aliases (Phase 2.0)
+                - template_params: JSON string of template parameters (Phase 2.0)
                 - created_at: Unix timestamp
         """
         import time
-
-        # Extract basic alias name
-        alias_name = cursor.spelling
-
-        # Extract qualified name and namespace
-        qualified_name = self._get_qualified_name(cursor)
-        namespace = self._extract_namespace(qualified_name)
-
-        # Extract target type and canonical type
-        # For TYPE_ALIAS_DECL: using Alias = Target
-        # For TYPEDEF_DECL: typedef Target Alias
-        try:
-            # Get underlying typedef type (works for both using and typedef)
-            underlying_type = cursor.underlying_typedef_type
-            target_type = underlying_type.spelling
-            canonical_type = underlying_type.get_canonical().spelling
-        except AttributeError:
-            # Fallback: use cursor.type if underlying_typedef_type not available
-            target_type = cursor.type.spelling
-            canonical_type = cursor.type.get_canonical().spelling
-
-        # Determine alias kind based on cursor kind
+        import json
         from clang.cindex import CursorKind
 
-        if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
-            alias_kind = "using"
-        elif cursor.kind == CursorKind.TYPEDEF_DECL:
-            alias_kind = "typedef"
-        else:
-            alias_kind = "unknown"
+        # Detect if this is a template alias
+        is_template_alias = (cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL)
 
-        # Extract location info
-        file_path = str(cursor.location.file.name) if cursor.location.file else ""
-        line = cursor.location.line
-        column = cursor.location.column
+        # Initialize template parameters
+        template_params = []
+
+        # For template aliases, extract from nested structure
+        if is_template_alias:
+            # TYPE_ALIAS_TEMPLATE_DECL has children:
+            # - TEMPLATE_TYPE_PARAMETER cursors (one per template parameter)
+            # - TEMPLATE_NON_TYPE_PARAMETER cursors (for non-type params)
+            # - TYPE_ALIAS_DECL cursor (the actual alias declaration)
+
+            type_alias_decl = None
+
+            for child in cursor.get_children():
+                if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
+                    # Type parameter (e.g., "typename T")
+                    template_params.append({
+                        "name": child.spelling,
+                        "kind": "type"
+                    })
+                elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
+                    # Non-type parameter (e.g., "int N")
+                    template_params.append({
+                        "name": child.spelling,
+                        "kind": "non_type",
+                        "type": child.type.spelling
+                    })
+                elif child.kind == CursorKind.TYPE_ALIAS_DECL:
+                    # The nested alias declaration
+                    type_alias_decl = child
+
+            # Extract from nested TYPE_ALIAS_DECL
+            if type_alias_decl:
+                alias_name = type_alias_decl.spelling
+                qualified_name = self._get_qualified_name(type_alias_decl)
+                namespace = self._extract_namespace(qualified_name)
+
+                try:
+                    underlying_type = type_alias_decl.underlying_typedef_type
+                    target_type = underlying_type.spelling
+                    canonical_type = underlying_type.get_canonical().spelling
+                except AttributeError:
+                    target_type = type_alias_decl.type.spelling
+                    canonical_type = type_alias_decl.type.get_canonical().spelling
+
+                # Extract location from template declaration (not nested alias)
+                file_path = str(cursor.location.file.name) if cursor.location.file else ""
+                line = cursor.location.line
+                column = cursor.location.column
+            else:
+                # Fallback: extract from template cursor itself
+                alias_name = cursor.spelling
+                qualified_name = self._get_qualified_name(cursor)
+                namespace = self._extract_namespace(qualified_name)
+                target_type = ""
+                canonical_type = ""
+                file_path = str(cursor.location.file.name) if cursor.location.file else ""
+                line = cursor.location.line
+                column = cursor.location.column
+
+            alias_kind = "using"  # Template aliases use 'using' syntax
+
+        else:
+            # Simple alias (Phase 1 logic)
+            alias_name = cursor.spelling
+            qualified_name = self._get_qualified_name(cursor)
+            namespace = self._extract_namespace(qualified_name)
+
+            # Extract target type and canonical type
+            try:
+                underlying_type = cursor.underlying_typedef_type
+                target_type = underlying_type.spelling
+                canonical_type = underlying_type.get_canonical().spelling
+            except AttributeError:
+                target_type = cursor.type.spelling
+                canonical_type = cursor.type.get_canonical().spelling
+
+            # Determine alias kind
+            if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
+                alias_kind = "using"
+            elif cursor.kind == CursorKind.TYPEDEF_DECL:
+                alias_kind = "typedef"
+            else:
+                alias_kind = "unknown"
+
+            # Extract location info
+            file_path = str(cursor.location.file.name) if cursor.location.file else ""
+            line = cursor.location.line
+            column = cursor.location.column
 
         return {
             "alias_name": alias_name,
@@ -1381,7 +1442,8 @@ class CppAnalyzer:
             "column": column,
             "alias_kind": alias_kind,
             "namespace": namespace,
-            "is_template_alias": False,  # Phase 1: simple aliases only
+            "is_template_alias": is_template_alias,
+            "template_params": json.dumps(template_params) if template_params else None,
             "created_at": time.time(),
         }
 
@@ -1747,8 +1809,8 @@ class CppAnalyzer:
                 )
             return  # Don't process children again below
 
-        # Process type aliases (Phase 1.3: Type Alias Tracking)
-        elif kind in (CursorKind.TYPEDEF_DECL, CursorKind.TYPE_ALIAS_DECL):
+        # Process type aliases (Phase 1.3: Type Alias Tracking, Phase 2.0: Template Alias Tracking)
+        elif kind in (CursorKind.TYPEDEF_DECL, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPE_ALIAS_TEMPLATE_DECL):
             if cursor.spelling and should_extract:
                 try:
                     # Extract alias information
@@ -1759,7 +1821,8 @@ class CppAnalyzer:
 
                     diagnostics.debug(
                         f"Extracted alias: {alias_info['alias_name']} -> {alias_info['canonical_type']} "
-                        f"(kind: {alias_info['alias_kind']}, file: {alias_info['file']}:{alias_info['line']})"
+                        f"(kind: {alias_info['alias_kind']}, template: {alias_info['is_template_alias']}, "
+                        f"file: {alias_info['file']}:{alias_info['line']})"
                     )
                 except Exception as e:
                     # Alias extraction failures are not critical, just log and continue
@@ -1769,11 +1832,13 @@ class CppAnalyzer:
                         f"{cursor.location.line}: {e}"
                     )
 
-            # Process children (nested declarations within namespace, etc.)
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child, should_extract_from_file, parent_class, parent_function_usr
-                )
+            # For template aliases, don't process children (the nested TYPE_ALIAS_DECL is handled in _extract_alias_info)
+            # For simple aliases, process children (nested declarations within namespace, etc.)
+            if kind != CursorKind.TYPE_ALIAS_TEMPLATE_DECL:
+                for child in cursor.get_children():
+                    self._process_cursor(
+                        child, should_extract_from_file, parent_class, parent_function_usr
+                    )
             return  # Don't process children again below
 
         # Process function calls within function bodies
@@ -3522,7 +3587,8 @@ class CppAnalyzer:
                 for alias_name in alias_names:
                     cursor = self.cache_manager.backend.conn.execute(
                         """
-                        SELECT alias_name, canonical_type, file, line, namespace
+                        SELECT alias_name, canonical_type, file, line, namespace,
+                               is_template_alias, template_params
                         FROM type_aliases
                         WHERE alias_name = ? OR qualified_name = ?
                         """,
@@ -3536,14 +3602,23 @@ class CppAnalyzer:
                             if row["namespace"]
                             else row["alias_name"]
                         )
-                        aliases.append(
-                            {
-                                "name": row["alias_name"],
-                                "qualified_name": qualified_alias,
-                                "file": row["file"],
-                                "line": row["line"],
-                            }
-                        )
+
+                        # Build alias dictionary
+                        alias_dict = {
+                            "name": row["alias_name"],
+                            "qualified_name": qualified_alias,
+                            "file": row["file"],
+                            "line": row["line"],
+                        }
+
+                        # Add template information if present (Phase 2.0)
+                        if row["is_template_alias"]:
+                            alias_dict["is_template_alias"] = True
+                            if row["template_params"]:
+                                import json
+                                alias_dict["template_params"] = json.loads(row["template_params"])
+
+                        aliases.append(alias_dict)
             except Exception as e:
                 # Log error but continue
                 diagnostics.debug(f"Failed to get alias details: {e}")
