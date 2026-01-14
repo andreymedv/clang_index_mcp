@@ -9,7 +9,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a Model Context Protocol (MCP) server that provides semantic C++ code analysis using libclang. It allows AI assistants like Claude to understand C++ codebases through symbol indexing, class hierarchies, call graphs, and compile_commands.json integration.
 
 **Key Features:**
-- 16 MCP tools for C++ code analysis (search_classes, search_functions, get_class_info, call graph analysis, etc.)
+- 19 MCP tools for C++ code analysis (search_classes, search_functions, get_class_info, call graph analysis, type alias tracking, etc.)
+- **Type alias tracking:** Simple and template type aliases (using declarations)
+  - Extracts both simple aliases (`using IntPtr = int*`) and template aliases (`template<typename T> using Ptr = std::shared_ptr<T>`)
+  - Stores template parameters with kind information (type/non-type) for template aliases
+  - MCP tool `get_type_alias_info` returns alias details including template parameters
 - **Documentation extraction (Phase 2):** Extract brief and full documentation comments from C++ code
   - Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments
   - Returns documentation in MCP tool responses for LLM consumption
@@ -329,10 +333,11 @@ make ie                         # install-editable
 - **MCP Tools Definition:** mcp_server/cpp_mcp_server.py:176-461 (`list_tools()`)
 - **Core Analyzer:** mcp_server/cpp_analyzer.py (CppAnalyzer class)
 - **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
+- **Type Alias Extraction:** mcp_server/cpp_analyzer.py:_extract_alias_info() (handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
 - **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
 - **Parallel Worker:** mcp_server/cpp_analyzer.py:72-131 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
 - **Call Graph Analysis (Phase 4):** mcp_server/call_graph.py (SQLite-only queries, no in-memory dicts)
-- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v8.0 with brief/doc_comment fields and call_sites table)
+- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v12.0 with type_aliases table, template_params support, brief/doc_comment fields, and call_sites table)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py
 - **Compile Commands:** mcp_server/compile_commands_manager.py
@@ -517,11 +522,11 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ```
 mcp_server/
-├── cpp_mcp_server.py           # MCP server entry point (18 tools, stdio/http/sse)
-├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing)
+├── cpp_mcp_server.py           # MCP server entry point (19 tools, stdio/http/sse)
+├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing, type alias tracking)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
-├── schema.sql                  # SQLite schema with FTS5 indexes (version 8.0)
+├── schema.sql                  # SQLite schema with FTS5 indexes (version 12.0)
 ├── schema_migrations.py        # Schema migrations (deprecated, for legacy support only)
 ├── compile_commands_manager.py # compile_commands.json parsing & caching
 ├── incremental_analyzer.py     # Incremental analysis orchestration
@@ -588,7 +593,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 7. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-8. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 8.0** includes documentation fields (brief, doc_comment) and call_sites table for line-level call graph tracking.
+8. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 12.0** includes type_aliases table with template_params support (for template aliases), documentation fields (brief, doc_comment), and call_sites table for line-level call graph tracking.
 
 9. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
