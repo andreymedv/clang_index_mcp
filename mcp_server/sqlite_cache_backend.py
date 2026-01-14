@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "11.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "12.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -2118,8 +2118,8 @@ class SqliteCacheBackend:
                     INSERT OR REPLACE INTO type_aliases (
                         alias_name, qualified_name, target_type, canonical_type,
                         file, line, column, alias_kind, namespace,
-                        is_template_alias, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        is_template_alias, template_params, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -2133,6 +2133,7 @@ class SqliteCacheBackend:
                             alias["alias_kind"],
                             alias["namespace"],
                             1 if alias.get("is_template_alias", False) else 0,
+                            alias.get("template_params"),  # Phase 2.0: Template parameters as JSON
                             alias["created_at"],
                         )
                         for alias in aliases
