@@ -10,5 +10,11 @@
   "command": "/usr/bin/c++  -I/home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/include -std=gnu++17 -Wall -Wextra -O2 -o CMakeFiles/example.dir/src/utils.cpp.o -c /home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/src/utils.cpp",
   "file": "/home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/src/utils.cpp",
   "output": "CMakeFiles/example.dir/src/utils.cpp.o"
+},
+{
+  "directory": "/home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/build",
+  "command": "/usr/bin/c++  -I/home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/include -std=gnu++17 -Wall -Wextra -O2 -o CMakeFiles/example.dir/template_test.cpp.o -c /home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/template_test.cpp",
+  "file": "/home/andrey/repos/cplusplus_mcp/examples/compile_commands_example/template_test.cpp",
+  "output": "CMakeFiles/example.dir/template_test.cpp.o"
 }
 ]

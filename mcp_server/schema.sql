@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"11.0"', julianday('now')),
+    ('version', '"12.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
@@ -226,7 +226,8 @@ CREATE TABLE IF NOT EXISTS type_aliases (
     column INTEGER NOT NULL,            -- Column number
     alias_kind TEXT NOT NULL,           -- 'using' or 'typedef'
     namespace TEXT DEFAULT '',          -- Namespace portion (e.g., "foo" from "foo::WidgetAlias")
-    is_template_alias BOOLEAN NOT NULL DEFAULT 0,  -- True for template aliases (Phase 2, not v11.0)
+    is_template_alias BOOLEAN NOT NULL DEFAULT 0,  -- True for template aliases (Phase 2.0, v12.0)
+    template_params TEXT DEFAULT NULL,  -- JSON array of template parameters (Phase 2.0, v12.0)
     created_at REAL NOT NULL,           -- Unix timestamp
 
     -- Unique constraint: one alias declaration per location
