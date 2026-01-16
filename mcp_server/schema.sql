@@ -1,6 +1,8 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 11.0
+-- Version: 13.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v13.0: Added template tracking fields (Template Search Support)
+-- Changelog v12.0: Added template_params to type_aliases table (Issue #84, Phase 2: Template Aliases)
 -- Changelog v11.0: Added type_aliases table for type alias tracking (Issue #84, Phase 1: Simple Aliases)
 -- Changelog v10.1: Added is_template_specialization field for overload distinction (Qualified Names Phase 3)
 -- Changelog v10.0: Added qualified_name field for namespace-aware search (Qualified Names Phase 1)
@@ -54,6 +56,12 @@ CREATE TABLE IF NOT EXISTS symbols (
     -- Overload metadata (v10.1: Phase 3 Qualified Names Support)
     is_template_specialization BOOLEAN NOT NULL DEFAULT 0,  -- True for template specializations
 
+    -- Template tracking (v13.0: Template Search Support)
+    is_template BOOLEAN NOT NULL DEFAULT 0,  -- True for any template-related symbol
+    template_kind TEXT DEFAULT NULL,         -- 'class_template', 'function_template', 'partial_specialization', 'full_specialization'
+    template_parameters TEXT DEFAULT NULL,   -- JSON array of template params (for generic templates)
+    primary_template_usr TEXT DEFAULT NULL,  -- USR of primary template (for specializations)
+
     -- Line ranges (v5.0: Phase 1 LLM Integration)
     start_line INTEGER,                -- First line of symbol definition
     end_line INTEGER,                  -- Last line of symbol definition
@@ -89,6 +97,12 @@ CREATE INDEX IF NOT EXISTS idx_name_kind_project ON symbols(name, kind, is_proje
 
 -- Index for line range queries (v5.0)
 CREATE INDEX IF NOT EXISTS idx_symbols_range ON symbols(file, start_line, end_line);
+
+-- Template tracking indexes (v13.0)
+CREATE INDEX IF NOT EXISTS idx_symbol_is_template ON symbols(is_template);
+CREATE INDEX IF NOT EXISTS idx_symbol_template_kind ON symbols(template_kind);
+CREATE INDEX IF NOT EXISTS idx_symbol_primary_template ON symbols(primary_template_usr);
+CREATE INDEX IF NOT EXISTS idx_template_name_kind ON symbols(name, template_kind);
 
 -- Full-text search index (FTS5)
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
@@ -138,7 +152,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"12.0"', julianday('now')),
+    ('version', '"13.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));

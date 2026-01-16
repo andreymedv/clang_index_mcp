@@ -29,6 +29,12 @@ class SymbolInfo:
         False  # True for template specializations (e.g., template<> void foo<int>())
     )
 
+    # Template tracking (Template Search Support)
+    is_template: bool = False  # True for any template-related symbol
+    template_kind: Optional[str] = None  # 'class_template', 'function_template', etc.
+    template_parameters: Optional[str] = None  # JSON array for generic templates
+    primary_template_usr: Optional[str] = None  # USR of primary template for specializations
+
     # Line ranges (Phase 1: LLM Integration)
     start_line: Optional[int] = None  # First line of symbol definition
     end_line: Optional[int] = None  # Last line of symbol definition
@@ -64,6 +70,11 @@ class SymbolInfo:
             "usr": self.usr,
             # Overload metadata (Phase 3)
             "is_template_specialization": self.is_template_specialization,
+            # Template tracking (Template Search Support)
+            "is_template": self.is_template,
+            "template_kind": self.template_kind,
+            "template_parameters": self.template_parameters,
+            "primary_template_usr": self.primary_template_usr,
             # Note: calls/called_by removed in v9.0 - use call graph API
             # Line ranges (Phase 1)
             "start_line": self.start_line,
