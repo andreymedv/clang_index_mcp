@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "12.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "13.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -416,6 +416,11 @@ class SqliteCacheBackend:
             json.dumps(symbol.base_classes),
             # v9.0: calls/called_by removed - use call_sites table
             symbol.is_template_specialization,  # v10.1: Phase 3 Qualified Names
+            # v13.0: Template tracking
+            symbol.is_template,
+            symbol.template_kind,
+            symbol.template_parameters,
+            symbol.primary_template_usr,
             symbol.start_line,  # v5.0: Line ranges
             symbol.end_line,  # v5.0: Line ranges
             symbol.header_file,  # v5.0: Header location
@@ -461,6 +466,27 @@ class SqliteCacheBackend:
                 if "is_template_specialization" in row.keys()
                 else False
             ),
+            # v13.0: Template tracking
+            is_template=(
+                bool(row["is_template"])
+                if "is_template" in row.keys()
+                else False
+            ),
+            template_kind=(
+                row["template_kind"]
+                if "template_kind" in row.keys()
+                else None
+            ),
+            template_parameters=(
+                row["template_parameters"]
+                if "template_parameters" in row.keys()
+                else None
+            ),
+            primary_template_usr=(
+                row["primary_template_usr"]
+                if "primary_template_usr" in row.keys()
+                else None
+            ),
             # v9.0: calls/called_by removed - use call graph API
             # v5.0: Line ranges and header location
             start_line=row["start_line"] if "start_line" in row.keys() else None,
@@ -498,11 +524,12 @@ class SqliteCacheBackend:
                         usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
                         base_classes, is_template_specialization,
+                        is_template, template_kind, template_parameters, primary_template_usr,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol),
                 )
@@ -539,11 +566,12 @@ class SqliteCacheBackend:
                         usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
                         base_classes, is_template_specialization,
+                        is_template, template_kind, template_parameters, primary_template_usr,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols],
                 )
@@ -1513,11 +1541,12 @@ class SqliteCacheBackend:
                         usr, name, qualified_name, kind, file, line, column, signature,
                         is_project, namespace, access, parent_class,
                         base_classes, is_template_specialization,
+                        is_template, template_kind, template_parameters, primary_template_usr,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol),
                 )

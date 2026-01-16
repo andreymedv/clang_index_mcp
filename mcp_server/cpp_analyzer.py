@@ -1478,11 +1478,12 @@ class CppAnalyzer:
             return False
 
         # Check for template arguments in display name
-        if kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
+        # Works for both functions and classes
+        if kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD, CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
             try:
                 displayname = cursor.displayname
                 # Template specializations have '<' and '>' in their display name
-                # e.g., "foo<int>" vs "foo"
+                # e.g., "foo<int>" vs "foo", "Container<int>" vs "Container"
                 # Check that displayname is a string (not Mock or other non-iterable)
                 if isinstance(displayname, str):
                     return "<" in displayname and ">" in displayname
@@ -1593,6 +1594,9 @@ class CppAnalyzer:
                     parent_class="",
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else "",
+                    # Template tracking (Template Search Support)
+                    is_template=True,  # CLASS_TEMPLATE and partial specs are templates
+                    template_kind=symbol_kind,  # 'class_template' or 'partial_specialization'
                     # Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1636,6 +1640,9 @@ class CppAnalyzer:
                 # Extract documentation (Phase 2: LLM Integration)
                 doc_info = self._extract_documentation(cursor)
 
+                # Detect template specialization (Template Search Support)
+                is_class_template_spec = self._detect_template_specialization(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
@@ -1650,6 +1657,9 @@ class CppAnalyzer:
                     parent_class="",  # Classes don't have parent classes in this context
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else "",
+                    # Template tracking (Template Search Support)
+                    is_template=is_class_template_spec,  # True for explicit specializations
+                    template_kind="full_specialization" if is_class_template_spec else None,
                     # Phase 1: Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1715,6 +1725,9 @@ class CppAnalyzer:
                     usr=function_usr,
                     # Template functions are not specializations themselves
                     is_template_specialization=False,
+                    # Template tracking (Template Search Support)
+                    is_template=True,  # FUNCTION_TEMPLATE is a template
+                    template_kind="function_template",
                     # Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1781,6 +1794,9 @@ class CppAnalyzer:
                     usr=function_usr,
                     # Phase 3: Overload metadata
                     is_template_specialization=is_template_spec,
+                    # Template tracking (Template Search Support)
+                    is_template=is_template_spec,  # True for explicit function specializations
+                    template_kind="full_specialization" if is_template_spec else None,
                     # Phase 1: Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
