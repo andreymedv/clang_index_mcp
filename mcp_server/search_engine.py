@@ -364,6 +364,11 @@ class SearchEngine:
                                 "base_classes": info.base_classes,
                                 # Phase 3: Overload metadata
                                 "is_template_specialization": info.is_template_specialization,
+                                # v13.0: Template tracking
+                                "is_template": info.is_template,
+                                "template_kind": info.template_kind,
+                                "template_parameters": info.template_parameters,
+                                "primary_template_usr": info.primary_template_usr,
                                 # Phase 1: Line ranges
                                 "start_line": info.start_line,
                                 "end_line": info.end_line,
@@ -434,6 +439,11 @@ class SearchEngine:
                 "parent_class": info.parent_class,
                 # Phase 3: Overload metadata
                 "is_template_specialization": info.is_template_specialization,
+                # v13.0: Template tracking
+                "is_template": info.is_template,
+                "template_kind": info.template_kind,
+                "template_parameters": info.template_parameters,
+                "primary_template_usr": info.primary_template_usr,
                 # Phase 1: Line ranges
                 "start_line": info.start_line,
                 "end_line": info.end_line,
@@ -603,6 +613,11 @@ class SearchEngine:
                                 "line": func_info.line,
                                 # Phase 3: Overload metadata
                                 "is_template_specialization": func_info.is_template_specialization,
+                                # v13.0: Template tracking
+                                "is_template": func_info.is_template,
+                                "template_kind": func_info.template_kind,
+                                "template_parameters": func_info.template_parameters,
+                                "primary_template_usr": func_info.primary_template_usr,
                                 # Phase 1: Line ranges for methods
                                 "start_line": func_info.start_line,
                                 "end_line": func_info.end_line,
