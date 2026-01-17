@@ -335,3 +335,148 @@ class TestWhitespaceNormalization:
 
         # Should find add methods from Container templates
         assert len(results) > 0, "Should find functions in template classes"
+
+
+class TestTemplateParameterExtraction:
+    """Tests for Task 3.2: template_parameters extraction."""
+
+    def test_single_type_parameter(self, analyzer):
+        """Test extraction of single type parameter like typename T."""
+        results = analyzer.search_classes("Container")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Container template"
+        assert template.get('template_parameters') is not None, \
+            "template_parameters should be populated"
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 1, "Container should have 1 template parameter"
+        assert params[0]['name'] == 'T', "Parameter should be named T"
+        assert params[0]['kind'] == 'type', "Parameter should be a type parameter"
+
+    def test_multiple_type_parameters(self, analyzer):
+        """Test extraction of multiple type parameters like Pair<K, V>."""
+        results = analyzer.search_classes("Pair")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Pair template"
+        assert template.get('template_parameters') is not None
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 2, "Pair should have 2 template parameters"
+        assert params[0]['name'] == 'K', "First param should be K"
+        assert params[1]['name'] == 'V', "Second param should be V"
+
+    def test_variadic_template_parameters(self, analyzer):
+        """Test extraction of variadic template parameters like Args..."""
+        results = analyzer.search_classes("Tuple")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Tuple template"
+        # Variadic templates should have template_parameters
+        assert template.get('template_parameters') is not None
+
+    def test_partial_specialization_parameters(self, analyzer):
+        """Test partial specialization has its own template parameters."""
+        results = analyzer.search_classes("Container")
+        partial = next((r for r in results if r['kind'] == 'partial_specialization'), None)
+
+        assert partial is not None, "Should find Container<T*> partial specialization"
+        assert partial.get('template_parameters') is not None
+
+        import json
+        params = json.loads(partial['template_parameters'])
+        assert len(params) == 1, "Partial spec should have 1 template parameter"
+        assert params[0]['name'] == 'T', "Parameter should be named T"
+
+    def test_function_template_parameters(self, analyzer):
+        """Test function template parameter extraction."""
+        results = analyzer.search_functions("max")
+        template = next((r for r in results if r['kind'] == 'function_template'), None)
+
+        assert template is not None, "Should find max function template"
+        assert template.get('template_parameters') is not None
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 1, "max should have 1 template parameter"
+        assert params[0]['kind'] == 'type', "Parameter should be a type parameter"
+
+
+class TestPrimaryTemplateLinking:
+    """Tests for Task 3.4: primary_template_usr linking."""
+
+    def test_partial_specialization_links_to_primary(self, analyzer):
+        """Test partial specialization links to primary template via USR."""
+        results = analyzer.search_classes("Container")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+        partial = next((r for r in results if r['kind'] == 'partial_specialization'), None)
+
+        assert template is not None, "Should find Container template"
+        assert partial is not None, "Should find Container<T*> partial specialization"
+
+        # Partial spec should have primary_template_usr pointing to the template
+        primary_usr = partial.get('primary_template_usr')
+        assert primary_usr is not None, \
+            "Partial specialization should have primary_template_usr"
+        assert '@Container' in primary_usr, \
+            "primary_template_usr should reference Container template"
+
+    def test_full_specialization_links_to_primary(self, analyzer):
+        """Test full specialization links to primary template via USR."""
+        results = analyzer.search_classes("Container")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+        full_spec = next((r for r in results if r['kind'] == 'class' and
+                         r.get('template_kind') == 'full_specialization'), None)
+
+        assert template is not None, "Should find Container template"
+        assert full_spec is not None, "Should find Container<int> full specialization"
+
+        primary_usr = full_spec.get('primary_template_usr')
+        assert primary_usr is not None, \
+            "Full specialization should have primary_template_usr"
+        assert '@Container' in primary_usr, \
+            "primary_template_usr should reference Container template"
+
+    def test_primary_template_has_no_parent(self, analyzer):
+        """Test primary templates do not have primary_template_usr."""
+        results = analyzer.search_classes("Container")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Container template"
+        assert template.get('primary_template_usr') is None, \
+            "Primary template should not have primary_template_usr"
+
+    def test_function_specialization_links_to_primary(self, analyzer):
+        """Test function specialization links to primary function template."""
+        results = analyzer.search_functions("max")
+        template = next((r for r in results if r['kind'] == 'function_template'), None)
+        full_spec = next((r for r in results if r['kind'] == 'function' and
+                         r.get('template_kind') == 'full_specialization'), None)
+
+        assert template is not None, "Should find max function template"
+        assert full_spec is not None, "Should find max<int*> full specialization"
+
+        primary_usr = full_spec.get('primary_template_usr')
+        assert primary_usr is not None, \
+            "Function specialization should have primary_template_usr"
+        assert 'max' in primary_usr, \
+            "primary_template_usr should reference max function template"
+
+    def test_multi_param_template_linking(self, analyzer):
+        """Test specialization linking works for multi-parameter templates."""
+        results = analyzer.search_classes("Pair")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+        full_spec = next((r for r in results if r['kind'] == 'class' and
+                         r.get('template_kind') == 'full_specialization'), None)
+
+        assert template is not None, "Should find Pair template"
+        assert full_spec is not None, "Should find Pair<int,int> full specialization"
+
+        primary_usr = full_spec.get('primary_template_usr')
+        assert primary_usr is not None, \
+            "Multi-param specialization should have primary_template_usr"
+        assert '@Pair' in primary_usr, \
+            "primary_template_usr should reference Pair template"

@@ -639,6 +639,11 @@ class SearchEngine:
             "methods": sorted(methods, key=lambda x: x["line"]),
             "members": [],  # TODO: Implement member variable indexing
             "is_project": info.is_project,
+            # v13.0: Template tracking for class
+            "is_template": info.is_template,
+            "template_kind": info.template_kind,
+            "template_parameters": info.template_parameters,
+            "primary_template_usr": info.primary_template_usr,
             # Phase 1: Line ranges for class
             "start_line": info.start_line,
             "end_line": info.end_line,

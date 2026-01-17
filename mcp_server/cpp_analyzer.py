@@ -1311,6 +1311,75 @@ class CppAnalyzer:
 
         return result
 
+    def _extract_template_parameters(self, cursor) -> Optional[str]:
+        """
+        Extract template parameters from a template cursor (CLASS_TEMPLATE, FUNCTION_TEMPLATE, etc.).
+
+        Task 3.2: Template Parameter Extraction - Template Search Support
+
+        This function extracts template parameter information including:
+        - name: Parameter name (e.g., "T", "N")
+        - kind: "type" for typename/class params, "non_type" for value params
+        - type: For non-type params, the parameter type (e.g., "int", "size_t")
+
+        Returns:
+            JSON string of template parameters, or None if no parameters found.
+            Example: '[{"name": "T", "kind": "type"}, {"name": "N", "kind": "non_type", "type": "int"}]'
+        """
+        from clang.cindex import CursorKind
+
+        template_params = []
+
+        for child in cursor.get_children():
+            if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
+                # Type parameter (e.g., "typename T", "class U")
+                template_params.append({"name": child.spelling, "kind": "type"})
+            elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
+                # Non-type parameter (e.g., "int N", "size_t Size")
+                template_params.append(
+                    {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
+                )
+            elif child.kind == CursorKind.TEMPLATE_TEMPLATE_PARAMETER:
+                # Template template parameter (e.g., "template<typename> class Container")
+                template_params.append({"name": child.spelling, "kind": "template"})
+
+        if template_params:
+            import json
+
+            return json.dumps(template_params)
+        return None
+
+    def _get_primary_template_usr(self, cursor) -> Optional[str]:
+        """
+        Get the USR of the primary template for a template specialization.
+
+        Task 3.4: Link Specializations to Primary - Template Search Support
+
+        Uses libclang's clang_getSpecializedCursorTemplate() to find the primary template
+        for partial or full template specializations.
+
+        Args:
+            cursor: libclang cursor representing a template specialization
+
+        Returns:
+            USR of the primary template, or None if cursor is not a specialization
+            or if the primary template cannot be determined.
+        """
+        from clang import cindex
+
+        try:
+            # Call the C API directly since Python bindings don't expose this
+            specialized_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(cursor)
+            if specialized_cursor and not specialized_cursor.kind.is_invalid():
+                usr = specialized_cursor.get_usr()
+                if usr:
+                    return usr
+        except Exception:
+            # If the API call fails, return None gracefully
+            pass
+
+        return None
+
     def _extract_alias_info(self, cursor) -> dict:
         """
         Extract type alias information from TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL cursor.
@@ -1341,7 +1410,7 @@ class CppAnalyzer:
         from clang.cindex import CursorKind
 
         # Detect if this is a template alias
-        is_template_alias = (cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL)
+        is_template_alias = cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL
 
         # Initialize template parameters
         template_params = []
@@ -1358,17 +1427,12 @@ class CppAnalyzer:
             for child in cursor.get_children():
                 if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
                     # Type parameter (e.g., "typename T")
-                    template_params.append({
-                        "name": child.spelling,
-                        "kind": "type"
-                    })
+                    template_params.append({"name": child.spelling, "kind": "type"})
                 elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
                     # Non-type parameter (e.g., "int N")
-                    template_params.append({
-                        "name": child.spelling,
-                        "kind": "non_type",
-                        "type": child.type.spelling
-                    })
+                    template_params.append(
+                        {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
+                    )
                 elif child.kind == CursorKind.TYPE_ALIAS_DECL:
                     # The nested alias declaration
                     type_alias_decl = child
@@ -1479,7 +1543,12 @@ class CppAnalyzer:
 
         # Check for template arguments in display name
         # Works for both functions and classes
-        if kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD, CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
+        if kind in (
+            CursorKind.FUNCTION_DECL,
+            CursorKind.CXX_METHOD,
+            CursorKind.CLASS_DECL,
+            CursorKind.STRUCT_DECL,
+        ):
             try:
                 displayname = cursor.displayname
                 # Template specializations have '<' and '>' in their display name
@@ -1574,11 +1643,17 @@ class CppAnalyzer:
                 # Extract documentation
                 doc_info = self._extract_documentation(cursor)
 
-                # Determine kind based on cursor type
+                # Extract template parameters (Task 3.2)
+                template_params = self._extract_template_parameters(cursor)
+
+                # Determine kind and get primary template USR for specializations
                 if kind == CursorKind.CLASS_TEMPLATE:
                     symbol_kind = "class_template"
+                    primary_usr = None  # Primary templates don't have a parent
                 else:  # CLASS_TEMPLATE_PARTIAL_SPECIALIZATION
                     symbol_kind = "partial_specialization"
+                    # Task 3.4: Link to primary template
+                    primary_usr = self._get_primary_template_usr(cursor)
 
                 info = SymbolInfo(
                     name=cursor.spelling,
@@ -1597,6 +1672,8 @@ class CppAnalyzer:
                     # Template tracking (Template Search Support)
                     is_template=True,  # CLASS_TEMPLATE and partial specs are templates
                     template_kind=symbol_kind,  # 'class_template' or 'partial_specialization'
+                    template_parameters=template_params,  # Task 3.2: JSON array of template params
+                    primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
                     # Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1643,6 +1720,11 @@ class CppAnalyzer:
                 # Detect template specialization (Template Search Support)
                 is_class_template_spec = self._detect_template_specialization(cursor)
 
+                # Task 3.4: Get primary template USR for full specializations
+                primary_usr = None
+                if is_class_template_spec:
+                    primary_usr = self._get_primary_template_usr(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
@@ -1660,6 +1742,7 @@ class CppAnalyzer:
                     # Template tracking (Template Search Support)
                     is_template=is_class_template_spec,  # True for explicit specializations
                     template_kind="full_specialization" if is_class_template_spec else None,
+                    primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
                     # Phase 1: Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1709,6 +1792,9 @@ class CppAnalyzer:
                 # Extract documentation
                 doc_info = self._extract_documentation(cursor)
 
+                # Extract template parameters (Task 3.2)
+                template_params = self._extract_template_parameters(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function_template",
@@ -1728,6 +1814,7 @@ class CppAnalyzer:
                     # Template tracking (Template Search Support)
                     is_template=True,  # FUNCTION_TEMPLATE is a template
                     template_kind="function_template",
+                    template_parameters=template_params,  # Task 3.2: JSON array of template params
                     # Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1778,6 +1865,11 @@ class CppAnalyzer:
                 # Detect template specialization (Phase 3: Qualified Names)
                 is_template_spec = self._detect_template_specialization(cursor)
 
+                # Task 3.4: Get primary template USR for full specializations
+                primary_usr = None
+                if is_template_spec:
+                    primary_usr = self._get_primary_template_usr(cursor)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
@@ -1797,6 +1889,7 @@ class CppAnalyzer:
                     # Template tracking (Template Search Support)
                     is_template=is_template_spec,  # True for explicit function specializations
                     template_kind="full_specialization" if is_template_spec else None,
+                    primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
                     # Phase 1: Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -1826,7 +1919,11 @@ class CppAnalyzer:
             return  # Don't process children again below
 
         # Process type aliases (Phase 1.3: Type Alias Tracking, Phase 2.0: Template Alias Tracking)
-        elif kind in (CursorKind.TYPEDEF_DECL, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPE_ALIAS_TEMPLATE_DECL):
+        elif kind in (
+            CursorKind.TYPEDEF_DECL,
+            CursorKind.TYPE_ALIAS_DECL,
+            CursorKind.TYPE_ALIAS_TEMPLATE_DECL,
+        ):
             if cursor.spelling and should_extract:
                 try:
                     # Extract alias information
@@ -3632,6 +3729,7 @@ class CppAnalyzer:
                             alias_dict["is_template_alias"] = True
                             if row["template_params"]:
                                 import json
+
                                 alias_dict["template_params"] = json.loads(row["template_params"])
 
                         aliases.append(alias_dict)

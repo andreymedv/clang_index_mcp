@@ -467,25 +467,13 @@ class SqliteCacheBackend:
                 else False
             ),
             # v13.0: Template tracking
-            is_template=(
-                bool(row["is_template"])
-                if "is_template" in row.keys()
-                else False
-            ),
-            template_kind=(
-                row["template_kind"]
-                if "template_kind" in row.keys()
-                else None
-            ),
+            is_template=(bool(row["is_template"]) if "is_template" in row.keys() else False),
+            template_kind=(row["template_kind"] if "template_kind" in row.keys() else None),
             template_parameters=(
-                row["template_parameters"]
-                if "template_parameters" in row.keys()
-                else None
+                row["template_parameters"] if "template_parameters" in row.keys() else None
             ),
             primary_template_usr=(
-                row["primary_template_usr"]
-                if "primary_template_usr" in row.keys()
-                else None
+                row["primary_template_usr"] if "primary_template_usr" in row.keys() else None
             ),
             # v9.0: calls/called_by removed - use call graph API
             # v5.0: Line ranges and header location
