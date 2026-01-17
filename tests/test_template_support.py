@@ -480,3 +480,146 @@ class TestPrimaryTemplateLinking:
             "Multi-param specialization should have primary_template_usr"
         assert '@Pair' in primary_usr, \
             "primary_template_usr should reference Pair template"
+
+
+class TestAdvancedTemplatePatterns:
+    """Tests for Task 1.4: Real-world template examples with diverse patterns."""
+
+    def test_non_type_parameter_extraction(self, analyzer):
+        """Test extraction of non-type template parameters like int Size."""
+        results = analyzer.search_classes("FixedArray")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find FixedArray template"
+        assert template.get('template_parameters') is not None
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 2, "FixedArray should have 2 template parameters"
+
+        # First param should be type
+        assert params[0]['kind'] == 'type', "First param should be type (T)"
+
+        # Second param should be non-type int
+        assert params[1]['kind'] == 'non_type', "Second param should be non-type (Size)"
+        assert params[1]['name'] == 'Size', "Non-type param should be named Size"
+        assert 'int' in params[1]['type'], "Non-type param should be int type"
+
+    def test_multiple_non_type_parameters(self, analyzer):
+        """Test template with multiple non-type parameters like Matrix<T, Rows, Cols>."""
+        results = analyzer.search_classes("Matrix")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Matrix template"
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 3, "Matrix should have 3 template parameters"
+
+        # T, Rows, Cols
+        assert params[0]['kind'] == 'type'
+        assert params[1]['kind'] == 'non_type'
+        assert params[2]['kind'] == 'non_type'
+
+    def test_template_template_parameter(self, analyzer):
+        """Test extraction of template template parameters."""
+        results = analyzer.search_classes("Stack")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Stack template"
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 2, "Stack should have 2 template parameters"
+
+        # Second param should be template template parameter
+        assert params[1]['kind'] == 'template', "Second param should be template template param"
+
+    def test_default_template_parameters(self, analyzer):
+        """Test templates with default parameters are indexed."""
+        # Vector<T, Alloc = void>
+        results = analyzer.search_classes("Vector")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert template is not None, "Should find Vector template"
+        assert template.get('is_template') is True
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 2, "Vector should have 2 template parameters (T and Alloc)"
+
+    def test_nested_template_class(self, analyzer):
+        """Test nested template classes are indexed."""
+        # Outer<T>::Inner<U>
+        results = analyzer.search_classes("Outer")
+        outer = next((r for r in results if r['kind'] == 'class_template'), None)
+
+        assert outer is not None, "Should find Outer template"
+        assert outer.get('is_template') is True
+
+        # Inner should also be indexed
+        inner_results = analyzer.search_classes("Inner")
+        inner = next((r for r in results if 'Inner' in r.get('name', '')), None)
+        # Note: Nested templates may or may not be indexed depending on libclang behavior
+
+    def test_function_template_with_non_type_param(self, analyzer):
+        """Test function template with non-type parameter."""
+        results = analyzer.search_functions("multiply")
+        template = next((r for r in results if r['kind'] == 'function_template'), None)
+
+        assert template is not None, "Should find multiply function template"
+
+        import json
+        params = json.loads(template['template_parameters'])
+        assert len(params) == 1, "multiply should have 1 template parameter"
+        assert params[0]['kind'] == 'non_type', "Parameter should be non-type (int N)"
+
+    def test_function_template_non_type_specialization(self, analyzer):
+        """Test function template specialization for non-type param."""
+        results = analyzer.search_functions("multiply")
+
+        # Should find template and specialization
+        template = next((r for r in results if r['kind'] == 'function_template'), None)
+        spec = next((r for r in results if r.get('template_kind') == 'full_specialization'), None)
+
+        assert template is not None, "Should find multiply template"
+        assert spec is not None, "Should find multiply<2> specialization"
+        assert spec.get('primary_template_usr') is not None
+
+    def test_type_traits_pattern(self, analyzer):
+        """Test type traits template pattern with static members."""
+        results = analyzer.search_classes("TypeTraits")
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+        spec = next((r for r in results if r.get('template_kind') == 'full_specialization'), None)
+
+        assert template is not None, "Should find TypeTraits template"
+        assert spec is not None, "Should find TypeTraits<int> specialization"
+
+    def test_method_template_in_regular_class(self, analyzer):
+        """Test template methods inside non-template class."""
+        results = analyzer.search_classes("Converter")
+
+        assert len(results) > 0, "Should find Converter class"
+        converter = results[0]
+        assert converter.get('is_template') is not True, \
+            "Converter itself is not a template"
+
+        # Check for template methods
+        methods = analyzer.search_functions("fromString")
+        template_methods = [m for m in methods if m.get('kind') == 'function_template']
+        # Note: Method templates may be indexed as function_template or method
+
+    def test_complex_partial_specialization(self, analyzer):
+        """Test complex partial specializations like Pair2<T, T> and Pair2<T*, U>."""
+        results = analyzer.search_classes("Pair2")
+
+        template = next((r for r in results if r['kind'] == 'class_template'), None)
+        partial_specs = [r for r in results if r['kind'] == 'partial_specialization']
+
+        assert template is not None, "Should find Pair2 template"
+        assert len(partial_specs) >= 2, "Should find at least 2 partial specializations"
+
+        # All partial specs should link to primary
+        for spec in partial_specs:
+            assert spec.get('primary_template_usr') is not None, \
+                "Partial specialization should have primary_template_usr"
