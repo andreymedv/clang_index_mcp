@@ -244,6 +244,40 @@ class Derived2 : public Base {};
         assert "Derived1" in names
         assert "Derived2" in names
 
+    def test_get_derived_classes_with_qualified_name(self, temp_project_dir):
+        """Test get_derived_classes with qualified class name (namespace::class)
+
+        Bug fix: class_name parameter should accept both simple names and qualified names.
+        """
+        (temp_project_dir / "src" / "namespaced.cpp").write_text("""
+namespace MyNamespace {
+namespace Inner {
+
+class Base {};
+class Derived1 : public Base {};
+class Derived2 : public Base {};
+
+}  // namespace Inner
+}  // namespace MyNamespace
+""")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Get derived classes using simple name
+        derived_simple = analyzer.get_derived_classes("Base")
+        assert len(derived_simple) >= 2
+        names_simple = [d["name"] for d in derived_simple]
+        assert "Derived1" in names_simple
+        assert "Derived2" in names_simple
+
+        # Get derived classes using qualified name - should also work
+        derived_qualified = analyzer.get_derived_classes("MyNamespace::Inner::Base")
+        assert len(derived_qualified) >= 2
+        names_qualified = [d["name"] for d in derived_qualified]
+        assert "Derived1" in names_qualified
+        assert "Derived2" in names_qualified
+
     def test_get_call_graph_tool(self, temp_project_dir):
         """Test get_call_graph functionality using find_callees and find_callers"""
         (temp_project_dir / "src" / "test.cpp").write_text("""
