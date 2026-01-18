@@ -1,5 +1,6 @@
 #include "templates.h"
 #include "advanced_templates.h"
+#include "namespaced_templates.h"
 
 int main() {
     // Test generic template
@@ -70,6 +71,25 @@ int main() {
     Pair2<int, double> p3;
     Pair2<int, int> p4;  // Same type specialization
     Pair2<int*, double> p5;  // Pointer first specialization
+
+    // ========== Namespaced Template Tests ==========
+
+    // Test namespaced templates
+    outer::NamespacedContainer<double> nc1;
+    outer::NamespacedContainer<int> nc2;  // Full specialization
+
+    // Test nested namespace templates
+    outer::inner::NestedPair<int, double> np1;
+    outer::inner::NestedPair<int, int> np2;  // Partial specialization (T, T)
+    outer::inner::NestedPair<int, double> np3;  // Full specialization
+
+    // Test forward declared templates
+    forward_decl::ForwardDeclared<double> fd1;
+    forward_decl::ForwardDeclared<void> fd2;  // Specialization
+
+    // Test cross-namespace inheritance
+    derived_ns::DerivedFromTemplate dft;
+    dft.process();
 
     return 0;
 }
