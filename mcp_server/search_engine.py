@@ -590,48 +590,102 @@ class SearchEngine:
             # Return a copy to prevent concurrent modification during iteration
             return list(self.file_index.get(file_path, []))
 
+    @staticmethod
+    def _extract_simple_name(qualified_name: str) -> str:
+        """Extract simple name from qualified name.
+
+        Examples:
+            "CO::DocumentBuilder::TextBuilder" → "TextBuilder"
+            "std::vector" → "vector"
+            "TextBuilder" → "TextBuilder" (already simple)
+        """
+        if "::" not in qualified_name:
+            return qualified_name
+        return qualified_name.split("::")[-1]
+
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
-        """Get detailed information about a class"""
+        """Get detailed information about a class.
+
+        Args:
+            class_name: Simple name (e.g., "TextBuilder") or qualified name
+                       (e.g., "CO::DocumentBuilder::TextBuilder")
+
+        Returns:
+            Class info dict or None if not found
+        """
         with self.index_lock:
-            infos = self.class_index.get(class_name, [])
+            # Handle both simple and qualified names
+            # class_index is keyed by simple name, so extract it from qualified input
+            is_qualified = "::" in class_name
+            simple_name = self._extract_simple_name(class_name)
+
+            infos = self.class_index.get(simple_name, [])
             if not infos:
                 return None
 
-            # Return the first match (could be enhanced to handle multiple matches)
-            info = infos[0]
+            # If qualified name was provided, find exact match by qualified_name
+            info = None
+            if is_qualified:
+                for candidate in infos:
+                    if candidate.qualified_name == class_name:
+                        info = candidate
+                        break
+                if info is None:
+                    return None  # No match for qualified name
+            else:
+                # Return the first match for simple name
+                info = infos[0]
+
+            # For method lookup, we need to match parent_class
+            # parent_class is stored as simple name (from cursor.spelling)
+            # To disambiguate classes with same simple name, also check qualified_name prefix
+            class_qualified_name = info.qualified_name
 
             # Find all methods of this class
             methods = []
             for name, func_infos in self.function_index.items():
                 for func_info in func_infos:
-                    if func_info.parent_class == class_name:
-                        methods.append(
-                            {
-                                "name": func_info.name,
-                                "signature": func_info.signature,
-                                "access": func_info.access,
-                                "line": func_info.line,
-                                # Phase 3: Overload metadata
-                                "is_template_specialization": func_info.is_template_specialization,
-                                # v13.0: Template tracking
-                                "is_template": func_info.is_template,
-                                "template_kind": func_info.template_kind,
-                                "template_parameters": func_info.template_parameters,
-                                "primary_template_usr": func_info.primary_template_usr,
-                                # Phase 1: Line ranges for methods
-                                "start_line": func_info.start_line,
-                                "end_line": func_info.end_line,
-                                "header_line": func_info.header_line,
-                                "header_start_line": func_info.header_start_line,
-                                "header_end_line": func_info.header_end_line,
-                                # Phase 2: Documentation for methods
-                                "brief": func_info.brief,
-                                "doc_comment": func_info.doc_comment,
-                            }
-                        )
+                    # Match by parent_class (simple name)
+                    if func_info.parent_class != simple_name:
+                        continue
+
+                    # Additional disambiguation: check if method belongs to this specific class
+                    # Method qualified_name should start with class qualified_name
+                    # e.g., "CO::DocumentBuilder::TextBuilder::build" starts with
+                    #       "CO::DocumentBuilder::TextBuilder"
+                    if class_qualified_name and func_info.qualified_name:
+                        if not func_info.qualified_name.startswith(class_qualified_name + "::"):
+                            continue
+
+                    methods.append(
+                        {
+                            "name": func_info.name,
+                            "signature": func_info.signature,
+                            "access": func_info.access,
+                            "line": func_info.line,
+                            # Phase 3: Overload metadata
+                            "is_template_specialization": func_info.is_template_specialization,
+                            # v13.0: Template tracking
+                            "is_template": func_info.is_template,
+                            "template_kind": func_info.template_kind,
+                            "template_parameters": func_info.template_parameters,
+                            "primary_template_usr": func_info.primary_template_usr,
+                            # Phase 1: Line ranges for methods
+                            "start_line": func_info.start_line,
+                            "end_line": func_info.end_line,
+                            "header_line": func_info.header_line,
+                            "header_start_line": func_info.header_start_line,
+                            "header_end_line": func_info.header_end_line,
+                            # Phase 2: Documentation for methods
+                            "brief": func_info.brief,
+                            "doc_comment": func_info.doc_comment,
+                        }
+                    )
 
         return {
             "name": info.name,
+            "qualified_name": info.qualified_name,
+            "namespace": info.namespace,
             "kind": info.kind,
             "file": info.file,
             "line": info.line,
