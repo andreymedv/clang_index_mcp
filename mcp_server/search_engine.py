@@ -713,11 +713,27 @@ class SearchEngine:
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
     ) -> List[str]:
-        """Get function signatures matching the name"""
+        """Get function signatures matching the name.
+
+        Args:
+            function_name: Simple name (e.g., "foo") or qualified name
+                          (e.g., "ns::MyClass::foo")
+            class_name: Optional class name filter (simple name)
+
+        Returns:
+            List of signature strings
+        """
         signatures = []
 
+        # function_index is keyed by simple name, so extract it from qualified input
+        is_qualified = "::" in function_name
+        simple_name = self._extract_simple_name(function_name)
+
         with self.index_lock:
-            for info in self.function_index.get(function_name, []):
+            for info in self.function_index.get(simple_name, []):
+                # If qualified name was provided, filter to exact match
+                if is_qualified and info.qualified_name != function_name:
+                    continue
                 if class_name is None or info.parent_class == class_name:
                     if info.parent_class:
                         signatures.append(f"{info.parent_class}::{info.name}{info.signature}")
