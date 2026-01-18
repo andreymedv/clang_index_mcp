@@ -3879,10 +3879,18 @@ class CppAnalyzer:
             return {"error": f"Class '{class_name}' not found"}
 
         # Get direct base classes from the class info
+        # class_index is keyed by simple name, so extract it from qualified input
+        is_qualified = "::" in class_name
+        simple_name = SearchEngine._extract_simple_name(class_name)
+
         base_classes = []
         with self.index_lock:
-            for infos in self.class_index.get(class_name, []):
-                base_classes.extend(infos.base_classes)
+            infos = self.class_index.get(simple_name, [])
+            for info in infos:
+                # If qualified name was provided, filter to exact match
+                if is_qualified and info.qualified_name != class_name:
+                    continue
+                base_classes.extend(info.base_classes)
 
         # Remove duplicates
         base_classes = list(set(base_classes))
@@ -3915,10 +3923,18 @@ class CppAnalyzer:
         visited.add(class_name)
 
         # Get base classes for this class
+        # class_index is keyed by simple name, so extract it from qualified input
+        is_qualified = "::" in class_name
+        simple_name = SearchEngine._extract_simple_name(class_name)
+
         base_classes = []
         with self.index_lock:
-            for infos in self.class_index.get(class_name, []):
-                base_classes.extend(infos.base_classes)
+            infos = self.class_index.get(simple_name, [])
+            for info in infos:
+                # If qualified name was provided, filter to exact match
+                if is_qualified and info.qualified_name != class_name:
+                    continue
+                base_classes.extend(info.base_classes)
 
         base_classes = list(set(base_classes))
 
