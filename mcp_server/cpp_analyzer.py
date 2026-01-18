@@ -3942,27 +3942,33 @@ class CppAnalyzer:
         """
         derived_classes = []
 
+        # Normalize class_name: extract simple name from qualified name
+        # class_index is keyed by simple name, but users may pass qualified names
+        # (e.g., "CO::DocumentBuilder::TextBuilder" → "TextBuilder")
+        simple_name = SearchEngine._extract_simple_name(class_name)
+
         # Issue #99 Phase 3: Check if this is a template and get all specializations
         template_patterns = []
         with self.index_lock:
-            # Check if class_name exists in class_index
-            if class_name in self.class_index:
-                for symbol in self.class_index[class_name]:
+            # Check if class_name exists in class_index (use simple_name for lookup)
+            if simple_name in self.class_index:
+                for symbol in self.class_index[simple_name]:
                     # If any symbol is a template, get all specializations
                     if symbol.kind in ("class_template", "partial_specialization"):
                         # Find all specializations of this template
-                        specializations = self._find_template_specializations(class_name)
+                        specializations = self._find_template_specializations(simple_name)
                         # Build patterns to match in base_classes
                         # Matches: "Container", "Container<int>", "Container<double>", etc.
-                        template_patterns.append(class_name)  # Exact match
+                        # Use simple_name since base_classes matching uses suffix matching
+                        template_patterns.append(simple_name)  # Exact match
                         template_patterns.append(
-                            f"{class_name}<"
+                            f"{simple_name}<"
                         )  # Prefix match for specializations
                         break  # Only need to detect template once
 
-            # If not a template, just use exact match
+            # If not a template, just use exact match (use simple_name for matching)
             if not template_patterns:
-                template_patterns = [class_name]
+                template_patterns = [simple_name]
 
         with self.index_lock:
             for name, infos in self.class_index.items():
@@ -3990,7 +3996,7 @@ class CppAnalyzer:
                             # through template parameters
                             if not match_found:
                                 match_found = self._check_template_param_inheritance(
-                                    base_class, class_name
+                                    base_class, simple_name
                                 )
 
                             if match_found:
