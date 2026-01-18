@@ -3779,6 +3779,149 @@ class CppAnalyzer:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
 
+    def _check_template_param_inheritance(
+        self, base_class: str, target_class: str
+    ) -> bool:
+        """
+        Check if a class indirectly inherits from target_class through template
+        parameter inheritance.
+
+        Issue: cplusplus_mcp-hnj
+
+        Example:
+            If Template<T> inherits from T, and a class has base_class="Template<BaseClass>",
+            then it indirectly inherits from BaseClass.
+
+        Args:
+            base_class: The base class string (e.g., "ns::Template<ns::BaseClass>")
+            target_class: The class we're looking for (e.g., "ns::BaseClass" or "BaseClass")
+
+        Returns:
+            True if there's indirect inheritance through template parameters
+        """
+        # Quick check: if no template instantiation, no indirect inheritance possible
+        if "<" not in base_class:
+            return False
+
+        # Parse the template instantiation
+        # Format: "ns::Template<arg1, arg2, ...>" or "Template<arg>"
+        bracket_pos = base_class.find("<")
+        if bracket_pos == -1:
+            return False
+
+        template_name = base_class[:bracket_pos]
+        args_str = base_class[bracket_pos + 1 : -1]  # Remove < and >
+
+        # Find which parameter indices the template inherits from
+        # Look up the template in class_index and check its base_classes for type-parameter-X-Y
+        param_indices = self._get_template_param_inheritance_indices(template_name)
+
+        if not param_indices:
+            return False
+
+        # Parse template arguments (handle nested templates)
+        template_args = self._parse_template_args(args_str)
+
+        # Check if any of the inherited-from parameter positions match target_class
+        for param_idx in param_indices:
+            if param_idx < len(template_args):
+                arg = template_args[param_idx]
+                # Check if the argument matches target_class
+                # Handle both qualified and simple names
+                if arg == target_class:
+                    return True
+                # Check if target_class is the simple name of arg
+                if "::" in arg and arg.endswith("::" + target_class):
+                    return True
+                # Check if arg is the simple name of target_class
+                if "::" in target_class and target_class.endswith("::" + arg):
+                    return True
+                # Check simple name match
+                arg_simple = arg.split("::")[-1] if "::" in arg else arg
+                target_simple = target_class.split("::")[-1] if "::" in target_class else target_class
+                if arg_simple == target_simple:
+                    return True
+
+        return False
+
+    def _get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
+        """
+        Get the template parameter indices that a template inherits from.
+
+        Looks up the template in class_index and analyzes its base_classes
+        for patterns like 'type-parameter-0-0' which indicate inheritance
+        from a template parameter.
+
+        Args:
+            template_name: The template name (e.g., "ns::TemplateInheritsParam")
+
+        Returns:
+            List of parameter indices that are used as base classes.
+            E.g., [0] means the template inherits from its first parameter.
+        """
+        import re
+
+        # Extract simple name for class_index lookup
+        simple_name = template_name.split("::")[-1] if "::" in template_name else template_name
+
+        param_indices = []
+        with self.index_lock:
+            infos = self.class_index.get(simple_name, [])
+            for info in infos:
+                # Only check class_template entries
+                if info.kind != "class_template":
+                    continue
+
+                # If qualified name was specified, must match
+                if "::" in template_name:
+                    if info.qualified_name != template_name:
+                        continue
+
+                # Check base_classes for template parameter patterns
+                for base in info.base_classes:
+                    # Pattern: "type-parameter-X-Y" where Y is the parameter index
+                    match = re.match(r"type-parameter-(\d+)-(\d+)", base)
+                    if match:
+                        param_index = int(match.group(2))
+                        if param_index not in param_indices:
+                            param_indices.append(param_index)
+
+        return param_indices
+
+    def _parse_template_args(self, args_str: str) -> List[str]:
+        """
+        Parse template arguments from a string like "A, B<C, D>, E".
+
+        Handles nested templates by tracking bracket depth.
+
+        Args:
+            args_str: The string inside template brackets (without < and >)
+
+        Returns:
+            List of template argument strings
+        """
+        args = []
+        current_arg = ""
+        depth = 0
+
+        for char in args_str:
+            if char == "<":
+                depth += 1
+                current_arg += char
+            elif char == ">":
+                depth -= 1
+                current_arg += char
+            elif char == "," and depth == 0:
+                args.append(current_arg.strip())
+                current_arg = ""
+            else:
+                current_arg += char
+
+        if current_arg.strip():
+            args.append(current_arg.strip())
+
+        return args
+
     def get_derived_classes(
         self, class_name: str, project_only: bool = True
     ) -> List[Dict[str, Any]]:
@@ -3833,6 +3976,22 @@ class CppAnalyzer:
                                 if base_class == pattern or base_class.startswith(pattern):
                                     match_found = True
                                     break
+                                # Handle qualified names: "ns::BaseClass" should match "BaseClass"
+                                # Check if base_class ends with "::pattern" or "::pattern<"
+                                if "::" in base_class:
+                                    if base_class.endswith("::" + pattern):
+                                        match_found = True
+                                        break
+                                    if base_class.split("::")[-1].startswith(pattern):
+                                        match_found = True
+                                        break
+
+                            # Issue cplusplus_mcp-hnj: Check for indirect inheritance
+                            # through template parameters
+                            if not match_found:
+                                match_found = self._check_template_param_inheritance(
+                                    base_class, class_name
+                                )
 
                             if match_found:
                                 derived_classes.append(
