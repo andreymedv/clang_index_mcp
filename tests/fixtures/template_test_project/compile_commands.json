@@ -8,5 +8,15 @@
     "directory": "/home/andrey/repos/cplusplus_mcp/tests/fixtures/template_test_project",
     "command": "/usr/bin/c++ -std=c++17 -I. -c templates.h -o templates.h.o",
     "file": "templates.h"
+  },
+  {
+    "directory": "/home/andrey/repos/cplusplus_mcp/tests/fixtures/template_test_project",
+    "command": "/usr/bin/c++ -std=c++17 -I. -c advanced_templates.h -o advanced_templates.h.o",
+    "file": "advanced_templates.h"
+  },
+  {
+    "directory": "/home/andrey/repos/cplusplus_mcp/tests/fixtures/template_test_project",
+    "command": "/usr/bin/c++ -std=c++17 -I. -c namespaced_templates.h -o namespaced_templates.h.o",
+    "file": "namespaced_templates.h"
   }
 ]
