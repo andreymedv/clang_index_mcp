@@ -114,6 +114,61 @@ private:
         assert "methods" in info
         assert len(info["methods"]) >= 3
 
+    def test_get_class_info_with_qualified_name(self, temp_project_dir):
+        """Test get_class_info with qualified name from search_classes result.
+
+        Regression test for bug where search_classes returns qualified_name
+        but get_class_info couldn't find the class using that qualified name.
+        """
+        # Create two classes with same simple name in different namespaces
+        (temp_project_dir / "src" / "test.cpp").write_text("""
+namespace ns1 {
+    class Builder {
+    public:
+        void build1();
+    };
+}
+
+namespace ns2 {
+    class Builder {
+    public:
+        void build2();
+    };
+}
+""")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # search_classes finds both classes
+        results = analyzer.search_classes("Builder")
+        assert len(results) >= 2
+
+        # Find qualified names
+        qualified_names = {r["qualified_name"] for r in results}
+        assert "ns1::Builder" in qualified_names
+        assert "ns2::Builder" in qualified_names
+
+        # get_class_info should work with qualified name from search_classes
+        info1 = analyzer.get_class_info("ns1::Builder")
+        assert info1 is not None
+        assert info1["name"] == "Builder"
+        assert info1["qualified_name"] == "ns1::Builder"
+        assert info1["namespace"] == "ns1"
+
+        info2 = analyzer.get_class_info("ns2::Builder")
+        assert info2 is not None
+        assert info2["name"] == "Builder"
+        assert info2["qualified_name"] == "ns2::Builder"
+        assert info2["namespace"] == "ns2"
+
+        # Simple name should still work (returns first match)
+        info_simple = analyzer.get_class_info("Builder")
+        assert info_simple is not None
+        assert info_simple["name"] == "Builder"
+        # Should return one of the two builders
+        assert info_simple["qualified_name"] in ("ns1::Builder", "ns2::Builder")
+
     def test_get_function_signature_tool(self, temp_project_dir):
         """Test get_function_signature functionality"""
         (temp_project_dir / "src" / "test.cpp").write_text("""
