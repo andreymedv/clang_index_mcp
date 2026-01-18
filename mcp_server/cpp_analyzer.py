@@ -3779,9 +3779,7 @@ class CppAnalyzer:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
 
-    def _check_template_param_inheritance(
-        self, base_class: str, target_class: str
-    ) -> bool:
+    def _check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
         """
         Check if a class indirectly inherits from target_class through template
         parameter inheritance.
@@ -3838,7 +3836,9 @@ class CppAnalyzer:
                     return True
                 # Check simple name match
                 arg_simple = arg.split("::")[-1] if "::" in arg else arg
-                target_simple = target_class.split("::")[-1] if "::" in target_class else target_class
+                target_simple = (
+                    target_class.split("::")[-1] if "::" in target_class else target_class
+                )
                 if arg_simple == target_simple:
                     return True
 
