@@ -267,6 +267,67 @@ public:
         assert results[0]['parent_class'] == "ClassA"
         assert results[0]['file'].endswith("Multi.h")
 
+    def test_search_functions_with_qualified_class_name(self, temp_project_dir):
+        """Test that class_name filter works with qualified names (namespace::class)
+
+        Bug fix: class_name parameter should accept both simple names (e.g., "TextBuilder")
+        and qualified names (e.g., "CO::DocumentBuilder::TextBuilder").
+        parent_class is stored as simple name, so qualified names must be normalized.
+        """
+        # Create header with namespaced classes
+        (temp_project_dir / "src" / "Namespaced.h").write_text("""
+namespace OuterNS {
+namespace InnerNS {
+
+class MyClass {
+public:
+    void myMethod();
+    void sharedMethod();
+};
+
+}  // namespace InnerNS
+}  // namespace OuterNS
+
+namespace OtherNS {
+
+class MyClass {
+public:
+    void otherMethod();
+    void sharedMethod();
+};
+
+}  // namespace OtherNS
+""")
+
+        # Index
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with simple class name - should find both MyClass classes' methods
+        results_simple = analyzer.search_functions("sharedMethod", class_name="MyClass")
+        assert len(results_simple) == 2, "Should find sharedMethod in both MyClass classes"
+
+        # Search with qualified class name - should still work (extracts simple name)
+        results_qualified = analyzer.search_functions(
+            "sharedMethod", class_name="OuterNS::InnerNS::MyClass"
+        )
+        # Note: This will still match BOTH MyClass classes because we only extract simple name
+        # This is expected behavior - for true disambiguation, use namespace parameter
+        assert len(results_qualified) == 2, "Qualified class_name should be normalized"
+
+        # Search with simple name should work
+        results_my_method = analyzer.search_functions("myMethod", class_name="MyClass")
+        assert len(results_my_method) == 1, "Should find myMethod"
+        assert results_my_method[0]['parent_class'] == "MyClass"
+
+        # Qualified class name for unique method should also work
+        results_my_method_qualified = analyzer.search_functions(
+            "myMethod", class_name="OuterNS::InnerNS::MyClass"
+        )
+        assert len(results_my_method_qualified) == 1, "Qualified class_name should work"
+        assert results_my_method_qualified[0]['parent_class'] == "MyClass"
+        assert "OuterNS::InnerNS::MyClass" in results_my_method_qualified[0]['qualified_name']
+
     def test_file_name_filter_with_cpp_source_files(self, temp_project_dir):
         """Test that header_file parameter works with .cpp source files too"""
         # Create source file with class

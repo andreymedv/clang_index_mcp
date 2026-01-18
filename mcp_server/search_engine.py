@@ -423,6 +423,12 @@ class SearchEngine:
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
+        # Normalize class_name: extract simple name from qualified name
+        # parent_class is stored as simple name (e.g., "TextBuilder"), but users may pass
+        # qualified name (e.g., "CO::DocumentBuilder::TextBuilder")
+        if class_name:
+            class_name = self._extract_simple_name(class_name)
+
         results = []
 
         # Helper to create result dict
@@ -718,7 +724,7 @@ class SearchEngine:
         Args:
             function_name: Simple name (e.g., "foo") or qualified name
                           (e.g., "ns::MyClass::foo")
-            class_name: Optional class name filter (simple name)
+            class_name: Optional class name filter (simple or qualified name)
 
         Returns:
             List of signature strings
@@ -728,6 +734,11 @@ class SearchEngine:
         # function_index is keyed by simple name, so extract it from qualified input
         is_qualified = "::" in function_name
         simple_name = self._extract_simple_name(function_name)
+
+        # Normalize class_name: extract simple name from qualified name
+        # parent_class is stored as simple name
+        if class_name:
+            class_name = self._extract_simple_name(class_name)
 
         with self.index_lock:
             for info in self.function_index.get(simple_name, []):
