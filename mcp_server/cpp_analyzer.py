@@ -3872,9 +3872,12 @@ class CppAnalyzer:
                 if info.kind != "class_template":
                     continue
 
-                # If qualified name was specified, must match
+                # If qualified name was specified, must match using qualified pattern matching
+                # This supports partially qualified names (e.g., "ns::MyTemplate"
+                # matches "outer::ns::MyTemplate")
                 if "::" in template_name:
-                    if info.qualified_name != template_name:
+                    info_qualified = info.qualified_name if info.qualified_name else info.name
+                    if not SearchEngine.matches_qualified_pattern(info_qualified, template_name):
                         continue
 
                 # Check base_classes for template parameter patterns
@@ -4052,9 +4055,13 @@ class CppAnalyzer:
         with self.index_lock:
             infos = self.class_index.get(simple_name, [])
             for info in infos:
-                # If qualified name was provided, filter to exact match
-                if is_qualified and info.qualified_name != class_name:
-                    continue
+                # If qualified name was provided, filter using qualified pattern matching
+                # This supports partially qualified names (e.g., "ns::MyClass"
+                # matches "outer::ns::MyClass")
+                if is_qualified:
+                    info_qualified = info.qualified_name if info.qualified_name else info.name
+                    if not SearchEngine.matches_qualified_pattern(info_qualified, class_name):
+                        continue
                 base_classes.extend(info.base_classes)
 
         # Remove duplicates
@@ -4096,9 +4103,13 @@ class CppAnalyzer:
         with self.index_lock:
             infos = self.class_index.get(simple_name, [])
             for info in infos:
-                # If qualified name was provided, filter to exact match
-                if is_qualified and info.qualified_name != class_name:
-                    continue
+                # If qualified name was provided, filter using qualified pattern matching
+                # This supports partially qualified names (e.g., "ns::MyClass"
+                # matches "outer::ns::MyClass")
+                if is_qualified:
+                    info_qualified = info.qualified_name if info.qualified_name else info.name
+                    if not SearchEngine.matches_qualified_pattern(info_qualified, class_name):
+                        continue
                 base_classes.extend(info.base_classes)
 
         base_classes = list(set(base_classes))
