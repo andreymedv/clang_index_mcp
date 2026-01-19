@@ -462,6 +462,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "critical: P0 critical tests that must pass"
     )
+    config.addinivalue_line(
+        "markers", "workflow: Cross-tool workflow integration tests"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
