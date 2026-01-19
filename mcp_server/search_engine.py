@@ -625,15 +625,29 @@ class SearchEngine:
             is_qualified = "::" in class_name
             simple_name = self._extract_simple_name(class_name)
 
+            # Try direct lookup first (fast path)
             infos = self.class_index.get(simple_name, [])
+            if not infos:
+                # Case-insensitive fallback: search for matching key
+                simple_name_lower = simple_name.lower()
+                for key in self.class_index:
+                    if key.lower() == simple_name_lower:
+                        infos = self.class_index[key]
+                        simple_name = key  # Use the actual key for method lookup
+                        break
             if not infos:
                 return None
 
-            # If qualified name was provided, find exact match by qualified_name
+            # If qualified name was provided, find match using qualified pattern matching
+            # This supports partially qualified names (e.g., "DocumentBuilder::TextBuilder"
+            # matches "CO::DocumentBuilder::TextBuilder")
             info = None
             if is_qualified:
                 for candidate in infos:
-                    if candidate.qualified_name == class_name:
+                    candidate_qualified = (
+                        candidate.qualified_name if candidate.qualified_name else candidate.name
+                    )
+                    if self.matches_qualified_pattern(candidate_qualified, class_name):
                         info = candidate
                         break
                 if info is None:
@@ -741,10 +755,23 @@ class SearchEngine:
             class_name = self._extract_simple_name(class_name)
 
         with self.index_lock:
-            for info in self.function_index.get(simple_name, []):
-                # If qualified name was provided, filter to exact match
-                if is_qualified and info.qualified_name != function_name:
-                    continue
+            # Try direct lookup first (fast path)
+            infos = self.function_index.get(simple_name, [])
+            if not infos:
+                # Case-insensitive fallback: search for matching key
+                simple_name_lower = simple_name.lower()
+                for key in self.function_index:
+                    if key.lower() == simple_name_lower:
+                        infos = self.function_index[key]
+                        break
+            for info in infos:
+                # If qualified name was provided, filter using qualified pattern matching
+                # This supports partially qualified names (e.g., "MyClass::foo"
+                # matches "ns::MyClass::foo")
+                if is_qualified:
+                    info_qualified = info.qualified_name if info.qualified_name else info.name
+                    if not self.matches_qualified_pattern(info_qualified, function_name):
+                        continue
                 if class_name is None or info.parent_class == class_name:
                     if info.parent_class:
                         signatures.append(f"{info.parent_class}::{info.name}{info.signature}")
