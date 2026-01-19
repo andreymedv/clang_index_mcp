@@ -408,5 +408,211 @@ namespace MyApp {
             assert len(analyzer.search_classes("MYAPP::.*")) >= 1
 
 
+class TestPartiallyQualifiedNameLookups:
+    """Test partially qualified name support in get_class_info and related tools.
+
+    Issue: get_class_info was using exact string matching for qualified names,
+    which caused "DocumentBuilder::PresentationBuilder" to fail when the actual
+    qualified name was "CO::DocumentBuilder::PresentationBuilder".
+
+    The fix uses matches_qualified_pattern() for suffix-based matching.
+    """
+
+    def test_get_class_info_partially_qualified(self):
+        """get_class_info should find class with partially qualified name."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace CO {
+    namespace DocumentBuilder {
+        class PresentationBuilder {
+        public:
+            void build();
+        };
+    }
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Fully qualified should work
+            result = analyzer.get_class_info("CO::DocumentBuilder::PresentationBuilder")
+            assert result is not None
+            assert result["name"] == "PresentationBuilder"
+            assert result["qualified_name"] == "CO::DocumentBuilder::PresentationBuilder"
+
+            # Partially qualified (missing CO::) should also work
+            result = analyzer.get_class_info("DocumentBuilder::PresentationBuilder")
+            assert result is not None
+            assert result["name"] == "PresentationBuilder"
+            assert result["qualified_name"] == "CO::DocumentBuilder::PresentationBuilder"
+
+            # Simple name should work
+            result = analyzer.get_class_info("PresentationBuilder")
+            assert result is not None
+            assert result["name"] == "PresentationBuilder"
+
+    def test_get_class_info_disambiguates_correctly(self):
+        """Partially qualified name should find the right class when there are multiple."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace app {
+    namespace ui {
+        class View {
+        public:
+            void render();
+        };
+    }
+}
+
+namespace legacy {
+    namespace ui {
+        class View {
+        public:
+            void display();
+        };
+    }
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # "app::ui::View" should find the app version
+            result = analyzer.get_class_info("app::ui::View")
+            assert result is not None
+            assert result["qualified_name"] == "app::ui::View"
+            assert any(m["name"] == "render" for m in result["methods"])
+
+            # "legacy::ui::View" should find the legacy version
+            result = analyzer.get_class_info("legacy::ui::View")
+            assert result is not None
+            assert result["qualified_name"] == "legacy::ui::View"
+            assert any(m["name"] == "display" for m in result["methods"])
+
+            # "ui::View" (partial) should find one of them (first match)
+            result = analyzer.get_class_info("ui::View")
+            assert result is not None
+            assert result["name"] == "View"
+            assert "ui::View" in result["qualified_name"]
+
+    def test_get_function_signature_partially_qualified(self):
+        """get_function_signature should work with partially qualified names."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace outer {
+    namespace inner {
+        void myFunction(int x) {}
+    }
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Fully qualified
+            sigs = analyzer.get_function_signature("outer::inner::myFunction")
+            assert len(sigs) >= 1
+            assert any("myFunction" in s for s in sigs)
+
+            # Partially qualified
+            sigs = analyzer.get_function_signature("inner::myFunction")
+            assert len(sigs) >= 1
+            assert any("myFunction" in s for s in sigs)
+
+    def test_get_class_info_exact_match_with_leading_colons(self):
+        """Leading :: should still require exact global namespace match."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns {
+    class MyClass {};
+}
+
+class MyClass {};
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Leading :: means global namespace only
+            result = analyzer.get_class_info("::MyClass")
+            assert result is not None
+            assert result["qualified_name"] == "MyClass"
+            assert result["namespace"] == ""
+
+    def test_get_class_hierarchy_partially_qualified(self):
+        """get_class_hierarchy should work with partially qualified names."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace outer {
+    namespace inner {
+        class Base {};
+        class Derived : public Base {};
+    }
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Partially qualified
+            hierarchy = analyzer.get_class_hierarchy("inner::Derived")
+            assert "error" not in hierarchy
+            assert hierarchy["name"] == "inner::Derived"
+
+    def test_case_insensitive_partially_qualified(self):
+        """Partially qualified matching should be case-insensitive."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace MyApp {
+    namespace Core {
+        class MyClass {};
+    }
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Case-insensitive partial match
+            result = analyzer.get_class_info("core::myclass")
+            assert result is not None
+            assert result["name"] == "MyClass"
+
+            result = analyzer.get_class_info("CORE::MYCLASS")
+            assert result is not None
+            assert result["name"] == "MyClass"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
