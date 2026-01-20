@@ -7,6 +7,8 @@ from .symbol_info import SymbolInfo
 class CallSite:
     """Represents a single call site with location information."""
 
+    __slots__ = ("caller_usr", "callee_usr", "file", "line", "column")
+
     def __init__(
         self, caller_usr: str, callee_usr: str, file: str, line: int, column: Optional[int] = None
     ):
