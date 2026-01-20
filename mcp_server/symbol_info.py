@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class SymbolInfo:
     """Information about a C++ symbol (class, function, etc.)"""
 
