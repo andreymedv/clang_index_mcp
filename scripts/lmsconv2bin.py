@@ -30,6 +30,46 @@ def is_structural_channel_text(text: str) -> bool:
     return t.startswith("<|channel|>") and t.endswith("<|message|>")
 
 
+def extract_tools_from_data(data: dict) -> dict:
+    """Extract all tools descriptions from genInfo in messages.
+
+    Returns dict: {tool_name: tool_description_text}
+    """
+    tools_dict = {}
+
+    messages = data.get("messages", [])
+    for msg in messages:
+        versions = msg.get("versions", [])
+        if not versions:
+            continue
+
+        version = versions[msg.get("currentlySelected", 0)]
+        steps = version.get("steps", [])
+
+        for step in steps:
+            gen_info = step.get("genInfo", {})
+            pred_config = gen_info.get("predictionConfig", {})
+            fields = pred_config.get("fields", [])
+
+            for field in fields:
+                if field.get("key") == "llm.prediction.tools":
+                    tools_value = field.get("value", {})
+                    tools_list = tools_value.get("tools", [])
+
+                    for tool in tools_list:
+                        tool_type = tool.get("type")
+                        if tool_type == "function":
+                            func = tool.get("function", {})
+                            tool_name = func.get("name", "unknown")
+                            description = func.get("description", "No description available")
+
+                            # Keep first occurrence (most detailed)
+                            if tool_name not in tools_dict:
+                                tools_dict[tool_name] = description
+
+    return tools_dict
+
+
 def format_tool_call(block_content):
     """Try building a short tool call description."""
     lines = []
@@ -143,6 +183,18 @@ def conversation_to_markdown(data: dict) -> str:
         lines.append("```")
         lines.append("")
 
+    # NEW: Extract and display available tools
+    tools_dict = extract_tools_from_data(data)
+    if tools_dict:
+        lines.append("## Available Tools")
+        lines.append("")
+        for tool_name in sorted(tools_dict.keys()):
+            description = tools_dict[tool_name]
+            lines.append(f"### `{tool_name}`")
+            lines.append("")
+            lines.append(description)
+            lines.append("")
+
     for msg in data.get("messages", []):
         # In LM Studio, main information is in versions[currentlySelected]
         role = msg["versions"][msg.get("currentlySelected", 0)].get("role")
@@ -151,7 +203,7 @@ def conversation_to_markdown(data: dict) -> str:
             user_text = process_user_message(msg)
             if not user_text:
                 continue
-            lines.append("### User")
+            lines.append("# == USER ==")
             lines.append("")
             lines.append(user_text)
             lines.append("")
@@ -162,25 +214,25 @@ def conversation_to_markdown(data: dict) -> str:
 
             for kind, block in steps:
                 if kind == "analysis":
-                    lines.append("### Assistant analysis")
+                    lines.append("# == ASSISTANT: analysis ==")
                     lines.append("")
                     for line in block.splitlines():
-                        lines.append(f"> [ANALYSIS] {line}")
+                        lines.append(f" {line}")
                     lines.append("")
                 elif kind == "tool_call":
-                    lines.append("### Assistant tools")
+                    lines.append("# == ASSISTANT: tool invocation ==")
                     lines.append("")
                     for line in block.splitlines():
-                        lines.append(f"> [TOOL CALL] {line}")
+                        lines.append(f" {line}")
                     lines.append("")
                 elif kind == "tool_result":
-                    lines.append("### Assistant tools")
+                    lines.append("# == ASSISTANT: tool result ==")
                     lines.append("")
                     for line in block.splitlines():
-                        lines.append(f"> [TOOL RESULT] {line}")
+                        lines.append(f" {line}")
                     lines.append("")
                 elif kind == "final":
-                    lines.append("### Assistant")
+                    lines.append("# == ASSISTANT ==")
                     lines.append("")
                     lines.append(block)
                     lines.append("")
@@ -189,7 +241,7 @@ def conversation_to_markdown(data: dict) -> str:
             version = msg["versions"][msg.get("currentlySelected", 0)]
             text = extract_text_content(version.get("content", []))
             if text:
-                lines.append(f"### {role.capitalize()}")
+                lines.append(f"# == {role.capitalize()} ==")
                 lines.append("")
                 lines.append(text)
                 lines.append("")
