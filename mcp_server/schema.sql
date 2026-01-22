@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 13.0
+-- Version: 14.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v14.0: Added virtual/abstract method indicators (is_virtual, is_pure_virtual, is_const, is_static) for LLM Integration (Phase 5)
 -- Changelog v13.0: Added template tracking fields (Template Search Support)
 -- Changelog v12.0: Added template_params to type_aliases table (Issue #84, Phase 2: Template Aliases)
 -- Changelog v11.0: Added type_aliases table for type alias tracking (Issue #84, Phase 1: Simple Aliases)
@@ -72,6 +73,12 @@ CREATE TABLE IF NOT EXISTS symbols (
 
     -- Definition tracking (v6.0: Phase 1 Multiple Declarations)
     is_definition BOOLEAN NOT NULL DEFAULT 0,  -- True if cursor is a definition (has body)
+
+    -- Virtual/abstract indicators (v14.0: Phase 5 LLM Integration)
+    is_virtual BOOLEAN NOT NULL DEFAULT 0,      -- True if method is virtual
+    is_pure_virtual BOOLEAN NOT NULL DEFAULT 0, -- True if method is pure virtual (= 0)
+    is_const BOOLEAN NOT NULL DEFAULT 0,        -- True if method is const-qualified
+    is_static BOOLEAN NOT NULL DEFAULT 0,       -- True if method/function is static
 
     -- Documentation (v7.0: Phase 2 LLM Integration)
     brief TEXT,                        -- Brief description (first line of documentation)
@@ -152,7 +159,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"13.0"', julianday('now')),
+    ('version', '"14.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
