@@ -17,6 +17,13 @@ This is a Model Context Protocol (MCP) server that provides semantic C++ code an
 - **Documentation extraction (Phase 2):** Extract brief and full documentation comments from C++ code
   - Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments
   - Returns documentation in MCP tool responses for LLM consumption
+- **Virtual/abstract method indicators (Phase 5):** Distinguish virtual methods, pure virtual interfaces, and implementations
+  - `is_virtual`: True for virtual methods (overrideable)
+  - `is_pure_virtual`: True for pure virtual methods (= 0, abstract interface)
+  - `is_const`: True for const-qualified methods
+  - `is_static`: True for static methods/functions
+  - `is_definition`: True if has body/implementation (helps distinguish declarations from definitions)
+  - Enables LLMs to identify abstract interfaces and find implementations in derived classes
 - Incremental analysis with intelligent change detection (30-300x faster re-indexing)
 - SQLite-backed symbol cache with FTS5 full-text search
 - Multi-process parallel parsing with GIL bypass for 6-7x speedup
@@ -335,9 +342,10 @@ make ie                         # install-editable
 - **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
 - **Type Alias Extraction:** mcp_server/cpp_analyzer.py:_extract_alias_info() (handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
 - **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
+- **Virtual Method Extraction (Phase 5):** mcp_server/cpp_analyzer.py:_process_cursor() (cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
 - **Parallel Worker:** mcp_server/cpp_analyzer.py:72-131 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
 - **Call Graph Analysis (Phase 4):** mcp_server/call_graph.py (SQLite-only queries, no in-memory dicts)
-- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v12.0 with type_aliases table, template_params support, brief/doc_comment fields, and call_sites table)
+- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v14.0 with is_virtual, is_pure_virtual, is_const, is_static columns for method indicators)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py
 - **Compile Commands:** mcp_server/compile_commands_manager.py
@@ -580,23 +588,29 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 2. **Documentation extraction (Phase 2):** MCP tools (`search_classes`, `search_functions`, `get_class_info`) now return `brief` and `doc_comment` fields extracted from C++ documentation comments. This allows LLMs to understand symbol purpose without reading source files. Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Documentation is truncated at 4000 characters with "..." suffix if longer.
 
-3. **Pattern matching behavior:** All search tools (`search_classes`, `search_functions`, `search_symbols`, `find_in_file`) support flexible pattern matching:
+3. **Virtual/abstract method indicators (Phase 5):** MCP tools now return `is_virtual`, `is_pure_virtual`, `is_const`, `is_static`, and `is_definition` fields for methods. This enables LLMs to:
+   - Identify abstract interfaces (classes with `is_pure_virtual: true` methods have no implementation in that class)
+   - Find implementations in derived classes (search for method name, filter by `is_definition: true` and non-pure-virtual)
+   - Understand method contracts (const methods promise not to modify state, static methods are class-level)
+   - Distinguish declarations from definitions when searching for where code actually runs
+
+4. **Pattern matching behavior:** All search tools (`search_classes`, `search_functions`, `search_symbols`, `find_in_file`) support flexible pattern matching:
    - **Empty string (`""`)** matches ALL symbols - useful when filtering by file (e.g., `search_classes("", file_name="example.h")` returns all classes in that file)
    - **Plain text** (no regex metacharacters) performs exact match, case-insensitive (e.g., `"View"` matches only "View", not "ViewManager")
    - **Regex patterns** (with `.*+?[]{}()|` etc.) use anchored full-match (e.g., `"View.*"` matches "View", "ViewManager" but not "ListView"; `".*View.*"` matches all containing "View")
 
-4. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
+5. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
 
-5. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
+6. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
 
-6. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
+7. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 
-7. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
+8. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-8. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 12.0** includes type_aliases table with template_params support (for template aliases), documentation fields (brief, doc_comment), and call_sites table for line-level call graph tracking.
+9. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 14.0** includes virtual method indicators (is_virtual, is_pure_virtual, is_const, is_static), type_aliases table with template_params support, documentation fields (brief, doc_comment), and call_sites table for line-level call graph tracking.
 
-9. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
+10. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
-10. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
+11. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
 
-11. **Test before committing:** Always run `make test` and `make check` before creating PRs.
+12. **Test before committing:** Always run `make test` and `make check` before creating PRs.

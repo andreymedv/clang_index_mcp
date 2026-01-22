@@ -502,6 +502,12 @@ class SearchEngine:
                 "header_line": info.header_line,
                 "header_start_line": info.header_start_line,
                 "header_end_line": info.header_end_line,
+                # Phase 5: Virtual/abstract indicators
+                "is_virtual": info.is_virtual,
+                "is_pure_virtual": info.is_pure_virtual,
+                "is_const": info.is_const,
+                "is_static": info.is_static,
+                "is_definition": info.is_definition,
                 # Phase 2: Documentation
                 "brief": info.brief,
                 "doc_comment": info.doc_comment,
@@ -742,6 +748,12 @@ class SearchEngine:
                             "header_line": func_info.header_line,
                             "header_start_line": func_info.header_start_line,
                             "header_end_line": func_info.header_end_line,
+                            # Phase 5: Virtual/abstract indicators
+                            "is_virtual": func_info.is_virtual,
+                            "is_pure_virtual": func_info.is_pure_virtual,
+                            "is_const": func_info.is_const,
+                            "is_static": func_info.is_static,
+                            "is_definition": func_info.is_definition,
                             # Phase 2: Documentation for methods
                             "brief": func_info.brief,
                             "doc_comment": func_info.doc_comment,
