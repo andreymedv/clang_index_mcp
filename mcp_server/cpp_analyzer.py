@@ -1795,6 +1795,18 @@ class CppAnalyzer:
                 # Extract template parameters (Task 3.2)
                 template_params = self._extract_template_parameters(cursor)
 
+                # Phase 5: Extract virtual/const/static/access for template methods
+                # Check if this is a method template (has parent_class)
+                is_method_template = bool(parent_class)
+                is_virtual = cursor.is_virtual_method() if is_method_template else False
+                is_pure_virtual = cursor.is_pure_virtual_method() if is_method_template else False
+                is_const = cursor.is_const_method() if is_method_template else False
+                is_static = cursor.is_static_method()
+                access_spec = cursor.access_specifier
+                access = access_spec.name.lower() if access_spec else "public"
+                if access in ("none", "invalid"):
+                    access = "public"
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function_template",
@@ -1807,6 +1819,7 @@ class CppAnalyzer:
                         self._is_project_file(loc_info["file"]) if loc_info["file"] else False
                     ),
                     namespace=namespace,
+                    access=access,
                     parent_class=parent_class,  # Could be template method
                     usr=function_usr,
                     # Template functions are not specializations themselves
@@ -1822,6 +1835,11 @@ class CppAnalyzer:
                     header_line=loc_info["header_line"],
                     header_start_line=loc_info["header_start_line"],
                     header_end_line=loc_info["header_end_line"],
+                    # Phase 5: Virtual/abstract indicators
+                    is_virtual=is_virtual,
+                    is_pure_virtual=is_pure_virtual,
+                    is_const=is_const,
+                    is_static=is_static,
                     # Definition-wins logic
                     is_definition=cursor.is_definition(),
                     # Documentation
@@ -1870,6 +1888,19 @@ class CppAnalyzer:
                 if is_template_spec:
                     primary_usr = self._get_primary_template_usr(cursor)
 
+                # Phase 5: Extract virtual/const/static/access for methods
+                is_method = kind == CursorKind.CXX_METHOD
+                is_virtual = cursor.is_virtual_method() if is_method else False
+                is_pure_virtual = cursor.is_pure_virtual_method() if is_method else False
+                is_const = cursor.is_const_method() if is_method else False
+                is_static = cursor.is_static_method()
+                # Access specifier: PUBLIC, PRIVATE, PROTECTED, NONE, INVALID
+                access_spec = cursor.access_specifier
+                access = access_spec.name.lower() if access_spec else "public"
+                # Normalize: treat "none" and "invalid" as "public" for functions
+                if access in ("none", "invalid"):
+                    access = "public"
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
@@ -1882,7 +1913,8 @@ class CppAnalyzer:
                         self._is_project_file(loc_info["file"]) if loc_info["file"] else False
                     ),
                     namespace=namespace,
-                    parent_class=parent_class if kind == CursorKind.CXX_METHOD else "",
+                    access=access,
+                    parent_class=parent_class if is_method else "",
                     usr=function_usr,
                     # Phase 3: Overload metadata
                     is_template_specialization=is_template_spec,
@@ -1897,6 +1929,11 @@ class CppAnalyzer:
                     header_line=loc_info["header_line"],
                     header_start_line=loc_info["header_start_line"],
                     header_end_line=loc_info["header_end_line"],
+                    # Phase 5: Virtual/abstract indicators
+                    is_virtual=is_virtual,
+                    is_pure_virtual=is_pure_virtual,
+                    is_const=is_const,
+                    is_static=is_static,
                     # Phase 1: Definition-wins logic
                     is_definition=cursor.is_definition(),
                     # Phase 2: Documentation

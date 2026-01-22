@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "13.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "14.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -428,6 +428,11 @@ class SqliteCacheBackend:
             symbol.header_start_line,  # v5.0: Header location
             symbol.header_end_line,  # v5.0: Header location
             symbol.is_definition,  # v6.0: Definition tracking
+            # v14.0: Virtual/abstract indicators
+            symbol.is_virtual,
+            symbol.is_pure_virtual,
+            symbol.is_const,
+            symbol.is_static,
             symbol.brief,  # v7.0: Documentation
             symbol.doc_comment,  # v7.0: Documentation
             now,  # created_at
@@ -487,6 +492,13 @@ class SqliteCacheBackend:
             header_end_line=row["header_end_line"] if "header_end_line" in row.keys() else None,
             # v6.0: Definition tracking
             is_definition=bool(row["is_definition"]) if "is_definition" in row.keys() else False,
+            # v14.0: Virtual/abstract indicators
+            is_virtual=bool(row["is_virtual"]) if "is_virtual" in row.keys() else False,
+            is_pure_virtual=(
+                bool(row["is_pure_virtual"]) if "is_pure_virtual" in row.keys() else False
+            ),
+            is_const=bool(row["is_const"]) if "is_const" in row.keys() else False,
+            is_static=bool(row["is_static"]) if "is_static" in row.keys() else False,
             # v7.0: Documentation
             brief=row["brief"] if "brief" in row.keys() else None,
             doc_comment=row["doc_comment"] if "doc_comment" in row.keys() else None,
@@ -515,9 +527,10 @@ class SqliteCacheBackend:
                         is_template, template_kind, template_parameters, primary_template_usr,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
+                        is_virtual, is_pure_virtual, is_const, is_static,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(symbol),
                 )
@@ -557,9 +570,10 @@ class SqliteCacheBackend:
                         is_template, template_kind, template_parameters, primary_template_usr,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
+                        is_virtual, is_pure_virtual, is_const, is_static,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [self._symbol_to_tuple(s) for s in symbols],
                 )
@@ -1532,9 +1546,10 @@ class SqliteCacheBackend:
                         is_template, template_kind, template_parameters, primary_template_usr,
                         start_line, end_line, header_file, header_line,
                         header_start_line, header_end_line, is_definition,
+                        is_virtual, is_pure_virtual, is_const, is_static,
                         brief, doc_comment,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     self._symbol_to_tuple(test_symbol),
                 )
