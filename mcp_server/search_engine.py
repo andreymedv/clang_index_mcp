@@ -290,6 +290,44 @@ class SearchEngine:
 
         return expanded_names
 
+    @staticmethod
+    def _matches_namespace(symbol_namespace: str, filter_namespace: str) -> bool:
+        """Check if symbol's namespace matches the filter namespace.
+
+        Supports partial namespace matching: filter "DocumentBuilder" will match
+        symbol namespace "CO::DocumentBuilder" (suffix match at :: boundary).
+
+        Args:
+            symbol_namespace: The namespace of the symbol (e.g., "CO::DocumentBuilder")
+            filter_namespace: The namespace filter from the user (e.g., "DocumentBuilder")
+
+        Returns:
+            True if symbol_namespace matches filter_namespace (exact or suffix match)
+
+        Examples:
+            _matches_namespace("CO::DocumentBuilder", "DocumentBuilder") → True  (suffix)
+            _matches_namespace("DocumentBuilder", "DocumentBuilder") → True  (exact)
+            _matches_namespace("CO::DocumentBuilder", "CO::DocumentBuilder") → True  (exact)
+            _matches_namespace("X::CO::DocumentBuilder", "CO::DocumentBuilder") → True  (suffix)
+            _matches_namespace("FooDocumentBuilder", "DocumentBuilder") → False  (not at boundary)
+            _matches_namespace("", "") → True  (global namespace)
+            _matches_namespace("ns1", "") → False  (not global namespace)
+        """
+        # Empty filter matches only global namespace (empty symbol_namespace)
+        if filter_namespace == "":
+            return symbol_namespace == ""
+
+        # Exact match
+        if symbol_namespace == filter_namespace:
+            return True
+
+        # Suffix match: symbol_namespace ends with "::filter_namespace"
+        suffix = "::" + filter_namespace
+        if symbol_namespace.endswith(suffix):
+            return True
+
+        return False
+
     def search_classes(
         self,
         pattern: str,
@@ -312,8 +350,12 @@ class SearchEngine:
             pattern: Search pattern (qualified, unqualified, or regex)
             project_only: Only return symbols from project files
             file_name: Optional file name filter
-            namespace: Optional namespace filter (exact match, case-sensitive)
-                      Use empty string "" to match global namespace only
+            namespace: Optional namespace filter with partial matching support.
+                      Supports suffix matching at :: boundaries (case-sensitive).
+                      Examples:
+                        - "DocumentBuilder" matches "CO::DocumentBuilder" (suffix)
+                        - "CO::DocumentBuilder" matches "TopLevel::CO::DocumentBuilder" (suffix)
+                        - "" (empty string) matches only global namespace
 
         Returns:
             List of matching class dictionaries with qualified_name and namespace fields
@@ -346,10 +388,9 @@ class SearchEngine:
                             if not info.file.endswith(file_name):
                                 continue
 
-                        # Filter by namespace if specified
+                        # Filter by namespace if specified (supports partial matching)
                         if namespace is not None:
-                            # Exact match (case-sensitive) for namespace disambiguation
-                            if info.namespace != namespace:
+                            if not self._matches_namespace(info.namespace, namespace):
                                 continue
 
                         results.append(
@@ -409,9 +450,13 @@ class SearchEngine:
             project_only: Only return symbols from project files
             class_name: Optional class name filter (for methods)
             file_name: Optional file name filter
-            namespace: Optional namespace filter (exact match, case-sensitive)
-                      For methods, matches the namespace + class (e.g., "app::Database")
-                      Use empty string "" to match global namespace only
+            namespace: Optional namespace filter with partial matching support.
+                      Supports suffix matching at :: boundaries (case-sensitive).
+                      For methods, matches the namespace + class (e.g., "app::Database").
+                      Examples:
+                        - "DocumentBuilder" matches "CO::DocumentBuilder" (suffix)
+                        - "Handler" matches "app::Handler" (suffix)
+                        - "" (empty string) matches only global namespace
 
         Returns:
             List of matching function dictionaries with qualified_name and namespace fields
@@ -498,10 +543,9 @@ class SearchEngine:
                             if class_name and info.parent_class != class_name:
                                 continue
 
-                            # Filter by namespace if specified
+                            # Filter by namespace if specified (supports partial matching)
                             if namespace is not None:
-                                # Exact match (case-sensitive) for namespace disambiguation
-                                if info.namespace != namespace:
+                                if not self._matches_namespace(info.namespace, namespace):
                                     continue
 
                             results.append(_create_result(info))
@@ -529,10 +573,9 @@ class SearchEngine:
                             if class_name and info.parent_class != class_name:
                                 continue
 
-                            # Filter by namespace if specified
+                            # Filter by namespace if specified (supports partial matching)
                             if namespace is not None:
-                                # Exact match (case-sensitive) for namespace disambiguation
-                                if info.namespace != namespace:
+                                if not self._matches_namespace(info.namespace, namespace):
                                     continue
 
                             results.append(_create_result(info))
@@ -561,8 +604,11 @@ class SearchEngine:
             pattern: Search pattern (qualified, unqualified, or regex)
             project_only: Only return symbols from project files
             symbol_types: Optional list of symbol types to filter (e.g., ["class", "function"])
-            namespace: Optional namespace filter (exact match, case-sensitive)
-                      Use empty string "" to match global namespace only
+            namespace: Optional namespace filter with partial matching support.
+                      Supports suffix matching at :: boundaries (case-sensitive).
+                      Examples:
+                        - "DocumentBuilder" matches "CO::DocumentBuilder" (suffix)
+                        - "" (empty string) matches only global namespace
 
         Returns:
             Dictionary with "classes" and "functions" keys containing matching symbols

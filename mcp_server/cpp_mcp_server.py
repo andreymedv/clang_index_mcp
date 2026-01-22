@@ -301,12 +301,12 @@ async def list_tools() -> List[Tool]:
                     "namespace": {
                         "type": "string",
                         "description": (
-                            "Optional: Filter results to only classes in the specified namespace (exact "
-                            "match, case-sensitive). **Use this to disambiguate** when multiple namespaces "
-                            "have the same class name (e.g., ns1::Handler vs ns2::Handler). Examples: "
-                            "'app::ui' returns only classes in app::ui namespace, '' (empty string) returns "
-                            "only global namespace classes. If not specified, returns all matches regardless "
-                            "of namespace."
+                            "Optional: Filter results to classes in the specified namespace. **Supports "
+                            "partial namespace matching** at :: boundaries (case-sensitive). "
+                            "'DocumentBuilder' matches 'CO::DocumentBuilder', 'app' matches 'myapp::app', "
+                            "'app::ui' returns classes in any namespace ending with '::app::ui'. "
+                            "'' (empty string) returns only global namespace classes. "
+                            "**Use this to disambiguate** when multiple namespaces have the same class name."
                         ),
                     },
                 },
@@ -366,13 +366,13 @@ async def list_tools() -> List[Tool]:
                     "namespace": {
                         "type": "string",
                         "description": (
-                            "Optional: Filter results to only functions/methods in the specified namespace "
-                            "(exact match, case-sensitive). **Use this to disambiguate** when multiple "
-                            "namespaces have the same function name. For methods, matches namespace + class "
-                            "(e.g., 'app::Handler'). Examples: 'app' returns only functions in app namespace, "
-                            "'app::Handler' returns only methods of app::Handler class, '' (empty string) "
-                            "returns only global namespace functions. If not specified, returns all matches "
-                            "regardless of namespace."
+                            "Optional: Filter results to functions/methods in the specified namespace. "
+                            "**Supports partial namespace matching** at :: boundaries (case-sensitive). "
+                            "For methods, matches namespace + class. "
+                            "'Handler' matches 'app::Handler', 'app' matches 'myapp::app', "
+                            "'app::Handler' matches 'org::app::Handler'. "
+                            "'' (empty string) returns only global namespace functions. "
+                            "**Use this to disambiguate** when multiple namespaces have the same function."
                         ),
                     },
                 },
@@ -469,12 +469,12 @@ async def list_tools() -> List[Tool]:
                     "namespace": {
                         "type": "string",
                         "description": (
-                            "Optional: Filter results to only symbols in the specified namespace (exact match, "
-                            "case-sensitive). **Use this to disambiguate** when multiple namespaces have the "
-                            "same symbol name. For methods, matches namespace + class. Examples: 'app' returns "
-                            "only symbols in app namespace, 'app::Handler' returns only Handler class members, "
-                            "'' (empty string) returns only global namespace symbols. If not specified, returns "
-                            "all matches regardless of namespace."
+                            "Optional: Filter results to symbols in the specified namespace. "
+                            "**Supports partial namespace matching** at :: boundaries (case-sensitive). "
+                            "For methods, matches namespace + class. "
+                            "'Handler' matches 'app::Handler', 'app' matches 'myapp::app'. "
+                            "'' (empty string) returns only global namespace symbols. "
+                            "**Use this to disambiguate** when multiple namespaces have the same symbol."
                         ),
                     },
                 },
