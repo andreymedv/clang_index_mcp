@@ -49,7 +49,13 @@ class SymbolInfo:
     brief: Optional[str] = None  # Brief description (first line of documentation)
     doc_comment: Optional[str] = None  # Full documentation comment
 
-    # Internal field for definition-wins logic (not persisted)
+    # Virtual/abstract method indicators (Phase 5: LLM Integration)
+    is_virtual: bool = False  # True if method is virtual
+    is_pure_virtual: bool = False  # True if method is pure virtual (= 0)
+    is_const: bool = False  # True if method is const-qualified
+    is_static: bool = False  # True if method/function is static
+
+    # Definition tracking (exposed for LLM tools)
     is_definition: bool = False  # True if this cursor is a definition (has body)
 
     def to_dict(self):
@@ -86,4 +92,10 @@ class SymbolInfo:
             # Documentation (Phase 2)
             "brief": self.brief,
             "doc_comment": self.doc_comment,
+            # Virtual/abstract indicators (Phase 5)
+            "is_virtual": self.is_virtual,
+            "is_pure_virtual": self.is_pure_virtual,
+            "is_const": self.is_const,
+            "is_static": self.is_static,
+            "is_definition": self.is_definition,
         }
