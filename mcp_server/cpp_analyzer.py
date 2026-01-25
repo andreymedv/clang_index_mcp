@@ -1998,6 +1998,31 @@ class CppAnalyzer:
             if referenced and referenced.get_usr():
                 called_usr = referenced.get_usr()
 
+                # BUG FIX (cplusplus_mcp-y6j): Template call tracking USR mismatch
+                # For template function calls, cursor.referenced returns the instantiation USR
+                # (e.g., someFunction<const char[6], int>), but function_index stores the
+                # generic template USR (e.g., someFunction<T...>). This causes find_callers,
+                # find_callees, get_call_sites, and get_call_path to fail for templates.
+                #
+                # Solution: Use clang_getSpecializedCursorTemplate to get the canonical
+                # template USR when the referenced cursor is a template instantiation.
+                # This ensures call sites are stored with the same USR as the template
+                # definition, enabling successful lookups.
+                from clang import cindex
+
+                try:
+                    template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(
+                        referenced
+                    )
+                    if template_cursor and not template_cursor.kind.is_invalid():
+                        template_usr = template_cursor.get_usr()
+                        if template_usr:
+                            # Use canonical template USR instead of instantiation USR
+                            called_usr = template_usr
+                except Exception:
+                    # If not a template instantiation or API fails, use original USR
+                    pass
+
                 # Phase 3: Extract call site location information
                 location = cursor.location
                 call_file = location.file.name if location.file else None
