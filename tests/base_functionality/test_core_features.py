@@ -185,8 +185,10 @@ void functionInFile2() {}
         analyzer.index_project()
 
         # Search in specific file
-        file1_symbols = analyzer.find_in_file(str(file1), ".*")
-        file2_symbols = analyzer.find_in_file(str(file2), ".*")
+        file1_response = analyzer.find_in_file(str(file1), ".*")
+        file2_response = analyzer.find_in_file(str(file2), ".*")
+        file1_symbols = file1_response["results"]
+        file2_symbols = file2_response["results"]
 
         # Verify file-specific search works
         assert len(file1_symbols) >= 2, "Should find class and function in file1"

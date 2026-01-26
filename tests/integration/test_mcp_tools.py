@@ -346,16 +346,16 @@ class MyClass {};
         analyzer.index_project()
 
         # Test with just filename
-        symbols = analyzer.find_in_file("myfile.cpp", ".*")
-        assert len(symbols) > 0
+        response = analyzer.find_in_file("myfile.cpp", ".*")
+        assert len(response["results"]) > 0
 
         # Test with relative path
-        symbols = analyzer.find_in_file("src/myfile.cpp", ".*")
-        assert len(symbols) > 0
+        response = analyzer.find_in_file("src/myfile.cpp", ".*")
+        assert len(response["results"]) > 0
 
         # Test with absolute path
-        symbols = analyzer.find_in_file(str(test_file), ".*")
-        assert len(symbols) > 0
+        response = analyzer.find_in_file(str(test_file), ".*")
+        assert len(response["results"]) > 0
 
     def test_incremental_indexing(self, temp_project_dir):
         """Test incremental indexing after file modifications"""
@@ -537,14 +537,59 @@ class TestMCPServerToolsAdditional:
                 analyzer.search_classes(pattern)
 
     def test_find_in_file_with_nonexistent_file(self, temp_project_dir):
-        """Test find_in_file with non-existent file"""
+        """Test find_in_file with non-existent file returns suggestions"""
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
-        
+
         # Query non-existent file
-        results = analyzer.find_in_file("nonexistent.cpp", ".*")
-        assert isinstance(results, list)
-        assert len(results) == 0, "Should return empty list for non-existent file"
+        response = analyzer.find_in_file("nonexistent.cpp", ".*")
+        assert isinstance(response, dict)
+        assert "results" in response
+        assert len(response["results"]) == 0, "Should return empty results for non-existent file"
+        # Should have suggestions for similar files (if any indexed)
+        assert "suggestions" in response or "message" in response
+
+    def test_find_in_file_glob_pattern(self, temp_project_dir):
+        """Test find_in_file with glob pattern matches multiple files"""
+        # Create test files in different directories
+        (temp_project_dir / "src" / "tests").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / "src" / "tests" / "test_a.cpp").write_text("class TestA {};")
+        (temp_project_dir / "src" / "tests" / "test_b.cpp").write_text("class TestB {};")
+        (temp_project_dir / "src" / "main.cpp").write_text("class Main {};")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Use glob pattern to match test files
+        response = analyzer.find_in_file("**/tests/*.cpp", "")
+        assert isinstance(response, dict)
+        assert "results" in response
+        assert "matched_files" in response
+
+        # Should find both test classes
+        names = [r["name"] for r in response["results"]]
+        assert "TestA" in names
+        assert "TestB" in names
+        # Should not find Main (not in tests directory)
+        assert "Main" not in names
+
+    def test_find_in_file_suggestions_for_partial_name(self, temp_project_dir):
+        """Test find_in_file returns suggestions for partial/incorrect file names"""
+        # Create files with similar names
+        (temp_project_dir / "src" / "FileHandler.cpp").write_text("class FileHandler {};")
+        (temp_project_dir / "src" / "FileReader.cpp").write_text("class FileReader {};")
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # Search with partial name that doesn't match exactly
+        response = analyzer.find_in_file("FileHan", "")
+        assert isinstance(response, dict)
+        assert "suggestions" in response
+        # Should suggest files containing similar names
+        suggestions = response["suggestions"]
+        assert len(suggestions) > 0
+        assert any("FileHandler" in s for s in suggestions)
 
     def test_get_parse_errors(self, temp_project_dir):
         """Test get_parse_errors API for tracking indexing issues"""

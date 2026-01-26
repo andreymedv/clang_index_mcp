@@ -190,13 +190,15 @@ void testFunc() {}
             analyzer.index_project()
 
             # Test unqualified pattern
-            results = analyzer.find_in_file(str(test_file), "View")
+            response = analyzer.find_in_file(str(test_file), "View")
+            results = response["results"]
             assert len(results) >= 1
             names = [r["name"] for r in results]
             assert "View" in names
 
             # Test empty pattern (all symbols)
-            all_results = analyzer.find_in_file(str(test_file), "")
+            all_response = analyzer.find_in_file(str(test_file), "")
+            all_results = all_response["results"]
             assert len(all_results) >= 2  # At least 2 View classes + testFunc
 
             # Verify results include qualified_name field
@@ -234,25 +236,29 @@ class View {};
             analyzer.index_project()
 
             # Test unqualified: should find all 3 View classes
-            unqualified_results = analyzer.find_in_file(str(test_file), "View")
+            unqualified_response = analyzer.find_in_file(str(test_file), "View")
+            unqualified_results = unqualified_response["results"]
             view_results = [r for r in unqualified_results if r["name"] == "View"]
             assert len(view_results) == 3
 
             # Test qualified suffix: ui::View should find 2 (app::ui::View and legacy::ui::View)
-            suffix_results = analyzer.find_in_file(str(test_file), "ui::View")
+            suffix_response = analyzer.find_in_file(str(test_file), "ui::View")
+            suffix_results = suffix_response["results"]
             assert len(suffix_results) == 2
             qualified_names = {r["qualified_name"] for r in suffix_results}
             assert "app::ui::View" in qualified_names
             assert "legacy::ui::View" in qualified_names
 
             # Test exact: ::View should find only global View
-            exact_results = analyzer.find_in_file(str(test_file), "::View")
+            exact_response = analyzer.find_in_file(str(test_file), "::View")
+            exact_results = exact_response["results"]
             assert len(exact_results) == 1
             assert exact_results[0]["qualified_name"] == "View"
             assert exact_results[0]["namespace"] == ""
 
             # Test regex: .*ListView should find ListView
-            regex_results = analyzer.find_in_file(str(test_file), ".*ListView")
+            regex_response = analyzer.find_in_file(str(test_file), ".*ListView")
+            regex_results = regex_response["results"]
             assert len(regex_results) >= 1
             assert any(r["name"] == "ListView" for r in regex_results)
 

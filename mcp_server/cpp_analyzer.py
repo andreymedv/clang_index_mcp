@@ -4434,53 +4434,219 @@ class CppAnalyzer:
 
         return paths
 
-    def find_in_file(self, file_path: str, pattern: str) -> List[Dict[str, Any]]:
-        """Search for symbols within a specific file.
+    def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
+        """Search for symbols within a specific file or files matching a glob pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
+        Phase LLM: Supports glob patterns and returns suggestions when no match.
 
-        Pattern matching modes:
-        - Empty string ("") matches ALL symbols in the file
+        File path formats:
+        - Absolute path: /full/path/to/file.cpp
+        - Relative path: src/main.cpp (relative to project root)
+        - Filename only: main.cpp (matches any file with this name)
+        - Glob pattern: **/Tests/**/*.cpp, src/*.h (matches multiple files)
+
+        Symbol pattern matching modes:
+        - Empty string ("") matches ALL symbols in the file(s)
         - Unqualified ("View") matches View in any namespace (case-insensitive)
         - Qualified ("ui::View") matches with component-based suffix
         - Exact ("::View") matches only global namespace symbols
         - Regex ("test.*") uses case-insensitive regex fullmatch
 
         Args:
-            file_path: Path to file (absolute or relative)
+            file_path: Path to file (absolute, relative, filename, or glob pattern)
             pattern: Search pattern (qualified, unqualified, or regex)
 
         Returns:
-            List of matching symbols (classes and functions) in the specified file
-            Each symbol includes qualified_name and namespace fields (Phase 2)
+            Dict with:
+            - results: List of matching symbols
+            - matched_files: Files that were searched (for glob patterns)
+            - suggestions: Similar file paths when no exact match (for non-glob)
+            - message: Helpful message about the search
 
         Examples:
-            find_in_file("view.h", "View") - all View symbols
-            find_in_file("view.h", "ui::View") - only ui::View
-            find_in_file("view.h", "") - all symbols in file
+            find_in_file("view.h", "View") - all View symbols in view.h
+            find_in_file("**/tests/**/*.cpp", "") - all symbols in test files
+            find_in_file("myfile", "") - suggestions if not found
 
-        Note:
-            Delegates to search_classes() and search_functions() which implement
-            qualified pattern matching, then filters by file path.
+        Task: T2.2.4 (Qualified Names Phase 2), LLM Integration (bd1)
+        """
+        import fnmatch
 
-        Task: T2.2.4 (Qualified Names Phase 2)
+        # Detect if file_path is a glob pattern
+        glob_chars = set("*?[]")
+        is_glob = any(c in file_path for c in glob_chars)
+
+        if is_glob:
+            return self._find_in_files_glob(file_path, pattern)
+        else:
+            return self._find_in_file_exact(file_path, pattern)
+
+    def _find_in_files_glob(self, glob_pattern: str, symbol_pattern: str) -> Dict[str, Any]:
+        """Search for symbols in files matching a glob pattern.
+
+        Args:
+            glob_pattern: Glob pattern to match files (e.g., '**/tests/**/*.cpp')
+            symbol_pattern: Symbol search pattern
+
+        Returns:
+            Dict with results, matched_files, and message
+        """
+        import fnmatch
+
+        # Match glob pattern against all indexed files
+        matched_files = []
+        for indexed_file in self.file_index.keys():
+            # Try both the pattern as-is and with **/ prefix for convenience
+            if fnmatch.fnmatch(indexed_file, glob_pattern):
+                matched_files.append(indexed_file)
+            elif fnmatch.fnmatch(indexed_file, "**/" + glob_pattern):
+                matched_files.append(indexed_file)
+            # Also try matching just the relative path from project root
+            elif self.project_root:
+                try:
+                    rel_path = str(Path(indexed_file).relative_to(self.project_root))
+                    if fnmatch.fnmatch(rel_path, glob_pattern):
+                        matched_files.append(indexed_file)
+                except ValueError:
+                    pass
+
+        if not matched_files:
+            return {
+                "results": [],
+                "matched_files": [],
+                "suggestions": self._get_path_suggestions(glob_pattern),
+                "message": f"No files found matching glob pattern '{glob_pattern}'",
+            }
+
+        # Search in both class and function results
+        all_classes = self.search_classes(symbol_pattern, project_only=False)
+        all_functions = self.search_functions(symbol_pattern, project_only=False)
+
+        results = []
+        matched_files_set = set(matched_files)
+
+        for item in all_classes + all_functions:
+            item_file = item.get("file", "")
+            if item_file in matched_files_set:
+                results.append(item)
+
+        return {
+            "results": results,
+            "matched_files": sorted(matched_files),
+            "message": f"Found {len(results)} symbols in {len(matched_files)} files matching '{glob_pattern}'",
+        }
+
+    def _find_in_file_exact(self, file_path: str, pattern: str) -> Dict[str, Any]:
+        """Search for symbols in a specific file (exact or suffix match).
+
+        Args:
+            file_path: Path to file (absolute, relative, or filename)
+            pattern: Symbol search pattern
+
+        Returns:
+            Dict with results, matched_files, suggestions (if empty), and message
         """
         results = []
 
         # Search in both class and function results
-        # These already support qualified pattern matching (T2.2.1, T2.2.2)
         all_classes = self.search_classes(pattern, project_only=False)
         all_functions = self.search_functions(pattern, project_only=False)
 
+        # Try to resolve file path
+        abs_file_path = None
+        matched_file = None
+
+        # First, try exact absolute path match
+        if Path(file_path).is_absolute():
+            abs_file_path = str(Path(file_path).resolve())
+        else:
+            # Try relative to project root
+            if self.project_root:
+                potential_path = Path(self.project_root) / file_path
+                if potential_path.exists():
+                    abs_file_path = str(potential_path.resolve())
+
         # Filter by file path
-        abs_file_path = str(Path(file_path).resolve())
-
         for item in all_classes + all_functions:
-            item_file = str(Path(item["file"]).resolve()) if item["file"] else ""
-            if item_file == abs_file_path or item["file"].endswith(file_path):
-                results.append(item)
+            item_file = item.get("file", "")
+            if not item_file:
+                continue
 
-        return results
+            # Match by absolute path or suffix
+            item_abs = str(Path(item_file).resolve()) if item_file else ""
+
+            if abs_file_path and item_abs == abs_file_path:
+                results.append(item)
+                matched_file = item_file
+            elif item_file.endswith(file_path) or item_abs.endswith(file_path):
+                results.append(item)
+                matched_file = item_file
+
+        if results:
+            return {
+                "results": results,
+                "matched_files": [matched_file] if matched_file else [],
+                "message": f"Found {len(results)} symbols in '{file_path}'",
+            }
+        else:
+            # No results - provide suggestions
+            suggestions = self._get_path_suggestions(file_path)
+            return {
+                "results": [],
+                "matched_files": [],
+                "suggestions": suggestions,
+                "message": f"No file found matching '{file_path}'. See suggestions for similar paths.",
+            }
+
+    def _get_path_suggestions(self, partial_path: str, max_suggestions: int = 5) -> List[str]:
+        """Get suggestions for similar file paths based on partial input.
+
+        Args:
+            partial_path: Partial path or filename to match
+            max_suggestions: Maximum number of suggestions to return
+
+        Returns:
+            List of suggested file paths
+        """
+        suggestions = []
+        partial_lower = partial_path.lower()
+
+        # Extract just the filename/basename for matching
+        partial_basename = Path(partial_path).name.lower()
+
+        # Also extract any path components for better matching
+        path_parts = [p.lower() for p in Path(partial_path).parts if p]
+
+        for indexed_file in self.file_index.keys():
+            indexed_lower = indexed_file.lower()
+            indexed_basename = Path(indexed_file).name.lower()
+
+            score = 0
+
+            # Exact basename match (highest priority)
+            if indexed_basename == partial_basename:
+                score += 100
+
+            # Basename contains partial
+            elif partial_basename in indexed_basename:
+                score += 50
+
+            # Path contains partial string
+            elif partial_lower in indexed_lower:
+                score += 30
+
+            # Check if path components match
+            for part in path_parts:
+                if part in indexed_lower:
+                    score += 10
+
+            if score > 0:
+                suggestions.append((score, indexed_file))
+
+        # Sort by score (descending) and take top suggestions
+        suggestions.sort(key=lambda x: (-x[0], x[1]))
+        return [path for _, path in suggestions[:max_suggestions]]
 
     async def get_files_containing_symbol(
         self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
