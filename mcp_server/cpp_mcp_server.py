@@ -650,13 +650,38 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callers",
-            description="Find all functions/methods that call (invoke) a specific target function. Performs call graph analysis with LINE-LEVEL PRECISION (Phase 3).\n\nReturns:\n- callers: List of caller function info (name, kind, file, line where function is defined, signature, parent_class, is_project, start_line, end_line of function body)\n- call_sites: Array of EXACT call locations with file, line, column where each call occurs, caller name/signature (NEW in Phase 3)\n- total_call_sites: Count of all call sites found\n\nThe call_sites array provides LINE-LEVEL PRECISION - you get the exact file:line:column where each call occurs, eliminating the need to search within function bodies. Each call site includes the calling function's name and signature for context.\n\nUse this for: impact analysis (which functions depend on this), refactoring planning (what breaks if I change this), call graph visualization, or finding exact usage locations.",
+            description=(
+                "**DIRECTION: INCOMING** - Find all code that CALLS (invokes) a specific target function.\n\n"
+                "**USE THIS WHEN:**\n"
+                "- User asks 'what calls X?', 'where is X invoked?', 'show callers of X', "
+                "'what invokes X?', 'places where X is called', 'who calls X?'\n"
+                "- Impact analysis: what code depends on this function?\n"
+                "- Refactoring: what breaks if I change this function?\n"
+                "- Finding all usages of a function\n\n"
+                "**DO NOT USE THIS WHEN (use find_callees or get_call_sites instead):**\n"
+                "- User asks 'what does X call?', 'show calls inside X'\n"
+                "- You want to see what functions X depends on\n\n"
+                "**Returns:**\n"
+                "- callers: List of caller function info (name, kind, file, line where caller is defined, "
+                "signature, parent_class, is_project, start_line, end_line)\n"
+                "- call_sites: Array of EXACT call locations with file, line, column where each call occurs, "
+                "plus caller name/signature for context\n"
+                "- total_call_sites: Count of all call sites found\n\n"
+                "The call_sites array provides LINE-LEVEL PRECISION - exact file:line:column where the "
+                "target function is called.\n\n"
+                "**Example:**\n"
+                "  find_callers('processData') → returns all functions that CALL processData, "
+                "with exact locations of each call"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the target function/method to find callers for (the function being called)",
+                        "description": (
+                            "Name of the TARGET function you want to find callers for - "
+                            "the function being called by other code."
+                        ),
                     },
                     "class_name": {
                         "type": "string",
@@ -669,13 +694,37 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_callees",
-            description="Find all functions/methods that are called (invoked) by a specific source function. This is the inverse of find_callers - while find_callers shows what calls a function (backwards), find_callees shows what a function calls (forwards). Performs call graph analysis to identify every function called within the body of the specified function. Returns list with: name, kind, file, line, column, signature, parent_class, is_project, start_line, end_line (callee function body range), header_file, header_start_line, header_end_line.\n\nIMPORTANT - Line Number Limitation: The 'line' and 'column' fields indicate where each CALLEE FUNCTION IS DEFINED, not the call site. To find exact call site line numbers: read the source function's file and search within its body for these callee invocations.\n\nUse this for: understanding dependencies (what does this function depend on), analyzing code flow, or mapping execution paths.",
+            description=(
+                "**DIRECTION: OUTGOING** - Find all functions that a specific source function CALLS "
+                "(the inverse of find_callers).\n\n"
+                "**USE THIS WHEN:**\n"
+                "- User asks 'what does X call?', 'what functions does X invoke?', 'show X's dependencies'\n"
+                "- Understanding what a function depends on\n"
+                "- Analyzing code flow or execution paths\n\n"
+                "**DO NOT USE THIS WHEN (use find_callers instead):**\n"
+                "- User asks 'what calls X?', 'where is X invoked?'\n"
+                "- You want to find code that depends ON this function\n\n"
+                "**Returns:** List of callee functions with: name, kind, file, line (where callee is DEFINED), "
+                "signature, parent_class, is_project, start_line, end_line, header_file info.\n\n"
+                "**LIMITATION:** The line numbers indicate where each CALLEE IS DEFINED, not where it's called "
+                "within the source function. For exact call site locations, use get_call_sites instead.\n\n"
+                "**DIFFERENCE FROM get_call_sites:**\n"
+                "- Both show what X calls (outgoing direction)\n"
+                "- find_callees: Returns where called functions are DEFINED\n"
+                "- get_call_sites: Returns exact CALL LOCATIONS within X's body\n\n"
+                "**Example:**\n"
+                "  find_callees('processData') → returns list of functions that processData calls, "
+                "with each function's definition location"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the source function/method to analyze (the function doing the calling)",
+                        "description": (
+                            "Name of the SOURCE function to analyze - the function doing the calling. "
+                            "Returns what this function calls, not what calls it."
+                        ),
                     },
                     "class_name": {
                         "type": "string",
@@ -688,13 +737,44 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_call_sites",
-            description="Get all function calls made FROM a specific source function with LINE-LEVEL PRECISION (Phase 3). Returns exact file:line:column for each function call within the source function's body.\n\nReturns array of call sites, each with:\n- target: Name of called function\n- target_signature: Full signature of called function\n- file: Source file containing the call\n- line: Exact line number of call\n- column: Column position of call\n- target_file: File where called function is defined\n\nThis tool shows WHAT a function calls (forward analysis) with precise locations. Inverse of find_callers which shows what calls a function (backward analysis).\n\nUse this for: understanding function dependencies with exact call locations, analyzing code flow, finding specific call statements, or refactoring call sites.",
+            description=(
+                "**DIRECTION: OUTGOING** - Shows what calls are made WITHIN a function's body, "
+                "NOT where the function itself is called.\n\n"
+                "**USE THIS WHEN:**\n"
+                "- User asks 'what does X call?', 'show calls inside X', 'what functions does X invoke?'\n"
+                "- You need exact file:line:column for call statements within a function body\n"
+                "- You want to understand a function's dependencies with precise locations\n\n"
+                "**DO NOT USE THIS WHEN (use find_callers instead):**\n"
+                "- User asks 'what calls X?', 'where is X invoked?', 'show callers of X', "
+                "'what invokes X?', 'places where X is called'\n"
+                "- You want to find code that DEPENDS ON a function\n\n"
+                "**DIFFERENCE FROM find_callees:**\n"
+                "- Both show what X calls (outgoing/forward direction)\n"
+                "- find_callees: Returns callee DEFINITIONS (where called functions are defined)\n"
+                "- get_call_sites: Returns CALL LOCATIONS (exact file:line:column of each call "
+                "statement within X's body)\n\n"
+                "**Returns** array of call sites, each with:\n"
+                "- target: Name of called function\n"
+                "- target_signature: Full signature of called function\n"
+                "- file: Source file containing the call\n"
+                "- line: Exact line number of call\n"
+                "- column: Column position of call\n"
+                "- target_file: File where called function is defined\n\n"
+                "**Example:**\n"
+                "  get_call_sites('processData') → returns all function calls made INSIDE "
+                "processData's body\n"
+                "  find_callers('processData') → returns all places WHERE processData is called"
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the source function to analyze (the function doing the calling)",
+                        "description": (
+                            "Name of the SOURCE function to analyze - the function whose BODY "
+                            "you want to examine for outgoing calls. NOT the function you're "
+                            "looking for callers of (use find_callers for that)."
+                        ),
                     },
                     "class_name": {
                         "type": "string",
