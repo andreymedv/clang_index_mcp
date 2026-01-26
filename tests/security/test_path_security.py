@@ -35,28 +35,34 @@ class TestPathTraversalAttacks:
 
         # Attack Vector 1: ../ traversal
         result1 = analyzer.find_in_file("../../../etc/passwd", ".*")
-        assert isinstance(result1, list), "Should return list, not crash"
+        assert isinstance(result1, dict), "Should return dict, not crash"
+        assert "results" in result1, "Should have results key"
 
         # Attack Vector 2: Absolute paths outside project
         result2 = analyzer.find_in_file("/etc/passwd", ".*")
-        assert isinstance(result2, list), "Should handle absolute paths safely"
+        assert isinstance(result2, dict), "Should handle absolute paths safely"
+        assert "results" in result2, "Should have results key"
 
         # Attack Vector 3: URL-encoded traversal
         result3 = analyzer.find_in_file("..%2F..%2F..%2Fetc%2Fpasswd", ".*")
-        assert isinstance(result3, list), "Should handle URL-encoded paths safely"
+        assert isinstance(result3, dict), "Should handle URL-encoded paths safely"
+        assert "results" in result3, "Should have results key"
 
         # Attack Vector 4: UNC paths (Windows)
         result4 = analyzer.find_in_file("\\\\server\\share\\file.cpp", ".*")
-        assert isinstance(result4, list), "Should handle UNC paths safely"
+        assert isinstance(result4, dict), "Should handle UNC paths safely"
+        assert "results" in result4, "Should have results key"
 
         # Attack Vector 5: file:// protocol
         result5 = analyzer.find_in_file("file:///etc/passwd", ".*")
-        assert isinstance(result4, list), "Should handle file:// protocol safely"
+        assert isinstance(result5, dict), "Should handle file:// protocol safely"
+        assert "results" in result5, "Should have results key"
 
         # Verify legitimate file still works
         legit_result = analyzer.find_in_file(str(temp_project_dir / "src" / "legitimate.cpp"), ".*")
         # Should work for legitimate paths
-        assert isinstance(legit_result, list), "Legitimate paths should still work"
+        assert isinstance(legit_result, dict), "Legitimate paths should still work"
+        assert "results" in legit_result, "Should have results key"
 
 
 @pytest.mark.security
