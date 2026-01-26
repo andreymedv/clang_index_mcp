@@ -17,8 +17,9 @@ class TestWindowsPaths:
         count = analyzer.index_project()
         assert count > 0, "Should handle Windows paths"
         mixed_path = str(file).replace("\\", "/")
-        results = analyzer.find_in_file(mixed_path, ".*")
-        assert isinstance(results, list), "Should handle mixed separators"
+        response = analyzer.find_in_file(mixed_path, ".*")
+        assert isinstance(response, dict), "Should handle mixed separators"
+        assert "results" in response
 
     def test_windows_max_path_length(self, temp_project_dir):
         """Test paths > 260 characters on Windows - Task 1.6.3"""

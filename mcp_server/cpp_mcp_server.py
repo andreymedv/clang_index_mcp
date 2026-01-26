@@ -483,26 +483,53 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_in_file",
-            description="Search for C++ symbols (classes, functions, methods) within a specific source file. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns only symbols defined in that file, with name, qualified_name (fully qualified), namespace, kind, locations (file, line, column, start_line, end_line, header_file, header_start_line, header_end_line), is_template_specialization (for templates), and other basic information.",
+            description=(
+                "Search for C++ symbols (classes, functions, methods) within a specific source file "
+                "or files matching a glob pattern.\n\n"
+                "**IMPORTANT:** If called during indexing, results will be incomplete. Check response "
+                "metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\n"
+                "**RESPONSE FORMAT:** Returns dict with:\n"
+                "- `results`: Array of matching symbols\n"
+                "- `matched_files`: Files that were searched (useful for glob patterns)\n"
+                "- `suggestions`: Similar file paths when no match found (helps fix typos)\n"
+                "- `message`: Human-readable status message\n\n"
+                "**GLOB PATTERN SUPPORT:** Use glob patterns to search across multiple files:\n"
+                "- `**/tests/**/*.cpp` - all .cpp files under any tests directory\n"
+                "- `src/*.h` - all headers directly in src/\n"
+                "- `**/handler*` - files containing 'handler' in any path\n\n"
+                "**SUGGESTIONS:** When file not found, response includes `suggestions` array with "
+                "similar file paths to help correct typos or find the right file."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the file. Accepts multiple formats: absolute path (/full/path/to/file.cpp), relative to project root (src/main.cpp), or even partial path (main.cpp). The matcher uses both exact absolute path resolution and 'endswith' matching, so shorter paths work if they uniquely identify the file.",
+                        "description": (
+                            "Path to file(s) to search. **Supported formats:**\n\n"
+                            "1. **Absolute path:** `/full/path/to/file.cpp`\n"
+                            "2. **Relative path:** `src/main.cpp` (from project root)\n"
+                            "3. **Filename only:** `main.cpp` (matches any file with this name)\n"
+                            "4. **Glob pattern:** `**/tests/**/*.cpp`, `src/*.h`\n\n"
+                            "**Examples:**\n"
+                            "- `handler.cpp` - exact file\n"
+                            "- `**/tests/**/*.cpp` - all test files\n"
+                            "- `src/core/*.h` - headers in core directory\n\n"
+                            "If no match found, `suggestions` array will contain similar paths."
+                        ),
                     },
                     "pattern": {
                         "type": "string",
                         "description": (
-                            'Symbol name pattern to search for within the file. **Empty string "" matches ALL '
-                            "symbols** in the file - useful for listing all classes/functions in a file.\n\n"
-                            "**Pattern matching modes** (case-insensitive): 1) **Unqualified** (no ::): matches "
-                            "symbol in any namespace within file. 2) **Qualified suffix**: 'ns::Symbol' matches "
-                            "with component-based suffix within file. 3) **Exact match**: '::Symbol' matches "
-                            "only global namespace symbols in file (leading ::). 4) **Regex**: uses regex with "
-                            "metacharacters.\n\n"
-                            "Examples: 'Handler' (all Handler symbols), 'ui::Handler' (suffix match), "
-                            "'::Handler' (global only), '.*Manager.*' (regex contains)."
+                            "Symbol name pattern to search for within the file(s). "
+                            '**Empty string "" matches ALL symbols** - useful for listing all '
+                            "classes/functions in a file.\n\n"
+                            "**Pattern matching modes** (case-insensitive):\n"
+                            "1. **Unqualified** (no ::): matches symbol in any namespace\n"
+                            "2. **Qualified suffix**: 'ns::Symbol' - component-based suffix match\n"
+                            "3. **Exact match**: '::Symbol' - global namespace only (leading ::)\n"
+                            "4. **Regex**: uses regex with metacharacters\n\n"
+                            "**Examples:** 'Handler', 'ui::Handler', '::Handler', '.*Manager.*'"
                         ),
                     },
                 },
