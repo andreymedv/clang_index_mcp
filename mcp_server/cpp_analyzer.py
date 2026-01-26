@@ -2011,9 +2011,7 @@ class CppAnalyzer:
                 from clang import cindex
 
                 try:
-                    template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(
-                        referenced
-                    )
+                    template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(referenced)
                     if template_cursor and not template_cursor.kind.is_invalid():
                         template_usr = template_cursor.get_usr()
                         if template_usr:
