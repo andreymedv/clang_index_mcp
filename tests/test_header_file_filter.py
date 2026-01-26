@@ -679,7 +679,8 @@ void testFunc2() {}
         analyzer.index_project()
 
         # Use find_in_file with empty pattern
-        results = analyzer.find_in_file(str(test_file), "")
+        response = analyzer.find_in_file(str(test_file), "")
+        results = response["results"]
 
         # Should find all symbols in that file
         assert len(results) >= 3, f"Should find at least 3 symbols, found {len(results)}"
@@ -703,7 +704,8 @@ void moduleFunc() {}
         analyzer.index_project()
 
         # Use partial path with empty pattern
-        results = analyzer.find_in_file("module/code.cpp", "")
+        response = analyzer.find_in_file("module/code.cpp", "")
+        results = response["results"]
 
         # Should find all symbols
         assert len(results) >= 2

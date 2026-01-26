@@ -157,7 +157,8 @@ namespace test {
             assert func_results[0]["qualified_name"] == "test::testFunc"
 
             # find_in_file
-            file_results = analyzer.find_in_file(str(test_file), "")
+            file_response = analyzer.find_in_file(str(test_file), "")
+            file_results = file_response["results"]
             assert len(file_results) >= 2
             for result in file_results:
                 assert "qualified_name" in result
