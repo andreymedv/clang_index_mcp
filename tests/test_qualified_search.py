@@ -418,8 +418,8 @@ class TestPartiallyQualifiedNameLookups:
     """Test partially qualified name support in get_class_info and related tools.
 
     Issue: get_class_info was using exact string matching for qualified names,
-    which caused "DocumentBuilder::PresentationBuilder" to fail when the actual
-    qualified name was "CO::DocumentBuilder::PresentationBuilder".
+    which caused "builders::Presenter" to fail when the actual
+    qualified name was "outer::builders::Presenter".
 
     The fix uses matches_qualified_pattern() for suffix-based matching.
     """
@@ -433,9 +433,9 @@ class TestPartiallyQualifiedNameLookups:
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
             test_file.write_text("""
-namespace CO {
-    namespace DocumentBuilder {
-        class PresentationBuilder {
+namespace outer {
+    namespace builders {
+        class Presenter {
         public:
             void build();
         };
@@ -447,21 +447,21 @@ namespace CO {
             analyzer.index_project()
 
             # Fully qualified should work
-            result = analyzer.get_class_info("CO::DocumentBuilder::PresentationBuilder")
+            result = analyzer.get_class_info("outer::builders::Presenter")
             assert result is not None
-            assert result["name"] == "PresentationBuilder"
-            assert result["qualified_name"] == "CO::DocumentBuilder::PresentationBuilder"
+            assert result["name"] == "Presenter"
+            assert result["qualified_name"] == "outer::builders::Presenter"
 
-            # Partially qualified (missing CO::) should also work
-            result = analyzer.get_class_info("DocumentBuilder::PresentationBuilder")
+            # Partially qualified (missing outer::) should also work
+            result = analyzer.get_class_info("builders::Presenter")
             assert result is not None
-            assert result["name"] == "PresentationBuilder"
-            assert result["qualified_name"] == "CO::DocumentBuilder::PresentationBuilder"
+            assert result["name"] == "Presenter"
+            assert result["qualified_name"] == "outer::builders::Presenter"
 
             # Simple name should work
-            result = analyzer.get_class_info("PresentationBuilder")
+            result = analyzer.get_class_info("Presenter")
             assert result is not None
-            assert result["name"] == "PresentationBuilder"
+            assert result["name"] == "Presenter"
 
     def test_get_class_info_disambiguates_correctly(self):
         """Partially qualified name should find the right class when there are multiple."""
@@ -618,6 +618,126 @@ namespace MyApp {
             result = analyzer.get_class_info("CORE::MYCLASS")
             assert result is not None
             assert result["name"] == "MyClass"
+
+
+class TestAmbiguousClassNameHandling:
+    """Test ambiguity detection when multiple classes have the same simple name.
+
+    Issue: get_class_info was silently returning the first match when multiple
+    classes had the same simple name (e.g., SomeClass in two namespaces).
+    The fix returns an ambiguity error with all matches.
+    """
+
+    def test_get_class_info_detects_ambiguous_simple_name(self):
+        """get_class_info should return ambiguity error for simple name with multiple matches."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class SomeClass {
+    public:
+        void build1();
+    };
+}
+
+namespace ns2 {
+    class SomeClass {
+    public:
+        void build2();
+    };
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Simple name should return ambiguity error
+            result = analyzer.get_class_info("SomeClass")
+            assert result is not None
+            assert result.get("is_ambiguous") is True
+            assert "error" in result
+            assert "Ambiguous" in result["error"]
+            assert "matches" in result
+            assert len(result["matches"]) == 2
+
+            # Verify both matches are present
+            qualified_names = {m["qualified_name"] for m in result["matches"]}
+            assert "ns1::SomeClass" in qualified_names
+            assert "ns2::SomeClass" in qualified_names
+
+            # Verify suggestion is present
+            assert "suggestion" in result
+
+    def test_get_class_info_qualified_name_no_ambiguity(self):
+        """Qualified name should return exact match, not ambiguity error."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class SomeClass {
+    public:
+        void build1();
+    };
+}
+
+namespace ns2 {
+    class SomeClass {
+    public:
+        void build2();
+    };
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Qualified name should return exact match
+            result = analyzer.get_class_info("ns1::SomeClass")
+            assert result is not None
+            assert result.get("is_ambiguous") is not True
+            assert result["qualified_name"] == "ns1::SomeClass"
+            assert any(m["name"] == "build1" for m in result["methods"])
+
+            result = analyzer.get_class_info("ns2::SomeClass")
+            assert result is not None
+            assert result.get("is_ambiguous") is not True
+            assert result["qualified_name"] == "ns2::SomeClass"
+            assert any(m["name"] == "build2" for m in result["methods"])
+
+    def test_get_class_info_single_match_no_ambiguity(self):
+        """Single class with simple name should return normally, not ambiguity error."""
+        from mcp_server.cpp_analyzer import CppAnalyzer
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class UniqueClass {
+    public:
+        void method();
+    };
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Single match should return normally
+            result = analyzer.get_class_info("UniqueClass")
+            assert result is not None
+            assert result.get("is_ambiguous") is not True
+            assert result["name"] == "UniqueClass"
+            assert result["qualified_name"] == "ns1::UniqueClass"
 
 
 if __name__ == "__main__":

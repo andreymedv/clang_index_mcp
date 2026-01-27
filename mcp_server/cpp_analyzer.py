@@ -4016,7 +4016,7 @@ class CppAnalyzer:
 
         # Normalize class_name: extract simple name from qualified name
         # class_index is keyed by simple name, but users may pass qualified names
-        # (e.g., "CO::DocumentBuilder::TextBuilder" → "TextBuilder")
+        # (e.g., "myapp::builders::Widget" → "Widget")
         simple_name = SearchEngine._extract_simple_name(class_name)
 
         # Issue #99 Phase 3: Check if this is a template and get all specializations

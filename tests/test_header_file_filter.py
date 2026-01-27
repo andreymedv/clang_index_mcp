@@ -270,8 +270,8 @@ public:
     def test_search_functions_with_qualified_class_name(self, temp_project_dir):
         """Test that class_name filter works with qualified names (namespace::class)
 
-        Bug fix: class_name parameter should accept both simple names (e.g., "TextBuilder")
-        and qualified names (e.g., "CO::DocumentBuilder::TextBuilder").
+        Bug fix: class_name parameter should accept both simple names (e.g., "Widget")
+        and qualified names (e.g., "myapp::builders::Widget").
         parent_class is stored as simple name, so qualified names must be normalized.
         """
         # Create header with namespaced classes

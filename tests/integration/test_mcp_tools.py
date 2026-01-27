@@ -162,12 +162,16 @@ namespace ns2 {
         assert info2["qualified_name"] == "ns2::Builder"
         assert info2["namespace"] == "ns2"
 
-        # Simple name should still work (returns first match)
+        # Simple name with multiple matches should return ambiguity response
         info_simple = analyzer.get_class_info("Builder")
         assert info_simple is not None
-        assert info_simple["name"] == "Builder"
-        # Should return one of the two builders
-        assert info_simple["qualified_name"] in ("ns1::Builder", "ns2::Builder")
+        assert info_simple.get("is_ambiguous") is True
+        assert "error" in info_simple
+        assert "matches" in info_simple
+        assert len(info_simple["matches"]) == 2
+        match_names = {m["qualified_name"] for m in info_simple["matches"]}
+        assert "ns1::Builder" in match_names
+        assert "ns2::Builder" in match_names
 
     def test_get_function_signature_tool(self, temp_project_dir):
         """Test get_function_signature functionality"""
