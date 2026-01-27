@@ -294,22 +294,22 @@ class SearchEngine:
     def _matches_namespace(symbol_namespace: str, filter_namespace: str) -> bool:
         """Check if symbol's namespace matches the filter namespace.
 
-        Supports partial namespace matching: filter "ItemBuilder" will match
-        symbol namespace "Outer::ItemBuilder" (suffix match at :: boundary).
+        Supports partial namespace matching: filter "builders" will match
+        symbol namespace "myapp::builders" (suffix match at :: boundary).
 
         Args:
-            symbol_namespace: The namespace of the symbol (e.g., "Outer::ItemBuilder")
-            filter_namespace: The namespace filter from the user (e.g., "ItemBuilder")
+            symbol_namespace: The namespace of the symbol (e.g., "myapp::builders")
+            filter_namespace: The namespace filter from the user (e.g., "builders")
 
         Returns:
             True if symbol_namespace matches filter_namespace (exact or suffix match)
 
         Examples:
-            _matches_namespace("Outer::ItemBuilder", "ItemBuilder") → True  (suffix)
-            _matches_namespace("ItemBuilder", "ItemBuilder") → True  (exact)
-            _matches_namespace("Outer::ItemBuilder", "Outer::ItemBuilder") → True  (exact)
-            _matches_namespace("X::Outer::ItemBuilder", "Outer::ItemBuilder") → True  (suffix)
-            _matches_namespace("FooItemBuilder", "ItemBuilder") → False  (not at boundary)
+            _matches_namespace("myapp::builders", "builders") → True  (suffix)
+            _matches_namespace("builders", "builders") → True  (exact)
+            _matches_namespace("myapp::builders", "myapp::builders") → True  (exact)
+            _matches_namespace("X::myapp::builders", "myapp::builders") → True  (suffix)
+            _matches_namespace("Foobuilders", "builders") → False  (not at boundary)
             _matches_namespace("", "") → True  (global namespace)
             _matches_namespace("ns1", "") → False  (not global namespace)
         """
@@ -354,8 +354,8 @@ class SearchEngine:
             namespace: Optional namespace filter with partial matching support.
                       Supports suffix matching at :: boundaries (case-sensitive).
                       Examples:
-                        - "ItemBuilder" matches "Outer::ItemBuilder" (suffix)
-                        - "Outer::ItemBuilder" matches "TopLevel::Outer::ItemBuilder" (suffix)
+                        - "builders" matches "myapp::builders" (suffix)
+                        - "myapp::builders" matches "TopLevel::myapp::builders" (suffix)
                         - "" (empty string) matches only global namespace
             max_results: Optional maximum number of results to return. When specified,
                         returns tuple (results, total_count) for truncation tracking.
@@ -465,7 +465,7 @@ class SearchEngine:
                       Supports suffix matching at :: boundaries (case-sensitive).
                       For methods, matches the namespace + class (e.g., "app::Database").
                       Examples:
-                        - "ItemBuilder" matches "Outer::ItemBuilder" (suffix)
+                        - "builders" matches "myapp::builders" (suffix)
                         - "Handler" matches "app::Handler" (suffix)
                         - "" (empty string) matches only global namespace
             max_results: Optional maximum number of results to return. When specified,
@@ -483,8 +483,8 @@ class SearchEngine:
             RegexValidator.validate_or_raise(pattern)
 
         # Normalize class_name: extract simple name from qualified name
-        # parent_class is stored as simple name (e.g., "TextComposer"), but users may pass
-        # qualified name (e.g., "Outer::ItemBuilder::TextComposer")
+        # parent_class is stored as simple name (e.g., "Widget"), but users may pass
+        # qualified name (e.g., "myapp::builders::Widget")
         if class_name:
             class_name = self._extract_simple_name(class_name)
 
@@ -634,7 +634,7 @@ class SearchEngine:
             namespace: Optional namespace filter with partial matching support.
                       Supports suffix matching at :: boundaries (case-sensitive).
                       Examples:
-                        - "ItemBuilder" matches "Outer::ItemBuilder" (suffix)
+                        - "builders" matches "myapp::builders" (suffix)
                         - "" (empty string) matches only global namespace
             max_results: Optional maximum number of results to return (across all types).
                         When specified, returns tuple (results, total_count) for truncation tracking.
@@ -693,9 +693,9 @@ class SearchEngine:
         """Extract simple name from qualified name.
 
         Examples:
-            "Outer::ItemBuilder::TextComposer" → "TextComposer"
+            "myapp::builders::Widget" → "Widget"
             "std::vector" → "vector"
-            "TextComposer" → "TextComposer" (already simple)
+            "Widget" → "Widget" (already simple)
         """
         if "::" not in qualified_name:
             return qualified_name
@@ -705,8 +705,8 @@ class SearchEngine:
         """Get detailed information about a class.
 
         Args:
-            class_name: Simple name (e.g., "TextComposer") or qualified name
-                       (e.g., "Outer::ItemBuilder::TextComposer")
+            class_name: Simple name (e.g., "Widget") or qualified name
+                       (e.g., "myapp::builders::Widget")
 
         Returns:
             Class info dict or None if not found
@@ -731,8 +731,8 @@ class SearchEngine:
                 return None
 
             # If qualified name was provided, find match using qualified pattern matching
-            # This supports partially qualified names (e.g., "ItemBuilder::TextComposer"
-            # matches "Outer::ItemBuilder::TextComposer")
+            # This supports partially qualified names (e.g., "builders::Widget"
+            # matches "myapp::builders::Widget")
             info = None
             if is_qualified:
                 for candidate in infos:
@@ -745,7 +745,25 @@ class SearchEngine:
                 if info is None:
                     return None  # No match for qualified name
             else:
-                # Return the first match for simple name
+                # Check for ambiguity when using simple name
+                if len(infos) > 1:
+                    # Multiple classes with same simple name - ambiguous
+                    return {
+                        "error": f"Ambiguous class name '{class_name}'",
+                        "is_ambiguous": True,
+                        "matches": [
+                            {
+                                "name": m.name,
+                                "qualified_name": m.qualified_name if m.qualified_name else m.name,
+                                "namespace": m.namespace,
+                                "kind": m.kind,
+                                "file": m.file,
+                                "line": m.line,
+                            }
+                            for m in infos
+                        ],
+                        "suggestion": "Use qualified name to disambiguate",
+                    }
                 info = infos[0]
 
             # For method lookup, we need to match parent_class
@@ -763,8 +781,8 @@ class SearchEngine:
 
                     # Additional disambiguation: check if method belongs to this specific class
                     # Method qualified_name should start with class qualified_name
-                    # e.g., "Outer::ItemBuilder::TextComposer::build" starts with
-                    #       "Outer::ItemBuilder::TextComposer"
+                    # e.g., "myapp::builders::Widget::build" starts with
+                    #       "myapp::builders::Widget"
                     if class_qualified_name and func_info.qualified_name:
                         if not func_info.qualified_name.startswith(class_qualified_name + "::"):
                             continue
