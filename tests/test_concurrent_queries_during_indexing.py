@@ -143,15 +143,21 @@ async def test_query_during_background_indexing(large_cpp_project):
 
     response_text2 = result2[0].text
     response_data2 = json.loads(response_text2)
-    metadata2 = response_data2["metadata"]
 
-    # Should now be complete
-    assert metadata2["status"] == "complete", "Should indicate complete results after indexing"
-    assert metadata2["warning"] is None, "Should have no warning when complete"
-
-    # Should have found classes
+    # After indexing completes:
+    # - For normal results (1-20 items): no metadata ("silence = success")
+    # - For large results (>20 items): metadata with status="large"
+    # - For empty results: metadata with status="empty"
     classes = response_data2["data"]
     assert len(classes) > 0, "Should find Module classes"
+
+    if "metadata" in response_data2:
+        # Large result set - should not be partial or have warning
+        assert response_data2["metadata"]["status"] in ("large", "truncated"), \
+            f"If metadata present, should be 'large' or 'truncated' not {response_data2['metadata']['status']}"
+        assert "warning" not in response_data2["metadata"] or response_data2["metadata"].get("warning") is None, \
+            "Should have no partial indexing warning when fully indexed"
+    # else: no metadata means normal success (silence = success)
 
 
 @pytest.mark.asyncio

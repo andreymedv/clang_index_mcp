@@ -8,9 +8,9 @@ Provides thread-safe state tracking and progress monitoring for the analyzer.
 import asyncio
 from enum import Enum
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Lock, Event
-from typing import Optional, Callable, Any
+from typing import Optional, Any, List
 
 
 class AnalyzerState(Enum):
@@ -307,6 +307,9 @@ class QueryCompletenessStatus(Enum):
     COMPLETE = "complete"  # Query executed on fully indexed data
     PARTIAL = "partial"  # Query executed during indexing (incomplete)
     STALE = "stale"  # Query executed on outdated data (needs refresh)
+    EMPTY = "empty"  # Query returned no results
+    TRUNCATED = "truncated"  # Results truncated due to max_results limit
+    LARGE = "large"  # Large result set (>20 results without max_results)
 
 
 class QueryMetadata:
@@ -341,22 +344,144 @@ class QueryMetadata:
 
 
 class EnhancedQueryResult:
-    """Wrapper for query results with metadata"""
+    """Wrapper for query results with conditional metadata.
 
-    def __init__(self, data: Any, metadata: QueryMetadata):
+    Design principle: Silence = Success. Metadata only appears for special conditions
+    that require LLM guidance (empty, truncated, large, partial).
+    Normal results (1-20 items, fully indexed) return just {"data": ...}.
+    """
+
+    # Threshold for "large" result sets that trigger metadata
+    LARGE_RESULT_THRESHOLD = 20
+
+    def __init__(
+        self,
+        data: Any,
+        metadata: Optional[QueryMetadata] = None,
+        status: Optional[QueryCompletenessStatus] = None,
+        extra_metadata: Optional[dict] = None,
+    ):
+        """
+        Initialize EnhancedQueryResult.
+
+        Args:
+            data: Query result data
+            metadata: Full QueryMetadata object (for partial indexing case)
+            status: Simple status without full metadata (for empty/truncated/large)
+            extra_metadata: Additional metadata fields (returned, total_matches, etc.)
+        """
         self.data = data
         self.metadata = metadata
+        self.status = status
+        self.extra_metadata = extra_metadata or {}
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization"""
-        return {"data": self.data, "metadata": self.metadata.to_dict()}
+        """Convert to dictionary for JSON serialization.
+
+        Returns just {"data": ...} for normal results (silence = success).
+        Includes metadata only for special conditions.
+        """
+        result = {"data": self.data}
+
+        # Partial indexing case - include full metadata
+        if self.metadata and self.metadata.status == QueryCompletenessStatus.PARTIAL:
+            result["metadata"] = self.metadata.to_dict()
+            return result
+
+        # Special conditions - include minimal metadata
+        if self.status:
+            metadata_dict = {"status": self.status.value}
+            metadata_dict.update(self.extra_metadata)
+            result["metadata"] = metadata_dict
+
+        return result
+
+    @staticmethod
+    def create_normal(data: Any) -> "EnhancedQueryResult":
+        """
+        Create result for normal case (1-20 results, fully indexed).
+
+        No metadata included - silence = success.
+        """
+        return EnhancedQueryResult(data)
+
+    @staticmethod
+    def create_empty(
+        data: Any,
+        suggestions: Optional[List[str]] = None,
+    ) -> "EnhancedQueryResult":
+        """
+        Create result for empty results case.
+
+        Args:
+            data: Empty result data (usually [] or {})
+            suggestions: Suggestions for broadening the search
+        """
+        default_suggestions = [
+            "Broaden pattern (e.g., use '.*' prefix/suffix for partial match)",
+            "Check spelling of symbol name",
+            "Verify file is indexed (use get_indexing_status)",
+            "Try search_symbols for unified search across types",
+        ]
+        return EnhancedQueryResult(
+            data,
+            status=QueryCompletenessStatus.EMPTY,
+            extra_metadata={"suggestions": suggestions or default_suggestions},
+        )
+
+    @staticmethod
+    def create_truncated(
+        data: Any,
+        returned: int,
+        total_matches: int,
+    ) -> "EnhancedQueryResult":
+        """
+        Create result for truncated case (max_results limit applied).
+
+        Args:
+            data: Truncated result data
+            returned: Number of results returned
+            total_matches: Total number of matches before truncation
+        """
+        return EnhancedQueryResult(
+            data,
+            status=QueryCompletenessStatus.TRUNCATED,
+            extra_metadata={
+                "returned": returned,
+                "total_matches": total_matches,
+            },
+        )
+
+    @staticmethod
+    def create_large(
+        data: Any,
+        result_count: int,
+    ) -> "EnhancedQueryResult":
+        """
+        Create result for large result set (>20 results without max_results).
+
+        Args:
+            data: Large result data
+            result_count: Number of results returned
+        """
+        return EnhancedQueryResult(
+            data,
+            status=QueryCompletenessStatus.LARGE,
+            extra_metadata={
+                "result_count": result_count,
+                "hint": "Consider using max_results parameter or narrowing pattern",
+            },
+        )
 
     @staticmethod
     def create_from_state(
         data: Any, state_manager: AnalyzerStateManager, tool_name: str = "query"
     ) -> "EnhancedQueryResult":
         """
-        Create result with current state metadata
+        Create result with current state metadata.
+
+        Used for partial indexing case only. For other special conditions
+        (empty, truncated, large), use the specific factory methods.
 
         Args:
             data: Query result data
@@ -370,8 +495,8 @@ class EnhancedQueryResult:
 
         # Determine status and warning
         if state_manager.is_fully_indexed():
-            status = QueryCompletenessStatus.COMPLETE
-            warning = None
+            # Fully indexed - return normal result (no metadata)
+            return EnhancedQueryResult.create_normal(data)
         else:
             status = QueryCompletenessStatus.PARTIAL
 
@@ -402,14 +527,14 @@ class EnhancedQueryResult:
                     "Results may be incomplete. Use 'wait_for_indexing' to wait for completion."
                 )
 
-        # Create metadata
-        metadata = QueryMetadata(
-            status=status,
-            indexed_files=progress.indexed_files if progress else 0,
-            total_files=progress.total_files if progress else 0,
-            completion_percentage=progress.completion_percentage if progress else 0.0,
-            timestamp=datetime.now().isoformat(),
-            warning=warning,
-        )
+            # Create metadata
+            metadata = QueryMetadata(
+                status=status,
+                indexed_files=progress.indexed_files if progress else 0,
+                total_files=progress.total_files if progress else 0,
+                completion_percentage=progress.completion_percentage if progress else 0.0,
+                timestamp=datetime.now().isoformat(),
+                warning=warning,
+            )
 
-        return EnhancedQueryResult(data, metadata)
+            return EnhancedQueryResult(data, metadata=metadata)

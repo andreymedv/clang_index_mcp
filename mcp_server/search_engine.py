@@ -2,7 +2,7 @@
 
 import re
 import threading
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple, Union
 from collections import defaultdict
 from .symbol_info import SymbolInfo
 from .regex_validator import RegexValidator, RegexValidationError
@@ -334,7 +334,8 @@ class SearchEngine:
         project_only: bool = True,
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        max_results: Optional[int] = None,
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for classes matching a pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
@@ -356,9 +357,12 @@ class SearchEngine:
                         - "DocumentBuilder" matches "CO::DocumentBuilder" (suffix)
                         - "CO::DocumentBuilder" matches "TopLevel::CO::DocumentBuilder" (suffix)
                         - "" (empty string) matches only global namespace
+            max_results: Optional maximum number of results to return. When specified,
+                        returns tuple (results, total_count) for truncation tracking.
 
         Returns:
-            List of matching class dictionaries with qualified_name and namespace fields
+            If max_results is None: List of matching class dictionaries
+            If max_results is set: Tuple of (truncated list, total count before truncation)
 
         Task: T2.2.1 (Qualified Names Phase 2)
         """
@@ -423,6 +427,12 @@ class SearchEngine:
                             }
                         )
 
+        # Handle max_results truncation
+        if max_results is not None:
+            total_count = len(results)
+            truncated_results = results[:max_results]
+            return (truncated_results, total_count)
+
         return results
 
     def search_functions(
@@ -432,7 +442,8 @@ class SearchEngine:
         class_name: Optional[str] = None,
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        max_results: Optional[int] = None,
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching a pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
@@ -457,9 +468,12 @@ class SearchEngine:
                         - "DocumentBuilder" matches "CO::DocumentBuilder" (suffix)
                         - "Handler" matches "app::Handler" (suffix)
                         - "" (empty string) matches only global namespace
+            max_results: Optional maximum number of results to return. When specified,
+                        returns tuple (results, total_count) for truncation tracking.
 
         Returns:
-            List of matching function dictionaries with qualified_name and namespace fields
+            If max_results is None: List of matching function dictionaries
+            If max_results is set: Tuple of (truncated list, total count before truncation)
 
         Task: T2.2.2 (Qualified Names Phase 2)
         """
@@ -586,6 +600,12 @@ class SearchEngine:
 
                             results.append(_create_result(info))
 
+        # Handle max_results truncation
+        if max_results is not None:
+            total_count = len(results)
+            truncated_results = results[:max_results]
+            return (truncated_results, total_count)
+
         return results
 
     def search_symbols(
@@ -594,7 +614,8 @@ class SearchEngine:
         project_only: bool = True,
         symbol_types: Optional[List[str]] = None,
         namespace: Optional[str] = None,
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        max_results: Optional[int] = None,
+    ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for any symbols matching a pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
@@ -615,10 +636,12 @@ class SearchEngine:
                       Examples:
                         - "DocumentBuilder" matches "CO::DocumentBuilder" (suffix)
                         - "" (empty string) matches only global namespace
+            max_results: Optional maximum number of results to return (across all types).
+                        When specified, returns tuple (results, total_count) for truncation tracking.
 
         Returns:
-            Dictionary with "classes" and "functions" keys containing matching symbols
-            Each symbol includes qualified_name and namespace fields (Phase 2)
+            If max_results is None: Dictionary with "classes" and "functions" keys
+            If max_results is set: Tuple of (truncated dict, total count before truncation)
 
         Note:
             Delegates to search_classes() and search_functions() which implement
@@ -639,6 +662,23 @@ class SearchEngine:
 
         if search_functions:
             results["functions"] = self.search_functions(pattern, project_only, namespace=namespace)
+
+        # Handle max_results truncation (truncate combined results)
+        if max_results is not None:
+            total_count = len(results["classes"]) + len(results["functions"])
+            # Truncate each list proportionally, keeping classes first
+            remaining = max_results
+            if remaining > 0:
+                classes_count = min(len(results["classes"]), remaining)
+                results["classes"] = results["classes"][:classes_count]
+                remaining -= classes_count
+            else:
+                results["classes"] = []
+            if remaining > 0:
+                results["functions"] = results["functions"][:remaining]
+            else:
+                results["functions"] = []
+            return (results, total_count)
 
         return results
 
