@@ -309,6 +309,15 @@ async def list_tools() -> List[Tool]:
                             "**Use this to disambiguate** when multiple namespaces have the same class name."
                         ),
                     },
+                    "max_results": {
+                        "type": "integer",
+                        "description": (
+                            "Optional: Maximum number of results to return. Use this to limit large result "
+                            "sets. When specified, response includes metadata with 'returned' and "
+                            "'total_matches' counts for pagination awareness."
+                        ),
+                        "minimum": 1,
+                    },
                 },
                 "required": ["pattern"],
             },
@@ -374,6 +383,15 @@ async def list_tools() -> List[Tool]:
                             "'' (empty string) returns only global namespace functions. "
                             "**Use this to disambiguate** when multiple namespaces have the same function."
                         ),
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": (
+                            "Optional: Maximum number of results to return. Use this to limit large result "
+                            "sets. When specified, response includes metadata with 'returned' and "
+                            "'total_matches' counts for pagination awareness."
+                        ),
+                        "minimum": 1,
                     },
                 },
                 "required": ["pattern"],
@@ -476,6 +494,15 @@ async def list_tools() -> List[Tool]:
                             "'' (empty string) returns only global namespace symbols. "
                             "**Use this to disambiguate** when multiple namespaces have the same symbol."
                         ),
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": (
+                            "Optional: Maximum number of results to return (across all symbol types). "
+                            "Use this to limit large result sets. When specified, response includes "
+                            "metadata with 'returned' and 'total_matches' counts for pagination awareness."
+                        ),
+                        "minimum": 1,
                     },
                 },
                 "required": ["pattern"],
@@ -715,6 +742,15 @@ async def list_tools() -> List[Tool]:
                         "description": "If the target is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
                         "default": "",
                     },
+                    "max_results": {
+                        "type": "integer",
+                        "description": (
+                            "Optional: Maximum number of caller results to return. Use this to limit large "
+                            "result sets. When specified, response includes metadata with 'returned' and "
+                            "'total_matches' counts for pagination awareness."
+                        ),
+                        "minimum": 1,
+                    },
                 },
                 "required": ["function_name"],
             },
@@ -757,6 +793,15 @@ async def list_tools() -> List[Tool]:
                         "type": "string",
                         "description": "If the source is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
                         "default": "",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": (
+                            "Optional: Maximum number of callee results to return. Use this to limit large "
+                            "result sets. When specified, response includes metadata with 'returned' and "
+                            "'total_matches' counts for pagination awareness."
+                        ),
+                        "minimum": 1,
                     },
                 },
                 "required": ["function_name"],
@@ -959,6 +1004,58 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
     return (True, "")
 
 
+def _create_search_result(
+    data: Any,
+    state_manager: AnalyzerStateManager,
+    tool_name: str,
+    max_results: int = None,
+    total_count: int = None,
+) -> EnhancedQueryResult:
+    """
+    Create an EnhancedQueryResult with appropriate metadata based on special conditions.
+
+    Design principle: Silence = Success. Metadata only appears for special conditions
+    that require LLM guidance (empty, truncated, large, partial).
+
+    Args:
+        data: Query result data (list or dict with lists)
+        state_manager: State manager for checking indexing status
+        tool_name: Name of the tool (for customized messages)
+        max_results: If specified, max_results limit was applied
+        total_count: Total count before truncation (when max_results is specified)
+
+    Returns:
+        EnhancedQueryResult with appropriate metadata
+    """
+    # Priority 1: Check for partial indexing (always takes precedence)
+    if not state_manager.is_fully_indexed():
+        return EnhancedQueryResult.create_from_state(data, state_manager, tool_name)
+
+    # Calculate result count for both list and dict data
+    if isinstance(data, list):
+        result_count = len(data)
+    elif isinstance(data, dict):
+        # For search_symbols which returns {"classes": [...], "functions": [...]}
+        result_count = sum(len(v) for v in data.values() if isinstance(v, list))
+    else:
+        result_count = 0
+
+    # Priority 2: Check for empty results
+    if result_count == 0:
+        return EnhancedQueryResult.create_empty(data)
+
+    # Priority 3: Check for truncation (max_results was specified and applied)
+    if max_results is not None and total_count is not None and total_count > max_results:
+        return EnhancedQueryResult.create_truncated(data, result_count, total_count)
+
+    # Priority 4: Check for large result set (>20 results without max_results)
+    if max_results is None and result_count > EnhancedQueryResult.LARGE_RESULT_THRESHOLD:
+        return EnhancedQueryResult.create_large(data, result_count)
+
+    # Default: Normal result (no metadata - silence = success)
+    return EnhancedQueryResult.create_normal(data)
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
@@ -1150,13 +1247,22 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             pattern = arguments["pattern"]
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
+            max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
-                None, lambda: analyzer.search_classes(pattern, project_only, file_name, namespace)
+            raw_results = await loop.run_in_executor(
+                None,
+                lambda: analyzer.search_classes(
+                    pattern, project_only, file_name, namespace, max_results
+                ),
             )
-            # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                results, state_manager, "search_classes"
+            # Handle tuple return (results, total_count) when max_results is specified
+            if isinstance(raw_results, tuple):
+                results, total_count = raw_results
+            else:
+                results, total_count = raw_results, None
+            # Wrap with appropriate metadata based on special conditions
+            enhanced_result = _create_search_result(
+                results, state_manager, "search_classes", max_results, total_count
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
@@ -1166,16 +1272,22 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
             pattern = arguments["pattern"]
+            max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
+            raw_results = await loop.run_in_executor(
                 None,
                 lambda: analyzer.search_functions(
-                    pattern, project_only, class_name, file_name, namespace
+                    pattern, project_only, class_name, file_name, namespace, max_results
                 ),
             )
-            # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                results, state_manager, "search_functions"
+            # Handle tuple return (results, total_count) when max_results is specified
+            if isinstance(raw_results, tuple):
+                results, total_count = raw_results
+            else:
+                results, total_count = raw_results, None
+            # Wrap with appropriate metadata based on special conditions
+            enhanced_result = _create_search_result(
+                results, state_manager, "search_functions", max_results, total_count
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
@@ -1227,14 +1339,22 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             project_only = arguments.get("project_only", True)
             symbol_types = arguments.get("symbol_types", None)
             namespace = arguments.get("namespace", None)
+            max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
+            raw_results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.search_symbols(pattern, project_only, symbol_types, namespace),
+                lambda: analyzer.search_symbols(
+                    pattern, project_only, symbol_types, namespace, max_results
+                ),
             )
-            # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                results, state_manager, "search_symbols"
+            # Handle tuple return (results, total_count) when max_results is specified
+            if isinstance(raw_results, tuple):
+                results, total_count = raw_results
+            else:
+                results, total_count = raw_results, None
+            # Wrap with appropriate metadata based on special conditions
+            enhanced_result = _create_search_result(
+                results, state_manager, "search_symbols", max_results, total_count
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
@@ -1245,11 +1365,21 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             results = await loop.run_in_executor(
                 None, lambda: analyzer.find_in_file(file_path, pattern)
             )
-            # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                results, state_manager, "find_in_file"
+            # find_in_file returns {"results": [...], "matched_files": [...], ...}
+            # Count the actual symbol results for metadata logic
+            result_list = results.get("results", []) if isinstance(results, dict) else []
+            # Wrap with appropriate metadata based on special conditions
+            # Use _create_search_result with the result list for counting
+            enhanced_result = _create_search_result(
+                result_list, state_manager, "find_in_file", None, None
             )
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+            # But return the full results dict (with matched_files, suggestions, etc.)
+            # Merge the metadata into the results dict
+            output = results.copy() if isinstance(results, dict) else {"results": results}
+            enhanced_dict = enhanced_result.to_dict()
+            if "metadata" in enhanced_dict:
+                output["metadata"] = enhanced_dict["metadata"]
+            return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "refresh_project":
             incremental = arguments.get("incremental", True)
@@ -1449,20 +1579,52 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "find_callers":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
+            max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None, lambda: analyzer.find_callers(function_name, class_name)
             )
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Results is dict with "callers" list - use that for metadata logic
+            callers_list = results.get("callers", []) if isinstance(results, dict) else []
+            total_count = len(callers_list)
+            # Apply truncation if max_results specified
+            if max_results is not None and len(callers_list) > max_results:
+                results["callers"] = callers_list[:max_results]
+            # Wrap with appropriate metadata
+            enhanced_result = _create_search_result(
+                results.get("callers", []), state_manager, "find_callers", max_results, total_count
+            )
+            # Merge metadata into results dict
+            output = results.copy() if isinstance(results, dict) else {"callers": results}
+            enhanced_dict = enhanced_result.to_dict()
+            if "metadata" in enhanced_dict:
+                output["metadata"] = enhanced_dict["metadata"]
+            return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "find_callees":
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
+            max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None, lambda: analyzer.find_callees(function_name, class_name)
             )
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            # Results is dict with "callees" list - use that for metadata logic
+            callees_list = results.get("callees", []) if isinstance(results, dict) else []
+            total_count = len(callees_list)
+            # Apply truncation if max_results specified
+            if max_results is not None and len(callees_list) > max_results:
+                results["callees"] = callees_list[:max_results]
+            # Wrap with appropriate metadata
+            enhanced_result = _create_search_result(
+                results.get("callees", []), state_manager, "find_callees", max_results, total_count
+            )
+            # Merge metadata into results dict
+            output = results.copy() if isinstance(results, dict) else {"callees": results}
+            enhanced_dict = enhanced_result.to_dict()
+            if "metadata" in enhanced_dict:
+                output["metadata"] = enhanced_dict["metadata"]
+            return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "get_call_sites":
             function_name = arguments["function_name"]

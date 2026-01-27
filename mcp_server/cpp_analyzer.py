@@ -3160,10 +3160,13 @@ class CppAnalyzer:
         project_only: bool = True,
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        max_results: Optional[int] = None,
+    ):
         """Search for classes matching pattern"""
         try:
-            return self.search_engine.search_classes(pattern, project_only, file_name, namespace)
+            return self.search_engine.search_classes(
+                pattern, project_only, file_name, namespace, max_results
+            )
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
@@ -3175,11 +3178,12 @@ class CppAnalyzer:
         class_name: Optional[str] = None,
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        max_results: Optional[int] = None,
+    ):
         """Search for functions matching pattern, optionally within a specific class"""
         try:
             return self.search_engine.search_functions(
-                pattern, project_only, class_name, file_name, namespace
+                pattern, project_only, class_name, file_name, namespace, max_results
             )
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
@@ -3819,7 +3823,8 @@ class CppAnalyzer:
         project_only: bool = True,
         symbol_types: Optional[List[str]] = None,
         namespace: Optional[str] = None,
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        max_results: Optional[int] = None,
+    ):
         """
         Search for all symbols (classes and functions) matching pattern.
 
@@ -3829,12 +3834,16 @@ class CppAnalyzer:
             symbol_types: List of symbol types to include. Options: ['class', 'struct', 'function', 'method']
                          If None, includes all types.
             namespace: Optional namespace filter (exact match, case-sensitive)
+            max_results: Optional maximum number of results to return
 
         Returns:
             Dictionary with keys 'classes' and 'functions' containing matching symbols
+            (or tuple with total_count if max_results is specified)
         """
         try:
-            return self.search_engine.search_symbols(pattern, project_only, symbol_types, namespace)
+            return self.search_engine.search_symbols(
+                pattern, project_only, symbol_types, namespace, max_results
+            )
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
