@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Debug script to see full compile arguments"""
+
 import sys
 from pathlib import Path
 

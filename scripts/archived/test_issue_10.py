@@ -11,6 +11,7 @@ This script tests that the fix for Issue #10 works correctly by:
 Usage:
     python scripts/test_issue_10.py
 """
+
 import sys
 import os
 from pathlib import Path

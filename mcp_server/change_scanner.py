@@ -344,11 +344,9 @@ class ChangeScanner:
         try:
             # Query all files from file_metadata table
             if hasattr(self.analyzer.cache_manager.backend, "conn"):
-                cursor = self.analyzer.cache_manager.backend.conn.execute(
-                    """
+                cursor = self.analyzer.cache_manager.backend.conn.execute("""
                     SELECT file_path FROM file_metadata
-                """
-                )
+                """)
 
                 cached_files = {row[0] for row in cursor.fetchall()}
                 return cached_files
