@@ -62,15 +62,13 @@ def analyze_template_indexing():
 
     # Query classes and templates
     print("\n   === CLASSES AND TEMPLATES ===")
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT name, qualified_name, kind, file, line, usr
         FROM symbols
         WHERE kind IN ('class', 'struct', 'class_template', 'partial_specialization')
           AND (name LIKE '%Container%' OR name LIKE '%Pair%' OR name LIKE '%Base%' OR name LIKE '%Tuple%')
         ORDER BY kind, name, line
-    """
-    )
+    """)
 
     classes = cursor.fetchall()
     for row in classes:
@@ -84,15 +82,13 @@ def analyze_template_indexing():
 
     # Query functions and templates
     print("\n\n   === FUNCTIONS AND TEMPLATES ===")
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT name, qualified_name, signature, kind, file, line, usr
         FROM symbols
         WHERE kind IN ('function', 'method', 'function_template')
           AND name LIKE '%max%'
         ORDER BY kind, name, line
-    """
-    )
+    """)
 
     functions = cursor.fetchall()
     for row in functions:

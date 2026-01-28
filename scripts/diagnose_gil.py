@@ -132,8 +132,7 @@ def main():
     print("\n" + "=" * 80)
     print("ANALYSIS:")
     print("=" * 80)
-    print(
-        """
+    print("""
 If ProcessPoolExecutor is significantly faster (1.5x+), the GIL is likely the bottleneck.
 This happens because:
 1. ThreadPoolExecutor uses Python threads (limited by GIL)
@@ -144,8 +143,7 @@ Recommendations if GIL is the bottleneck:
 - Switch to ProcessPoolExecutor for parallel parsing
 - Reduce worker count for ThreadPoolExecutor (less contention)
 - Optimize Python code between libclang calls
-    """
-    )
+    """)
 
 
 if __name__ == "__main__":

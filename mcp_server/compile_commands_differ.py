@@ -274,12 +274,10 @@ class CompileCommandsDiffer:
             return 0
 
         try:
-            cursor = self.cache.conn.execute(
-                """
+            cursor = self.cache.conn.execute("""
                 UPDATE file_metadata
                 SET compile_args_hash = NULL
-            """
-            )
+            """)
 
             cleared = cursor.rowcount
             self.cache.conn.commit()
