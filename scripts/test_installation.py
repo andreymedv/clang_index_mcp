@@ -7,6 +7,7 @@ Requirements verified:
 - libclang>=16.0.0 (required) - Verified by test_imports() and test_libclang_library()
 - orjson>=3.0.0 (optional from [performance] extras) - Checked by test_optional_dependencies()
 """
+
 import sys
 import os
 

@@ -231,8 +231,7 @@ def provide_manual_solutions():
     """Print manual solution steps"""
     print_section("Manual Solutions for Common Issues")
 
-    print(
-        """
+    print("""
 1. ISSUE: ImportError when importing clang.cindex
    SOLUTION:
    - Reinstall libclang: pip install --force-reinstall libclang
@@ -266,8 +265,7 @@ def provide_manual_solutions():
    - Ensure IDE uses same Python interpreter
    - Check LD_LIBRARY_PATH or DYLD_LIBRARY_PATH environment variable
    - Restart IDE after installing libclang
-"""
-    )
+""")
 
 
 def run_comprehensive_test():
