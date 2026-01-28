@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# Pre-push hook: runs regression tests and code quality checks
+# before allowing push to remote.
+#
+# Bypass (emergency only): git push --no-verify
+#
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+echo -e "${YELLOW}=== Pre-push checks ===${NC}"
+
+# Change to repository root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Activate virtual environment if available
+if [ -f "mcp_env/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    . mcp_env/bin/activate
+elif [ -f "mcp_env/Scripts/activate" ]; then
+    # shellcheck disable=SC1091
+    . mcp_env/Scripts/activate
+fi
+
+# Check that pytest is available
+if ! python3 -m pytest --version >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: pytest not found. Install dev dependencies:${NC}"
+    echo "  pip install .[dev]"
+    echo "  # or: make install-dev"
+    exit 1
+fi
+
+# Run tests
+echo -e "${YELLOW}Running tests (make test)...${NC}"
+if make test; then
+    echo -e "${GREEN}Tests passed!${NC}"
+else
+    echo -e "${RED}Tests FAILED. Push aborted.${NC}"
+    echo "Fix the failing tests and try again."
+    exit 1
+fi
+
+# Run code quality checks
+echo -e "${YELLOW}Running code quality checks (make check)...${NC}"
+if make check; then
+    echo -e "${GREEN}Code quality checks passed!${NC}"
+else
+    echo -e "${RED}Code quality checks FAILED. Push aborted.${NC}"
+    echo "Run 'make format' to fix formatting, then review lint/type errors."
+    exit 1
+fi
+
+echo -e "${GREEN}=== All pre-push checks passed ===${NC}"
+
+# Delegate to beads (bd) if available
+if command -v bd >/dev/null 2>&1; then
+    bd hooks run pre-push "$@"
+fi
