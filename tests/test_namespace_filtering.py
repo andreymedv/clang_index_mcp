@@ -275,26 +275,26 @@ def nested_namespace_project(tmp_path):
     Create a C++ project with nested namespaces to test partial namespace matching.
 
     Namespace structure:
-    - CO::DocumentBuilder::TextBuilder (class)
-    - CO::DocumentBuilder::HtmlBuilder (class)
-    - DocumentBuilder::XmlBuilder (class) - different root namespace
-    - TopLevel::CO::DocumentBuilder::PdfBuilder (class) - deeply nested
+    - outer::builders::TextWidget (class)
+    - outer::builders::HtmlWidget (class)
+    - builders::XmlWidget (class) - different root namespace
+    - TopLevel::outer::builders::PdfWidget (class) - deeply nested
     """
     project = tmp_path / "nested_namespace"
     project.mkdir()
 
-    # CO::DocumentBuilder namespace with multiple classes
+    # outer::builders namespace with multiple classes
     co_builders = project / "co_builders.h"
     co_builders.write_text(
         """
-namespace CO {
-    namespace DocumentBuilder {
-        class TextBuilder {
+namespace outer {
+    namespace builders {
+        class TextWidget {
         public:
             void build();
         };
 
-        class HtmlBuilder {
+        class HtmlWidget {
         public:
             void render();
         };
@@ -305,12 +305,12 @@ namespace CO {
 """
     )
 
-    # Standalone DocumentBuilder namespace (different from CO::DocumentBuilder)
+    # Standalone builders namespace (different from outer::builders)
     doc_builder = project / "doc_builder.h"
     doc_builder.write_text(
         """
-namespace DocumentBuilder {
-    class XmlBuilder {
+namespace builders {
+    class XmlWidget {
     public:
         void serialize();
     };
@@ -325,9 +325,9 @@ namespace DocumentBuilder {
     deep_nested.write_text(
         """
 namespace TopLevel {
-    namespace CO {
-        namespace DocumentBuilder {
-            class PdfBuilder {
+    namespace outer {
+        namespace builders {
+            class PdfWidget {
             public:
                 void export_pdf();
             };
@@ -344,30 +344,30 @@ def test_partial_namespace_matching_classes(nested_namespace_project):
     """
     Test that partial namespace filter matches suffix of full namespace.
 
-    "DocumentBuilder" should match:
-    - CO::DocumentBuilder (suffix match)
-    - DocumentBuilder (exact match)
-    - TopLevel::CO::DocumentBuilder (suffix match)
+    "builders" should match:
+    - outer::builders (suffix match)
+    - builders (exact match)
+    - TopLevel::outer::builders (suffix match)
     """
     analyzer = CppAnalyzer(str(nested_namespace_project))
     analyzer.index_project()
 
-    # Partial namespace "DocumentBuilder" should find classes in all matching namespaces
-    results = analyzer.search_classes("", namespace="DocumentBuilder")
+    # Partial namespace "builders" should find classes in all matching namespaces
+    results = analyzer.search_classes("", namespace="builders")
 
-    # Should find: TextBuilder, HtmlBuilder (CO::DocumentBuilder)
-    #              XmlBuilder (DocumentBuilder)
-    #              PdfBuilder (TopLevel::CO::DocumentBuilder)
+    # Should find: TextWidget, HtmlWidget (outer::builders)
+    #              XmlWidget (builders)
+    #              PdfWidget (TopLevel::outer::builders)
     assert (
         len(results) == 4
     ), f"Expected 4 classes, got {len(results)}: {[r['qualified_name'] for r in results]}"
 
-    # Verify all matched namespaces end with "DocumentBuilder"
+    # Verify all matched namespaces end with "builders"
     for result in results:
         ns = result["namespace"]
-        assert ns == "DocumentBuilder" or ns.endswith(
-            "::DocumentBuilder"
-        ), f"Namespace '{ns}' doesn't match partial filter 'DocumentBuilder'"
+        assert ns == "builders" or ns.endswith(
+            "::builders"
+        ), f"Namespace '{ns}' doesn't match partial filter 'builders'"
 
 
 def test_partial_namespace_matching_functions(nested_namespace_project):
@@ -377,10 +377,10 @@ def test_partial_namespace_matching_functions(nested_namespace_project):
     analyzer = CppAnalyzer(str(nested_namespace_project))
     analyzer.index_project()
 
-    # Find functions in DocumentBuilder (partial match)
-    results = analyzer.search_functions("", namespace="DocumentBuilder")
+    # Find functions in builders (partial match)
+    results = analyzer.search_functions("", namespace="builders")
 
-    # Should find: initialize (CO::DocumentBuilder), setup (DocumentBuilder)
+    # Should find: initialize (outer::builders), setup (builders)
     standalone_funcs = [f for f in results if not f["parent_class"]]
     assert len(standalone_funcs) == 2, f"Expected 2 functions, got {len(standalone_funcs)}"
 
@@ -389,14 +389,14 @@ def test_partial_namespace_excludes_non_suffix_matches(nested_namespace_project)
     """
     Test that partial namespace filter does NOT match substrings that aren't at :: boundary.
 
-    "Builder" should NOT match "DocumentBuilder" because "Builder" is not preceded by "::".
+    "uilders" should NOT match "builders" because "uilders" is not preceded by "::".
     """
     analyzer = CppAnalyzer(str(nested_namespace_project))
     analyzer.index_project()
 
-    # "Builder" should not match any namespace (no namespace is just "Builder" or ends with "::Builder")
-    results = analyzer.search_classes("", namespace="Builder")
-    assert len(results) == 0, f"Expected 0 classes for namespace='Builder', got {len(results)}"
+    # "uilders" should not match any namespace (no namespace is just "uilders" or ends with "::uilders")
+    results = analyzer.search_classes("", namespace="uilders")
+    assert len(results) == 0, f"Expected 0 classes for namespace='uilders', got {len(results)}"
 
 
 def test_unique_namespace_exact_match(nested_namespace_project):
@@ -409,38 +409,38 @@ def test_unique_namespace_exact_match(nested_namespace_project):
     analyzer = CppAnalyzer(str(nested_namespace_project))
     analyzer.index_project()
 
-    # TopLevel::CO::DocumentBuilder is unique - no other namespace ends with it
-    results = analyzer.search_classes("", namespace="TopLevel::CO::DocumentBuilder")
+    # TopLevel::outer::builders is unique - no other namespace ends with it
+    results = analyzer.search_classes("", namespace="TopLevel::outer::builders")
     assert (
         len(results) == 1
-    ), f"Expected 1 class in TopLevel::CO::DocumentBuilder, got {len(results)}"
-    assert results[0]["name"] == "PdfBuilder"
+    ), f"Expected 1 class in TopLevel::outer::builders, got {len(results)}"
+    assert results[0]["name"] == "PdfWidget"
 
-    # Standalone "DocumentBuilder" namespace is also matchable exactly
-    results2 = analyzer.search_classes("XmlBuilder", namespace="DocumentBuilder")
+    # Standalone "builders" namespace is also matchable exactly
+    results2 = analyzer.search_classes("XmlWidget", namespace="builders")
     assert len(results2) == 1
-    assert results2[0]["qualified_name"] == "DocumentBuilder::XmlBuilder"
+    assert results2[0]["qualified_name"] == "builders::XmlWidget"
 
 
 def test_partial_namespace_with_intermediate_component(nested_namespace_project):
     """
-    Test partial namespace with intermediate component like "CO::DocumentBuilder".
+    Test partial namespace with intermediate component like "outer::builders".
 
-    This should match both CO::DocumentBuilder and TopLevel::CO::DocumentBuilder.
+    This should match both outer::builders and TopLevel::outer::builders.
     """
     analyzer = CppAnalyzer(str(nested_namespace_project))
     analyzer.index_project()
 
-    results = analyzer.search_classes("", namespace="CO::DocumentBuilder")
+    results = analyzer.search_classes("", namespace="outer::builders")
 
-    # Should find: TextBuilder, HtmlBuilder (CO::DocumentBuilder)
-    #              PdfBuilder (TopLevel::CO::DocumentBuilder)
+    # Should find: TextWidget, HtmlWidget (outer::builders)
+    #              PdfWidget (TopLevel::outer::builders)
     assert len(results) == 3, f"Expected 3 classes, got {len(results)}"
 
     qualified_names = {r["qualified_name"] for r in results}
-    assert "CO::DocumentBuilder::TextBuilder" in qualified_names
-    assert "CO::DocumentBuilder::HtmlBuilder" in qualified_names
-    assert "TopLevel::CO::DocumentBuilder::PdfBuilder" in qualified_names
+    assert "outer::builders::TextWidget" in qualified_names
+    assert "outer::builders::HtmlWidget" in qualified_names
+    assert "TopLevel::outer::builders::PdfWidget" in qualified_names
 
 
 def test_partial_namespace_case_sensitive(nested_namespace_project):
@@ -451,14 +451,14 @@ def test_partial_namespace_case_sensitive(nested_namespace_project):
     analyzer.index_project()
 
     # Correct case should match
-    results_correct = analyzer.search_classes("", namespace="DocumentBuilder")
+    results_correct = analyzer.search_classes("", namespace="builders")
     assert len(results_correct) == 4
 
     # Wrong case should not match
-    results_wrong = analyzer.search_classes("", namespace="documentbuilder")
+    results_wrong = analyzer.search_classes("", namespace="Builders")
     assert len(results_wrong) == 0
 
-    results_wrong2 = analyzer.search_classes("", namespace="DOCUMENTBUILDER")
+    results_wrong2 = analyzer.search_classes("", namespace="BUILDERS")
     assert len(results_wrong2) == 0
 
 
@@ -469,13 +469,13 @@ def test_partial_namespace_with_pattern(nested_namespace_project):
     analyzer = CppAnalyzer(str(nested_namespace_project))
     analyzer.index_project()
 
-    # Search for ".*Builder" pattern in partial namespace "DocumentBuilder"
-    results = analyzer.search_classes(".*Builder", namespace="DocumentBuilder")
+    # Search for ".*Widget" pattern in partial namespace "builders"
+    results = analyzer.search_classes(".*Widget", namespace="builders")
 
-    # Should find all 4 builder classes
+    # Should find all 4 widget classes
     assert len(results) == 4, f"Expected 4 classes, got {len(results)}"
 
     # Search for specific class in partial namespace
-    results2 = analyzer.search_classes("TextBuilder", namespace="DocumentBuilder")
+    results2 = analyzer.search_classes("TextWidget", namespace="builders")
     assert len(results2) == 1
-    assert results2[0]["qualified_name"] == "CO::DocumentBuilder::TextBuilder"
+    assert results2[0]["qualified_name"] == "outer::builders::TextWidget"
