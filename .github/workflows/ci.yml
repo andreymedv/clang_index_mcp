@@ -54,11 +54,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libclang-dev
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
