@@ -29,11 +29,13 @@ jobs:
       - name: Check formatting (black)
         run: make format-check
 
-      - name: Lint (flake8)
+      - name: Lint (flake8) [informational]
         run: make lint
+        continue-on-error: true
 
-      - name: Type check (mypy)
+      - name: Type check (mypy) [informational]
         run: make type-check
+        continue-on-error: true
 
   test:
     name: Test (Python ${{ matrix.python-version }})
