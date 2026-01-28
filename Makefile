@@ -196,6 +196,11 @@ download-libclang: ## Download libclang binary for your platform
 	$(PYTHON) scripts/download_libclang.py
 	@echo "$(GREEN)libclang downloaded!$(NC)"
 
+setup-hooks: ## Configure git to use project hooks (enables pre-push tests)
+	@echo "$(BLUE)Configuring git hooks...$(NC)"
+	git config core.hooksPath .githooks
+	@echo "$(GREEN)Git hooks configured! Pre-push will now run tests before push.$(NC)"
+
 pre-commit-install: ## Install pre-commit hooks
 	@echo "$(BLUE)Installing pre-commit hooks...$(NC)"
 	$(PYTHON) -m pre_commit install
