@@ -4,6 +4,7 @@ Tests for template class search and specialization discovery (Issue #99).
 Tests template indexing, search, and cross-specialization queries.
 """
 
+import json
 import pytest
 from pathlib import Path
 from mcp_server.cpp_analyzer import CppAnalyzer
@@ -11,8 +12,21 @@ from mcp_server.cpp_analyzer import CppAnalyzer
 
 @pytest.fixture
 def template_project_path():
-    """Path to template test project."""
-    return Path(__file__).parent.parent / "tests/fixtures/template_test_project"
+    """Path to template test project with dynamically generated compile_commands.json."""
+    project_path = Path(__file__).parent.parent / "tests/fixtures/template_test_project"
+    # Generate compile_commands.json with correct absolute paths for the current environment
+    # (the checked-in file has hardcoded paths that only work on the original dev machine)
+    files = ["main.cpp", "templates.h", "advanced_templates.h", "namespaced_templates.h"]
+    compile_commands = [
+        {
+            "directory": str(project_path),
+            "command": f"/usr/bin/c++ -std=c++17 -I. -c {f} -o {f}.o",
+            "file": f,
+        }
+        for f in files
+    ]
+    (project_path / "compile_commands.json").write_text(json.dumps(compile_commands, indent=2))
+    return project_path
 
 
 @pytest.fixture
