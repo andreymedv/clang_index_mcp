@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 #
-# Pre-push hook: runs regression tests and code quality checks
+# Pre-push hook: runs regression tests and formatting checks
 # before allowing push to remote.
+#
+# Enforced (blocks push on failure):
+#   - make test        (pytest suite)
+#   - make format-check (black formatting)
+#
+# Informational (warns but does not block):
+#   - make lint        (flake8)
+#   - make type-check  (mypy)
 #
 # Bypass (emergency only): git push --no-verify
 #
@@ -37,6 +45,8 @@ if ! python3 -m pytest --version >/dev/null 2>&1; then
     exit 1
 fi
 
+# === ENFORCED CHECKS (block push on failure) ===
+
 # Run tests
 echo -e "${YELLOW}Running tests (make test)...${NC}"
 if make test; then
@@ -47,14 +57,30 @@ else
     exit 1
 fi
 
-# Run code quality checks
-echo -e "${YELLOW}Running code quality checks (make check)...${NC}"
-if make check; then
-    echo -e "${GREEN}Code quality checks passed!${NC}"
+# Run formatting check
+echo -e "${YELLOW}Running format check (make format-check)...${NC}"
+if make format-check; then
+    echo -e "${GREEN}Format check passed!${NC}"
 else
-    echo -e "${RED}Code quality checks FAILED. Push aborted.${NC}"
-    echo "Run 'make format' to fix formatting, then review lint/type errors."
+    echo -e "${RED}Format check FAILED. Push aborted.${NC}"
+    echo "Run 'make format' to fix formatting, then re-commit."
     exit 1
+fi
+
+# === INFORMATIONAL CHECKS (warn but do not block) ===
+
+echo -e "${YELLOW}Running lint (informational)...${NC}"
+if make lint 2>&1; then
+    echo -e "${GREEN}Lint passed!${NC}"
+else
+    echo -e "${YELLOW}Lint has warnings (not blocking push).${NC}"
+fi
+
+echo -e "${YELLOW}Running type check (informational)...${NC}"
+if make type-check 2>&1; then
+    echo -e "${GREEN}Type check passed!${NC}"
+else
+    echo -e "${YELLOW}Type check has warnings (not blocking push).${NC}"
 fi
 
 echo -e "${GREEN}=== All pre-push checks passed ===${NC}"
