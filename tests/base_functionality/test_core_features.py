@@ -311,10 +311,15 @@ void mainFunction() {
         analyzer.index_project()
 
         # Find callees of mainFunction
-        callees = analyzer.find_callees("mainFunction")
+        result = analyzer.find_callees("mainFunction")
+
+        # Verify result format (should be dict with "callees" key)
+        assert isinstance(result, dict), "find_callees should return a dict"
+        assert "callees" in result, "Result should have 'callees' key"
+        callees_list = result["callees"]
 
         # Verify callees were found
-        callee_names = [c['name'] for c in callees]
+        callee_names = [c['name'] for c in callees_list]
         assert "function1" in callee_names, "function1 should be in callees list"
         assert "function2" in callee_names, "function2 should be in callees list"
         # Note: function3 might or might not be in the list since it's not called

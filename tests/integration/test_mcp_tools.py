@@ -298,17 +298,20 @@ void main() {
         analyzer.index_project()
 
         # Get callees (functions called by process)
-        callees = analyzer.find_callees("process")
-        assert callees is not None
-        assert isinstance(callees, list)
+        callees_result = analyzer.find_callees("process")
+        assert callees_result is not None
+        # find_callees now returns dict with 'callees' key (matching find_callers pattern)
+        assert isinstance(callees_result, dict)
+        assert 'callees' in callees_result
+        assert isinstance(callees_result['callees'], list)
 
         # Get callers (functions that call process)
-        result = analyzer.find_callers("process")
-        assert result is not None
+        callers_result = analyzer.find_callers("process")
+        assert callers_result is not None
         # Phase 3: find_callers now returns dict with 'callers' key
-        assert isinstance(result, dict)
-        assert 'callers' in result
-        assert isinstance(result['callers'], list)
+        assert isinstance(callers_result, dict)
+        assert 'callers' in callers_result
+        assert isinstance(callers_result['callers'], list)
 
     def test_regex_validation_in_search(self, temp_project_dir):
         """Test that ReDoS patterns are rejected in search"""
