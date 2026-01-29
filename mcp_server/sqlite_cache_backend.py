@@ -4,7 +4,7 @@ import sqlite3
 import json
 import time
 import sys
-import os
+import fcntl
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from .symbol_info import SymbolInfo
@@ -162,14 +162,55 @@ class SqliteCacheBackend:
             # Keep temporary tables in RAM instead of disk
             self.conn.execute("PRAGMA temp_store = MEMORY")
 
-            # 256MB memory-mapped I/O for faster access
-            self.conn.execute("PRAGMA mmap_size = 268435456")
+            # Disable memory-mapped I/O to prevent bus errors with concurrent access
+            # mmap is incompatible with concurrent writes from multiple processes/threads
+            # and can cause SIGBUS crashes. WAL mode + other optimizations provide
+            # sufficient performance without mmap.
+            # See: https://www.sqlite.org/mmap.html#disadvantages
+            self.conn.execute("PRAGMA mmap_size = 0")
 
             diagnostics.debug("SQLite connection PRAGMAs applied successfully")
 
         except Exception as e:
             diagnostics.warning(f"Failed to apply some SQLite PRAGMAs: {e}")
             # Don't raise - database can still work with default settings
+
+    def _acquire_init_lock(self):
+        """Acquire file lock for database initialization.
+
+        Returns context manager that releases lock on exit.
+        """
+        import contextlib
+
+        @contextlib.contextmanager
+        def lock_context():
+            lock_path = self.db_path.with_suffix(".db.lock")
+            lock_file = None
+            try:
+                lock_file = open(lock_path, "w")
+                lock_fd = lock_file.fileno()
+                # Try non-blocking lock first
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    diagnostics.debug(f"Acquired init lock on {lock_path}")
+                except BlockingIOError:
+                    # Lock is held by another instance, wait for it
+                    diagnostics.debug(f"Waiting for init lock on {lock_path}...")
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX)  # Blocking lock
+                    diagnostics.debug(f"Acquired init lock on {lock_path}")
+
+                yield  # Critical section
+
+            finally:
+                if lock_file:
+                    try:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        lock_file.close()
+                        diagnostics.debug("Released init lock")
+                    except Exception as e:
+                        diagnostics.warning(f"Error releasing init lock: {e}")
+
+        return lock_context()
 
     def _init_database(self):
         """Initialize database schema and configuration with retry logic.
@@ -184,124 +225,128 @@ class SqliteCacheBackend:
         max_retries = 10
         base_delay = 0.1  # 100ms initial delay
 
-        for attempt in range(max_retries):
-            try:
-                # Check if database exists and has the correct version
-                needs_recreate = False
-                schema_ok = False
+        # Acquire file lock to prevent concurrent initialization from multiple instances
+        with self._acquire_init_lock():
+            for attempt in range(max_retries):
+                try:
+                    # Check if database exists and has the correct version
+                    needs_recreate = False
+                    schema_ok = False
 
-                if self.db_path.exists():
-                    try:
-                        # Try to get the current version
-                        cursor = self.conn.execute(
-                            "SELECT value FROM cache_metadata WHERE key = 'version'"
-                        )
-                        result = cursor.fetchone()
-                        if result:
-                            current_version = json.loads(result[0])
-                            if current_version != self.CURRENT_SCHEMA_VERSION:
-                                if self._skip_schema_recreation:
-                                    # Worker process: don't recreate, just use existing DB
-                                    # Main process should have ensured schema is current
-                                    diagnostics.debug(
-                                        f"Worker: Schema mismatch ({current_version} vs {self.CURRENT_SCHEMA_VERSION}), "
-                                        "skipping recreation (main process handles this)"
-                                    )
-                                    schema_ok = True  # Assume main handled it
-                                else:
-                                    diagnostics.info(
-                                        f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
-                                    )
-                                    diagnostics.info("Recreating database with current schema")
-                                    needs_recreate = True
-                            else:
-                                schema_ok = True
-                        else:
-                            if self._skip_schema_recreation:
-                                diagnostics.debug(
-                                    "Worker: No version metadata, skipping recreation"
-                                )
-                                schema_ok = True
-                            else:
-                                diagnostics.info("No version metadata found, recreating database")
-                                needs_recreate = True
-                    except (sqlite3.OperationalError, Exception) as e:
-                        if self._skip_schema_recreation:
-                            # Worker: database might be being recreated by main
-                            # Wait and retry
-                            diagnostics.debug(f"Worker: DB access error ({e}), will retry")
-                            raise  # Will trigger retry logic below
-                        else:
-                            # Table doesn't exist or other error - recreate
-                            diagnostics.info("Invalid or corrupted database, recreating")
-                            needs_recreate = True
-
-                # If schema is already OK, just ensure tables exist
-                if schema_ok:
-                    diagnostics.debug(
-                        f"Database schema is current (v{self.CURRENT_SCHEMA_VERSION})"
-                    )
-                    return
-
-                if needs_recreate:
-                    # Close connection and delete old database
-                    self._close()
                     if self.db_path.exists():
                         try:
-                            self.db_path.unlink()
-                            diagnostics.info(f"Deleted old database: {self.db_path}")
-                        except FileNotFoundError:
-                            # Race condition: another thread already deleted it
-                            pass
+                            # Try to get the current version
+                            cursor = self.conn.execute(
+                                "SELECT value FROM cache_metadata WHERE key = 'version'"
+                            )
+                            result = cursor.fetchone()
+                            if result:
+                                current_version = json.loads(result[0])
+                                if current_version != self.CURRENT_SCHEMA_VERSION:
+                                    if self._skip_schema_recreation:
+                                        # Worker process: don't recreate, just use existing DB
+                                        # Main process should have ensured schema is current
+                                        diagnostics.debug(
+                                            f"Worker: Schema mismatch ({current_version} vs {self.CURRENT_SCHEMA_VERSION}), "
+                                            "skipping recreation (main process handles this)"
+                                        )
+                                        schema_ok = True  # Assume main handled it
+                                    else:
+                                        diagnostics.info(
+                                            f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
+                                        )
+                                        diagnostics.info("Recreating database with current schema")
+                                        needs_recreate = True
+                                else:
+                                    schema_ok = True
+                            else:
+                                if self._skip_schema_recreation:
+                                    diagnostics.debug(
+                                        "Worker: No version metadata, skipping recreation"
+                                    )
+                                    schema_ok = True
+                                else:
+                                    diagnostics.info(
+                                        "No version metadata found, recreating database"
+                                    )
+                                    needs_recreate = True
+                        except (sqlite3.OperationalError, Exception) as e:
+                            if self._skip_schema_recreation:
+                                # Worker: database might be being recreated by main
+                                # Wait and retry
+                                diagnostics.debug(f"Worker: DB access error ({e}), will retry")
+                                raise  # Will trigger retry logic below
+                            else:
+                                # Table doesn't exist or other error - recreate
+                                diagnostics.info("Invalid or corrupted database, recreating")
+                                needs_recreate = True
 
-                    # Also delete WAL and SHM files if they exist
-                    for ext in ["-wal", "-shm"]:
-                        wal_file = Path(str(self.db_path) + ext)
-                        if wal_file.exists():
+                    # If schema is already OK, just ensure tables exist
+                    if schema_ok:
+                        diagnostics.debug(
+                            f"Database schema is current (v{self.CURRENT_SCHEMA_VERSION})"
+                        )
+                        return
+
+                    if needs_recreate:
+                        # Close connection and delete old database
+                        self._close()
+                        if self.db_path.exists():
                             try:
-                                wal_file.unlink()
+                                self.db_path.unlink()
+                                diagnostics.info(f"Deleted old database: {self.db_path}")
                             except FileNotFoundError:
                                 # Race condition: another thread already deleted it
                                 pass
 
-                    # Reconnect to create fresh database
-                    self._connect()
+                        # Also delete WAL and SHM files if they exist
+                        for ext in ["-wal", "-shm"]:
+                            wal_file = Path(str(self.db_path) + ext)
+                            if wal_file.exists():
+                                try:
+                                    wal_file.unlink()
+                                except FileNotFoundError:
+                                    # Race condition: another thread already deleted it
+                                    pass
 
-                # Execute schema file
-                schema_path = Path(__file__).parent / "schema.sql"
+                        # Reconnect to create fresh database
+                        self._connect()
 
-                if not schema_path.exists():
-                    raise FileNotFoundError(f"Schema file not found: {schema_path}")
+                    # Execute schema file
+                    schema_path = Path(__file__).parent / "schema.sql"
 
-                with open(schema_path, "r") as f:
-                    schema_sql = f.read()
+                    if not schema_path.exists():
+                        raise FileNotFoundError(f"Schema file not found: {schema_path}")
 
-                # Execute schema (creates tables, indexes, triggers)
-                self.conn.executescript(schema_sql)
-                self.conn.commit()
+                    with open(schema_path, "r") as f:
+                        schema_sql = f.read()
 
-                diagnostics.debug(
-                    f"SQLite database initialized successfully (schema v{self.CURRENT_SCHEMA_VERSION})"
-                )
-                return  # Success, exit the retry loop
+                    # Execute schema (creates tables, indexes, triggers)
+                    self.conn.executescript(schema_sql)
+                    self.conn.commit()
 
-            except sqlite3.OperationalError as e:
-                if "database is locked" in str(e) and attempt < max_retries - 1:
-                    # Exponential backoff with jitter
-                    import random
-
-                    delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
                     diagnostics.debug(
-                        f"Database locked during init, retry {attempt + 1}/{max_retries} after {delay:.2f}s"
+                        f"SQLite database initialized successfully (schema v{self.CURRENT_SCHEMA_VERSION})"
                     )
-                    time.sleep(delay)
-                    continue
-                else:
+                    return  # Success, exit the retry loop
+
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e) and attempt < max_retries - 1:
+                        # Exponential backoff with jitter
+                        import random
+
+                        delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
+                        diagnostics.debug(
+                            f"Database locked during init, retry {attempt + 1}/{max_retries} after {delay:.2f}s"
+                        )
+                        time.sleep(delay)
+                        continue
+                    else:
+                        diagnostics.error(f"Failed to initialize database: {e}")
+                        raise
+                except Exception as e:
                     diagnostics.error(f"Failed to initialize database: {e}")
                     raise
-            except Exception as e:
-                diagnostics.error(f"Failed to initialize database: {e}")
-                raise
 
     def ensure_schema_current(self) -> bool:
         """

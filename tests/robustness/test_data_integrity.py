@@ -61,10 +61,6 @@ class TestAtomicCacheWrites:
         count = analyzer2.index_project()
         assert count > 0, "Should load from consistent cache"
 
-    @pytest.mark.xfail(
-        reason="Flaky: SQLite mmap Bus error under concurrent access (cplusplus_mcp-iig)",
-        strict=False,
-    )
     def test_concurrent_cache_write_protection(self, temp_project_dir):
         """Test protection against concurrent cache writes - Task 1.4.3"""
         (temp_project_dir / "src" / "test.cpp").write_text("class Test {};")
