@@ -42,22 +42,18 @@ with tempfile.TemporaryDirectory() as tmpdir:
     src.mkdir()
 
     # Create header with declarations
-    (src / "functions.h").write_text(
-        """
+    (src / "functions.h").write_text("""
 int add(int a, int b);
 int subtract(int a, int b);
-"""
-    )
+""")
 
     # Create source with definitions
-    (src / "functions.cpp").write_text(
-        """
+    (src / "functions.cpp").write_text("""
 #include "functions.h"
 
 int add(int a, int b) { return a + b; }
 int subtract(int a, int b) { return a - b; }
-"""
-    )
+""")
 
     # Index
     analyzer = CppAnalyzer(str(project))

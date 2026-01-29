@@ -17,7 +17,6 @@ from typing import Iterable, Optional
 import urllib.request
 import subprocess
 
-
 LLVM_VERSION = "19.1.7"
 
 
