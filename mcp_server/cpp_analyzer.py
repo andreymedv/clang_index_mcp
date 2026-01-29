@@ -4344,9 +4344,21 @@ class CppAnalyzer:
 
         return call_sites_list
 
-    def find_callees(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
-        """Find all functions called by the specified function"""
-        results = []
+    def find_callees(self, function_name: str, class_name: str = "") -> Dict[str, Any]:
+        """
+        Find all functions called by the specified function.
+
+        Args:
+            function_name: Name of the source function
+            class_name: Optional class name to disambiguate methods
+
+        Returns:
+            Dictionary with:
+                - function: The source function name
+                - callees: List of callee function info (name, kind, file, line, signature,
+                          parent_class, is_project, start_line, end_line, header info)
+        """
+        callees_list = []
 
         # Find the target function(s)
         target_functions = self.search_functions(
@@ -4367,7 +4379,7 @@ class CppAnalyzer:
             for callee_usr in callees:
                 if callee_usr in self.usr_index:
                     callee_info = self.usr_index[callee_usr]
-                    results.append(
+                    callees_list.append(
                         {
                             "name": callee_info.name,
                             "kind": callee_info.kind,
@@ -4377,10 +4389,16 @@ class CppAnalyzer:
                             "signature": callee_info.signature,
                             "parent_class": callee_info.parent_class,
                             "is_project": callee_info.is_project,
+                            "start_line": callee_info.start_line,
+                            "end_line": callee_info.end_line,
+                            "header_file": callee_info.header_file,
+                            "header_line": callee_info.header_line,
+                            "header_start_line": callee_info.header_start_line,
+                            "header_end_line": callee_info.header_end_line,
                         }
                     )
 
-        return results
+        return {"function": function_name, "callees": callees_list}
 
     def get_call_path(
         self, from_function: str, to_function: str, max_depth: int = 10
