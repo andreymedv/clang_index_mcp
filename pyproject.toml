@@ -92,7 +92,7 @@ skip_gitignore = true
 skip = ["mcp_env", "lib", ".mcp_cache"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
