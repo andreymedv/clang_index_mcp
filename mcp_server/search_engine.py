@@ -734,15 +734,31 @@ class SearchEngine:
             # matches "myapp::builders::Widget")
             info = None
             if is_qualified:
+                # Collect all matching candidates
+                matching_candidates = []
                 for candidate in infos:
                     candidate_qualified = (
                         candidate.qualified_name if candidate.qualified_name else candidate.name
                     )
                     if self.matches_qualified_pattern(candidate_qualified, class_name):
+                        matching_candidates.append(candidate)
+
+                if not matching_candidates:
+                    return None  # No match for qualified name
+
+                # Apply definition-wins logic: prefer definitions over declarations
+                # This prevents returning forward declarations when definitions exist
+                # (Fix for cplusplus_mcp-2u9)
+                info = None
+                for candidate in matching_candidates:
+                    if candidate.is_definition:
                         info = candidate
                         break
+
+                # Fall back to first match if no definition found
                 if info is None:
-                    return None  # No match for qualified name
+                    info = matching_candidates[0]
+
             else:
                 # Check for ambiguity when using simple name
                 if len(infos) > 1:
@@ -763,7 +779,18 @@ class SearchEngine:
                         ],
                         "suggestion": "Use qualified name to disambiguate",
                     }
-                info = infos[0]
+
+                # Apply definition-wins logic: prefer definitions over declarations
+                # (Fix for cplusplus_mcp-2u9)
+                info = None
+                for candidate in infos:
+                    if candidate.is_definition:
+                        info = candidate
+                        break
+
+                # Fall back to first match if no definition found
+                if info is None:
+                    info = infos[0]
 
             # For method lookup, we need to match parent_class
             # parent_class is stored as simple name (from cursor.spelling)
