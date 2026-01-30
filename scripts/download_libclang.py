@@ -6,16 +6,13 @@ from __future__ import annotations
 import argparse
 import os
 import platform
-import re
 import shutil
 import sys
 import tarfile
 import tempfile
+import urllib.request
 from pathlib import Path
 from typing import Iterable, Optional
-
-import urllib.request
-import subprocess
 
 LLVM_VERSION = "19.1.7"
 

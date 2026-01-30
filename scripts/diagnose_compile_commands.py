@@ -12,18 +12,17 @@ Usage:
     python scripts/diagnose_compile_commands.py <project_root> [--file <specific_file>]
 """
 
-import sys
-import json
 import argparse
+import json
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.compile_commands_manager import CompileCommandsManager
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-import mcp_server.diagnostics as diagnostics
+from mcp_server.compile_commands_manager import CompileCommandsManager  # noqa: E402
+from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
+from mcp_server.cpp_analyzer_config import CppAnalyzerConfig  # noqa: E402
 
 
 def show_compile_command_sample(project_root: Path, sample_count: int = 3):
@@ -36,9 +35,9 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
         print(f"[ERROR] compile_commands.json not found at: {cc_path}")
         return None
 
-    print(f"\n{'='*70}")
-    print(f"COMPILE_COMMANDS.JSON LOCATION")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("COMPILE_COMMANDS.JSON LOCATION")
+    print(f"{'=' * 70}")
     print(f"Path: {cc_path}")
 
     try:
@@ -46,28 +45,28 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
             commands = json.load(f)
 
         print(f"Total entries: {len(commands)}")
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"SAMPLE COMPILE COMMANDS (showing {min(sample_count, len(commands))})")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         for i, cmd in enumerate(commands[:sample_count]):
-            print(f"\n[{i+1}] File: {cmd.get('file', 'N/A')}")
+            print(f"\n[{i + 1}] File: {cmd.get('file', 'N/A')}")
             print(f"    Directory: {cmd.get('directory', 'N/A')}")
 
             if "arguments" in cmd:
-                print(f"    Arguments format: LIST")
+                print("    Arguments format: LIST")
                 print(f"    Arguments ({len(cmd['arguments'])} items):")
                 for arg in cmd["arguments"][:10]:  # Show first 10
                     print(f"      - {arg}")
                 if len(cmd["arguments"]) > 10:
                     print(f"      ... and {len(cmd['arguments']) - 10} more")
             elif "command" in cmd:
-                print(f"    Arguments format: STRING")
+                print("    Arguments format: STRING")
                 print(
                     f"    Command: {cmd['command'][:200]}{'...' if len(cmd['command']) > 200 else ''}"
                 )
             else:
-                print(f"    [ERROR] No 'arguments' or 'command' field!")
+                print("    [ERROR] No 'arguments' or 'command' field!")
 
         return commands
     except Exception as e:
@@ -80,9 +79,9 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
 
 def test_argument_extraction(project_root: Path, compile_commands: list):
     """Test how arguments are being extracted"""
-    print(f"\n{'='*70}")
-    print(f"ARGUMENT EXTRACTION TEST")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("ARGUMENT EXTRACTION TEST")
+    print(f"{'=' * 70}")
 
     config = CppAnalyzerConfig(project_root)
     cc_config = config.get_compile_commands_config()
@@ -111,9 +110,9 @@ def test_argument_extraction(project_root: Path, compile_commands: list):
 
 def test_single_file_parse(project_root: Path, file_to_test: str = None):
     """Test parsing a single file with detailed error output"""
-    print(f"\n{'='*70}")
-    print(f"SINGLE FILE PARSE TEST")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("SINGLE FILE PARSE TEST")
+    print(f"{'=' * 70}")
 
     # Create analyzer
     analyzer = CppAnalyzer(str(project_root))
@@ -130,7 +129,7 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
         test_file = file_to_test
         if test_file not in files:
             print(f"[WARNING]  File {test_file} not found in compile_commands.json")
-            print(f"Using first file instead...")
+            print("Using first file instead...")
             test_file = files[0]
     else:
         test_file = files[0]
@@ -148,7 +147,7 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
         print(f"  ... and {len(args) - 30} more")
 
     # Try to parse
-    print(f"\nAttempting to parse...")
+    print("\nAttempting to parse...")
     success, was_cached = analyzer.index_file(test_file, force=True)
 
     if success:
@@ -192,9 +191,9 @@ def main():
         print(f"[ERROR] Project root does not exist: {args.project_root}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\n{'='*70}")
-    print(f"COMPILE_COMMANDS.JSON DIAGNOSTIC")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("COMPILE_COMMANDS.JSON DIAGNOSTIC")
+    print(f"{'=' * 70}")
     print(f"Project: {project_path}")
 
     # 1. Show sample compile commands
@@ -209,9 +208,9 @@ def main():
     # 3. Test parsing a single file
     test_single_file_parse(project_path, args.file)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("DIAGNOSTIC COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 if __name__ == "__main__":

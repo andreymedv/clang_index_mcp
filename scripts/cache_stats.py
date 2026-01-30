@@ -11,18 +11,15 @@ Shows comprehensive statistics about the C++ analyzer SQLite cache, including:
 - Health status
 """
 
-import sys
-import os
 import json
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server import diagnostics
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend
-from mcp_server.cache_manager import CacheManager
+from mcp_server.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
 
 
 def format_size(bytes_value: int) -> str:
