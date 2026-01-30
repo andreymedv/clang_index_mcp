@@ -23,7 +23,7 @@ Usage:
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Set, Optional
+from typing import Set
 from dataclasses import dataclass, field
 
 # Handle both package and script imports

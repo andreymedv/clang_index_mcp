@@ -22,15 +22,14 @@ Usage:
     python scripts/view_parse_errors.py <project_root> --clear-all
 """
 
-import sys
-import json
 import argparse
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cache_manager import CacheManager
+from mcp_server.cache_manager import CacheManager  # noqa: E402
 
 
 def print_error_entry(error, index=None, verbose=False):
@@ -42,11 +41,11 @@ def print_error_entry(error, index=None, verbose=False):
     print(f"File: {error.get('file_path', 'Unknown')}")
     print(f"Error Type: {error.get('error_type', 'Unknown')}")
     print(f"Retry Count: {error.get('retry_count', 0)}")
-    print(f"\nError Message:")
+    print("\nError Message:")
     print(f"  {error.get('error_message', 'No message')}")
 
     if verbose and error.get("stack_trace"):
-        print(f"\nStack Trace:")
+        print("\nStack Trace:")
         print(error.get("stack_trace"))
 
 
@@ -65,13 +64,13 @@ def view_errors(project_root: str, args):
         print(f"Unique files with errors: {summary['unique_files']}")
         print(f"Error log location: {summary['error_log_path']}")
 
-        print(f"\nError Types:")
+        print("\nError Types:")
         for error_type, count in sorted(
             summary["error_types"].items(), key=lambda x: x[1], reverse=True
         ):
             print(f"  {error_type}: {count}")
 
-        print(f"\nMost Recent Errors:")
+        print("\nMost Recent Errors:")
         for i, error in enumerate(summary["recent_errors"], 1):
             print_error_entry(error, i, verbose=args.verbose)
 

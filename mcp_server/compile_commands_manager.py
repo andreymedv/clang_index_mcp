@@ -18,19 +18,19 @@ import subprocess
 import pickle
 import hashlib
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 import time
 import threading
-from collections import defaultdict
 from clang.cindex import CompilationDatabase
 
 # Try to import orjson for faster JSON parsing (optional)
+HAS_ORJSON = False
 try:
-    import orjson
+    import orjson  # noqa: F401
 
     HAS_ORJSON = True
 except ImportError:
-    HAS_ORJSON = False
+    pass
 
 # Handle both package and script imports
 try:
@@ -344,7 +344,7 @@ class CompileCommandsManager:
 
         # Try loading from cache first (fast path)
         if self._load_from_cache(compile_commands_file):
-            diagnostics.debug(f"Compile commands will be used for accurate C++ parsing")
+            diagnostics.debug("Compile commands will be used for accurate C++ parsing")
             return True
 
         # Cache miss - parse using CompilationDatabase API
@@ -376,7 +376,7 @@ class CompileCommandsManager:
             diagnostics.info(
                 f"Successfully loaded {len(self.compile_commands)} compile commands in {total_time:.2f}s"
             )
-            diagnostics.debug(f"Compile commands will be used for accurate C++ parsing")
+            diagnostics.debug("Compile commands will be used for accurate C++ parsing")
             return True
 
         except Exception as e:

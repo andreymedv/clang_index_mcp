@@ -6,7 +6,6 @@ allowing automatic resume on server restart.
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone

@@ -3,7 +3,6 @@
 import sqlite3
 import time
 from pathlib import Path
-from typing import Optional
 
 # Handle both package and script imports
 try:

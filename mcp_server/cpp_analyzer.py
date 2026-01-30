@@ -11,12 +11,11 @@ import sys
 import re
 import time
 import threading
-import signal
 import atexit
 import gc
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Set, Tuple, Callable
+from typing import Dict, List, Optional, Any, Set, Callable
 from collections import defaultdict
 import hashlib
 import json
@@ -31,7 +30,6 @@ from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
 from .dependency_graph import DependencyGraphBuilder
 from datetime import datetime, timedelta
-from contextlib import contextmanager
 
 # Handle both package and script imports
 try:
@@ -40,8 +38,7 @@ except ImportError:
     import diagnostics
 
 try:
-    import clang.cindex
-    from clang.cindex import Index, CursorKind, TranslationUnit, Config, TranslationUnitLoadError
+    from clang.cindex import Index, CursorKind, TranslationUnit, TranslationUnitLoadError
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
@@ -508,7 +505,7 @@ class CppAnalyzer:
             # Remove corrupted cache file
             try:
                 tracker_cache_path.unlink(missing_ok=True)
-            except:
+            except Exception:
                 pass
             # Start fresh
             self.header_tracker.clear_all()
@@ -906,10 +903,6 @@ class CppAnalyzer:
             Dict with 'symbols', 'success', 'error_message', 'retry_count' or None
         """
         return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
-
-    def _is_project_file(self, file_path: str) -> bool:
-        """Check if file is part of the project (not a dependency)"""
-        return self.file_scanner.is_project_file(file_path)
 
     def _should_skip_file(self, file_path: str) -> bool:
         """Check if file should be skipped"""
@@ -2396,7 +2389,6 @@ class CppAnalyzer:
             error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
 
             # Track if there were errors (for logging and cache metadata)
-            has_errors = bool(error_diagnostics)
             cache_error_msg = None
 
             # Log errors but continue processing (libclang provides usable partial AST)
@@ -2936,8 +2928,6 @@ class CppAnalyzer:
                     # This is safe because we've cancelled pending futures
                     # and workers are isolated processes
                     if hasattr(executor, "_processes") and executor._processes:
-                        import signal
-
                         for pid, process in executor._processes.items():
                             try:
                                 if process.is_alive():
@@ -4027,8 +4017,6 @@ class CppAnalyzer:
                 for symbol in self.class_index[simple_name]:
                     # If any symbol is a template, get all specializations
                     if symbol.kind in ("class_template", "partial_specialization"):
-                        # Find all specializations of this template
-                        specializations = self._find_template_specializations(simple_name)
                         # Build patterns to match in base_classes
                         # Matches: "Container", "Container<int>", "Container<double>", etc.
                         # Use simple_name since base_classes matching uses suffix matching
@@ -4498,8 +4486,6 @@ class CppAnalyzer:
 
         Task: T2.2.4 (Qualified Names Phase 2), LLM Integration (bd1)
         """
-        import fnmatch
-
         # Detect if file_path is a glob pattern
         glob_chars = set("*?[]")
         is_glob = any(c in file_path for c in glob_chars)

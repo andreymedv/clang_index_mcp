@@ -3,7 +3,6 @@
 import json
 import hashlib
 import time
-import os
 import sys
 import traceback
 import sqlite3
@@ -288,7 +287,7 @@ class CacheManager:
         try:
             with open(file_path, "rb") as f:
                 return hashlib.md5(f.read()).hexdigest()
-        except:
+        except Exception:
             return ""
 
     def save_cache(
@@ -392,7 +391,7 @@ class CacheManager:
 
             with open(progress_file, "w") as f:
                 json.dump(progress_data, f, indent=2)
-        except:
+        except Exception:
             pass  # Silently fail for progress tracking
 
     def load_progress(self) -> Optional[Dict[str, Any]]:
@@ -404,7 +403,7 @@ class CacheManager:
 
             with open(progress_file, "r") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return None
 
     def get_error_summary(self) -> Dict[str, Any]:

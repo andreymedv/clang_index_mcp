@@ -10,8 +10,7 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
-from typing import Set, List, Tuple
+from typing import List, Set, Tuple
 
 
 def extract_include_paths(command: str) -> List[str]:
