@@ -3,7 +3,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Set
+from typing import List
 
 
 class FileScanner:

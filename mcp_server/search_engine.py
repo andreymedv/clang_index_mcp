@@ -3,9 +3,8 @@
 import re
 import threading
 from typing import Dict, List, Optional, Any, Tuple, Union
-from collections import defaultdict
 from .symbol_info import SymbolInfo
-from .regex_validator import RegexValidator, RegexValidationError
+from .regex_validator import RegexValidator
 
 
 class SearchEngine:

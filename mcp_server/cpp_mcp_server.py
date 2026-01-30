@@ -202,11 +202,10 @@ if not find_and_configure_libclang():
     diagnostics.fatal("  Linux: sudo apt install libclang-dev")
     sys.exit(1)
 
-# Import the Python analyzer and compile commands manager
+# Import the Python analyzer and state manager
 try:
     # Try package import first (when run as module)
     from mcp_server.cpp_analyzer import CppAnalyzer
-    from mcp_server.compile_commands_manager import CompileCommandsManager
     from mcp_server.state_manager import (
         AnalyzerStateManager,
         AnalyzerState,
@@ -215,10 +214,10 @@ try:
         EnhancedQueryResult,
         QueryBehaviorPolicy,
     )
+    from mcp_server.session_manager import SessionManager
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer
-    from compile_commands_manager import CompileCommandsManager
     from state_manager import (
         AnalyzerStateManager,
         AnalyzerState,
@@ -227,6 +226,7 @@ except ImportError:
         EnhancedQueryResult,
         QueryBehaviorPolicy,
     )
+    from session_manager import SessionManager
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -241,8 +241,6 @@ state_manager = AnalyzerStateManager()
 background_indexer = None
 
 # Session manager for persistence across restarts
-from .session_manager import SessionManager
-
 session_manager = SessionManager()
 
 # Track if analyzer has been initialized with a valid project
@@ -1118,7 +1116,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     ]
 
             # Re-initialize analyzer with new path and config
-            global analyzer, analyzer_initialized, state_manager, background_indexer
+            global analyzer, background_indexer
 
             # Transition to INDEXING state (allows immediate queries with partial results)
             # This prevents race condition where get_indexing_status fails if called immediately
@@ -1129,6 +1127,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Start indexing in background (truly asynchronous, non-blocking)
             # The task will run independently while the MCP server continues to handle requests
             async def run_background_indexing():
+                global analyzer_initialized
                 try:
                     # FAST PATH: Check if cache exists and is valid
                     # If so, load directly without calling index_project
@@ -1740,8 +1739,6 @@ Examples:
 
     async def cleanup():
         """Cleanup resources on shutdown"""
-        global background_indexer
-
         diagnostics.debug("Starting cleanup...")
 
         # Cancel background indexing if running

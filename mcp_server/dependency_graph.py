@@ -25,10 +25,9 @@ Usage:
 import sqlite3
 import time
 from pathlib import Path
-from typing import List, Set, Dict, Optional
+from typing import List, Set, Dict
 
 try:
-    import clang.cindex
     from clang.cindex import TranslationUnit
 except ImportError:
     TranslationUnit = None  # Type hint only

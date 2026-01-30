@@ -6,7 +6,6 @@ arguments to ensure compatibility with libclang's programmatic interface.
 """
 
 import json
-import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
