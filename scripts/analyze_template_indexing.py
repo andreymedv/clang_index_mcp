@@ -6,9 +6,8 @@ This script indexes the template test project and examines
 how templates are stored in the SQLite cache.
 """
 
-import sys
-import os
 import sqlite3
+import sys
 from pathlib import Path
 
 # Add project root to path
@@ -16,14 +15,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Setup libclang
-from mcp_server import diagnostics
-from mcp_server.cpp_mcp_server import find_and_configure_libclang
+from mcp_server.cpp_mcp_server import find_and_configure_libclang  # noqa: E402
 
 if not find_and_configure_libclang():
     print("Error: Could not find libclang library!")
     sys.exit(1)
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
 def analyze_template_indexing():
@@ -39,10 +37,9 @@ def analyze_template_indexing():
     # Index the test project
     print("\n1. Indexing project...")
     result = analyzer.index_project(force=True)
-    print(f"   Indexing completed")
-    print(
-        f"   Total files: {result.get('total_files', 0) if isinstance(result, dict) else 'unknown'}"
-    )
+    print("   Indexing completed")
+    total_files = result.get("total_files", 0) if isinstance(result, dict) else "unknown"
+    print(f"   Total files: {total_files}")
 
     # Get cache database path
     cache_dir = analyzer.cache_manager.cache_dir

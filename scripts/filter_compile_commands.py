@@ -12,7 +12,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 
 def normalize_path(path: str, base_directory: str = None) -> Path:
@@ -90,7 +90,7 @@ def filter_compile_commands(
         sys.exit(1)
 
     if not isinstance(compile_commands, list):
-        print(f"Error: compile_commands.json should contain a list", file=sys.stderr)
+        print("Error: compile_commands.json should contain a list", file=sys.stderr)
         sys.exit(1)
 
     # Normalize filter directories
@@ -111,7 +111,7 @@ def filter_compile_commands(
         sys.exit(1)
 
     if verbose:
-        print(f"Filter directories (normalized):")
+        print("Filter directories (normalized):")
         for dir_path in normalized_dirs:
             print(f"  {dir_path}")
         print()
@@ -128,7 +128,7 @@ def filter_compile_commands(
 
         if not file_path:
             if verbose:
-                print(f"Warning: Entry missing 'file' field", file=sys.stderr)
+                print("Warning: Entry missing 'file' field", file=sys.stderr)
             continue
 
         # Normalize the file path

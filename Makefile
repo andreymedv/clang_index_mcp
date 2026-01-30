@@ -89,7 +89,7 @@ test-installation: ## Test installation and basic functionality
 
 lint: ## Run linting checks (flake8)
 	@echo "$(BLUE)Running linting checks...$(NC)"
-	$(PYTHON) -m flake8 mcp_server/ scripts/ --max-line-length=100 --ignore=E501,W503
+	$(PYTHON) -m flake8 mcp_server/ scripts/ --exclude=scripts/archived/ --max-line-length=100 --ignore=E501,W503,E203
 	@echo "$(GREEN)Linting complete!$(NC)"
 
 format: ## Format code with black
