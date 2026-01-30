@@ -6,9 +6,9 @@
 # Enforced (blocks push on failure):
 #   - make test        (pytest suite)
 #   - make format-check (black formatting)
+#   - make lint        (flake8)
 #
 # Informational (warns but does not block):
-#   - make lint        (flake8)
 #   - make type-check  (mypy)
 #
 # Bypass (emergency only): git push --no-verify
@@ -67,14 +67,17 @@ else
     exit 1
 fi
 
-# === INFORMATIONAL CHECKS (warn but do not block) ===
-
-echo -e "${YELLOW}Running lint (informational)...${NC}"
-if make lint 2>&1; then
+# Run lint check
+echo -e "${YELLOW}Running lint (make lint)...${NC}"
+if make lint; then
     echo -e "${GREEN}Lint passed!${NC}"
 else
-    echo -e "${YELLOW}Lint has warnings (not blocking push).${NC}"
+    echo -e "${RED}Lint FAILED. Push aborted.${NC}"
+    echo "Fix the lint errors and try again."
+    exit 1
 fi
+
+# === INFORMATIONAL CHECKS (warn but do not block) ===
 
 echo -e "${YELLOW}Running type check (informational)...${NC}"
 if make type-check 2>&1; then

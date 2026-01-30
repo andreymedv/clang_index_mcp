@@ -29,9 +29,8 @@ jobs:
       - name: Check formatting (black)
         run: make format-check
 
-      - name: Lint (flake8) [informational]
+      - name: Lint (flake8)
         run: make lint
-        continue-on-error: true
 
       - name: Type check (mypy) [informational]
         run: make type-check

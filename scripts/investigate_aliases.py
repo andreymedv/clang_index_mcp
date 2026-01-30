@@ -8,14 +8,13 @@ and what information can be extracted from them.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import clang.cindex
-from clang.cindex import CursorKind, TypeKind, Config
+import clang.cindex  # noqa: E402
+from clang.cindex import Config, CursorKind  # noqa: E402
 
 
 def init_libclang():
@@ -42,9 +41,9 @@ def analyze_alias_cursor(cursor, indent=0):
     """Analyze a single alias cursor and extract all available information."""
     prefix = "  " * indent
 
-    print(f"{prefix}{'='*70}")
+    print(f"{prefix}{'=' * 70}")
     print(f"{prefix}Alias Found: {cursor.spelling}")
-    print(f"{prefix}{'='*70}")
+    print(f"{prefix}{'=' * 70}")
     print(f"{prefix}Cursor Kind: {cursor.kind}")
     print(f"{prefix}Location: {cursor.location.file.name}:{cursor.location.line}")
 
@@ -96,7 +95,7 @@ def analyze_alias_cursor(cursor, indent=0):
         for i, child in enumerate(children):
             print(f"{prefix}  [{i}] {child.kind}: {child.spelling} (type: {child.type.spelling})")
 
-    print(f"{prefix}{'-'*70}\n")
+    print(f"{prefix}{'-' * 70}\n")
 
     return {
         "name": cursor.spelling,

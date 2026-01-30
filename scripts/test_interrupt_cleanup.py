@@ -12,9 +12,8 @@ Usage:
 Then press Ctrl-C during indexing and verify cleanup.
 """
 
-import sys
 import os
-import time
+import sys
 from pathlib import Path
 
 # Add parent directory to path
