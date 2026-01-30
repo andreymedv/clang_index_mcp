@@ -14,19 +14,18 @@ Usage:
     python scripts/profile_analysis.py [project_root]
 """
 
-import sys
-import os
-import time
-import threading
-from pathlib import Path
-from collections import defaultdict
 import json
+import os
+import sys
+import threading
+import time
+from collections import defaultdict
+from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server import diagnostics
+from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
 class ProfiledAnalyzer(CppAnalyzer):
@@ -291,7 +290,7 @@ class ProfiledAnalyzer(CppAnalyzer):
                     self.file_index[file_path].clear()
 
             # Process TU (includes AST traversal and bulk write)
-            extraction_result = self._index_translation_unit(tu, file_path)
+            self._index_translation_unit(tu, file_path)
 
             # Get symbols and populate call graph
             collected_symbols = []
@@ -414,14 +413,13 @@ class ProfiledAnalyzer(CppAnalyzer):
                 else 0
             )
 
-            print(f"\nPercentage breakdown (for successfully parsed files):")
-            print(f"  libclang parsing: {(avg_parse/avg_total*100):.1f}%")
-            print(f"  AST traversal:    {(avg_traversal/avg_total*100):.1f}%")
-            print(f"  Bulk write:       {(avg_bulk_write/avg_total*100):.1f}%")
-            print(f"  Lock waiting:     {(avg_lock_wait/avg_total*100):.1f}%")
-            print(
-                f"  Other (cache,etc):{((avg_total-avg_parse-avg_traversal-avg_bulk_write)/avg_total*100):.1f}%"
-            )
+            print("\nPercentage breakdown (for successfully parsed files):")
+            print(f"  libclang parsing: {(avg_parse / avg_total * 100):.1f}%")
+            print(f"  AST traversal:    {(avg_traversal / avg_total * 100):.1f}%")
+            print(f"  Bulk write:       {(avg_bulk_write / avg_total * 100):.1f}%")
+            print(f"  Lock waiting:     {(avg_lock_wait / avg_total * 100):.1f}%")
+            other_pct = (avg_total - avg_parse - avg_traversal - avg_bulk_write) / avg_total * 100
+            print(f"  Other (cache,etc):{other_pct:.1f}%")
 
         print("\n" + "=" * 80)
 
@@ -444,7 +442,7 @@ def main():
 
     print(f"\nIndexed {file_count} files in {elapsed:.2f}s")
     if file_count > 0:
-        print(f"Average: {elapsed/file_count:.3f}s per file")
+        print(f"Average: {elapsed / file_count:.3f}s per file")
     else:
         print("No files were successfully indexed")
 

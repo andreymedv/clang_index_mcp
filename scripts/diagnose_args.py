@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Diagnostic tool to check what arguments are being passed to libclang."""
 
-import sys
 import os
-import json
+import sys
 from pathlib import Path
 
 # Add the mcp_server directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "mcp_server"))
 
-from compile_commands_manager import CompileCommandsManager
+from compile_commands_manager import CompileCommandsManager  # noqa: E402
 
 
 def diagnose_file_args(project_root: str, file_path: str):

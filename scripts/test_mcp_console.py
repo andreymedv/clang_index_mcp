@@ -9,9 +9,8 @@ Interrupt Handling:
   and may show stack traces (this is expected for forceful termination)
 """
 
-import sys
 import os
-import json
+import sys
 from pathlib import Path
 
 # Add parent directory to path to import the server
@@ -69,7 +68,7 @@ def test_mcp_server(project_path: str):
         "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
         "compile_commands_path": str(analyzer.compile_commands_manager.compile_commands_path),
     }
-    print(f"[OK] Server status:")
+    print("[OK] Server status:")
     for key, value in status.items():
         print(f"   {key}: {value}")
 
@@ -96,7 +95,7 @@ def test_mcp_server(project_path: str):
         print(f"\n6. Getting detailed info for class: {classes[0]['name']}")
         class_info = analyzer.get_class_info(classes[0]["name"])
         if class_info:
-            print(f"[OK] Class info:")
+            print("[OK] Class info:")
             print(f"   Name: {class_info['name']}")
             print(f"   File: {class_info['file']}:{class_info['line']}")
             print(f"   Methods: {len(class_info['methods'])}")
@@ -121,7 +120,7 @@ def test_mcp_server(project_path: str):
         print(f"\n8. Getting class hierarchy for: {classes[0]['name']}")
         hierarchy = analyzer.get_class_hierarchy(classes[0]["name"])
         if hierarchy:
-            print(f"[OK] Class hierarchy:")
+            print("[OK] Class hierarchy:")
             print(f"   Class: {hierarchy['name']}")
             if hierarchy.get("base_classes"):
                 print(f"   Base classes: {', '.join(hierarchy['base_classes'])}")
@@ -173,8 +172,7 @@ def main():
         print("\n\nInterrupted by user (Ctrl-C)", file=sys.stderr)
         print("Cleaning up...", file=sys.stderr)
     finally:
-        # Ensure analyzer is closed
-        global _analyzer
+        # Ensure analyzer is closed (if _analyzer was set globally)
         if _analyzer is not None:
             try:
                 _analyzer.close()

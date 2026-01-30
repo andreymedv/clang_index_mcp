@@ -1,9 +1,9 @@
 """Error tracking and monitoring for cache operations."""
 
 import time
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # Handle both package and script imports
 try:
@@ -296,7 +296,6 @@ class RecoveryManager:
             True if successful, False otherwise
         """
         try:
-            import shutil
             from pathlib import Path
 
             cache_dir = Path(cache_dir)

@@ -17,7 +17,7 @@ def test_imports():
     print("Testing package imports...")
 
     try:
-        import mcp
+        import mcp  # noqa: F401
 
         print("[OK] MCP package imported successfully")
     except ImportError as e:
@@ -25,7 +25,7 @@ def test_imports():
         return False
 
     try:
-        import clang.cindex
+        import clang.cindex  # noqa: F401
 
         print("[OK] libclang Python bindings imported successfully")
     except ImportError as e:
@@ -41,7 +41,7 @@ def test_optional_dependencies():
 
     # Check orjson (from [performance] extras)
     try:
-        import orjson
+        import orjson  # noqa: F401
 
         print("[OK] orjson is installed (3-5x faster JSON parsing)")
     except ImportError:
@@ -90,7 +90,7 @@ def test_libclang_library():
         # Try to create an index (this will fail if libclang can't be loaded)
         from clang.cindex import Index
 
-        index = Index.create()
+        Index.create()  # Just test library loading
         print("[OK] libclang library loaded successfully")
         return True
 
@@ -139,7 +139,7 @@ def test_basic_parsing():
     print("\nTesting basic C++ parsing...")
 
     try:
-        from clang.cindex import Index, TranslationUnit
+        from clang.cindex import TranslationUnit
 
         # Create a simple test file content
         test_code = """
@@ -150,7 +150,6 @@ def test_basic_parsing():
         """
 
         # Create index and parse
-        index = Index.create()
         tu = TranslationUnit.from_source(
             "test.cpp", args=["-x", "c++"], unsaved_files=[("test.cpp", test_code)]
         )

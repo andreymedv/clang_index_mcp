@@ -57,7 +57,7 @@ def test_with_threads(files, max_workers):
 
     print(f"  Completed: {successful}/{len(files)} files")
     print(f"  Time: {elapsed:.2f}s")
-    print(f"  Rate: {len(files)/elapsed:.2f} files/sec")
+    print(f"  Rate: {len(files) / elapsed:.2f} files/sec")
 
     return elapsed
 
@@ -77,7 +77,7 @@ def test_with_processes(files, max_workers):
 
     print(f"  Completed: {successful}/{len(files)} files")
     print(f"  Time: {elapsed:.2f}s")
-    print(f"  Rate: {len(files)/elapsed:.2f} files/sec")
+    print(f"  Rate: {len(files) / elapsed:.2f} files/sec")
 
     return elapsed
 
@@ -115,7 +115,7 @@ def main():
         if worker_count > os.cpu_count():
             continue
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Testing with {worker_count} workers:")
         print("=" * 80)
 

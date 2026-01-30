@@ -142,8 +142,6 @@ def configure_from_config(config: dict):
         }
     }
     """
-    global _global_logger
-
     diag_config = config.get("diagnostics", {})
 
     # Get or create logger

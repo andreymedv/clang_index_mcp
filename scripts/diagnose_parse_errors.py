@@ -9,16 +9,13 @@ This script helps diagnose why files are failing to parse by:
 """
 
 import sys
-import os
 from pathlib import Path
-import json
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.compile_commands_manager import CompileCommandsManager
-from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError
+from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError  # noqa: E402
+from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
 def diagnose_file(project_path: str, file_path: str):

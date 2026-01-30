@@ -144,7 +144,7 @@ def check_libclang_library():
 
         # Try to create an Index (this actually loads the library)
         try:
-            index = clang.cindex.Index.create()
+            clang.cindex.Index.create()  # Just test library loading
             print_success("Successfully created clang Index (library loaded)")
             return True
         except Exception as e:
@@ -273,8 +273,7 @@ def run_comprehensive_test():
     print_section("Running Comprehensive Clang Test")
 
     try:
-        import clang.cindex
-        from clang.cindex import Index, CursorKind, TranslationUnit
+        from clang.cindex import CursorKind, Index
 
         # Create temp test file
         import tempfile
@@ -334,19 +333,19 @@ def main():
         issues.append("python_version")
 
     pkg_status = check_libclang_package()
-    if pkg_status == False:
+    if pkg_status is False:
         issues.append("package_missing")
     elif pkg_status == "outdated":
         issues.append("package_outdated")
 
     import_status = check_clang_import()
-    if import_status == False:
+    if import_status is False:
         issues.append("import_failed")
     elif import_status == "lib_missing":
         issues.append("lib_missing")
 
     lib_status = check_libclang_library()
-    if lib_status == False:
+    if lib_status is False:
         issues.append("library_not_found")
     elif lib_status == "found_but_not_loaded":
         issues.append("library_not_loaded")

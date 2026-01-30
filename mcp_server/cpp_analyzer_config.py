@@ -104,12 +104,12 @@ class CppAnalyzerConfig:
                         f"Expected a JSON object (dict), but got {type(user_config).__name__}"
                     )
                     diagnostics.error(
-                        f"Note: If you see 'compile_commands.json' here, you may have:"
+                        "Note: If you see 'compile_commands.json' here, you may have:"
                     )
                     diagnostics.error(
-                        f"  1. Set CPP_ANALYZER_CONFIG environment variable to wrong file"
+                        "  1. Set CPP_ANALYZER_CONFIG environment variable to wrong file"
                     )
-                    diagnostics.error(f"  2. Named .cpp-analyzer-config.json incorrectly")
+                    diagnostics.error("  2. Named .cpp-analyzer-config.json incorrectly")
                     diagnostics.warning("Using default configuration")
                     return config
 

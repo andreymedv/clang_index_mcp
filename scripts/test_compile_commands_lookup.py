@@ -4,12 +4,11 @@ Test compile_commands.json lookup for specific files without parsing all files.
 """
 
 import sys
-import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
 def test_compile_commands_lookup(project_path: str, test_file: str):

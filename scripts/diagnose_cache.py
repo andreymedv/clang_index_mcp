@@ -11,18 +11,16 @@ Diagnoses cache health and suggests fixes for common issues:
 - Provides actionable recommendations
 """
 
-import sys
-import os
 import json
+import sys
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
+from typing import Any, Dict
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server import diagnostics
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend
-from mcp_server.schema_migrations import SchemaMigration
+from mcp_server.schema_migrations import SchemaMigration  # noqa: E402
+from mcp_server.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
 
 
 class CacheDiagnostic:

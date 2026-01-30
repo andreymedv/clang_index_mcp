@@ -24,7 +24,7 @@ def test_libclang_path_env_variable():
         os.environ["LIBCLANG_PATH"] = fake_libclang
 
         # Import and test (this will try to load libclang)
-        from mcp_server.cpp_mcp_server import find_and_configure_libclang
+        from mcp_server.cpp_mcp_server import find_and_configure_libclang  # noqa: F401
 
         # Test that it would use our env variable
         print(f"✓ LIBCLANG_PATH={fake_libclang}")

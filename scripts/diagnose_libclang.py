@@ -5,14 +5,14 @@ Diagnostic script to check libclang and system header compatibility.
 This helps diagnose issues where libclang can't find system headers on macOS.
 """
 
+import platform
+import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import clang.cindex
-import subprocess
-import platform
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def check_libclang_version():
