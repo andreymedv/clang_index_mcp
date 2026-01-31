@@ -12,8 +12,8 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.diagnostics import DiagnosticLevel, get_logger
+from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
+from mcp_server.diagnostics import DiagnosticLevel, get_logger  # noqa: E402
 
 
 def test_usr_matching_same_file():
@@ -47,16 +47,18 @@ public:
 
         # Check what's in class_index
         print(f"\nclass_index['MyClass'] entries: {len(analyzer.class_index.get('MyClass', []))}")
-        for i, sym in enumerate(analyzer.class_index.get('MyClass', [])):
+        for i, sym in enumerate(analyzer.class_index.get("MyClass", [])):
             print(f"  [{i}] file={sym.file}:{sym.line}")
             print(f"      USR={sym.usr}")
             print(f"      is_definition={sym.is_definition}")
             print(f"      start_line={sym.start_line}, end_line={sym.end_line}")
 
         # Check usr_index
-        print(f"\nusr_index entries with 'MyClass': {sum(1 for k in analyzer.usr_index if 'MyClass' in k)}")
+        print(
+            f"\nusr_index entries with 'MyClass': {sum(1 for k in analyzer.usr_index if 'MyClass' in k)}"
+        )
         for usr, sym in analyzer.usr_index.items():
-            if 'MyClass' in usr:
+            if "MyClass" in usr:
                 print(f"  USR={usr}")
                 print(f"  -> {sym.file}:{sym.line}, is_definition={sym.is_definition}")
 
@@ -95,7 +97,7 @@ public:
 
         print("\nAfter indexing forward declaration:")
         print(f"class_index['MyClass'] entries: {len(analyzer.class_index.get('MyClass', []))}")
-        for i, sym in enumerate(analyzer.class_index.get('MyClass', [])):
+        for i, sym in enumerate(analyzer.class_index.get("MyClass", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      is_definition={sym.is_definition}, file={sym.file}:{sym.line}")
 
@@ -105,7 +107,7 @@ public:
 
         print("\nAfter indexing definition:")
         print(f"class_index['MyClass'] entries: {len(analyzer.class_index.get('MyClass', []))}")
-        for i, sym in enumerate(analyzer.class_index.get('MyClass', [])):
+        for i, sym in enumerate(analyzer.class_index.get("MyClass", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      is_definition={sym.is_definition}, file={sym.file}:{sym.line}")
 
@@ -143,7 +145,7 @@ namespace ns {
         print(f"Indexing forward decl: {fwd_h}")
         analyzer.index_file(str(fwd_h))
 
-        fwd_symbols = analyzer.class_index.get('MyClass', [])
+        fwd_symbols = analyzer.class_index.get("MyClass", [])
         print(f"\nAfter forward decl - entries: {len(fwd_symbols)}")
         for sym in fwd_symbols:
             print(f"  USR={sym.usr}")
@@ -152,7 +154,7 @@ namespace ns {
         print(f"\nIndexing definition: {myclass_h}")
         analyzer.index_file(str(myclass_h))
 
-        def_symbols = analyzer.class_index.get('MyClass', [])
+        def_symbols = analyzer.class_index.get("MyClass", [])
         print(f"\nAfter definition - entries: {len(def_symbols)}")
         for sym in def_symbols:
             print(f"  USR={sym.usr}")
@@ -197,11 +199,11 @@ int main() {
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         # This simulates what happens in real project indexing
-        print(f"Indexing main.cpp (which includes both headers)...")
+        print("Indexing main.cpp (which includes both headers)...")
         analyzer.index_file(str(main_cpp))
 
         print(f"\nclass_index['Widget'] entries: {len(analyzer.class_index.get('Widget', []))}")
-        for i, sym in enumerate(analyzer.class_index.get('Widget', [])):
+        for i, sym in enumerate(analyzer.class_index.get("Widget", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      file={sym.file}:{sym.line}")
             print(f"      is_definition={sym.is_definition}")
@@ -260,18 +262,18 @@ int main() {
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         # Index the source file (which will parse both included headers)
-        print(f"Indexing main.cpp (includes both widget.h and qstring.h)...")
+        print("Indexing main.cpp (includes both widget.h and qstring.h)...")
         analyzer.index_file(str(main_cpp))
 
         print(f"\nclass_index['QString'] entries: {len(analyzer.class_index.get('QString', []))}")
-        for i, sym in enumerate(analyzer.class_index.get('QString', [])):
+        for i, sym in enumerate(analyzer.class_index.get("QString", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      file={sym.file}:{sym.line}")
             print(f"      is_definition={sym.is_definition}")
             print(f"      start_line={sym.start_line}, end_line={sym.end_line}")
 
         # Check if both are present (the bug!)
-        symbols = analyzer.class_index.get('QString', [])
+        symbols = analyzer.class_index.get("QString", [])
         if len(symbols) > 1:
             print("\n*** BUG DETECTED: Multiple entries for same class! ***")
             for i, sym in enumerate(symbols):
@@ -324,13 +326,15 @@ class FwdClass4 {
             print(f"\n  {name}: {len(symbols)} symbol(s)")
             for i, sym in enumerate(symbols):
                 has_usr = bool(sym.usr)
-                print(f"    [{i}] USR={'YES' if has_usr else '**EMPTY**'}: {sym.usr[:50] if sym.usr else 'N/A'}...")
+                print(
+                    f"    [{i}] USR={'YES' if has_usr else '**EMPTY**'}: {sym.usr[:50] if sym.usr else 'N/A'}..."
+                )
                 print(f"        is_definition={sym.is_definition}, line={sym.line}")
 
         # Check usr_index for duplicates
         print("\n\nUSR index entries:")
         for usr in sorted(analyzer.usr_index.keys()):
-            if any(name in usr for name in ['FwdClass1', 'FwdClass2', 'FwdClass3', 'FwdClass4']):
+            if any(name in usr for name in ["FwdClass1", "FwdClass2", "FwdClass3", "FwdClass4"]):
                 sym = analyzer.usr_index[usr]
                 print(f"  {usr}: {sym.name} is_definition={sym.is_definition}")
 
@@ -371,7 +375,7 @@ int main() {
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
-        print(f"Indexing main.cpp...")
+        print("Indexing main.cpp...")
         analyzer.index_file(str(main_cpp))
 
         # Now check what's in SQLite
