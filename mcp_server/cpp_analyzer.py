@@ -1015,8 +1015,16 @@ class CppAnalyzer:
         Uses canonical type to ensure template arguments include qualified names.
         For example: Container<ns1::Foo> instead of Container<Foo>
 
+        Special handling for template parameters:
+        - libclang returns "type-parameter-0-0" for template parameter bases
+        - We detect this pattern and use the actual parameter name instead
+        - This makes output LLM-friendly (e.g., "BuilderBase" instead of "type-parameter-0-0")
+
         Task T3.2.1: Qualified Names Phase 1
+        Issue: Template base class name improvement for LLM readability
         """
+        import re
+
         base_classes = []
         for child in cursor.get_children():
             if child.kind == CursorKind.CXX_BASE_SPECIFIER:
@@ -1029,6 +1037,13 @@ class CppAnalyzer:
                 canonical_type = base_type.get_canonical()
                 base_name_qualified = canonical_type.spelling
 
+                # Check if this is a template parameter (type-parameter-X-Y pattern)
+                # If so, use the actual parameter name from type.spelling
+                # This makes output LLM-friendly
+                if re.match(r"type-parameter-\d+-\d+", base_name_qualified):
+                    # Use the spelling which contains the actual parameter name
+                    base_name_qualified = base_type.spelling
+
                 # Clean up the type name (remove "class " or "struct " prefix if present)
                 if base_name_qualified.startswith("class "):
                     base_name_qualified = base_name_qualified[6:]
@@ -1037,6 +1052,126 @@ class CppAnalyzer:
 
                 base_classes.append(base_name_qualified)
         return base_classes
+
+    def _resolve_instantiation_base_classes(
+        self, cursor, primary_template_usr: Optional[str]
+    ) -> List[str]:
+        """
+        Resolve base classes for explicit template instantiations.
+
+        For explicit instantiations like `extern template class MyTemplate<SomeType>;`,
+        libclang doesn't provide CXX_BASE_SPECIFIER children. This method resolves
+        base classes by:
+        1. Looking up the primary template in the class index
+        2. Extracting template arguments from the instantiation's displayname
+        3. Substituting template parameter names with actual arguments
+
+        Example:
+            Primary template: template<typename T> class MyTemplate : public T { };
+            Instantiation: extern template class MyTemplate<BaseClass>;
+            Result: ['BaseClass']
+
+        Args:
+            cursor: The instantiation cursor (CLASS_DECL/STRUCT_DECL with template args)
+            primary_template_usr: USR of the primary template (from _get_primary_template_usr)
+
+        Returns:
+            List of resolved base class names, or empty list if resolution fails
+
+        Issue: Template base class resolution for LLM readability
+        """
+        import json
+        import re
+
+        if not primary_template_usr:
+            return []
+
+        # Extract template arguments from displayname (e.g., "MyTemplate<BaseClass>" -> ["BaseClass"])
+        displayname = cursor.displayname
+        if "<" not in displayname:
+            return []
+
+        args_start = displayname.find("<")
+        args_end = displayname.rfind(">")
+        if args_start >= args_end:
+            return []
+
+        args_str = displayname[args_start + 1 : args_end]
+
+        # Parse comma-separated args (handle nested templates)
+        template_args = []
+        depth = 0
+        current = ""
+        for c in args_str:
+            if c == "<":
+                depth += 1
+                current += c
+            elif c == ">":
+                depth -= 1
+                current += c
+            elif c == "," and depth == 0:
+                template_args.append(current.strip())
+                current = ""
+            else:
+                current += c
+        if current.strip():
+            template_args.append(current.strip())
+
+        if not template_args:
+            return []
+
+        # Look up the primary template in class_index
+        primary_info = None
+        with self.index_lock:
+            for name, infos in self.class_index.items():
+                for info in infos:
+                    if info.usr == primary_template_usr:
+                        primary_info = info
+                        break
+                if primary_info:
+                    break
+
+        if not primary_info:
+            return []
+
+        # Get template parameters from primary template
+        template_params = []
+        if primary_info.template_parameters:
+            try:
+                template_params = json.loads(primary_info.template_parameters)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if not template_params:
+            return []
+
+        # Build parameter name to argument mapping
+        param_to_arg = {}
+        for i, param in enumerate(template_params):
+            if i < len(template_args):
+                param_name = param.get("name", "")
+                if param_name:
+                    param_to_arg[param_name] = template_args[i]
+
+        # Resolve base classes by substituting parameter names
+        resolved = []
+        for base in primary_info.base_classes:
+            # Check if this base class is a template parameter name
+            if base in param_to_arg:
+                resolved.append(param_to_arg[base])
+            else:
+                # Check for type-parameter-X-Y pattern (shouldn't happen with fixed _get_base_classes,
+                # but handle for robustness)
+                match = re.match(r"type-parameter-(\d+)-(\d+)", base)
+                if match:
+                    param_index = int(match.group(2))
+                    if param_index < len(template_args):
+                        resolved.append(template_args[param_index])
+                else:
+                    # Non-template-parameter base class (e.g., fixed base)
+                    resolved.append(base)
+
+        return resolved
 
     def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
         """
@@ -1718,6 +1853,12 @@ class CppAnalyzer:
                 if is_class_template_spec:
                     primary_usr = self._get_primary_template_usr(cursor)
 
+                    # For explicit instantiations (extern template), libclang doesn't provide
+                    # base specifiers. Resolve them from the primary template.
+                    # This makes inheritance visible to LLMs for template instantiations.
+                    if not base_classes and primary_usr:
+                        base_classes = self._resolve_instantiation_base_classes(cursor, primary_usr)
+
                 info = SymbolInfo(
                     name=cursor.spelling,
                     kind="class" if kind == CursorKind.CLASS_DECL else "struct",
@@ -1732,6 +1873,8 @@ class CppAnalyzer:
                     parent_class="",  # Classes don't have parent classes in this context
                     base_classes=base_classes,
                     usr=cursor.get_usr() if cursor.get_usr() else "",
+                    # Overload metadata (Phase 3: Qualified Names Support)
+                    is_template_specialization=is_class_template_spec,
                     # Template tracking (Template Search Support)
                     is_template=is_class_template_spec,  # True for explicit specializations
                     template_kind="full_specialization" if is_class_template_spec else None,
@@ -3908,8 +4051,11 @@ class CppAnalyzer:
         Get the template parameter indices that a template inherits from.
 
         Looks up the template in class_index and analyzes its base_classes
-        for patterns like 'type-parameter-0-0' which indicate inheritance
-        from a template parameter.
+        to find which template parameters are used as base classes.
+
+        Supports two formats:
+        1. Parameter names (new format): base_classes = ['T', 'BaseType']
+        2. Legacy format: base_classes = ['type-parameter-0-0'] (for backward compatibility)
 
         Args:
             template_name: The template name (e.g., "ns::TemplateInheritsParam")
@@ -3918,6 +4064,7 @@ class CppAnalyzer:
             List of parameter indices that are used as base classes.
             E.g., [0] means the template inherits from its first parameter.
         """
+        import json
         import re
 
         # Extract simple name for class_index lookup
@@ -3939,9 +4086,30 @@ class CppAnalyzer:
                     if not SearchEngine.matches_qualified_pattern(info_qualified, template_name):
                         continue
 
-                # Check base_classes for template parameter patterns
+                # Get template parameters to build name-to-index mapping
+                param_name_to_index = {}
+                if info.template_parameters:
+                    try:
+                        params = json.loads(info.template_parameters)
+                        for i, param in enumerate(params):
+                            param_name = param.get("name", "")
+                            if param_name:
+                                param_name_to_index[param_name] = i
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+                # Check base_classes for template parameter references
                 for base in info.base_classes:
-                    # Pattern: "type-parameter-X-Y" where Y is the parameter index
+                    # First, check if base class name matches a template parameter name
+                    # (new format after template base class improvement)
+                    if base in param_name_to_index:
+                        param_index = param_name_to_index[base]
+                        if param_index not in param_indices:
+                            param_indices.append(param_index)
+                        continue
+
+                    # Legacy format: "type-parameter-X-Y" where Y is the parameter index
+                    # Keep for backward compatibility with cached data
                     match = re.match(r"type-parameter-(\d+)-(\d+)", base)
                     if match:
                         param_index = int(match.group(2))
