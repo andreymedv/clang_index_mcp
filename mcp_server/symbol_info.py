@@ -80,7 +80,9 @@ class SymbolInfo:
             "is_template": self.is_template,
             "template_kind": self.template_kind,
             "template_parameters": self.template_parameters,
-            "primary_template_usr": self.primary_template_usr,
+            # Note: specialization_of should be resolved to qualified name at query time
+            # Here we output the USR as fallback if to_dict() is used directly
+            "specialization_of": self.primary_template_usr,
             # Note: calls/called_by removed in v9.0 - use call graph API
             # Line ranges (Phase 1)
             "start_line": self.start_line,
