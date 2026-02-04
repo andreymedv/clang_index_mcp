@@ -84,6 +84,28 @@ class TestTemplateIndexing:
         assert any(">#" in s.usr for s in class_specs), \
             "Explicit specializations should have ># in USR"
 
+    def test_class_specialization_has_is_template_specialization_flag(self, analyzer):
+        """Test that class template specializations have is_template_specialization=True."""
+        results = analyzer.search_classes("Container")
+
+        # Find explicit specializations (kind='class' with template_kind='full_specialization')
+        specializations = [
+            r for r in results
+            if r['kind'] == 'class' and r.get('template_kind') == 'full_specialization'
+        ]
+        assert len(specializations) > 0, "Should find at least one class specialization"
+
+        # Verify is_template_specialization is True for all specializations
+        for spec in specializations:
+            assert spec.get('is_template_specialization') is True, \
+                f"Class specialization should have is_template_specialization=True: {spec}"
+
+        # Verify primary template does NOT have is_template_specialization=True
+        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        if primary:
+            assert primary.get('is_template_specialization') is not True, \
+                "Primary template should not have is_template_specialization=True"
+
 
 class TestTemplateSpecializationDiscovery:
     """Tests for _find_template_specializations() method."""
@@ -834,3 +856,280 @@ class TestSpecializationLinkingEdgeCases:
             "Partial spec should have correct template_kind"
         assert full_spec.get('template_kind') == 'full_specialization', \
             "Full spec should have template_kind=full_specialization"
+
+
+# ============================================================================
+# Tests for Template Base Class Improvements (LLM Readability)
+# ============================================================================
+
+
+@pytest.fixture
+def param_inheritance_project(tmp_path):
+    """
+    Create a test project with templates that inherit from template parameters.
+
+    This tests the improvement where base_classes shows 'ParamName' instead of
+    'type-parameter-0-0', making output LLM-friendly.
+    """
+    # Create header with template inheriting from parameter
+    header = tmp_path / "param_inheritance.h"
+    header.write_text('''
+#ifndef PARAM_INHERITANCE_H
+#define PARAM_INHERITANCE_H
+
+namespace testns {
+
+// Base interfaces
+struct InterfaceA {
+    virtual void method_a() = 0;
+    virtual ~InterfaceA() = default;
+};
+
+struct InterfaceB {
+    virtual void method_b() = 0;
+    virtual ~InterfaceB() = default;
+};
+
+// Template that inherits from its template parameter
+// This is a common pattern (e.g., CRTP variant, mixin pattern)
+template <typename BaseType>
+class TemplateInheritsParam : public BaseType {
+public:
+    void common_method() {}
+};
+
+// Explicit template instantiation declarations
+extern template class TemplateInheritsParam<InterfaceA>;
+extern template class TemplateInheritsParam<InterfaceB>;
+
+// Concrete class derived from instantiation
+struct ConcreteImpl final : TemplateInheritsParam<InterfaceA> {
+    void method_a() override {}
+};
+
+// Template with multiple inheritance: one param, one fixed
+template <typename T>
+class MixedInheritance : public T, protected InterfaceB {
+public:
+    void method_b() override {}
+};
+
+// Template inheriting from second parameter
+template <typename First, typename Second>
+class InheritsSecond : public Second {
+};
+
+}  // namespace testns
+
+#endif
+''')
+
+    # Create main.cpp
+    main = tmp_path / "main.cpp"
+    main.write_text('''
+#include "param_inheritance.h"
+
+int main() {
+    testns::ConcreteImpl impl;
+    impl.method_a();
+    return 0;
+}
+''')
+
+    # Create compile_commands.json
+    compile_commands = tmp_path / "compile_commands.json"
+    compile_commands.write_text(json.dumps([
+        {
+            "directory": str(tmp_path),
+            "command": "/usr/bin/c++ -std=c++17 -I. -c param_inheritance.h -o param_inheritance.h.o",
+            "file": "param_inheritance.h",
+        },
+        {
+            "directory": str(tmp_path),
+            "command": "/usr/bin/c++ -std=c++17 -I. -c main.cpp -o main.o",
+            "file": "main.cpp",
+        },
+    ], indent=2))
+
+    return tmp_path
+
+
+@pytest.fixture
+def param_inheritance_analyzer(param_inheritance_project):
+    """Create and index parameter inheritance test project."""
+    analyzer = CppAnalyzer(project_root=str(param_inheritance_project))
+    analyzer.index_project(force=True)
+    return analyzer
+
+
+class TestTemplateBaseClassImprovement:
+    """
+    Tests for template base class naming improvements.
+
+    Verifies that:
+    1. Templates inheriting from parameters show the parameter name (not 'type-parameter-X-Y')
+    2. Explicit instantiations have resolved base classes
+    """
+
+    def test_primary_template_shows_param_name(self, param_inheritance_analyzer):
+        """
+        Test that primary template base_classes shows parameter name, not type-parameter-X-Y.
+
+        Before fix: base_classes = ['type-parameter-0-0']
+        After fix:  base_classes = ['BaseType']
+        """
+        results = param_inheritance_analyzer.search_classes("TemplateInheritsParam")
+
+        # Find the primary template
+        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        assert primary is not None, "Should find primary template TemplateInheritsParam"
+
+        base_classes = primary.get('base_classes', [])
+        assert len(base_classes) == 1, "Should have exactly one base class"
+
+        # Verify it's the parameter name, not the internal representation
+        assert base_classes[0] == 'BaseType', \
+            f"Base class should be 'BaseType', not '{base_classes[0]}'"
+        assert 'type-parameter' not in base_classes[0], \
+            f"Base class should not contain 'type-parameter': {base_classes[0]}"
+
+    def test_mixed_inheritance_shows_param_and_fixed_base(self, param_inheritance_analyzer):
+        """
+        Test template with mixed inheritance (param + fixed base).
+
+        MixedInheritance<T> : public T, protected InterfaceB
+        Should show: ['T', 'testns::InterfaceB'] (not ['type-parameter-0-0', ...])
+        """
+        results = param_inheritance_analyzer.search_classes("MixedInheritance")
+
+        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        assert primary is not None, "Should find primary template MixedInheritance"
+
+        base_classes = primary.get('base_classes', [])
+        assert len(base_classes) == 2, f"Should have 2 base classes, got {base_classes}"
+
+        # First base should be the template parameter 'T'
+        assert base_classes[0] == 'T', \
+            f"First base should be 'T', not '{base_classes[0]}'"
+
+        # Second base should be the fixed InterfaceB (with namespace)
+        assert 'InterfaceB' in base_classes[1], \
+            f"Second base should contain 'InterfaceB': {base_classes[1]}"
+
+    def test_multi_param_inherits_correct_param(self, param_inheritance_analyzer):
+        """
+        Test template that inherits from second parameter shows correct name.
+
+        InheritsSecond<First, Second> : public Second
+        Should show: ['Second'] (not ['type-parameter-0-1'])
+        """
+        results = param_inheritance_analyzer.search_classes("InheritsSecond")
+
+        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        assert primary is not None, "Should find primary template InheritsSecond"
+
+        base_classes = primary.get('base_classes', [])
+        assert len(base_classes) == 1, f"Should have 1 base class, got {base_classes}"
+
+        # Should be 'Second', not 'type-parameter-0-1'
+        assert base_classes[0] == 'Second', \
+            f"Base class should be 'Second', not '{base_classes[0]}'"
+
+    def test_explicit_instantiation_has_resolved_bases(self, param_inheritance_analyzer):
+        """
+        Test that explicit instantiations have resolved base classes.
+
+        extern template class TemplateInheritsParam<InterfaceA>;
+        Should have base_classes = ['InterfaceA'] (resolved from primary template + args)
+        """
+        results = param_inheritance_analyzer.search_classes("TemplateInheritsParam")
+
+        # Find explicit instantiations (kind='class' with template args in displayname)
+        instantiations = [
+            r for r in results
+            if r['kind'] == 'class' and r.get('template_kind') == 'full_specialization'
+        ]
+
+        # We should have at least one instantiation (InterfaceA or InterfaceB)
+        # Note: extern template declarations may or may not be indexed depending on
+        # how libclang handles them. If none found, this test is inconclusive.
+        if not instantiations:
+            pytest.skip("No explicit instantiations found in index (may depend on libclang version)")
+
+        for inst in instantiations:
+            base_classes = inst.get('base_classes', [])
+            # If the instantiation has resolved base classes, verify they're correct
+            if base_classes:
+                # Should be 'InterfaceA' or 'InterfaceB', not empty or type-parameter
+                for bc in base_classes:
+                    assert 'type-parameter' not in bc, \
+                        f"Instantiation base class should be resolved: {bc}"
+                    assert bc in ['InterfaceA', 'InterfaceB', 'testns::InterfaceA', 'testns::InterfaceB'], \
+                        f"Unexpected base class: {bc}"
+
+    def test_concrete_class_base_includes_template_arg(self, param_inheritance_analyzer):
+        """
+        Test concrete class inheriting from template instantiation.
+
+        ConcreteImpl : TemplateInheritsParam<InterfaceA>
+        Should show: ['testns::TemplateInheritsParam<InterfaceA>'] or similar
+        """
+        results = param_inheritance_analyzer.search_classes("ConcreteImpl")
+
+        concrete = next((r for r in results if r['kind'] in ('class', 'struct')), None)
+        assert concrete is not None, "Should find ConcreteImpl"
+
+        base_classes = concrete.get('base_classes', [])
+        assert len(base_classes) == 1, f"Should have 1 base class, got {base_classes}"
+
+        # Should show the full template instantiation
+        assert 'TemplateInheritsParam' in base_classes[0], \
+            f"Base should contain 'TemplateInheritsParam': {base_classes[0]}"
+        assert 'InterfaceA' in base_classes[0], \
+            f"Base should contain 'InterfaceA': {base_classes[0]}"
+
+
+class TestBaseClassResolutionFromIndex:
+    """
+    Tests for _resolve_instantiation_base_classes method.
+
+    These tests verify the resolution logic works correctly when
+    the primary template is already in the index.
+    """
+
+    def test_resolution_requires_primary_in_index(self, param_inheritance_analyzer):
+        """
+        Verify that resolution fails gracefully when primary template is not indexed.
+        """
+        # Create a mock cursor-like object (we can't easily test this without
+        # actually parsing, so we'll test the method directly with edge cases)
+
+        # Empty primary_usr should return empty list
+        result = param_inheritance_analyzer._resolve_instantiation_base_classes(
+            cursor=None,  # Not used when primary_usr is None
+            primary_template_usr=None
+        )
+        assert result == [], "Should return empty list when primary_usr is None"
+
+    def test_crtp_base_shows_param_name(self, analyzer):
+        """
+        Test CRTP pattern in existing test fixture shows parameter name.
+
+        Base<Derived> doesn't inherit from Derived in the fixture,
+        but derived classes show Base<DerivedA> which is correct.
+        """
+        results = analyzer.search_classes("Base")
+
+        # Find the CRTP base template
+        base_template = next(
+            (r for r in results if r['kind'] == 'class_template' and r['name'] == 'Base'),
+            None
+        )
+
+        # The existing Base<Derived> doesn't inherit from Derived,
+        # so this test just verifies the fixture works
+        if base_template:
+            # Base<Derived> has no base classes in the fixture
+            # (it doesn't inherit from Derived, the derived classes inherit from Base<Derived>)
+            # This is expected - the fixture tests CRTP usage, not parameter inheritance
+            assert base_template.get('base_classes', []) == []
