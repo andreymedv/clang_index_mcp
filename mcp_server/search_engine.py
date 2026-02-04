@@ -26,6 +26,28 @@ class SearchEngine:
         self.index_lock = index_lock
         self.cache_manager = cache_manager  # Phase 1.3: For alias lookups
 
+    def _resolve_specialization_of(self, primary_template_usr: Optional[str]) -> Optional[str]:
+        """
+        Resolve primary template USR to its qualified name for LLM-friendly output.
+
+        Instead of exposing cryptic USRs like 'c:@N@NS@ST>1#T@Template',
+        returns the human-readable qualified name like 'NS::Template'.
+
+        Args:
+            primary_template_usr: USR of the primary template
+
+        Returns:
+            Qualified name of the primary template, or None if not found/not a specialization
+        """
+        if not primary_template_usr:
+            return None
+
+        with self.index_lock:
+            primary_info = self.usr_index.get(primary_template_usr)
+            if primary_info:
+                return primary_info.qualified_name or primary_info.name
+        return None
+
     @staticmethod
     def _is_pattern(text: str) -> bool:
         """Check if text contains regex metacharacters that indicate it's a pattern.
@@ -412,7 +434,9 @@ class SearchEngine:
                                 "is_template": info.is_template,
                                 "template_kind": info.template_kind,
                                 "template_parameters": info.template_parameters,
-                                "primary_template_usr": info.primary_template_usr,
+                                "specialization_of": self._resolve_specialization_of(
+                                    info.primary_template_usr
+                                ),
                                 # Phase 1: Line ranges
                                 "start_line": info.start_line,
                                 "end_line": info.end_line,
@@ -507,7 +531,7 @@ class SearchEngine:
                 "is_template": info.is_template,
                 "template_kind": info.template_kind,
                 "template_parameters": info.template_parameters,
-                "primary_template_usr": info.primary_template_usr,
+                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
                 # Phase 1: Line ranges
                 "start_line": info.start_line,
                 "end_line": info.end_line,
@@ -825,7 +849,9 @@ class SearchEngine:
                             "is_template": func_info.is_template,
                             "template_kind": func_info.template_kind,
                             "template_parameters": func_info.template_parameters,
-                            "primary_template_usr": func_info.primary_template_usr,
+                            "specialization_of": self._resolve_specialization_of(
+                                func_info.primary_template_usr
+                            ),
                             # Phase 1: Line ranges for methods
                             "start_line": func_info.start_line,
                             "end_line": func_info.end_line,
@@ -859,7 +885,7 @@ class SearchEngine:
             "is_template": info.is_template,
             "template_kind": info.template_kind,
             "template_parameters": info.template_parameters,
-            "primary_template_usr": info.primary_template_usr,
+            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
             # Phase 1: Line ranges for class
             "start_line": info.start_line,
             "end_line": info.end_line,
