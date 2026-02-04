@@ -442,10 +442,10 @@ class TestTemplateParameterExtraction:
 
 
 class TestPrimaryTemplateLinking:
-    """Tests for Task 3.4: primary_template_usr linking."""
+    """Tests for Task 3.4: specialization_of linking (LLM-friendly qualified names)."""
 
     def test_partial_specialization_links_to_primary(self, analyzer):
-        """Test partial specialization links to primary template via USR."""
+        """Test partial specialization has specialization_of with qualified name."""
         results = analyzer.search_classes("Container")
         template = next((r for r in results if r['kind'] == 'class_template'), None)
         partial = next((r for r in results if r['kind'] == 'partial_specialization'), None)
@@ -453,15 +453,15 @@ class TestPrimaryTemplateLinking:
         assert template is not None, "Should find Container template"
         assert partial is not None, "Should find Container<T*> partial specialization"
 
-        # Partial spec should have primary_template_usr pointing to the template
-        primary_usr = partial.get('primary_template_usr')
-        assert primary_usr is not None, \
-            "Partial specialization should have primary_template_usr"
-        assert '@Container' in primary_usr, \
-            "primary_template_usr should reference Container template"
+        # Partial spec should have specialization_of with the template's qualified name
+        spec_of = partial.get('specialization_of')
+        assert spec_of is not None, \
+            "Partial specialization should have specialization_of"
+        assert 'Container' in spec_of, \
+            f"specialization_of should reference Container template, got: {spec_of}"
 
     def test_full_specialization_links_to_primary(self, analyzer):
-        """Test full specialization links to primary template via USR."""
+        """Test full specialization has specialization_of with qualified name."""
         results = analyzer.search_classes("Container")
         template = next((r for r in results if r['kind'] == 'class_template'), None)
         full_spec = next((r for r in results if r['kind'] == 'class' and
@@ -470,23 +470,23 @@ class TestPrimaryTemplateLinking:
         assert template is not None, "Should find Container template"
         assert full_spec is not None, "Should find Container<int> full specialization"
 
-        primary_usr = full_spec.get('primary_template_usr')
-        assert primary_usr is not None, \
-            "Full specialization should have primary_template_usr"
-        assert '@Container' in primary_usr, \
-            "primary_template_usr should reference Container template"
+        spec_of = full_spec.get('specialization_of')
+        assert spec_of is not None, \
+            "Full specialization should have specialization_of"
+        assert 'Container' in spec_of, \
+            f"specialization_of should reference Container template, got: {spec_of}"
 
-    def test_primary_template_has_no_parent(self, analyzer):
-        """Test primary templates do not have primary_template_usr."""
+    def test_primary_template_has_no_specialization_of(self, analyzer):
+        """Test primary templates do not have specialization_of."""
         results = analyzer.search_classes("Container")
         template = next((r for r in results if r['kind'] == 'class_template'), None)
 
         assert template is not None, "Should find Container template"
-        assert template.get('primary_template_usr') is None, \
-            "Primary template should not have primary_template_usr"
+        assert template.get('specialization_of') is None, \
+            "Primary template should not have specialization_of"
 
     def test_function_specialization_links_to_primary(self, analyzer):
-        """Test function specialization links to primary function template."""
+        """Test function specialization has specialization_of with qualified name."""
         results = analyzer.search_functions("max")
         template = next((r for r in results if r['kind'] == 'function_template'), None)
         full_spec = next((r for r in results if r['kind'] == 'function' and
@@ -495,11 +495,11 @@ class TestPrimaryTemplateLinking:
         assert template is not None, "Should find max function template"
         assert full_spec is not None, "Should find max<int*> full specialization"
 
-        primary_usr = full_spec.get('primary_template_usr')
-        assert primary_usr is not None, \
-            "Function specialization should have primary_template_usr"
-        assert 'max' in primary_usr, \
-            "primary_template_usr should reference max function template"
+        spec_of = full_spec.get('specialization_of')
+        assert spec_of is not None, \
+            "Function specialization should have specialization_of"
+        assert 'max' in spec_of, \
+            f"specialization_of should reference max function template, got: {spec_of}"
 
     def test_multi_param_template_linking(self, analyzer):
         """Test specialization linking works for multi-parameter templates."""
@@ -511,11 +511,11 @@ class TestPrimaryTemplateLinking:
         assert template is not None, "Should find Pair template"
         assert full_spec is not None, "Should find Pair<int,int> full specialization"
 
-        primary_usr = full_spec.get('primary_template_usr')
-        assert primary_usr is not None, \
-            "Multi-param specialization should have primary_template_usr"
-        assert '@Pair' in primary_usr, \
-            "primary_template_usr should reference Pair template"
+        spec_of = full_spec.get('specialization_of')
+        assert spec_of is not None, \
+            "Multi-param specialization should have specialization_of"
+        assert 'Pair' in spec_of, \
+            f"specialization_of should reference Pair template, got: {spec_of}"
 
 
 class TestAdvancedTemplatePatterns:
@@ -620,7 +620,7 @@ class TestAdvancedTemplatePatterns:
 
         assert template is not None, "Should find multiply template"
         assert spec is not None, "Should find multiply<2> specialization"
-        assert spec.get('primary_template_usr') is not None
+        assert spec.get('specialization_of') is not None
 
     def test_type_traits_pattern(self, analyzer):
         """Test type traits template pattern with static members."""
@@ -657,8 +657,8 @@ class TestAdvancedTemplatePatterns:
 
         # All partial specs should link to primary
         for spec in partial_specs:
-            assert spec.get('primary_template_usr') is not None, \
-                "Partial specialization should have primary_template_usr"
+            assert spec.get('specialization_of') is not None, \
+                "Partial specialization should have specialization_of"
 
 
 class TestNamespacedSpecializationLinking:
@@ -681,13 +681,13 @@ class TestNamespacedSpecializationLinking:
         assert 'outer' in template.get('qualified_name', ''), \
             "Template qualified_name should include namespace"
 
-        primary_usr = full_spec.get('primary_template_usr')
-        assert primary_usr is not None, \
-            "Full specialization should have primary_template_usr"
-        assert '@NamespacedContainer' in primary_usr, \
-            "primary_template_usr should reference NamespacedContainer template"
-        assert 'outer' in primary_usr, \
-            "primary_template_usr should include namespace"
+        spec_of = full_spec.get('specialization_of')
+        assert spec_of is not None, \
+            "Full specialization should have specialization_of"
+        assert 'NamespacedContainer' in spec_of, \
+            f"specialization_of should reference NamespacedContainer template, got: {spec_of}"
+        assert 'outer' in spec_of, \
+            f"specialization_of should include namespace, got: {spec_of}"
 
     def test_nested_namespace_template_linking(self, analyzer):
         """Test templates in nested namespaces (outer::inner)."""
@@ -708,18 +708,18 @@ class TestNamespacedSpecializationLinking:
             "Template should include nested namespace info"
 
         # Check partial specialization linking
-        partial_primary_usr = partial_spec.get('primary_template_usr')
-        assert partial_primary_usr is not None, \
-            "Partial specialization should have primary_template_usr"
-        assert '@NestedPair' in partial_primary_usr, \
-            "Partial spec primary_template_usr should reference NestedPair"
+        partial_spec_of = partial_spec.get('specialization_of')
+        assert partial_spec_of is not None, \
+            "Partial specialization should have specialization_of"
+        assert 'NestedPair' in partial_spec_of, \
+            f"Partial spec specialization_of should reference NestedPair, got: {partial_spec_of}"
 
         # Check full specialization linking
-        full_primary_usr = full_spec.get('primary_template_usr')
-        assert full_primary_usr is not None, \
-            "Full specialization should have primary_template_usr"
-        assert '@NestedPair' in full_primary_usr, \
-            "Full spec primary_template_usr should reference NestedPair"
+        full_spec_of = full_spec.get('specialization_of')
+        assert full_spec_of is not None, \
+            "Full specialization should have specialization_of"
+        assert 'NestedPair' in full_spec_of, \
+            f"Full spec specialization_of should reference NestedPair, got: {full_spec_of}"
 
 
 class TestForwardDeclaredTemplateLinking:
@@ -749,11 +749,11 @@ class TestForwardDeclaredTemplateLinking:
         assert template is not None, "Should find ForwardDeclared template"
         assert full_spec is not None, "Should find ForwardDeclared<void> specialization"
 
-        primary_usr = full_spec.get('primary_template_usr')
-        assert primary_usr is not None, \
-            "Specialization should have primary_template_usr"
-        assert '@ForwardDeclared' in primary_usr, \
-            "primary_template_usr should reference ForwardDeclared"
+        spec_of = full_spec.get('specialization_of')
+        assert spec_of is not None, \
+            "Specialization should have specialization_of"
+        assert 'ForwardDeclared' in spec_of, \
+            f"specialization_of should reference ForwardDeclared, got: {spec_of}"
 
 
 class TestCrossNamespaceInheritance:
@@ -813,18 +813,18 @@ class TestSpecializationLinkingEdgeCases:
         results = analyzer.search_classes("NestedPair")
 
         template = next((r for r in results if r['kind'] == 'class_template'), None)
-        specializations = [r for r in results if r.get('primary_template_usr')]
+        specializations = [r for r in results if r.get('specialization_of')]
 
         assert template is not None, "Should find NestedPair template"
         assert len(specializations) >= 2, "Should find at least 2 specializations"
 
-        template_usr = template.get('usr')
         for spec in specializations:
             # All specializations should link to the same primary
-            primary_usr = spec.get('primary_template_usr')
-            assert primary_usr is not None
-            # The primary_template_usr should reference the same template name
-            assert '@NestedPair' in primary_usr
+            spec_of = spec.get('specialization_of')
+            assert spec_of is not None
+            # The specialization_of should reference the same template name
+            assert 'NestedPair' in spec_of, \
+                f"specialization_of should reference NestedPair, got: {spec_of}"
 
     def test_qualified_name_includes_namespace(self, analyzer):
         """Test that qualified names include full namespace path."""
