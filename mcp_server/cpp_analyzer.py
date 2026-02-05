@@ -3135,6 +3135,11 @@ class CppAnalyzer:
         # Save header tracking state (once at end to avoid race conditions in multi-process mode)
         self._save_header_tracking()
 
+        # Rebuild FTS5 index after full indexing to clean up stale entries
+        # INSERT OR REPLACE causes rowid changes and FTS5 internal tables
+        # accumulate stale entries that need to be cleaned up via 'rebuild'
+        self.cache_manager.backend.rebuild_fts()
+
         return indexed_count
 
     def _save_cache(self):
@@ -3678,6 +3683,11 @@ class CppAnalyzer:
             self._save_header_tracking()
             if deleted > 0:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
+            # Rebuild FTS5 index after refresh to clean up stale entries
+            # INSERT OR REPLACE causes rowid changes and FTS5 internal tables
+            # accumulate stale entries that need to be cleaned up via 'rebuild'
+            if refreshed > 0:
+                self.cache_manager.backend.rebuild_fts()
 
         # Keep tracked file count in sync with current state
         self.indexed_file_count = len(self.file_hashes)
@@ -3820,24 +3830,85 @@ class CppAnalyzer:
         """
         from .search_engine import SearchEngine
 
-        # Step 1: Check if input is an alias first
+        # Step 1: Check if input is a known alias in the type_aliases table
         input_was_alias = False
         input_canonical = self.cache_manager.get_canonical_for_alias(type_name)
-        if input_canonical:
-            input_was_alias = True
-            # Resolve alias to canonical type for search
-            search_type_name = input_canonical
-        else:
-            search_type_name = type_name
 
-        # Step 2: Find canonical type(s) matching the pattern
+        if input_canonical:
+            # Input is a known alias - return info directly from type_aliases table
+            # This handles aliases to template instantiations (unique_ptr<T>), built-in types, etc.
+            # which are not in the class_index
+            input_was_alias = True
+
+            # Get alias details from type_aliases table
+            try:
+                self.cache_manager.backend._ensure_connected()
+                cursor = self.cache_manager.backend.conn.execute(
+                    """
+                    SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
+                           is_template_alias, template_params
+                    FROM type_aliases
+                    WHERE alias_name = ? OR qualified_name = ?
+                    """,
+                    (type_name, type_name),
+                )
+                row = cursor.fetchone()
+                if row:
+                    # Get all aliases for the same canonical type
+                    alias_names = self.cache_manager.get_aliases_for_canonical(
+                        row["canonical_type"]
+                    )
+                    aliases = []
+                    for alias_name in alias_names:
+                        alias_cursor = self.cache_manager.backend.conn.execute(
+                            """
+                            SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
+                                   is_template_alias, template_params
+                            FROM type_aliases
+                            WHERE alias_name = ? OR qualified_name = ?
+                            """,
+                            (alias_name, alias_name),
+                        )
+                        alias_row = alias_cursor.fetchone()
+                        if alias_row:
+                            alias_dict = {
+                                "name": alias_row["alias_name"],
+                                "qualified_name": alias_row["qualified_name"],
+                                "file": alias_row["file"],
+                                "line": alias_row["line"],
+                            }
+                            if alias_row["is_template_alias"]:
+                                alias_dict["is_template_alias"] = True
+                                if alias_row["template_params"]:
+                                    import json
+
+                                    alias_dict["template_params"] = json.loads(
+                                        alias_row["template_params"]
+                                    )
+                            aliases.append(alias_dict)
+
+                    return {
+                        "canonical_type": row["canonical_type"],
+                        "qualified_name": row["qualified_name"],
+                        "namespace": row["namespace"],
+                        "file": row["file"],
+                        "line": row["line"],
+                        "input_was_alias": True,
+                        "is_ambiguous": False,
+                        "aliases": aliases,
+                    }
+            except Exception as e:
+                diagnostics.warning(f"Error querying type_aliases for '{type_name}': {e}")
+
+        # Step 2: Input is not a known alias - search class_index for matching classes
+        # This handles queries by class/struct name (e.g., "Widget", "ui::Widget")
         matches = []
         with self.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
                     # Use qualified pattern matching (same as search_classes)
                     qualified_name = info.qualified_name if info.qualified_name else info.name
-                    if SearchEngine.matches_qualified_pattern(qualified_name, search_type_name):
+                    if SearchEngine.matches_qualified_pattern(qualified_name, type_name):
                         matches.append(info)
 
         # Step 3: Check for ambiguity (multiple matches with different qualified names)
