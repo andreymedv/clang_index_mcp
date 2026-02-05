@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 14.0
+-- Version: 15.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v15.0: Fixed type_aliases unique constraint to allow multiple macro-generated aliases at same location
 -- Changelog v14.0: Added virtual/abstract method indicators (is_virtual, is_pure_virtual, is_const, is_static) for LLM Integration (Phase 5)
 -- Changelog v13.0: Added template tracking fields (Template Search Support)
 -- Changelog v12.0: Added template_params to type_aliases table (Issue #84, Phase 2: Template Aliases)
@@ -159,7 +160,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"14.0"', julianday('now')),
+    ('version', '"15.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
@@ -251,8 +252,10 @@ CREATE TABLE IF NOT EXISTS type_aliases (
     template_params TEXT DEFAULT NULL,  -- JSON array of template parameters (Phase 2.0, v12.0)
     created_at REAL NOT NULL,           -- Unix timestamp
 
-    -- Unique constraint: one alias declaration per location
-    UNIQUE(file, line, column)
+    -- Unique constraint: one alias per qualified name
+    -- Changed from UNIQUE(file, line, column) in v15.0 to support macro-generated aliases
+    -- (macros can create multiple aliases at the same expansion location)
+    UNIQUE(qualified_name)
 );
 
 -- Indexes for fast alias lookup and search unification
