@@ -1184,6 +1184,41 @@ class SqliteCacheBackend:
             diagnostics.error(f"FTS5 optimization failed: {e}")
             return False
 
+    def rebuild_fts(self) -> bool:
+        """
+        Rebuild FTS5 index from scratch.
+
+        This is needed after force re-indexing because INSERT OR REPLACE
+        on the symbols table causes rowid changes, and FTS5 internal tables
+        accumulate stale entries that are not cleaned up by the DELETE trigger.
+
+        Unlike 'optimize' which only merges b-tree segments, 'rebuild'
+        completely recreates the FTS index from the content table, removing
+        all stale data and reclaiming space.
+
+        Performance: Can take 1-2 seconds for 100K symbols.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._ensure_connected()
+
+            diagnostics.debug("Rebuilding FTS5 index...")
+            start_time = time.time()
+
+            # Rebuild FTS5 table completely
+            self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')")
+
+            elapsed = time.time() - start_time
+            diagnostics.debug(f"FTS5 rebuild complete in {elapsed:.2f}s")
+
+            return True
+
+        except Exception as e:
+            diagnostics.error(f"FTS5 rebuild failed: {e}")
+            return False
+
     def analyze(self) -> bool:
         """
         Update query planner statistics for optimal query performance.

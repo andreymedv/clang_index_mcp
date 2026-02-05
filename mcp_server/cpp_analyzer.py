@@ -3135,6 +3135,11 @@ class CppAnalyzer:
         # Save header tracking state (once at end to avoid race conditions in multi-process mode)
         self._save_header_tracking()
 
+        # Rebuild FTS5 index after full indexing to clean up stale entries
+        # INSERT OR REPLACE causes rowid changes and FTS5 internal tables
+        # accumulate stale entries that need to be cleaned up via 'rebuild'
+        self.cache_manager.backend.rebuild_fts()
+
         return indexed_count
 
     def _save_cache(self):
@@ -3678,6 +3683,11 @@ class CppAnalyzer:
             self._save_header_tracking()
             if deleted > 0:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
+            # Rebuild FTS5 index after refresh to clean up stale entries
+            # INSERT OR REPLACE causes rowid changes and FTS5 internal tables
+            # accumulate stale entries that need to be cleaned up via 'rebuild'
+            if refreshed > 0:
+                self.cache_manager.backend.rebuild_fts()
 
         # Keep tracked file count in sync with current state
         self.indexed_file_count = len(self.file_hashes)
