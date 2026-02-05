@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "14.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "15.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
