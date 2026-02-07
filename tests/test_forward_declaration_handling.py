@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.symbol_info import SymbolInfo, is_richer_definition
 
 
 @pytest.fixture
@@ -350,3 +351,128 @@ struct Button : ButtonBase {
                 assert info.get('end_line', 0) > info.get('start_line', 0), (
                     f"Should be multi-line definition for {name}"
                 )
+
+
+class TestIsRicherDefinition:
+    """Unit tests for the is_richer_definition() helper function."""
+
+    def _make_symbol(self, **kwargs):
+        """Create a SymbolInfo with defaults."""
+        defaults = {
+            "name": "Foo",
+            "kind": "struct",
+            "file": "test.h",
+            "line": 1,
+            "column": 1,
+            "is_definition": True,
+        }
+        defaults.update(kwargs)
+        return SymbolInfo(**defaults)
+
+    def test_base_classes_wins(self):
+        """Symbol with base_classes should beat one without."""
+        rich = self._make_symbol(base_classes=["Bar"], start_line=1, end_line=5)
+        empty = self._make_symbol(base_classes=[], start_line=1, end_line=1)
+        assert is_richer_definition(rich, empty) is True
+        assert is_richer_definition(empty, rich) is False
+
+    def test_larger_span_wins_when_both_have_no_bases(self):
+        """Larger line span wins when neither has base_classes."""
+        big = self._make_symbol(start_line=1, end_line=10)
+        small = self._make_symbol(start_line=1, end_line=2)
+        assert is_richer_definition(big, small) is True
+        assert is_richer_definition(small, big) is False
+
+    def test_tie_keeps_existing(self):
+        """Equal symbols: keep existing (return False)."""
+        a = self._make_symbol(start_line=1, end_line=5)
+        b = self._make_symbol(start_line=1, end_line=5)
+        assert is_richer_definition(a, b) is False
+
+    def test_base_classes_beats_larger_span(self):
+        """Base classes heuristic takes priority over line span."""
+        with_bases = self._make_symbol(base_classes=["Bar"], start_line=1, end_line=2)
+        big_span = self._make_symbol(base_classes=[], start_line=1, end_line=100)
+        assert is_richer_definition(with_bases, big_span) is True
+
+
+class TestRicherDefinitionPreferred:
+    """Test that richer definition wins when both have is_definition=True.
+
+    Bug cplusplus_mcp-5tl: Macro-generated empty struct definitions (reported as
+    is_definition=true by libclang) beat real definitions in dedup logic.
+    """
+
+    def test_richer_definition_preferred_when_both_defined(self, tmp_path):
+        """Two struct definitions (empty macro-generated + real with base classes)."""
+        # Simulate: a macro generates an empty struct definition,
+        # then the real definition with base classes appears later
+        macro_h = tmp_path / "macro.h"
+        macro_h.write_text("""
+#define DECLARE_STRUCT(name) struct name {};
+
+struct WidgetBase {
+    virtual ~WidgetBase() = default;
+};
+
+// Macro generates: struct MyWidget {};  (empty, is_definition=true)
+DECLARE_STRUCT(MyWidget)
+""")
+
+        real_h = tmp_path / "real.h"
+        real_h.write_text("""
+struct WidgetBase {
+    virtual ~WidgetBase() = default;
+};
+
+// Real definition with base class (is_definition=true)
+struct MyWidget : WidgetBase {
+    void doWork();
+};
+""")
+
+        analyzer = CppAnalyzer(project_root=str(tmp_path))
+        # Index macro-generated first, then real definition
+        analyzer.index_file(str(macro_h))
+        analyzer.index_file(str(real_h))
+
+        info = analyzer.get_class_info("MyWidget")
+        assert info is not None
+        assert "error" not in info
+        # The real definition with base classes should win
+        base_classes = info.get("base_classes", [])
+        assert "WidgetBase" in str(base_classes), (
+            f"Real definition should win over macro-generated empty struct. "
+            f"Got base_classes={base_classes}"
+        )
+
+    def test_richer_definition_reverse_order(self, tmp_path):
+        """Real definition indexed first, empty second - should still keep real."""
+        real_h = tmp_path / "real.h"
+        real_h.write_text("""
+struct WidgetBase {
+    virtual ~WidgetBase() = default;
+};
+
+struct MyWidget : WidgetBase {
+    void doWork();
+};
+""")
+
+        empty_h = tmp_path / "empty.h"
+        empty_h.write_text("""
+struct MyWidget {};
+""")
+
+        analyzer = CppAnalyzer(project_root=str(tmp_path))
+        analyzer.index_file(str(real_h))
+        analyzer.index_file(str(empty_h))
+
+        info = analyzer.get_class_info("MyWidget")
+        assert info is not None
+        assert "error" not in info
+        base_classes = info.get("base_classes", [])
+        assert "WidgetBase" in str(base_classes), (
+            f"Real definition should be kept even when empty struct indexed after. "
+            f"Got base_classes={base_classes}"
+        )
