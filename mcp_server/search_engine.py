@@ -3,7 +3,11 @@
 import re
 import threading
 from typing import Dict, List, Optional, Any, Tuple, Union
-from .symbol_info import SymbolInfo
+from .symbol_info import (
+    SymbolInfo,
+    get_template_param_base_indices,
+    is_richer_definition,
+)
 from .regex_validator import RegexValidator
 
 
@@ -770,14 +774,13 @@ class SearchEngine:
                 if not matching_candidates:
                     return None  # No match for qualified name
 
-                # Apply definition-wins logic: prefer definitions over declarations
-                # This prevents returning forward declarations when definitions exist
-                # (Fix for cplusplus_mcp-2u9)
+                # Apply definition-wins logic: prefer richest definition
+                # (Fix for cplusplus_mcp-2u9, cplusplus_mcp-5tl)
                 info = None
                 for candidate in matching_candidates:
                     if candidate.is_definition:
-                        info = candidate
-                        break
+                        if info is None or is_richer_definition(candidate, info):
+                            info = candidate
 
                 # Fall back to first match if no definition found
                 if info is None:
@@ -804,13 +807,13 @@ class SearchEngine:
                         "suggestion": "Use qualified name to disambiguate",
                     }
 
-                # Apply definition-wins logic: prefer definitions over declarations
-                # (Fix for cplusplus_mcp-2u9)
+                # Apply definition-wins logic: prefer richest definition
+                # (Fix for cplusplus_mcp-2u9, cplusplus_mcp-5tl)
                 info = None
                 for candidate in infos:
                     if candidate.is_definition:
-                        info = candidate
-                        break
+                        if info is None or is_richer_definition(candidate, info):
+                            info = candidate
 
                 # Fall back to first match if no definition found
                 if info is None:
@@ -878,6 +881,7 @@ class SearchEngine:
             "file": info.file,
             "line": info.line,
             "base_classes": info.base_classes,
+            "template_param_base_indices": get_template_param_base_indices(info),
             "methods": sorted(methods, key=lambda x: x["line"]),
             "members": [],  # TODO: Implement member variable indexing
             "is_project": info.is_project,
