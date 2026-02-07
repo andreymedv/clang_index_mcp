@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Any, Set, Callable
 from collections import defaultdict
 import hashlib
 import json
-from .symbol_info import SymbolInfo
+from .symbol_info import CLASS_KINDS, SymbolInfo, is_richer_definition
 from .cache_manager import CacheManager
 from .file_scanner import FileScanner
 from .call_graph import CallGraphAnalyzer
@@ -599,49 +599,31 @@ class CppAnalyzer:
             self._thread_local.collected_aliases,
         )
 
-    def _remove_symbol_from_indexes(self, symbol: SymbolInfo):
-        """
-        Remove a symbol from all indexes.
+    def _remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
+        """Remove a symbol from class_index/function_index and usr_index.
 
-        Used by definition-wins logic to replace declarations with definitions.
-
-        Args:
-            symbol: SymbolInfo to remove from indexes
+        Used during definition-wins deduplication to replace an existing symbol.
+        Does NOT remove from file_index (declarations stay indexed under headers).
         """
-        # Remove from class_index or function_index
-        if symbol.kind in ("class", "struct"):
+        if symbol.kind in CLASS_KINDS:
             if symbol.name in self.class_index:
                 try:
                     self.class_index[symbol.name].remove(symbol)
-                    # Remove empty lists
                     if not self.class_index[symbol.name]:
                         del self.class_index[symbol.name]
                 except ValueError:
-                    # Symbol not in list (shouldn't happen, but be defensive)
                     pass
         else:
             if symbol.name in self.function_index:
                 try:
                     self.function_index[symbol.name].remove(symbol)
-                    # Remove empty lists
                     if not self.function_index[symbol.name]:
                         del self.function_index[symbol.name]
                 except ValueError:
                     pass
 
-        # Remove from usr_index
         if symbol.usr and symbol.usr in self.usr_index:
             del self.usr_index[symbol.usr]
-
-        # Remove from file_index
-        if symbol.file and symbol.file in self.file_index:
-            try:
-                self.file_index[symbol.file].remove(symbol)
-                # Remove empty lists
-                if not self.file_index[symbol.file]:
-                    del self.file_index[symbol.file]
-            except ValueError:
-                pass
 
     def _bulk_write_symbols(self):
         """
@@ -677,46 +659,31 @@ class CppAnalyzer:
                         )
 
                         # CRITICAL FIX FOR ISSUE #8:
-                        # When applying definition-wins, we want to replace in usr_index,
-                        # class_index, and function_index, but KEEP the declaration in file_index
+                        # Remove from class/function/usr indexes but KEEP in file_index
                         # so that headers remain indexed with their symbols.
-                        # Remove from class_index or function_index
-                        if existing_symbol.kind in ("class", "struct"):
-                            if existing_symbol.name in self.class_index:
-                                try:
-                                    self.class_index[existing_symbol.name].remove(existing_symbol)
-                                    if not self.class_index[existing_symbol.name]:
-                                        del self.class_index[existing_symbol.name]
-                                except ValueError:
-                                    pass
-                        else:
-                            if existing_symbol.name in self.function_index:
-                                try:
-                                    self.function_index[existing_symbol.name].remove(
-                                        existing_symbol
-                                    )
-                                    if not self.function_index[existing_symbol.name]:
-                                        del self.function_index[existing_symbol.name]
-                                except ValueError:
-                                    pass
-
-                        # Remove from usr_index (will be replaced with definition)
-                        if existing_symbol.usr and existing_symbol.usr in self.usr_index:
-                            del self.usr_index[existing_symbol.usr]
-
-                        # NOTE: We intentionally DO NOT remove from file_index here
-                        # The declaration stays in file_index under its header file
-                        # The definition will be added to file_index under its source file
+                        self._remove_symbol_from_indexes(existing_symbol)
 
                         # Add new definition to all indexes (fall through to add logic below)
                         # Note: Don't increment added_count as we're replacing, not adding
+                    elif info.is_definition and existing_symbol.is_definition:
+                        # Both are definitions (e.g., macro-generated empty struct + real struct)
+                        # Pick the richer one (more base classes, larger line span)
+                        if is_richer_definition(info, existing_symbol):
+                            diagnostics.debug(
+                                f"Richer-definition: Replacing {info.name} "
+                                f"(from {existing_symbol.file}:{existing_symbol.line} "
+                                f"to {info.file}:{info.line})"
+                            )
+                            self._remove_symbol_from_indexes(existing_symbol)
+                            # Fall through to add new symbol
+                        else:
+                            continue  # Keep existing (it's richer or equal)
                     else:
-                        # Keep existing symbol (either both are declarations, or existing is already a definition)
+                        # Keep existing symbol (existing is definition, new is declaration)
                         continue
 
                 # New symbol or replacement - add to all indexes
-                # Issue #99: Include template kinds in class_index
-                if info.kind in ("class", "struct", "class_template", "partial_specialization"):
+                if info.kind in CLASS_KINDS:
                     self.class_index[info.name].append(info)
                 else:
                     self.function_index[info.name].append(info)
@@ -2830,47 +2797,21 @@ class CppAnalyzer:
 
                                         # Definition-wins: if new is definition and existing is not, replace
                                         if symbol.is_definition and not existing.is_definition:
-                                            # Remove old declaration from class/function index
-                                            # Issue #99: Include template kinds in class_index
-                                            if existing.kind in (
-                                                "class",
-                                                "struct",
-                                                "class_template",
-                                                "partial_specialization",
-                                            ):
-                                                if existing.name in self.class_index:
-                                                    try:
-                                                        self.class_index[existing.name].remove(
-                                                            existing
-                                                        )
-                                                        if not self.class_index[existing.name]:
-                                                            del self.class_index[existing.name]
-                                                    except ValueError:
-                                                        pass
-                                            else:
-                                                if existing.name in self.function_index:
-                                                    try:
-                                                        self.function_index[existing.name].remove(
-                                                            existing
-                                                        )
-                                                        if not self.function_index[existing.name]:
-                                                            del self.function_index[existing.name]
-                                                    except ValueError:
-                                                        pass
+                                            self._remove_symbol_from_indexes(existing)
                                             # Will add new definition below (fall through)
+                                        elif symbol.is_definition and existing.is_definition:
+                                            # Both definitions: pick richer one
+                                            if is_richer_definition(symbol, existing):
+                                                self._remove_symbol_from_indexes(existing)
+                                            else:
+                                                skip_symbol = True
                                         else:
-                                            # Keep existing (both declarations or existing is already definition)
+                                            # Keep existing (existing is definition, new is declaration)
                                             skip_symbol = True
 
                                     if not skip_symbol:
                                         # Add to appropriate index
-                                        # Issue #99: Include template kinds in class_index
-                                        if symbol.kind in (
-                                            "class",
-                                            "struct",
-                                            "class_template",
-                                            "partial_specialization",
-                                        ):
+                                        if symbol.kind in CLASS_KINDS:
                                             self.class_index[symbol.name].append(symbol)
                                         else:
                                             self.function_index[symbol.name].append(symbol)
@@ -4273,8 +4214,23 @@ class CppAnalyzer:
             for name, infos in self.class_index.items():
                 for info in infos:
                     if not project_only or info.is_project:
+                        # Build set of template parameter names to filter false positives
+                        # (cplusplus_mcp-hff): template<typename Base> class Foo : Base
+                        # should NOT count as derived from a concrete struct "Base"
+                        tparam_names: set = set()
+                        if info.template_parameters:
+                            try:
+                                tparams = json.loads(info.template_parameters)
+                                tparam_names = {p.get("name", "") for p in tparams if p.get("name")}
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
                         # Check if this class inherits from the target class or any specialization
                         for base_class in info.base_classes:
+                            # Skip base classes that are template parameters
+                            if base_class in tparam_names:
+                                continue
+
                             match_found = False
                             for pattern in template_patterns:
                                 # Exact match or template specialization prefix match

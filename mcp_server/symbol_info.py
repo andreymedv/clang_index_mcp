@@ -1,5 +1,6 @@
 """Symbol information data structure for C++ analysis."""
 
+import json
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -101,3 +102,75 @@ class SymbolInfo:
             "is_static": self.is_static,
             "is_definition": self.is_definition,
         }
+
+
+# Constants for class-like symbol kinds
+CLASS_KINDS = ("class", "struct", "class_template", "partial_specialization")
+
+
+def is_richer_definition(new_symbol: "SymbolInfo", existing_symbol: "SymbolInfo") -> bool:
+    """Determine if new_symbol is a richer definition than existing_symbol.
+
+    When both symbols have is_definition=True (e.g., a macro-generated empty struct
+    and the real struct with base classes), prefer the one with more semantic content.
+
+    Returns True if new_symbol should replace existing_symbol.
+    """
+    # Heuristic 1: prefer non-empty base_classes
+    new_has_bases = bool(new_symbol.base_classes)
+    existing_has_bases = bool(existing_symbol.base_classes)
+    if new_has_bases and not existing_has_bases:
+        return True
+    if existing_has_bases and not new_has_bases:
+        return False
+
+    # Heuristic 2: prefer larger line span (more content)
+    new_span = (
+        (new_symbol.end_line - new_symbol.start_line)
+        if new_symbol.start_line is not None and new_symbol.end_line is not None
+        else 0
+    )
+    existing_span = (
+        (existing_symbol.end_line - existing_symbol.start_line)
+        if existing_symbol.start_line is not None and existing_symbol.end_line is not None
+        else 0
+    )
+    if new_span > existing_span:
+        return True
+
+    # Tie: keep existing (stable)
+    return False
+
+
+def get_template_param_base_indices(info: "SymbolInfo") -> List[int]:
+    """Return indices of base_classes entries that are template parameters.
+
+    Cross-references base_classes with template_parameters JSON to identify
+    which base classes are actually template parameter names rather than
+    concrete class names.
+
+    Example:
+        template<typename T, typename U> class Foo : public T, public Bar
+        base_classes = ['T', 'Bar']
+        template_parameters = [{"name": "T", ...}, {"name": "U", ...}]
+        → returns [0]  (index 0 in base_classes is template param 'T')
+    """
+    if not info.template_parameters or not info.base_classes:
+        return []
+
+    # Parse template parameter names
+    try:
+        params = json.loads(info.template_parameters)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    param_names = {p.get("name", "") for p in params if p.get("name")}
+    if not param_names:
+        return []
+
+    # Find which base_classes entries match template parameter names
+    indices = []
+    for i, base in enumerate(info.base_classes):
+        if base in param_names:
+            indices.append(i)
+    return indices

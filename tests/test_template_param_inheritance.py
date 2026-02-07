@@ -9,6 +9,7 @@ Problem: When template<T> class Foo : public T, and class Bar : Foo<Base>,
 import pytest
 from pathlib import Path
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.symbol_info import get_template_param_base_indices, SymbolInfo
 
 
 @pytest.fixture
@@ -178,3 +179,118 @@ class TestCheckTemplateParamInheritance:
             "ns::TemplateInheritsParam<ns::BaseClass>", "BaseClass"
         )
         assert result is True, "Should detect inheritance with simple name target"
+
+
+class TestTemplateParamNameCollision:
+    """Tests for cplusplus_mcp-hff: Template parameter names must not cause
+    false positives in get_derived_classes().
+
+    Scenario: template<typename Base> class Adapter : public Base
+    There's also a concrete struct 'Base'. Adapter should NOT appear
+    as derived from the concrete struct 'Base'.
+    """
+
+    def test_template_param_not_false_positive_in_derived(self, analyzer):
+        """template<typename Base> class Adapter : Base should NOT be derived from struct Base."""
+        analyzer.index_project()
+
+        derived = analyzer.get_derived_classes("Base", project_only=False)
+        derived_names = [d["name"] for d in derived]
+
+        # Adapter has template param named 'Base' - should NOT appear
+        assert "Adapter" not in derived_names, (
+            f"Adapter should NOT appear as derived from concrete struct Base. "
+            f"Its 'Base' base class is a template parameter, not a concrete type. "
+            f"Found: {derived_names}"
+        )
+
+    def test_real_derivation_still_found_alongside_collision(self, analyzer):
+        """RealDerivedFromBase actually derives from struct Base - must still be found."""
+        analyzer.index_project()
+
+        derived = analyzer.get_derived_classes("Base", project_only=False)
+        derived_names = [d["name"] for d in derived]
+
+        assert "RealDerivedFromBase" in derived_names, (
+            f"RealDerivedFromBase should be found as derived from struct Base. "
+            f"Found: {derived_names}"
+        )
+
+    def test_indirect_inheritance_still_works_with_collision(self, analyzer):
+        """Indirect inheritance through template instantiation should still work."""
+        analyzer.index_project()
+
+        # DerivedFromTemplate inherits from TemplateInheritsParam<BaseClass>
+        # which inherits from its template param T=BaseClass
+        # This is INDIRECT inheritance (through instantiation), not a false positive
+        derived = analyzer.get_derived_classes("BaseClass", project_only=False)
+        derived_names = [d["name"] for d in derived]
+
+        assert "DerivedFromTemplate" in derived_names, (
+            f"DerivedFromTemplate should still be found through indirect inheritance. "
+            f"Found: {derived_names}"
+        )
+
+
+class TestGetTemplateParamBaseIndices:
+    """Tests for get_template_param_base_indices() helper function."""
+
+    def test_no_template_params(self):
+        """Non-template class returns empty list."""
+        info = SymbolInfo(
+            name="Foo", kind="struct", file="test.h", line=1, column=1,
+            base_classes=["Bar"],
+            template_parameters=None,
+        )
+        assert get_template_param_base_indices(info) == []
+
+    def test_no_base_classes(self):
+        """Template with no base classes returns empty list."""
+        info = SymbolInfo(
+            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            base_classes=[],
+            template_parameters='[{"name": "T", "kind": "type"}]',
+        )
+        assert get_template_param_base_indices(info) == []
+
+    def test_single_template_param_base(self):
+        """template<typename T> class Foo : T -> index 0."""
+        info = SymbolInfo(
+            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            base_classes=["T"],
+            template_parameters='[{"name": "T", "kind": "type"}]',
+        )
+        assert get_template_param_base_indices(info) == [0]
+
+    def test_mixed_bases(self):
+        """template<typename T> class Foo : T, Bar -> only T is template param."""
+        info = SymbolInfo(
+            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            base_classes=["T", "Bar"],
+            template_parameters='[{"name": "T", "kind": "type"}]',
+        )
+        assert get_template_param_base_indices(info) == [0]
+
+    def test_multiple_template_param_bases(self):
+        """template<typename T, typename U> class Foo : T, U -> indices 0, 1."""
+        info = SymbolInfo(
+            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            base_classes=["T", "U"],
+            template_parameters='[{"name": "T", "kind": "type"}, {"name": "U", "kind": "type"}]',
+        )
+        assert get_template_param_base_indices(info) == [0, 1]
+
+    def test_get_class_info_has_template_param_base_indices(self, analyzer):
+        """get_class_info() should include template_param_base_indices field."""
+        analyzer.index_project()
+
+        info = analyzer.get_class_info("ns::Adapter")
+        assert info is not None
+        assert "error" not in info
+
+        indices = info.get("template_param_base_indices", None)
+        assert indices is not None, "template_param_base_indices field should be present"
+        assert 0 in indices, (
+            f"Adapter's first base class is template param 'Base', "
+            f"should be in indices. Got: {indices}"
+        )

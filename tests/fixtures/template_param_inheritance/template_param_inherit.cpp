@@ -48,6 +48,24 @@ struct Unrelated {
     void unrelatedMethod() {}
 };
 
+// Concrete struct named "Base" - same name as a common template parameter
+// Issue cplusplus_mcp-hff: template param names must not cause false positives
+struct Base {
+    void baseMethod() {}
+};
+
+// Template with param name "Base" that collides with the concrete struct above
+template <typename Base>
+class Adapter : public Base {
+public:
+    void adapterMethod() {}
+};
+
+// Concrete class that actually derives from the struct Base (direct inheritance)
+struct RealDerivedFromBase : Base {
+    void realDerivedMethod() {}
+};
+
 } // namespace ns
 
 // Force instantiation to ensure templates are visible
@@ -56,4 +74,5 @@ void force_instantiation() {
     ns::DerivedFromTemplateMulti d2;
     ns::DirectDerived d3;
     ns::Unrelated u;
+    ns::RealDerivedFromBase rdfb;
 }
