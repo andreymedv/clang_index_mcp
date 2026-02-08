@@ -35,6 +35,9 @@ class SymbolInfo:
     template_kind: Optional[str] = None  # 'class_template', 'function_template', etc.
     template_parameters: Optional[str] = None  # JSON array for generic templates
     primary_template_usr: Optional[str] = None  # USR of primary template for specializations
+    # JSON array of template argument names for specializations (e.g., '["ExternBase"]')
+    # Transient: only used during indexing for deferred base_classes resolution, not persisted
+    template_arguments: Optional[str] = None
 
     # Line ranges (Phase 1: LLM Integration)
     start_line: Optional[int] = None  # First line of symbol definition
