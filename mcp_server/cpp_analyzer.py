@@ -1031,6 +1031,46 @@ class CppAnalyzer:
                 base_classes.append(base_name_qualified)
         return base_classes
 
+    @staticmethod
+    def _extract_template_args_from_displayname(displayname: str) -> List[str]:
+        """Extract template arguments from a displayname like 'MyTemplate<Arg1, Arg2>'.
+
+        Handles nested template arguments (e.g., 'Foo<Bar<int>, Baz>').
+
+        Returns:
+            List of template argument strings, or empty list if parsing fails.
+        """
+        if "<" not in displayname:
+            return []
+
+        args_start = displayname.find("<")
+        args_end = displayname.rfind(">")
+        if args_start >= args_end:
+            return []
+
+        args_str = displayname[args_start + 1 : args_end]
+
+        # Parse comma-separated args (handle nested templates)
+        template_args: List[str] = []
+        depth = 0
+        current = ""
+        for c in args_str:
+            if c == "<":
+                depth += 1
+                current += c
+            elif c == ">":
+                depth -= 1
+                current += c
+            elif c == "," and depth == 0:
+                template_args.append(current.strip())
+                current = ""
+            else:
+                current += c
+        if current.strip():
+            template_args.append(current.strip())
+
+        return template_args
+
     def _resolve_instantiation_base_classes(
         self, cursor, primary_template_usr: Optional[str]
     ) -> List[str]:
@@ -1064,37 +1104,7 @@ class CppAnalyzer:
         if not primary_template_usr:
             return []
 
-        # Extract template arguments from displayname (e.g., "MyTemplate<BaseClass>" -> ["BaseClass"])
-        displayname = cursor.displayname
-        if "<" not in displayname:
-            return []
-
-        args_start = displayname.find("<")
-        args_end = displayname.rfind(">")
-        if args_start >= args_end:
-            return []
-
-        args_str = displayname[args_start + 1 : args_end]
-
-        # Parse comma-separated args (handle nested templates)
-        template_args = []
-        depth = 0
-        current = ""
-        for c in args_str:
-            if c == "<":
-                depth += 1
-                current += c
-            elif c == ">":
-                depth -= 1
-                current += c
-            elif c == "," and depth == 0:
-                template_args.append(current.strip())
-                current = ""
-            else:
-                current += c
-        if current.strip():
-            template_args.append(current.strip())
-
+        template_args = self._extract_template_args_from_displayname(cursor.displayname)
         if not template_args:
             return []
 
@@ -1150,6 +1160,90 @@ class CppAnalyzer:
                     resolved.append(base)
 
         return resolved
+
+    def _resolve_deferred_instantiation_bases(self) -> int:
+        """Resolve base_classes for template instantiations that couldn't be resolved during parsing.
+
+        In ProcessPoolExecutor mode, workers have isolated class_index and can't look up
+        the primary template. This post-processing pass runs after all symbols are merged
+        into the main process's indexes, resolving any remaining empty base_classes.
+
+        Returns:
+            Number of symbols whose base_classes were resolved.
+        """
+        import re
+
+        resolved_count = 0
+        for name, infos in self.class_index.items():
+            for info in infos:
+                # Only process specializations that have deferred template args
+                if (
+                    not info.template_arguments
+                    or not info.primary_template_usr
+                    or info.base_classes
+                ):
+                    continue
+
+                # Parse stored template arguments
+                try:
+                    template_args = json.loads(info.template_arguments)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                if not template_args:
+                    continue
+
+                # Look up the primary template in usr_index (fast O(1) lookup)
+                primary_info = self.usr_index.get(info.primary_template_usr)
+                if not primary_info:
+                    continue
+
+                # Get template parameters from primary template
+                template_params = []
+                if primary_info.template_parameters:
+                    try:
+                        template_params = json.loads(primary_info.template_parameters)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+                if not template_params:
+                    continue
+
+                # Build parameter name to argument mapping
+                param_to_arg = {}
+                for i, param in enumerate(template_params):
+                    if i < len(template_args):
+                        param_name = param.get("name", "")
+                        if param_name:
+                            param_to_arg[param_name] = template_args[i]
+
+                # Resolve base classes by substituting parameter names
+                resolved = []
+                for base in primary_info.base_classes:
+                    if base in param_to_arg:
+                        resolved.append(param_to_arg[base])
+                    else:
+                        match = re.match(r"type-parameter-(\d+)-(\d+)", base)
+                        if match:
+                            param_index = int(match.group(2))
+                            if param_index < len(template_args):
+                                resolved.append(template_args[param_index])
+                        else:
+                            resolved.append(base)
+
+                if resolved:
+                    info.base_classes = resolved
+                    info.template_arguments = None  # Clear transient field
+                    resolved_count += 1
+                    diagnostics.debug(
+                        f"Deferred resolution: {info.qualified_name} -> bases={resolved}"
+                    )
+
+        if resolved_count > 0:
+            diagnostics.info(
+                f"Resolved base_classes for {resolved_count} template instantiation(s)"
+            )
+        return resolved_count
 
     def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
         """
@@ -1828,6 +1922,7 @@ class CppAnalyzer:
 
                 # Task 3.4: Get primary template USR for full specializations
                 primary_usr = None
+                stored_template_args = None
                 if is_class_template_spec:
                     primary_usr = self._get_primary_template_usr(cursor)
 
@@ -1836,6 +1931,13 @@ class CppAnalyzer:
                     # This makes inheritance visible to LLMs for template instantiations.
                     if not base_classes and primary_usr:
                         base_classes = self._resolve_instantiation_base_classes(cursor, primary_usr)
+
+                        # If resolution failed (primary template not in this worker's index),
+                        # store template args for deferred post-indexing resolution.
+                        if not base_classes:
+                            targs = self._extract_template_args_from_displayname(cursor.displayname)
+                            if targs:
+                                stored_template_args = json.dumps(targs)
 
                 info = SymbolInfo(
                     name=cursor.spelling,
@@ -1857,6 +1959,7 @@ class CppAnalyzer:
                     is_template=is_class_template_spec,  # True for explicit specializations
                     template_kind="full_specialization" if is_class_template_spec else None,
                     primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
+                    template_arguments=stored_template_args,  # For deferred resolution
                     # Phase 1: Line ranges
                     start_line=loc_info["start_line"],
                     end_line=loc_info["end_line"],
@@ -3096,6 +3199,10 @@ class CppAnalyzer:
                 f"Note: {failed_count} files failed to parse - this is normal for complex projects"
             )
 
+        # Resolve base_classes for template instantiations that couldn't resolve during parsing
+        # (workers have isolated indexes, so primary template lookup may have failed)
+        self._resolve_deferred_instantiation_bases()
+
         # Save overall cache and progress summary
         self._save_cache()
         self._save_progress_summary(indexed_count, len(files), cache_hits, failed_count)
@@ -3646,6 +3753,8 @@ class CppAnalyzer:
                 executor.shutdown(wait=True)
 
         if refreshed > 0 or deleted > 0:
+            # Resolve deferred template instantiation bases after refresh
+            self._resolve_deferred_instantiation_bases()
             self._save_cache()
             # Save header tracking state after refresh
             self._save_header_tracking()

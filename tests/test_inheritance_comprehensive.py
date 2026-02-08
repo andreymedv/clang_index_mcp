@@ -692,12 +692,9 @@ class TestExternTemplate:
                 f"ExternFixedInherit should have ExternFixedBase, got {bases}"
             )
 
-    @pytest.mark.xfail(
-        reason="cplusplus_mcp-10o: Explicit template instantiations have empty base_classes"
-    )
     def test_case38_extern_instantiation_has_resolved_bases(self, analyzer):
         """Extern template instantiation ExternParamInherit<ExternBase> should have
-        resolved base_classes. Currently returns empty due to indexing order issues."""
+        resolved base_classes via post-indexing deferred resolution."""
         results = analyzer.search_classes("ExternParamInherit")
         # Look for the explicit instantiation (is_template_specialization=True)
         for r in results:
@@ -708,6 +705,35 @@ class TestExternTemplate:
                 )
                 return
         pytest.fail("No template specialization found for ExternParamInherit")
+
+    def test_case39_multiple_extern_instantiations(self, analyzer):
+        """Multiple extern instantiations of same template each get correct bases."""
+        results = analyzer.search_classes("ExternParamInherit")
+        specs = [r for r in results if r.get("is_template_specialization")]
+        # We should find at least the ExternBase, ExternBase2, ExternBase3 instantiations
+        resolved_bases = set()
+        for spec in specs:
+            bases = base_names(spec.get("base_classes", []))
+            resolved_bases.update(bases)
+        # Each instantiation should have resolved its own base
+        for expected in ["ExternBase", "ExternBase2", "ExternBase3"]:
+            assert expected in resolved_bases, (
+                f"Should find {expected} among resolved bases, got {resolved_bases}"
+            )
+
+    def test_case41_extern_mixed_fixed_and_param_bases(self, analyzer):
+        """ExternMixedInherit<ExternBase> should have both T-resolved and fixed bases."""
+        results = analyzer.search_classes("ExternMixedInherit")
+        specs = [r for r in results if r.get("is_template_specialization")]
+        assert len(specs) > 0, "Should find ExternMixedInherit specialization"
+        for spec in specs:
+            bases = base_names(spec.get("base_classes", []))
+            assert "ExternBase" in bases, (
+                f"Should have ExternBase from T param, got {bases}"
+            )
+            assert "ExternMixedFixed" in bases, (
+                f"Should have ExternMixedFixed as fixed base, got {bases}"
+            )
 
 
 # =============================================================================
