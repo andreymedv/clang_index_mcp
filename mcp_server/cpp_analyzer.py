@@ -698,11 +698,22 @@ class CppAnalyzer:
                         self.file_index[info.file] = []
 
                     # Check if this exact symbol (same USR, same file) is already in file_index
-                    # This can happen when the same header is processed multiple times
+                    # This can happen when the same header is processed multiple times,
+                    # or when a forward declaration and definition coexist in the same TU.
                     already_in_file_index = False
                     if info.usr:
-                        for existing in self.file_index[info.file]:
+                        for idx_pos, existing in enumerate(self.file_index[info.file]):
                             if existing.usr == info.usr:
+                                # Replace if new symbol is a definition and existing is not,
+                                # or if both are definitions but new is richer.
+                                # This ensures forward declarations in file_index get
+                                # replaced by their definitions (cplusplus_mcp-nhj).
+                                if (info.is_definition and not existing.is_definition) or (
+                                    info.is_definition
+                                    and existing.is_definition
+                                    and is_richer_definition(info, existing)
+                                ):
+                                    self.file_index[info.file][idx_pos] = info
                                 already_in_file_index = True
                                 break
 
@@ -2828,8 +2839,24 @@ class CppAnalyzer:
                                             # Check for duplicates in file_index
                                             already_in_file_index = False
                                             if symbol.usr:
-                                                for existing in self.file_index[symbol.file]:
+                                                for idx_pos, existing in enumerate(
+                                                    self.file_index[symbol.file]
+                                                ):
                                                     if existing.usr == symbol.usr:
+                                                        # Replace if new is richer
+                                                        if (
+                                                            symbol.is_definition
+                                                            and not existing.is_definition
+                                                        ) or (
+                                                            symbol.is_definition
+                                                            and existing.is_definition
+                                                            and is_richer_definition(
+                                                                symbol, existing
+                                                            )
+                                                        ):
+                                                            self.file_index[symbol.file][
+                                                                idx_pos
+                                                            ] = symbol
                                                         already_in_file_index = True
                                                         break
 
