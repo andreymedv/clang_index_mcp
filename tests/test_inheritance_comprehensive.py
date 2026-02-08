@@ -632,9 +632,6 @@ class TestNameCollision:
 class TestForwardDeclaration:
     """Patterns 35-37: Forward decl + definition, macro-generated, multiple fwd decls."""
 
-    @pytest.mark.xfail(
-        reason="Same-file forward decl wins over definition (variant of cplusplus_mcp-5tl)"
-    )
     def test_case35_fwd_decl_definition_has_base(self, analyzer):
         """FwdDerived (fwd decl + definition) should have FwdBase in base_classes."""
         info = get_info_or_skip(
@@ -648,9 +645,6 @@ class TestForwardDeclaration:
             f"FwdDerived should inherit from FwdBase (definition wins), got {bases}"
         )
 
-    @pytest.mark.xfail(
-        reason="Same-file forward decl wins over definition (variant of cplusplus_mcp-5tl)"
-    )
     def test_case37_multiple_fwd_decls(self, analyzer):
         """MultiFwdDerived (3 fwd decls + 1 definition) should have MultiFwdBase."""
         info = get_info_or_skip(
