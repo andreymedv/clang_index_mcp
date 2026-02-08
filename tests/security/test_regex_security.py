@@ -81,6 +81,58 @@ class TestRegexDoSPrevention:
         results = analyzer.search_functions("[a-zA-Z]+")
         assert len(results) >= 0
 
+    def test_contains_pattern_allowed(self, temp_project_dir):
+        """Test that .*X.* 'contains' patterns are allowed.
+
+        This is the most natural regex for 'find symbols containing X'.
+        Both humans and LLMs commonly use it. Must not be rejected.
+        """
+        test_content = "class TestClass {};\nclass AnotherClass {};"
+        (temp_project_dir / "src" / "test.cpp").write_text(test_content)
+
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # .*X.* pattern: the most common "contains" search
+        results = analyzer.search_classes(".*Test.*")
+        assert len(results) >= 1
+
+        results = analyzer.search_classes(".*Class.*")
+        assert len(results) >= 1
+
+        # Prefix and suffix wildcards
+        results = analyzer.search_classes(".*Class")
+        assert len(results) >= 1
+
+        results = analyzer.search_classes("Test.*")
+        assert len(results) >= 1
+
+        # Multiple independent quantifiers on functions
+        results = analyzer.search_functions(".*get.*")
+        assert len(results) >= 0
+
+    def test_validator_contains_patterns_safe(self):
+        """Test that .*X.* patterns pass validation.
+
+        These are the most common regex patterns for 'contains' search.
+        They are safe (no exponential backtracking) and must be allowed.
+        """
+        # .*X.* patterns: safe, quantifiers on independent atoms
+        safe_patterns = [
+            ".*Reporter.*",
+            ".*Base.*",
+            ".*Test.*",
+            ".*get.*set.*",
+            ".*foo.*bar.*baz.*",
+            ".*Class",
+            "Test.*",
+            "[a-z]+.*[A-Z]+",
+            "prefix.*middle.*suffix",
+        ]
+        for pattern in safe_patterns:
+            is_valid, error = RegexValidator.validate(pattern)
+            assert is_valid, f"Pattern '{pattern}' should be valid but got: {error}"
+
     def test_validator_complexity_analysis(self):
         """Test the complexity analysis function"""
         # Simple patterns should have low scores

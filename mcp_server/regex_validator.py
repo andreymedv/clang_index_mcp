@@ -24,8 +24,6 @@ class RegexValidator:
         (r"\([^()]*[\+\*]\)[\+\*]", "Nested quantifiers can cause exponential backtracking"),
         # Overlapping alternation: (a|a)*, (ab|a)*
         (r"\([^()]*\|[^()]*\)[\+\*]", "Alternation with quantifiers can cause backtracking"),
-        # Multiple consecutive quantifiers
-        (r"[\+\*\{][^\}]*[\+\*\{]", "Multiple consecutive quantifiers"),
         # Repetition on groups containing repetition
         (r"\([^()]*[\+\*\{][^()]*\)[\+\*\{]", "Quantified group containing quantifiers"),
     ]
