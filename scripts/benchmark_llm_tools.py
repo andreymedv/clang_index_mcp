@@ -139,11 +139,19 @@ SYSTEM_PROMPT = """\
 You are a C++ code analysis assistant. You have access to MCP tools that can
 search and analyze an indexed C++ codebase (the Catch2 testing framework).
 
+IMPORTANT: The project is already indexed. Do NOT call set_project_directory.
+Go directly to answering the question using search and query tools.
+
 Use the available tools to answer the user's question. Be precise with tool
 arguments -- use class/function names, not signatures. For regex patterns,
 remember that patterns are anchored (matched against full name).
 
 When you find what you need, provide a concise answer summarizing the results.\
+"""
+
+SETUP_PROMPT = """\
+You are a C++ code analysis assistant. Call set_project_directory with the \
+path "{project_path}" to index the project. Say "Done" when complete.\
 """
 
 DEFAULT_CHAT_MODELS = [
@@ -577,6 +585,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Request timeout in seconds (default: 300)",
     )
     parser.add_argument(
+        "--project-path",
+        default=os.environ.get("BENCHMARK_PROJECT_PATH", "/home/andrey/repos/catch2-benchmark"),
+        help="C++ project path for MCP indexing (default: catch2-benchmark)",
+    )
+    parser.add_argument(
+        "--skip-setup",
+        action="store_true",
+        help="Skip project setup (assume already indexed)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="List queries and models without executing",
@@ -624,6 +642,35 @@ def main() -> None:
     if not models:
         print("No models match the specified filters.")
         sys.exit(1)
+
+    # Pre-index project via LM Studio → MCP tool call
+    if not args.skip_setup:
+        setup_model = models[0]
+        print(f"Setting up project: {args.project_path}")
+        print(f"  Using model: {setup_model}")
+        try:
+            setup_resp = client.chat(
+                model=setup_model,
+                user_input=SETUP_PROMPT.format(project_path=args.project_path),
+                system_prompt="",
+                mcp_url=args.mcp_url,
+                max_output_tokens=1024,
+                temperature=0,
+            )
+            # Check if set_project_directory was called
+            setup_tools = [
+                item.get("tool", "")
+                for item in setup_resp.get("output", [])
+                if item.get("type") == "tool_call"
+            ]
+            if "set_project_directory" in setup_tools:
+                print("  Project indexed successfully.")
+            else:
+                print(f"  Warning: setup did not call set_project_directory (tools: {setup_tools})")
+        except urllib.error.URLError as e:
+            print(f"  Error during setup: {e}")
+            print("  Use --skip-setup if project is already indexed.")
+            sys.exit(1)
 
     # Run benchmark
     runner = BenchmarkRunner(
