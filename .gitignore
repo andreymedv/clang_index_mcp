@@ -37,3 +37,6 @@ dist/
 lib/**/libclang*
 .aider*
 tests/pytest.log
+
+# Benchmark results (contains local paths and model-specific data)
+benchmark_results.jsonl
