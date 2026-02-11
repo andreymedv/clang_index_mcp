@@ -946,8 +946,20 @@ class SearchEngine:
                         continue
                 if class_name is None or info.parent_class == class_name:
                     if info.parent_class:
-                        signatures.append(f"{info.parent_class}::{info.name}{info.signature}")
+                        # Inject class scope into human-readable signature
+                        # e.g., "void foo(int x)" -> "void MyClass::foo(int x)"
+                        target = f"{info.name}("
+                        idx = info.signature.find(target)
+                        if idx >= 0:
+                            sig = (
+                                info.signature[:idx]
+                                + f"{info.parent_class}::"
+                                + info.signature[idx:]
+                            )
+                        else:
+                            sig = f"{info.parent_class}::{info.signature}"
+                        signatures.append(sig)
                     else:
-                        signatures.append(f"{info.name}{info.signature}")
+                        signatures.append(info.signature)
 
         return signatures

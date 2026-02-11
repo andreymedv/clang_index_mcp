@@ -205,6 +205,8 @@ class TestUnknownCursorKindHandling:
 
         # Setup type for signature extraction
         child_cursor.type.spelling = "void ()"
+        child_cursor.result_type.spelling = "void"
+        child_cursor.get_arguments = Mock(return_value=[])
 
         # Setup raw_comment for _extract_documentation()
         child_cursor.raw_comment = None
