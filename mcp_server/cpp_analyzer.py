@@ -29,6 +29,7 @@ from .compile_commands_manager import CompileCommandsManager
 from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
 from .dependency_graph import DependencyGraphBuilder
+from .smart_fallback import SmartFallback
 from datetime import datetime, timedelta
 
 # Handle both package and script imports
@@ -278,6 +279,10 @@ class CppAnalyzer:
             self.index_lock,
             cache_manager=self.cache_manager,
         )
+
+        # Smart fallback for empty search results
+        self.smart_fallback = SmartFallback()
+        self._last_fallback = None  # Stores last fallback result for MCP layer
 
         # Memory optimization: enable lazy loading of call sites from SQLite
         # Instead of loading ALL call sites at startup (~150-200 MB for large projects),
@@ -3367,6 +3372,16 @@ class CppAnalyzer:
             status,
         )
 
+    def pop_last_fallback(self):
+        """Return and clear the last fallback result.
+
+        Called by the MCP server layer to retrieve smart suggestions
+        after a search returns empty results.
+        """
+        result = self._last_fallback
+        self._last_fallback = None
+        return result
+
     def search_classes(
         self,
         pattern: str,
@@ -3376,10 +3391,23 @@ class CppAnalyzer:
         max_results: Optional[int] = None,
     ):
         """Search for classes matching pattern"""
+        self._last_fallback = None
         try:
-            return self.search_engine.search_classes(
+            results = self.search_engine.search_classes(
                 pattern, project_only, file_name, namespace, max_results
             )
+            actual = results[0] if isinstance(results, tuple) else results
+            if not actual:
+                self._last_fallback = self.smart_fallback.analyze_empty_result(
+                    pattern=pattern,
+                    tool_name="search_classes",
+                    class_index=self.class_index,
+                    function_index=self.function_index,
+                    file_index=self.file_index,
+                    file_name=file_name,
+                    namespace=namespace,
+                )
+            return results
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
@@ -3394,10 +3422,24 @@ class CppAnalyzer:
         max_results: Optional[int] = None,
     ):
         """Search for functions matching pattern, optionally within a specific class"""
+        self._last_fallback = None
         try:
-            return self.search_engine.search_functions(
+            results = self.search_engine.search_functions(
                 pattern, project_only, class_name, file_name, namespace, max_results
             )
+            actual = results[0] if isinstance(results, tuple) else results
+            if not actual:
+                self._last_fallback = self.smart_fallback.analyze_empty_result(
+                    pattern=pattern,
+                    tool_name="search_functions",
+                    class_index=self.class_index,
+                    function_index=self.function_index,
+                    file_index=self.file_index,
+                    file_name=file_name,
+                    namespace=namespace,
+                    class_name=class_name,
+                )
+            return results
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return []
@@ -4121,10 +4163,26 @@ class CppAnalyzer:
             Dictionary with keys 'classes' and 'functions' containing matching symbols
             (or tuple with total_count if max_results is specified)
         """
+        self._last_fallback = None
         try:
-            return self.search_engine.search_symbols(
+            results = self.search_engine.search_symbols(
                 pattern, project_only, symbol_types, namespace, max_results
             )
+            actual = results[0] if isinstance(results, tuple) else results
+            if isinstance(actual, dict):
+                count = sum(len(v) for v in actual.values() if isinstance(v, list))
+            else:
+                count = len(actual) if actual else 0
+            if count == 0:
+                self._last_fallback = self.smart_fallback.analyze_empty_result(
+                    pattern=pattern,
+                    tool_name="search_symbols",
+                    class_index=self.class_index,
+                    function_index=self.function_index,
+                    file_index=self.file_index,
+                    namespace=namespace,
+                )
+            return results
         except re.error as e:
             diagnostics.error(f"Invalid regex pattern: {e}")
             return {"classes": [], "functions": []}
