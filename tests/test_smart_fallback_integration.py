@@ -24,7 +24,7 @@ def _create_symbol(name, kind="class", file="test.h", line=1, qualified_name=Non
         line=line,
         column=0,
         is_project=is_project,
-        signature="()" if kind == "function" else "",
+        signature=f"void {name}()" if kind == "function" else "",
         parent_class="",
         access="public",
         base_classes=[],

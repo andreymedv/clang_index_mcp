@@ -208,7 +208,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
             line=line,
             column=0,
             is_project=True,
-            signature="()",
+            signature=f"void {name}()",
             parent_class="",
             access="public",
             base_classes=[],
