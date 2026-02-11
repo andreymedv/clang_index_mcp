@@ -409,6 +409,7 @@ class EnhancedQueryResult:
     def create_empty(
         data: Any,
         suggestions: Optional[List[str]] = None,
+        fallback: Any = None,
     ) -> "EnhancedQueryResult":
         """
         Create result for empty results case.
@@ -416,17 +417,22 @@ class EnhancedQueryResult:
         Args:
             data: Empty result data (usually [] or {})
             suggestions: Suggestions for broadening the search
+            fallback: Optional FallbackResult from smart_fallback module
         """
-        default_suggestions = [
-            "Broaden pattern (e.g., use '.*' prefix/suffix for partial match)",
-            "Check spelling of symbol name",
-            "Verify file is indexed (use get_indexing_status)",
-            "Try search_symbols for unified search across types",
-        ]
+        if fallback is not None:
+            extra = {"fallback": fallback.to_metadata()}
+        else:
+            default_suggestions = [
+                "Broaden pattern (e.g., use '.*' prefix/suffix for partial match)",
+                "Check spelling of symbol name",
+                "Verify file is indexed (use get_indexing_status)",
+                "Try search_symbols for unified search across types",
+            ]
+            extra = {"suggestions": suggestions or default_suggestions}
         return EnhancedQueryResult(
             data,
             status=QueryCompletenessStatus.EMPTY,
-            extra_metadata={"suggestions": suggestions or default_suggestions},
+            extra_metadata=extra,
         )
 
     @staticmethod
