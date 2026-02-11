@@ -1008,6 +1008,7 @@ def _create_search_result(
     tool_name: str,
     max_results: int = None,
     total_count: int = None,
+    fallback: Any = None,
 ) -> EnhancedQueryResult:
     """
     Create an EnhancedQueryResult with appropriate metadata based on special conditions.
@@ -1021,6 +1022,7 @@ def _create_search_result(
         tool_name: Name of the tool (for customized messages)
         max_results: If specified, max_results limit was applied
         total_count: Total count before truncation (when max_results is specified)
+        fallback: Optional FallbackResult from smart_fallback module
 
     Returns:
         EnhancedQueryResult with appropriate metadata
@@ -1038,9 +1040,9 @@ def _create_search_result(
     else:
         result_count = 0
 
-    # Priority 2: Check for empty results
+    # Priority 2: Check for empty results (with smart fallback if available)
     if result_count == 0:
-        return EnhancedQueryResult.create_empty(data)
+        return EnhancedQueryResult.create_empty(data, fallback=fallback)
 
     # Priority 3: Check for truncation (max_results was specified and applied)
     if max_results is not None and total_count is not None and total_count > max_results:
@@ -1254,6 +1256,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     pattern, project_only, file_name, namespace, max_results
                 ),
             )
+            fallback = analyzer.pop_last_fallback()
             # Handle tuple return (results, total_count) when max_results is specified
             if isinstance(raw_results, tuple):
                 results, total_count = raw_results
@@ -1261,7 +1264,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 results, total_count = raw_results, None
             # Wrap with appropriate metadata based on special conditions
             enhanced_result = _create_search_result(
-                results, state_manager, "search_classes", max_results, total_count
+                results, state_manager, "search_classes", max_results, total_count, fallback
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
@@ -1279,6 +1282,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     pattern, project_only, class_name, file_name, namespace, max_results
                 ),
             )
+            fallback = analyzer.pop_last_fallback()
             # Handle tuple return (results, total_count) when max_results is specified
             if isinstance(raw_results, tuple):
                 results, total_count = raw_results
@@ -1286,7 +1290,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 results, total_count = raw_results, None
             # Wrap with appropriate metadata based on special conditions
             enhanced_result = _create_search_result(
-                results, state_manager, "search_functions", max_results, total_count
+                results, state_manager, "search_functions", max_results, total_count, fallback
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
@@ -1346,6 +1350,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     pattern, project_only, symbol_types, namespace, max_results
                 ),
             )
+            fallback = analyzer.pop_last_fallback()
             # Handle tuple return (results, total_count) when max_results is specified
             if isinstance(raw_results, tuple):
                 results, total_count = raw_results
@@ -1353,7 +1358,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 results, total_count = raw_results, None
             # Wrap with appropriate metadata based on special conditions
             enhanced_result = _create_search_result(
-                results, state_manager, "search_symbols", max_results, total_count
+                results, state_manager, "search_symbols", max_results, total_count, fallback
             )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
