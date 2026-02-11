@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 15.0
+-- Version: 16.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v16.0: Human-readable function signatures (forces re-index to regenerate cached signatures)
 -- Changelog v15.0: Fixed type_aliases unique constraint to allow multiple macro-generated aliases at same location
 -- Changelog v14.0: Added virtual/abstract method indicators (is_virtual, is_pure_virtual, is_const, is_static) for LLM Integration (Phase 5)
 -- Changelog v13.0: Added template tracking fields (Template Search Support)
@@ -160,7 +161,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"15.0"', julianday('now')),
+    ('version', '"16.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));

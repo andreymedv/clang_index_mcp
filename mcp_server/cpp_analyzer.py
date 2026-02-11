@@ -1516,6 +1516,154 @@ class CppAnalyzer:
 
         return result
 
+    def _build_human_readable_signature(self, cursor) -> str:
+        """
+        Build a human-readable function signature from a libclang cursor.
+
+        Instead of the C function type notation from cursor.type.spelling
+        (e.g., "void (int, const std::string &)"), this produces a format like:
+        "void processData(int x, const std::string &y)"
+
+        Algorithm:
+        1. Get return type from cursor.result_type.spelling
+        2. Get function name from cursor.spelling
+        3. Try cursor.get_arguments() for param types + names
+        4. If get_arguments() returns empty: extract param types from
+           cursor.type.spelling by finding content between outermost ( and )
+        5. Extract qualifiers (const, etc.) from cursor.type.spelling
+        6. Assemble: "{return_type} {name}({params}){qualifiers}"
+
+        Returns:
+            Human-readable signature string, or "" if cursor.type is unavailable.
+        """
+        try:
+            if not cursor.type:
+                return ""
+
+            type_spelling = cursor.type.spelling
+            if not type_spelling:
+                return ""
+
+            name = cursor.spelling or ""
+
+            # Get return type
+            return_type = ""
+            try:
+                if cursor.result_type and cursor.result_type.spelling:
+                    return_type = cursor.result_type.spelling
+            except Exception:
+                pass
+
+            # Try to get parameters with names via get_arguments()
+            params_str = ""
+            try:
+                args = list(cursor.get_arguments())
+                if args:
+                    param_parts = []
+                    for arg in args:
+                        arg_type = arg.type.spelling if arg.type else ""
+                        arg_name = arg.spelling or ""
+                        if arg_name:
+                            param_parts.append(f"{arg_type} {arg_name}")
+                        else:
+                            param_parts.append(arg_type)
+                    params_str = ", ".join(param_parts)
+                else:
+                    # get_arguments() returned empty - could be zero-arg function
+                    # or template where args aren't available.
+                    # Extract param types from type.spelling as fallback.
+                    params_str = self._extract_params_from_type_spelling(type_spelling)
+            except Exception:
+                # Fallback: extract from type spelling
+                params_str = self._extract_params_from_type_spelling(type_spelling)
+
+            # Extract qualifiers (const, noexcept, etc.) after the last ')'
+            qualifiers = self._extract_trailing_qualifiers(type_spelling)
+
+            # Assemble the signature
+            if return_type:
+                sig = f"{return_type} {name}({params_str}){qualifiers}"
+            else:
+                sig = f"{name}({params_str}){qualifiers}"
+
+            return sig
+
+        except Exception as e:
+            diagnostics.debug(
+                f"Could not build human-readable signature for " f"{cursor.spelling}: {e}"
+            )
+            # Fallback to old behavior
+            try:
+                return cursor.type.spelling if cursor.type else ""
+            except Exception:
+                return ""
+
+    @staticmethod
+    def _extract_params_from_type_spelling(type_spelling: str) -> str:
+        """
+        Extract parameter types from a C function type spelling string.
+
+        Given "void (int, const std::string &)", returns "int, const std::string &".
+        Handles nested parentheses (function pointer params) by tracking paren depth.
+
+        Args:
+            type_spelling: The cursor.type.spelling string (e.g., "void (int, double)")
+
+        Returns:
+            The parameter string between the outermost parentheses, or "" if not found.
+        """
+        if not type_spelling:
+            return ""
+
+        # Find the first top-level '(' that starts the parameter list.
+        # We need to skip any parentheses that are part of the return type
+        # (e.g., function pointer return types).
+        depth = 0
+        start = -1
+        for i, ch in enumerate(type_spelling):
+            if ch == "(":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    # Found the matching close paren for the first open paren
+                    return type_spelling[start + 1 : i]
+
+        return ""
+
+    @staticmethod
+    def _extract_trailing_qualifiers(type_spelling: str) -> str:
+        """
+        Extract trailing qualifiers (const, volatile, noexcept, etc.) from type spelling.
+
+        Given "void (int) const", returns " const".
+        Given "void (int) const noexcept", returns " const noexcept".
+        Given "void (int)", returns "".
+
+        Finds the last ')' at depth 0 and returns everything after it.
+        """
+        if not type_spelling:
+            return ""
+
+        # Find the last ')' that closes the parameter list (at depth 0)
+        depth = 0
+        last_close = -1
+        for i, ch in enumerate(type_spelling):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    last_close = i
+
+        if last_close >= 0 and last_close < len(type_spelling) - 1:
+            qualifiers = type_spelling[last_close + 1 :]
+            return qualifiers  # Already has leading space from type spelling
+
+        return ""
+
     def _extract_template_parameters(self, cursor) -> Optional[str]:
         """
         Extract template parameters from a template cursor (CLASS_TEMPLATE, FUNCTION_TEMPLATE, etc.).
@@ -1997,10 +2145,8 @@ class CppAnalyzer:
         # Issue #99: Template Class Search and Specialization Discovery
         elif kind == CursorKind.FUNCTION_TEMPLATE:
             if cursor.spelling and should_extract:
-                # Get function signature
-                signature = ""
-                if cursor.type:
-                    signature = cursor.type.spelling
+                # Get function signature (human-readable format)
+                signature = self._build_human_readable_signature(cursor)
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
 
@@ -2085,10 +2231,8 @@ class CppAnalyzer:
         # Process functions and methods (only if should extract)
         elif kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
             if cursor.spelling and should_extract:
-                # Get function signature
-                signature = ""
-                if cursor.type:
-                    signature = cursor.type.spelling
+                # Get function signature (human-readable format)
+                signature = self._build_human_readable_signature(cursor)
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
 
