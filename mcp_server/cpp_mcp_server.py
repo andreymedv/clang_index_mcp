@@ -322,7 +322,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_functions",
-            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, qualified_name (fully qualified with namespaces and class, e.g. 'app::Database::save'), namespace (namespace and class portion, e.g. 'app::Database'), kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project, is_template_specialization (true for template specializations like 'func<int>'), start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line, is_virtual (true for virtual methods), is_pure_virtual (true for pure virtual = 0 methods), is_const (true for const methods), is_static (true for static methods/functions), is_definition (true if has body/implementation, false if declaration only), brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Searches both standalone functions and class methods. Supports regex patterns.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side instead of making more tool calls: e.g., to find only implementations (not declarations), filter by `is_definition=true`. To find only virtual methods, filter by `is_virtual=true`. To find abstract interfaces, filter by `is_pure_virtual=true`.",
+            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, qualified_name (fully qualified with namespaces and class, e.g. 'app::Database::save'), namespace (namespace and class portion, e.g. 'app::Database'), kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project, is_template_specialization (true for template specializations like 'func<int>'), start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line, is_virtual (true for virtual methods), is_pure_virtual (true for pure virtual = 0 methods), is_const (true for const methods), is_static (true for static methods/functions), is_definition (true if has body/implementation, false if declaration only), brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Searches both standalone functions and class methods. Supports regex patterns.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side instead of making more tool calls: e.g., to find only implementations (not declarations), filter by `is_definition=true`. To find only virtual methods, filter by `is_virtual=true`. To find abstract interfaces, filter by `is_pure_virtual=true`. Use `signature_pattern` to filter by parameter types or return types (e.g., signature_pattern='std::string' finds functions taking or returning std::string).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -380,6 +380,17 @@ async def list_tools() -> List[Tool]:
                             "'app::Handler' matches 'org::app::Handler'. "
                             "'' (empty string) returns only global namespace functions. "
                             "**Use this to disambiguate** when multiple namespaces have the same function."
+                        ),
+                    },
+                    "signature_pattern": {
+                        "type": "string",
+                        "description": (
+                            "Optional: Filter to functions whose signature contains this substring "
+                            "(case-insensitive). Matches against the full human-readable signature. "
+                            "Examples: 'std::string' finds functions with std::string in params or "
+                            "return type; 'const' finds const-qualified signatures; 'void' finds "
+                            "void-returning functions. This is plain substring match — special "
+                            "characters like *, &, <, > are matched literally."
                         ),
                     },
                     "max_results": {
@@ -491,6 +502,17 @@ async def list_tools() -> List[Tool]:
                             "'Handler' matches 'app::Handler', 'app' matches 'myapp::app'. "
                             "'' (empty string) returns only global namespace symbols. "
                             "**Use this to disambiguate** when multiple namespaces have the same symbol."
+                        ),
+                    },
+                    "signature_pattern": {
+                        "type": "string",
+                        "description": (
+                            "Optional: Filter to functions whose signature contains this substring "
+                            "(case-insensitive). Only applies to function/method results, not classes. "
+                            "Matches against the full human-readable signature. "
+                            "Examples: 'std::string' finds functions with std::string in params or "
+                            "return type; 'void' finds void-returning functions. This is plain "
+                            "substring match — special characters like *, &, <, > are matched literally."
                         ),
                     },
                     "max_results": {
@@ -1275,11 +1297,18 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             namespace = arguments.get("namespace", None)
             pattern = arguments["pattern"]
             max_results = arguments.get("max_results", None)
+            signature_pattern = arguments.get("signature_pattern", None)
             # Run synchronous method in executor to avoid blocking event loop
             raw_results = await loop.run_in_executor(
                 None,
                 lambda: analyzer.search_functions(
-                    pattern, project_only, class_name, file_name, namespace, max_results
+                    pattern,
+                    project_only,
+                    class_name,
+                    file_name,
+                    namespace,
+                    max_results,
+                    signature_pattern,
                 ),
             )
             fallback = analyzer.pop_last_fallback()
@@ -1343,11 +1372,17 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             symbol_types = arguments.get("symbol_types", None)
             namespace = arguments.get("namespace", None)
             max_results = arguments.get("max_results", None)
+            signature_pattern = arguments.get("signature_pattern", None)
             # Run synchronous method in executor to avoid blocking event loop
             raw_results = await loop.run_in_executor(
                 None,
                 lambda: analyzer.search_symbols(
-                    pattern, project_only, symbol_types, namespace, max_results
+                    pattern,
+                    project_only,
+                    symbol_types,
+                    namespace,
+                    max_results,
+                    signature_pattern,
                 ),
             )
             fallback = analyzer.pop_last_fallback()
