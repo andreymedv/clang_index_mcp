@@ -470,6 +470,7 @@ class SearchEngine:
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
+        signature_pattern: Optional[str] = None,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching a pattern.
 
@@ -595,6 +596,11 @@ class SearchEngine:
                                 if not self._matches_namespace(info.namespace, namespace):
                                     continue
 
+                            # Filter by signature substring (case-insensitive)
+                            if signature_pattern is not None:
+                                if signature_pattern.lower() not in (info.signature or "").lower():
+                                    continue
+
                             results.append(_create_result(info))
         else:
             # Original logic: search function_index
@@ -625,6 +631,11 @@ class SearchEngine:
                                 if not self._matches_namespace(info.namespace, namespace):
                                     continue
 
+                            # Filter by signature substring (case-insensitive)
+                            if signature_pattern is not None:
+                                if signature_pattern.lower() not in (info.signature or "").lower():
+                                    continue
+
                             results.append(_create_result(info))
 
         # Handle max_results truncation
@@ -642,6 +653,7 @@ class SearchEngine:
         symbol_types: Optional[List[str]] = None,
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
+        signature_pattern: Optional[str] = None,
     ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for any symbols matching a pattern.
 
@@ -688,7 +700,9 @@ class SearchEngine:
             results["classes"] = self.search_classes(pattern, project_only, namespace=namespace)
 
         if search_functions:
-            results["functions"] = self.search_functions(pattern, project_only, namespace=namespace)
+            results["functions"] = self.search_functions(
+                pattern, project_only, namespace=namespace, signature_pattern=signature_pattern
+            )
 
         # Handle max_results truncation (truncate combined results)
         if max_results is not None:

@@ -3564,12 +3564,19 @@ class CppAnalyzer:
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
+        signature_pattern: Optional[str] = None,
     ):
         """Search for functions matching pattern, optionally within a specific class"""
         self._last_fallback = None
         try:
             results = self.search_engine.search_functions(
-                pattern, project_only, class_name, file_name, namespace, max_results
+                pattern,
+                project_only,
+                class_name,
+                file_name,
+                namespace,
+                max_results,
+                signature_pattern,
             )
             actual = results[0] if isinstance(results, tuple) else results
             if not actual:
@@ -4291,6 +4298,7 @@ class CppAnalyzer:
         symbol_types: Optional[List[str]] = None,
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
+        signature_pattern: Optional[str] = None,
     ):
         """
         Search for all symbols (classes and functions) matching pattern.
@@ -4302,6 +4310,8 @@ class CppAnalyzer:
                          If None, includes all types.
             namespace: Optional namespace filter (exact match, case-sensitive)
             max_results: Optional maximum number of results to return
+            signature_pattern: Optional substring to match against function signatures
+                             (case-insensitive). Only applies to function results.
 
         Returns:
             Dictionary with keys 'classes' and 'functions' containing matching symbols
@@ -4310,7 +4320,12 @@ class CppAnalyzer:
         self._last_fallback = None
         try:
             results = self.search_engine.search_symbols(
-                pattern, project_only, symbol_types, namespace, max_results
+                pattern,
+                project_only,
+                symbol_types,
+                namespace,
+                max_results,
+                signature_pattern,
             )
             actual = results[0] if isinstance(results, tuple) else results
             if isinstance(actual, dict):
