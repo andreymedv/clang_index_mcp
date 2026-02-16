@@ -215,6 +215,7 @@ try:
         QueryBehaviorPolicy,
     )
     from mcp_server.session_manager import SessionManager
+    from mcp_server.tool_call_logger import ToolCallLogger
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer
@@ -227,6 +228,7 @@ except ImportError:
         QueryBehaviorPolicy,
     )
     from session_manager import SessionManager
+    from tool_call_logger import ToolCallLogger
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -246,6 +248,9 @@ session_manager = SessionManager()
 # Track if analyzer has been initialized with a valid project
 # TODO Phase 3: This boolean will be replaced by state_manager checks in async mode
 analyzer_initialized = False
+
+# Tool call telemetry logger (enabled via MCP_TOOL_LOGGING=1)
+tool_call_logger = None
 
 # MCP Server
 server = Server("cpp-analyzer")
@@ -1078,8 +1083,47 @@ def _create_search_result(
     return EnhancedQueryResult.create_normal(data)
 
 
+def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextContent]) -> None:
+    """Log a tool call for telemetry. Never raises."""
+    try:
+        if tool_call_logger is None or not tool_call_logger.enabled:
+            return
+        result_text = result[0].text if result else ""
+        # Extract result count from JSON
+        result_count = 0
+        try:
+            parsed = json.loads(result_text)
+            if isinstance(parsed, list):
+                result_count = len(parsed)
+            elif isinstance(parsed, dict):
+                # EnhancedQueryResult wrapper: count results list
+                results_list = parsed.get("results")
+                if isinstance(results_list, list):
+                    result_count = len(results_list)
+                else:
+                    # find_callers/find_callees: count callers/callees list
+                    for key in ("callers", "callees"):
+                        sub = parsed.get(key)
+                        if isinstance(sub, list):
+                            result_count = len(sub)
+                            break
+        except (json.JSONDecodeError, TypeError):
+            pass
+        tool_call_logger.log_tool_call(
+            name, arguments, result_count, result_text, analyzer=analyzer
+        )
+    except Exception:
+        pass  # Telemetry must never break tool calls
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    result = await _handle_tool_call(name, arguments)
+    _try_log_tool_call(name, arguments, result)
+    return result
+
+
+async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
         if name == "set_project_directory":
             project_path = arguments["project_path"]
@@ -1140,13 +1184,18 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     ]
 
             # Re-initialize analyzer with new path and config
-            global analyzer, background_indexer
+            global analyzer, background_indexer, tool_call_logger
 
             # Transition to INDEXING state (allows immediate queries with partial results)
             # This prevents race condition where get_indexing_status fails if called immediately
             state_manager.transition_to(AnalyzerState.INDEXING)
             analyzer = CppAnalyzer(project_path, config_file=config_file)
             background_indexer = BackgroundIndexer(analyzer, state_manager)
+
+            # Initialize tool call telemetry logger
+            import uuid as _uuid
+
+            tool_call_logger = ToolCallLogger(analyzer.cache_dir, str(_uuid.uuid4()))
 
             # Start indexing in background (truly asynchronous, non-blocking)
             # The task will run independently while the MCP server continues to handle requests
