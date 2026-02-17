@@ -842,17 +842,19 @@ class SearchEngine:
             methods = []
             for name, func_infos in self.function_index.items():
                 for func_info in func_infos:
-                    # Match by parent_class (simple name)
-                    if func_info.parent_class != simple_name:
-                        continue
-
-                    # Additional disambiguation: check if method belongs to this specific class
-                    # Method qualified_name should start with class qualified_name
-                    # e.g., "myapp::builders::Widget::build" starts with
-                    #       "myapp::builders::Widget"
-                    if class_qualified_name and func_info.qualified_name:
+                    # Match by parent_class (simple name) OR qualified_name prefix
+                    if func_info.parent_class == simple_name:
+                        # Direct parent_class match - disambiguate with qualified_name
+                        if class_qualified_name and func_info.qualified_name:
+                            if not func_info.qualified_name.startswith(class_qualified_name + "::"):
+                                continue
+                    elif class_qualified_name and func_info.qualified_name:
+                        # Fallback: match by qualified_name prefix
+                        # (for methods with empty parent_class, e.g. out-of-line definitions)
                         if not func_info.qualified_name.startswith(class_qualified_name + "::"):
                             continue
+                    else:
+                        continue
 
                     methods.append(
                         {
@@ -958,22 +960,30 @@ class SearchEngine:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
                     if not self.matches_qualified_pattern(info_qualified, function_name):
                         continue
-                if class_name is None or info.parent_class == class_name:
-                    if info.parent_class:
-                        # Inject class scope into human-readable signature
-                        # e.g., "void foo(int x)" -> "void MyClass::foo(int x)"
-                        target = f"{info.name}("
-                        idx = info.signature.find(target)
-                        if idx >= 0:
-                            sig = (
-                                info.signature[:idx]
-                                + f"{info.parent_class}::"
-                                + info.signature[idx:]
+                # Match by parent_class or qualified_name prefix for class filtering
+                if class_name is not None:
+                    if info.parent_class != class_name:
+                        # Fallback: check qualified_name for out-of-line methods
+                        if not (
+                            info.qualified_name
+                            and (
+                                info.qualified_name.startswith(class_name + "::")
+                                or ("::" + class_name + "::") in info.qualified_name
                             )
-                        else:
-                            sig = f"{info.parent_class}::{info.signature}"
-                        signatures.append(sig)
+                        ):
+                            continue
+                if class_name is not None or info.parent_class:
+                    # Inject class scope into human-readable signature
+                    # e.g., "void foo(int x)" -> "void MyClass::foo(int x)"
+                    scope = info.parent_class or class_name
+                    target = f"{info.name}("
+                    idx = info.signature.find(target)
+                    if idx >= 0:
+                        sig = info.signature[:idx] + f"{scope}::" + info.signature[idx:]
                     else:
-                        signatures.append(info.signature)
+                        sig = f"{scope}::{info.signature}"
+                    signatures.append(sig)
+                else:
+                    signatures.append(info.signature)
 
         return signatures
