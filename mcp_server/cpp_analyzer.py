@@ -30,14 +30,14 @@ from .compile_commands_manager import CompileCommandsManager
 from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
 from .dependency_graph import DependencyGraphBuilder
-from .smart_fallback import SmartFallback
+from .smart_fallback import SmartFallback, FallbackResult
 from datetime import datetime, timedelta
 
 # Handle both package and script imports
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 try:
     from clang.cindex import Index, CursorKind, TranslationUnit, TranslationUnitLoadError
@@ -283,7 +283,7 @@ class CppAnalyzer:
 
         # Smart fallback for empty search results
         self.smart_fallback = SmartFallback()
-        self._last_fallback = None  # Stores last fallback result for MCP layer
+        self._last_fallback: Optional[FallbackResult] = None  # Stores last fallback result
 
         # Memory optimization: enable lazy loading of call sites from SQLite
         # Instead of loading ALL call sites at startup (~150-200 MB for large projects),
@@ -298,7 +298,7 @@ class CppAnalyzer:
         self.cache_dir = self.cache_manager.cache_dir
 
         # Statistics
-        self.last_index_time = 0
+        self.last_index_time: float = 0
         self.indexed_file_count = 0
         self.include_dependencies = self.config.get_include_dependencies()
         self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
@@ -311,13 +311,12 @@ class CppAnalyzer:
 
         # Task 3.2: Initialize compile commands manager only if needed
         # Workers skip this to save ~6-10 GB memory by using precomputed args from main process
+        self.compile_commands_manager: Optional[CompileCommandsManager] = None
         if use_compile_commands_manager:
             compile_commands_config = self.config.get_compile_commands_config()
             self.compile_commands_manager = CompileCommandsManager(
                 self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
             )
-        else:
-            self.compile_commands_manager = None  # Worker mode: use precomputed args
 
         # Initialize header processing tracker for first-win strategy
         self.header_tracker = HeaderProcessingTracker()
@@ -1732,7 +1731,7 @@ class CppAnalyzer:
             # Call the C API directly since Python bindings don't expose this
             specialized_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(cursor)
             if specialized_cursor and not specialized_cursor.kind.is_invalid():
-                usr = specialized_cursor.get_usr()
+                usr: Optional[str] = specialized_cursor.get_usr()
                 if usr:
                     return usr
         except Exception:
@@ -2594,6 +2593,7 @@ class CppAnalyzer:
             args = self._provided_compile_args
         else:
             # Main process mode: query CompileCommandsManager
+            assert self.compile_commands_manager is not None
             args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
 
             # If compile commands are not available and we're using fallback, add vcpkg includes
@@ -3030,6 +3030,7 @@ class CppAnalyzer:
                 # Task 3.2: Prepare compile args for each file in main process
                 # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
                 file_compile_args = {}
+                assert self.compile_commands_manager is not None
                 for file_path in files:
                     file_path_obj = Path(file_path)
                     args = self.compile_commands_manager.get_compile_args_with_fallback(
@@ -3796,6 +3797,7 @@ class CppAnalyzer:
                 # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
                 all_files_to_process = list(modified_files) + list(new_files)
                 file_compile_args = {}
+                assert self.compile_commands_manager is not None
                 for file_path in all_files_to_process:
                     file_path_obj = Path(file_path)
                     args = self.compile_commands_manager.get_compile_args_with_fallback(
@@ -4155,7 +4157,9 @@ class CppAnalyzer:
             # Get alias details from type_aliases table
             try:
                 self.cache_manager.backend._ensure_connected()
-                cursor = self.cache_manager.backend.conn.execute(
+                conn = self.cache_manager.backend.conn
+                assert conn is not None
+                cursor = conn.execute(
                     """
                     SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
                            is_template_alias, template_params
@@ -4172,7 +4176,7 @@ class CppAnalyzer:
                     )
                     aliases = []
                     for alias_name in alias_names:
-                        alias_cursor = self.cache_manager.backend.conn.execute(
+                        alias_cursor = conn.execute(
                             """
                             SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
                                    is_template_alias, template_params
@@ -4277,8 +4281,10 @@ class CppAnalyzer:
             # Use backend's connection directly
             try:
                 self.cache_manager.backend._ensure_connected()
+                conn = self.cache_manager.backend.conn
+                assert conn is not None
                 for alias_name in alias_names:
-                    cursor = self.cache_manager.backend.conn.execute(
+                    cursor = conn.execute(
                         """
                         SELECT alias_name, canonical_type, file, line, namespace,
                                is_template_alias, template_params
@@ -4862,7 +4868,7 @@ class CppAnalyzer:
                         )
 
         # Return dictionary with both callers and call_sites
-        result = {"function": function_name, "callers": callers_list}
+        result: Dict[str, Any] = {"function": function_name, "callers": callers_list}
 
         if include_call_sites:
             # Sort call sites by file, then line

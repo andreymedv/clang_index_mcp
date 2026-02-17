@@ -8,7 +8,7 @@ from pathlib import Path
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class SchemaMigration:

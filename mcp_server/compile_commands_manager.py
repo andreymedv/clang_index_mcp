@@ -37,8 +37,8 @@ try:
     from . import diagnostics
     from .argument_sanitizer import ArgumentSanitizer
 except ImportError:
-    import diagnostics
-    from argument_sanitizer import ArgumentSanitizer
+    import diagnostics  # type: ignore[no-redef]
+    from argument_sanitizer import ArgumentSanitizer  # type: ignore[no-redef]
 
 
 class CompileCommandsManager:
@@ -71,9 +71,9 @@ class CompileCommandsManager:
         self.exclude_patterns = self.config.get("exclude_patterns", [])
 
         # Cache data
-        self.compile_commands = {}
-        self.file_to_command_map = {}
-        self.last_modified = 0
+        self.compile_commands: Dict[str, Any] = {}
+        self.file_to_command_map: Dict[str, Any] = {}
+        self.last_modified: float = 0
         self.cache_lock = threading.Lock()
 
         # Initialize argument sanitizer with optional custom rules

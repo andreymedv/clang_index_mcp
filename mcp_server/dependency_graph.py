@@ -25,7 +25,7 @@ Usage:
 import sqlite3
 import time
 from pathlib import Path
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Union
 
 try:
     from clang.cindex import TranslationUnit
@@ -36,7 +36,7 @@ except ImportError:
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class DependencyGraphBuilder:
@@ -82,7 +82,8 @@ class DependencyGraphBuilder:
     @property
     def conn(self) -> sqlite3.Connection:
         """Get the current database connection."""
-        return self._conn_getter()
+        result: sqlite3.Connection = self._conn_getter()
+        return result
 
     def extract_includes_from_tu(self, tu: "TranslationUnit", source_file: str) -> List[str]:
         """
@@ -331,7 +332,7 @@ class DependencyGraphBuilder:
             self.conn.rollback()
             return 0
 
-    def get_dependency_stats(self) -> Dict[str, int]:
+    def get_dependency_stats(self) -> Dict[str, Union[int, float]]:
         """
         Get statistics about the dependency graph.
 
@@ -375,7 +376,7 @@ class DependencyGraphBuilder:
                 "total_dependencies": 0,
                 "unique_source_files": 0,
                 "unique_included_files": 0,
-                "avg_includes_per_file": 0.0,
+                "avg_includes_per_file": float(0),
             }
 
     def get_include_count(self, source_file: str) -> int:
@@ -400,7 +401,7 @@ class DependencyGraphBuilder:
                 (source_file,),
             )
 
-            count = cursor.fetchone()[0]
+            count: int = cursor.fetchone()[0]
             return count
 
         except Exception as e:

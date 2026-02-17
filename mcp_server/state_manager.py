@@ -77,7 +77,8 @@ class AnalyzerStateManager:
     def state(self) -> AnalyzerState:
         """Get current analyzer state (thread-safe)"""
         with self._lock:
-            return self._state
+            result: AnalyzerState = self._state
+            return result
 
     def transition_to(self, new_state: AnalyzerState):
         """
@@ -114,7 +115,8 @@ class AnalyzerStateManager:
         Returns:
             True if indexing completed, False if timeout occurred
         """
-        return self._indexed_event.wait(timeout)
+        result: bool = self._indexed_event.wait(timeout)
+        return result
 
     def update_progress(self, progress: IndexingProgress):
         """
@@ -158,7 +160,8 @@ class AnalyzerStateManager:
             True only if state is INDEXED
         """
         with self._lock:
-            return self._state == AnalyzerState.INDEXED
+            result: bool = self._state == AnalyzerState.INDEXED
+            return result
 
     def get_status_dict(self) -> dict:
         """
@@ -235,7 +238,8 @@ class BackgroundIndexer:
             )
 
             self.state_manager.transition_to(AnalyzerState.INDEXED)
-            return indexed_count
+            result: int = indexed_count
+            return result
 
         except Exception as e:
             self.state_manager.transition_to(AnalyzerState.ERROR)

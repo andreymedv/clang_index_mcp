@@ -1,5 +1,6 @@
 """Cache backend protocol/interface for C++ analyzer."""
 
+import sqlite3
 from typing import Protocol, Dict, List, Optional, Any, runtime_checkable
 from pathlib import Path
 from .symbol_info import SymbolInfo
@@ -62,3 +63,37 @@ class CacheBackend(Protocol):
     def remove_file_cache(self, file_path: str) -> bool:
         """Remove cached data for a deleted file"""
         ...
+
+    def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
+        """Batch insert type aliases using transaction."""
+        ...
+
+    def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
+        """Get all alias names that resolve to a given canonical type."""
+        ...
+
+    def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
+        """Get canonical type for a given alias name."""
+        ...
+
+    def get_all_alias_mappings(self) -> Dict[str, str]:
+        """Get all alias -> canonical mappings."""
+        ...
+
+    def delete_call_sites_by_file(self, file_path: str) -> int:
+        """Delete all call sites from a specific file."""
+        ...
+
+    def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
+        """Batch insert call sites using transaction."""
+        ...
+
+    def rebuild_fts(self) -> bool:
+        """Rebuild FTS5 index from scratch."""
+        ...
+
+    def _ensure_connected(self) -> None:
+        """Ensure connection is active, reconnect if needed."""
+        ...
+
+    conn: Optional[sqlite3.Connection]
