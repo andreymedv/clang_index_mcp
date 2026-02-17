@@ -18,7 +18,7 @@ from .project_identity import ProjectIdentity
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class CacheManager:
@@ -327,7 +327,7 @@ class CacheManager:
         compile_commands_mtime: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """Load cache if it exists and is valid, checking for configuration changes"""
-        return self._safe_backend_call(
+        result: Optional[Dict[str, Any]] = self._safe_backend_call(
             "load_cache",
             self.backend.load_cache,
             include_dependencies,
@@ -336,6 +336,7 @@ class CacheManager:
             compile_commands_path,
             compile_commands_mtime,
         )
+        return result
 
     def save_file_cache(
         self,
@@ -402,7 +403,8 @@ class CacheManager:
                 return None
 
             with open(progress_file, "r") as f:
-                return json.load(f)
+                data: Dict[str, Any] = json.load(f)
+                return data
         except Exception:
             return None
 
@@ -420,8 +422,8 @@ class CacheManager:
         parse_errors = self.get_parse_errors()
 
         # Count unique files and error types from parse errors
-        unique_files = set()
-        error_types = {}
+        unique_files: set[str] = set()
+        error_types: Dict[str, int] = {}
         for error in parse_errors:
             unique_files.add(error["file_path"])
             error_type = error.get("error_type", "Unknown")
@@ -538,7 +540,7 @@ class CacheManager:
         errors = self.get_parse_errors()
 
         # Count errors by type
-        error_types = defaultdict(int)
+        error_types: defaultdict[str, int] = defaultdict(int)
         files_with_errors = set()
         for error in errors:
             error_types[error.get("error_type", "Unknown")] += 1
@@ -607,9 +609,10 @@ class CacheManager:
         Returns:
             Number of aliases successfully saved
         """
-        return self._safe_backend_call(
+        result: int = self._safe_backend_call(
             "save_type_aliases_batch", lambda: self.backend.save_type_aliases_batch(aliases)
         )
+        return result
 
     def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
         """
@@ -623,10 +626,11 @@ class CacheManager:
         Returns:
             List of alias names
         """
-        return self._safe_backend_call(
+        result: List[str] = self._safe_backend_call(
             "get_aliases_for_canonical",
             lambda: self.backend.get_aliases_for_canonical(canonical_type),
         )
+        return result
 
     def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
         """
@@ -640,9 +644,10 @@ class CacheManager:
         Returns:
             Canonical type string, or None if not found
         """
-        return self._safe_backend_call(
+        result: Optional[str] = self._safe_backend_call(
             "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
         )
+        return result
 
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """
@@ -653,6 +658,7 @@ class CacheManager:
         Returns:
             Dictionary mapping alias names to canonical types
         """
-        return self._safe_backend_call(
+        result: Dict[str, str] = self._safe_backend_call(
             "get_all_alias_mappings", lambda: self.backend.get_all_alias_mappings()
         )
+        return result

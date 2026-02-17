@@ -2,7 +2,7 @@
 
 import re
 import threading
-from typing import Dict, List, Optional, Any, Tuple, Union
+from typing import Dict, List, Optional, Any, Tuple, Union, cast
 from .symbol_info import (
     SymbolInfo,
     get_template_param_base_indices,
@@ -688,7 +688,7 @@ class SearchEngine:
 
         Task: T2.2.3 (Qualified Names Phase 2)
         """
-        results = {"classes": [], "functions": []}
+        results: Dict[str, List[Dict[str, Any]]] = {"classes": [], "functions": []}
 
         # Filter symbol types
         search_classes = not symbol_types or any(t in ["class", "struct"] for t in symbol_types)
@@ -697,11 +697,17 @@ class SearchEngine:
         )
 
         if search_classes:
-            results["classes"] = self.search_classes(pattern, project_only, namespace=namespace)
+            results["classes"] = cast(
+                List[Dict[str, Any]],
+                self.search_classes(pattern, project_only, namespace=namespace),
+            )
 
         if search_functions:
-            results["functions"] = self.search_functions(
-                pattern, project_only, namespace=namespace, signature_pattern=signature_pattern
+            results["functions"] = cast(
+                List[Dict[str, Any]],
+                self.search_functions(
+                    pattern, project_only, namespace=namespace, signature_pattern=signature_pattern
+                ),
             )
 
         # Handle max_results truncation (truncate combined results)

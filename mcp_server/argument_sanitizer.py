@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Optional
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class ArgumentSanitizer:
@@ -27,7 +27,7 @@ class ArgumentSanitizer:
             rules_file: Path to default rules JSON file (uses built-in if None)
             custom_rules_file: Path to optional custom rules file to extend defaults
         """
-        self.rules = []
+        self.rules: List[Dict[str, Any]] = []
         self.rules_version = "unknown"
 
         # Load default rules

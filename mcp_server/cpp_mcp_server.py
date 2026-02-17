@@ -10,7 +10,7 @@ import asyncio
 import json
 import sys
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Import diagnostics early
 try:
@@ -218,8 +218,8 @@ try:
     from mcp_server.tool_call_logger import ToolCallLogger
 except ImportError:
     # Fall back to direct import (when run as script)
-    from cpp_analyzer import CppAnalyzer
-    from state_manager import (
+    from cpp_analyzer import CppAnalyzer  # type: ignore[no-redef]
+    from state_manager import (  # type: ignore[no-redef]
         AnalyzerStateManager,
         AnalyzerState,
         IndexingProgress,
@@ -227,14 +227,14 @@ except ImportError:
         EnhancedQueryResult,
         QueryBehaviorPolicy,
     )
-    from session_manager import SessionManager
-    from tool_call_logger import ToolCallLogger
+    from session_manager import SessionManager  # type: ignore[no-redef]
+    from tool_call_logger import ToolCallLogger  # type: ignore[no-redef]
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
 
 # Initialize analyzer as None - will be set when project directory is specified
-analyzer = None
+analyzer: Optional["CppAnalyzer"] = None
 
 # State management for analyzer lifecycle
 state_manager = AnalyzerStateManager()
@@ -953,6 +953,8 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
         return (True, "")  # Let the normal flow handle uninitialized state
 
     # Get policy from analyzer config
+    if analyzer is None:
+        return (True, "")  # No analyzer yet, allow
     policy_str = analyzer.config.get_query_behavior_policy()
 
     try:
@@ -1033,8 +1035,8 @@ def _create_search_result(
     data: Any,
     state_manager: AnalyzerStateManager,
     tool_name: str,
-    max_results: int = None,
-    total_count: int = None,
+    max_results: Optional[int] = None,
+    total_count: Optional[int] = None,
     fallback: Any = None,
 ) -> EnhancedQueryResult:
     """
@@ -1373,9 +1375,11 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "get_class_info":
-            class_name = arguments["class_name"]
+            class_name = str(arguments["class_name"])
             # Run synchronous method in executor to avoid blocking event loop
-            result = await loop.run_in_executor(None, lambda: analyzer.get_class_info(class_name))
+            result = await loop.run_in_executor(
+                None, lambda: analyzer.get_class_info(class_name)  # type: ignore[arg-type]
+            )
             # Wrap with metadata (even if not found)
             enhanced_result = EnhancedQueryResult.create_from_state(
                 result, state_manager, "get_class_info"
@@ -1585,13 +1589,14 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             # Determine analyzer type
             analyzer_type = "python_enhanced"
 
+            ccm = analyzer.compile_commands_manager
             status = {
                 "analyzer_type": analyzer_type,
                 "call_graph_enabled": True,
                 "usr_tracking_enabled": True,
-                "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
-                "compile_commands_path": analyzer.compile_commands_manager.compile_commands_path,
-                "compile_commands_cache_enabled": analyzer.compile_commands_manager.cache_enabled,
+                "compile_commands_enabled": ccm.enabled if ccm else False,
+                "compile_commands_path": ccm.compile_commands_path if ccm else None,
+                "compile_commands_cache_enabled": ccm.cache_enabled if ccm else False,
             }
 
             # Add analyzer stats from enhanced Python analyzer
@@ -1645,10 +1650,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 ]
 
         elif name == "get_class_hierarchy":
-            class_name = arguments["class_name"]
+            class_name = str(arguments["class_name"])
             # Run synchronous method in executor to avoid blocking event loop
             hierarchy = await loop.run_in_executor(
-                None, lambda: analyzer.get_class_hierarchy(class_name)
+                None, lambda: analyzer.get_class_hierarchy(class_name)  # type: ignore[arg-type]
             )
             if hierarchy:
                 return [TextContent(type="text", text=json.dumps(hierarchy, indent=2))]
@@ -1656,21 +1661,23 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 return [TextContent(type="text", text=f"Class '{class_name}' not found")]
 
         elif name == "get_derived_classes":
-            class_name = arguments["class_name"]
+            class_name = str(arguments["class_name"])
             project_only = arguments.get("project_only", True)
             # Run synchronous method in executor to avoid blocking event loop
             derived = await loop.run_in_executor(
-                None, lambda: analyzer.get_derived_classes(class_name, project_only)
+                None,
+                lambda: analyzer.get_derived_classes(class_name, project_only),  # type: ignore[arg-type]
             )
             return [TextContent(type="text", text=json.dumps(derived, indent=2))]
 
         elif name == "find_callers":
-            function_name = arguments["function_name"]
-            class_name = arguments.get("class_name", "")
+            function_name = str(arguments["function_name"])
+            class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None, lambda: analyzer.find_callers(function_name, class_name)
+                None,
+                lambda: analyzer.find_callers(function_name, class_name),  # type: ignore[arg-type]
             )
             # Results is dict with "callers" list - use that for metadata logic
             callers_list = results.get("callers", []) if isinstance(results, dict) else []
@@ -1690,12 +1697,13 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "find_callees":
-            function_name = arguments["function_name"]
-            class_name = arguments.get("class_name", "")
+            function_name = str(arguments["function_name"])
+            class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
-                None, lambda: analyzer.find_callees(function_name, class_name)
+                None,
+                lambda: analyzer.find_callees(function_name, class_name),  # type: ignore[arg-type]
             )
             # Results is dict with "callees" list - use that for metadata logic
             callees_list = results.get("callees", []) if isinstance(results, dict) else []

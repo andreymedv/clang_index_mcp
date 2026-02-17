@@ -1,7 +1,7 @@
 """Error tracking and monitoring for cache operations."""
 
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from collections import deque
 from dataclasses import dataclass
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 @dataclass
@@ -164,7 +164,7 @@ class ErrorTracker:
 
         return len(recent_errors) / recent_operations
 
-    def get_error_summary(self) -> Dict[str, any]:
+    def get_error_summary(self) -> Dict[str, Any]:
         """
         Get summary of errors.
 

@@ -13,7 +13,7 @@ from .symbol_info import SymbolInfo
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class SqliteCacheBackend:
@@ -80,11 +80,11 @@ class SqliteCacheBackend:
             )
 
             # Enable row factory for dict-like access
-            self.conn.row_factory = sqlite3.Row
+            self._conn.row_factory = sqlite3.Row
 
             # Set busy handler for lock retry with exponential backoff (if available)
             if hasattr(self.conn, "set_busy_handler"):
-                self.conn.set_busy_handler(self._busy_handler)
+                self._conn.set_busy_handler(self._busy_handler)
             else:
                 diagnostics.debug("set_busy_handler not available, using timeout only")
 
@@ -101,6 +101,12 @@ class SqliteCacheBackend:
         except Exception as e:
             diagnostics.error(f"Failed to connect to SQLite database: {e}")
             raise
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        """Return the database connection, asserting it is not None."""
+        assert self.conn is not None, "Database connection not initialized"
+        return self.conn
 
     def _busy_handler(self, retry_count: int) -> bool:
         """
@@ -155,24 +161,24 @@ class SqliteCacheBackend:
         try:
             # Write-Ahead Logging for better concurrency
             # This is especially important for ProcessPoolExecutor workers
-            self.conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA journal_mode = WAL")
 
             # Balance safety and speed (NORMAL is safe for WAL mode)
-            self.conn.execute("PRAGMA synchronous = NORMAL")
+            self._conn.execute("PRAGMA synchronous = NORMAL")
 
             # 64MB cache for better performance
             # Negative value means KiB (64000 KiB = ~64 MB)
-            self.conn.execute("PRAGMA cache_size = -64000")
+            self._conn.execute("PRAGMA cache_size = -64000")
 
             # Keep temporary tables in RAM instead of disk
-            self.conn.execute("PRAGMA temp_store = MEMORY")
+            self._conn.execute("PRAGMA temp_store = MEMORY")
 
             # Disable memory-mapped I/O to prevent bus errors with concurrent access
             # mmap is incompatible with concurrent writes from multiple processes/threads
             # and can cause SIGBUS crashes. WAL mode + other optimizations provide
             # sufficient performance without mmap.
             # See: https://www.sqlite.org/mmap.html#disadvantages
-            self.conn.execute("PRAGMA mmap_size = 0")
+            self._conn.execute("PRAGMA mmap_size = 0")
 
             diagnostics.debug("SQLite connection PRAGMAs applied successfully")
 
@@ -245,7 +251,7 @@ class SqliteCacheBackend:
                 if self.db_path.exists():
                     try:
                         # Try to get the current version
-                        cursor = self.conn.execute(
+                        cursor = self._conn.execute(
                             "SELECT value FROM cache_metadata WHERE key = 'version'"
                         )
                         result = cursor.fetchone()
@@ -329,8 +335,8 @@ class SqliteCacheBackend:
                     schema_sql = f.read()
 
                 # Execute schema (creates tables, indexes, triggers)
-                self.conn.executescript(schema_sql)
-                self.conn.commit()
+                self._conn.executescript(schema_sql)
+                self._conn.commit()
 
                 diagnostics.debug(
                     f"SQLite database initialized successfully (schema v{self.CURRENT_SCHEMA_VERSION})"
@@ -367,7 +373,7 @@ class SqliteCacheBackend:
             True if schema was recreated, False if it was already current.
         """
         try:
-            cursor = self.conn.execute("SELECT value FROM cache_metadata WHERE key = 'version'")
+            cursor = self._conn.execute("SELECT value FROM cache_metadata WHERE key = 'version'")
             result = cursor.fetchone()
             if result:
                 current_version = json.loads(result[0])
@@ -421,9 +427,9 @@ class SqliteCacheBackend:
 
     def _close(self):
         """Close database connection."""
-        if self.conn:
+        if self.conn is not None:
             try:
-                self.conn.close()
+                self._conn.close()
             except Exception as e:
                 diagnostics.warning(f"Error closing connection: {e}")
             finally:
@@ -571,8 +577,8 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            with self.conn:
-                self.conn.execute(
+            with self._conn:
+                self._conn.execute(
                     """
                     INSERT OR REPLACE INTO symbols (
                         usr, name, qualified_name, kind, file, line, column, signature,
@@ -614,8 +620,8 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Batch insert in a single transaction
-            with self.conn:
-                self.conn.executemany(
+            with self._conn:
+                self._conn.executemany(
                     """
                     INSERT OR REPLACE INTO symbols (
                         usr, name, qualified_name, kind, file, line, column, signature,
@@ -651,7 +657,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
+            cursor = self._conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
 
             row = cursor.fetchone()
             if row:
@@ -676,7 +682,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
+            cursor = self._conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
 
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
@@ -694,8 +700,9 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols")
-            return cursor.fetchone()[0]
+            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols")
+            result: int = cursor.fetchone()[0]
+            return result
 
         except Exception as e:
             diagnostics.error(f"Failed to count symbols: {e}")
@@ -715,18 +722,19 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Get count before deletion
-            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
+            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
             count = cursor.fetchone()[0]
 
             if count == 0:
                 return 0
 
             # Delete symbols
-            with self.conn:
-                self.conn.execute("DELETE FROM symbols WHERE file = ?", (file_path,))
+            with self._conn:
+                self._conn.execute("DELETE FROM symbols WHERE file = ?", (file_path,))
 
             diagnostics.debug(f"Deleted {count} symbols from {file_path}")
-            return count
+            deleted: int = count
+            return deleted
 
         except Exception as e:
             diagnostics.error(f"Failed to delete symbols for file {file_path}: {e}")
@@ -760,8 +768,8 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            with self.conn:
-                self.conn.execute(
+            with self._conn:
+                self._conn.execute(
                     """
                     INSERT OR REPLACE INTO file_metadata
                     (file_path, file_hash, compile_args_hash, indexed_at, symbol_count,
@@ -799,7 +807,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 "SELECT * FROM file_metadata WHERE file_path = ?", (file_path,)
             )
 
@@ -841,7 +849,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("SELECT file_path, file_hash FROM file_metadata")
+            cursor = self._conn.execute("SELECT file_path, file_hash FROM file_metadata")
 
             return {row["file_path"]: row["file_hash"] for row in cursor.fetchall()}
 
@@ -863,8 +871,8 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            with self.conn:
-                self.conn.execute(
+            with self._conn:
+                self._conn.execute(
                     """
                     INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
                     VALUES (?, ?, ?)
@@ -891,7 +899,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("SELECT value FROM cache_metadata WHERE key = ?", (key,))
+            cursor = self._conn.execute("SELECT value FROM cache_metadata WHERE key = ?", (key,))
 
             row = cursor.fetchone()
             return row["value"] if row else None
@@ -942,7 +950,7 @@ class SqliteCacheBackend:
             if project_only:
                 query += " AND s.is_project = 1"
 
-            cursor = self.conn.execute(query, params)
+            cursor = self._conn.execute(query, params)
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
         except Exception as e:
@@ -980,7 +988,7 @@ class SqliteCacheBackend:
             if project_only:
                 query += " AND is_project = 1"
 
-            cursor = self.conn.execute(query, params)
+            cursor = self._conn.execute(query, params)
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
         except Exception as e:
@@ -1000,7 +1008,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
+            cursor = self._conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
 
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
@@ -1028,7 +1036,7 @@ class SqliteCacheBackend:
             if project_only:
                 query += " AND is_project = 1"
 
-            cursor = self.conn.execute(query, params)
+            cursor = self._conn.execute(query, params)
             return [self._row_to_symbol(row) for row in cursor.fetchall()]
 
         except Exception as e:
@@ -1048,11 +1056,11 @@ class SqliteCacheBackend:
             stats = {}
 
             # Total symbol count
-            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols")
+            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols")
             stats["total_symbols"] = cursor.fetchone()[0]
 
             # Count by kind
-            cursor = self.conn.execute("""
+            cursor = self._conn.execute("""
                 SELECT kind, COUNT(*) as count
                 FROM symbols
                 GROUP BY kind
@@ -1061,7 +1069,7 @@ class SqliteCacheBackend:
             stats["by_kind"] = {row["kind"]: row["count"] for row in cursor.fetchall()}
 
             # Project vs dependencies
-            cursor = self.conn.execute("""
+            cursor = self._conn.execute("""
                 SELECT is_project, COUNT(*) as count
                 FROM symbols
                 GROUP BY is_project
@@ -1073,13 +1081,13 @@ class SqliteCacheBackend:
                     stats["dependency_symbols"] = row["count"]
 
             # File count
-            cursor = self.conn.execute("SELECT COUNT(*) FROM file_metadata")
+            cursor = self._conn.execute("SELECT COUNT(*) FROM file_metadata")
             stats["total_files"] = cursor.fetchone()[0]
 
             # Database size
-            cursor = self.conn.execute("PRAGMA page_count")
+            cursor = self._conn.execute("PRAGMA page_count")
             page_count = cursor.fetchone()[0]
-            cursor = self.conn.execute("PRAGMA page_size")
+            cursor = self._conn.execute("PRAGMA page_size")
             page_size = cursor.fetchone()[0]
             stats["db_size_bytes"] = page_count * page_size
             stats["db_size_mb"] = stats["db_size_bytes"] / (1024 * 1024)
@@ -1100,7 +1108,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("PRAGMA integrity_check")
+            cursor = self._conn.execute("PRAGMA integrity_check")
             result = cursor.fetchone()[0]
 
             if result == "ok":
@@ -1142,7 +1150,7 @@ class SqliteCacheBackend:
             start_time = time.time()
 
             # Run VACUUM (cannot be in transaction)
-            self.conn.execute("VACUUM")
+            self._conn.execute("VACUUM")
 
             elapsed = time.time() - start_time
 
@@ -1182,7 +1190,7 @@ class SqliteCacheBackend:
             start_time = time.time()
 
             # Optimize FTS5 table
-            self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')")
+            self._conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')")
 
             elapsed = time.time() - start_time
             diagnostics.info(f"FTS5 optimization complete in {elapsed:.2f}s")
@@ -1217,7 +1225,7 @@ class SqliteCacheBackend:
             start_time = time.time()
 
             # Rebuild FTS5 table completely
-            self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')")
+            self._conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')")
 
             elapsed = time.time() - start_time
             diagnostics.debug(f"FTS5 rebuild complete in {elapsed:.2f}s")
@@ -1247,7 +1255,7 @@ class SqliteCacheBackend:
             start_time = time.time()
 
             # Analyze all tables
-            self.conn.execute("ANALYZE")
+            self._conn.execute("ANALYZE")
 
             elapsed = time.time() - start_time
             diagnostics.info(f"ANALYZE complete in {elapsed:.2f}s")
@@ -1280,7 +1288,7 @@ class SqliteCacheBackend:
         """
         try:
             diagnostics.info("Running auto-maintenance...")
-            results = {
+            results: Dict[str, Any] = {
                 "analyze": False,
                 "optimize": False,
                 "vacuum": False,
@@ -1305,9 +1313,9 @@ class SqliteCacheBackend:
             else:
                 # Estimate wasted space (rough heuristic)
                 # Get page count and freelist count
-                cursor = self.conn.execute("PRAGMA freelist_count")
+                cursor = self._conn.execute("PRAGMA freelist_count")
                 freelist_count = cursor.fetchone()[0]
-                cursor = self.conn.execute("PRAGMA page_size")
+                cursor = self._conn.execute("PRAGMA page_size")
                 page_size = cursor.fetchone()[0]
 
                 waste_mb = (freelist_count * page_size) / (1024 * 1024)
@@ -1352,10 +1360,10 @@ class SqliteCacheBackend:
 
             if full:
                 # Full integrity check
-                cursor = self.conn.execute("PRAGMA integrity_check")
+                cursor = self._conn.execute("PRAGMA integrity_check")
             else:
                 # Quick check (faster)
-                cursor = self.conn.execute("PRAGMA quick_check")
+                cursor = self._conn.execute("PRAGMA quick_check")
 
             results = [row[0] for row in cursor.fetchall()]
             elapsed = time.time() - start_time
@@ -1386,7 +1394,12 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            health = {"status": "unknown", "checks": {}, "warnings": [], "errors": []}
+            health: Dict[str, Any] = {
+                "status": "unknown",
+                "checks": {},
+                "warnings": [],
+                "errors": [],
+            }
 
             # 1. Integrity check
             is_healthy, message = self.check_integrity(full=False)
@@ -1407,7 +1420,7 @@ class SqliteCacheBackend:
 
             # 3. FTS5 index health
             try:
-                cursor = self.conn.execute("SELECT COUNT(*) FROM symbols_fts")
+                cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
                 fts_count = cursor.fetchone()[0]
                 symbol_count = stats.get("total_symbols", 0)
 
@@ -1430,7 +1443,7 @@ class SqliteCacheBackend:
 
             # 4. WAL mode check
             try:
-                cursor = self.conn.execute("PRAGMA journal_mode")
+                cursor = self._conn.execute("PRAGMA journal_mode")
                 journal_mode = cursor.fetchone()[0].lower()
 
                 wal_health = {
@@ -1477,7 +1490,7 @@ class SqliteCacheBackend:
             tables = {}
 
             # Get list of tables
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             )
             table_names = [row[0] for row in cursor.fetchall()]
@@ -1485,7 +1498,7 @@ class SqliteCacheBackend:
             for table_name in table_names:
                 try:
                     # Get row count
-                    cursor = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}")
+                    cursor = self._conn.execute(f"SELECT COUNT(*) FROM {table_name}")
                     row_count = cursor.fetchone()[0]
 
                     tables[table_name] = {"row_count": row_count, "status": "ok"}
@@ -1516,7 +1529,7 @@ class SqliteCacheBackend:
             stats.update(symbol_stats)
 
             # File statistics
-            cursor = self.conn.execute("""
+            cursor = self._conn.execute("""
                 SELECT
                     COUNT(*) as total_files,
                     SUM(symbol_count) as total_symbols_from_files,
@@ -1533,7 +1546,7 @@ class SqliteCacheBackend:
             }
 
             # Top files by symbol count
-            cursor = self.conn.execute("""
+            cursor = self._conn.execute("""
                 SELECT file_path, symbol_count
                 FROM file_metadata
                 ORDER BY symbol_count DESC
@@ -1544,7 +1557,7 @@ class SqliteCacheBackend:
             ]
 
             # Cache metadata
-            cursor = self.conn.execute("SELECT key, value FROM cache_metadata")
+            cursor = self._conn.execute("SELECT key, value FROM cache_metadata")
             stats["metadata"] = {row[0]: row[1] for row in cursor.fetchall()}
 
             # Performance metrics
@@ -1578,7 +1591,7 @@ class SqliteCacheBackend:
             if operation == "search":
                 # Test FTS5 search performance
                 start = time.time()
-                cursor = self.conn.execute(
+                cursor = self._conn.execute(
                     "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test*'"
                 )
                 cursor.fetchone()
@@ -1586,19 +1599,19 @@ class SqliteCacheBackend:
 
                 # Test regular search
                 start = time.time()
-                cursor = self.conn.execute("SELECT COUNT(*) FROM symbols WHERE name LIKE 'test%'")
+                cursor = self._conn.execute("SELECT COUNT(*) FROM symbols WHERE name LIKE 'test%'")
                 cursor.fetchone()
                 metrics["like_search_ms"] = (time.time() - start) * 1000
 
             elif operation == "load":
                 # Test symbol load by USR
                 # Get a random USR first
-                cursor = self.conn.execute("SELECT usr FROM symbols LIMIT 1")
+                cursor = self._conn.execute("SELECT usr FROM symbols LIMIT 1")
                 row = cursor.fetchone()
                 if row:
                     usr = row[0]
                     start = time.time()
-                    cursor = self.conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
+                    cursor = self._conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
                     cursor.fetchone()
                     metrics["load_by_usr_ms"] = (time.time() - start) * 1000
 
@@ -1617,8 +1630,8 @@ class SqliteCacheBackend:
 
                 start = time.time()
                 # Use savepoint to rollback
-                self.conn.execute("SAVEPOINT perf_test")
-                self.conn.execute(
+                self._conn.execute("SAVEPOINT perf_test")
+                self._conn.execute(
                     """
                     INSERT OR REPLACE INTO symbols (
                         usr, name, qualified_name, kind, file, line, column, signature,
@@ -1634,7 +1647,7 @@ class SqliteCacheBackend:
                     """,
                     self._symbol_to_tuple(test_symbol),
                 )
-                self.conn.execute("ROLLBACK TO perf_test")
+                self._conn.execute("ROLLBACK TO perf_test")
                 metrics["write_symbol_ms"] = (time.time() - start) * 1000
 
             return metrics
@@ -1785,7 +1798,7 @@ class SqliteCacheBackend:
 
             # Load all symbols - Memory optimization: return SymbolInfo directly
             # instead of converting to dict and back (saves ~500 MB peak for large projects)
-            cursor = self.conn.execute("SELECT * FROM symbols")
+            cursor = self._conn.execute("SELECT * FROM symbols")
 
             # Build indexes by name - stream rows to avoid loading all into memory at once
             from collections import defaultdict
@@ -1951,8 +1964,8 @@ class SqliteCacheBackend:
 
             # Delete file metadata
             self._ensure_connected()
-            with self.conn:
-                self.conn.execute("DELETE FROM file_metadata WHERE file_path = ?", (file_path,))
+            with self._conn:
+                self._conn.execute("DELETE FROM file_metadata WHERE file_path = ?", (file_path,))
 
             return True
 
@@ -1999,8 +2012,8 @@ class SqliteCacheBackend:
             ]
 
             # Batch insert in a single transaction
-            with self.conn:
-                self.conn.executemany(
+            with self._conn:
+                self._conn.executemany(
                     """
                     INSERT INTO call_sites (
                         caller_usr, callee_usr, file, line, column, created_at
@@ -2028,7 +2041,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 """
                 SELECT callee_usr, file, line, column
                 FROM call_sites
@@ -2065,7 +2078,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 """
                 SELECT caller_usr, file, line, column
                 FROM call_sites
@@ -2103,17 +2116,17 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Get count before deletion
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 "SELECT COUNT(*) FROM call_sites WHERE file = ?", (file_path,)
             )
-            count = cursor.fetchone()[0]
+            count: int = cursor.fetchone()[0]
 
             if count == 0:
                 return 0
 
             # Delete call sites
-            with self.conn:
-                self.conn.execute("DELETE FROM call_sites WHERE file = ?", (file_path,))
+            with self._conn:
+                self._conn.execute("DELETE FROM call_sites WHERE file = ?", (file_path,))
 
             return count
 
@@ -2137,18 +2150,18 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Get count before deletion
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 "SELECT COUNT(*) FROM call_sites WHERE caller_usr = ? OR callee_usr = ?",
                 (usr, usr),
             )
-            count = cursor.fetchone()[0]
+            count: int = cursor.fetchone()[0]
 
             if count == 0:
                 return 0
 
             # Delete call sites where USR is either caller or callee
-            with self.conn:
-                self.conn.execute(
+            with self._conn:
+                self._conn.execute(
                     "DELETE FROM call_sites WHERE caller_usr = ? OR callee_usr = ?", (usr, usr)
                 )
 
@@ -2168,7 +2181,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("""
+            cursor = self._conn.execute("""
                 SELECT caller_usr, callee_usr, file, line, column
                 FROM call_sites
                 ORDER BY file, line
@@ -2223,8 +2236,8 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Batch insert in a single transaction
-            with self.conn:
-                self.conn.executemany(
+            with self._conn:
+                self._conn.executemany(
                     """
                     INSERT OR REPLACE INTO type_aliases (
                         alias_name, qualified_name, target_type, canonical_type,
@@ -2277,7 +2290,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 """
                 SELECT alias_name, qualified_name
                 FROM type_aliases
@@ -2316,7 +2329,7 @@ class SqliteCacheBackend:
             self._ensure_connected()
 
             # Try exact match first (short name or qualified name)
-            cursor = self.conn.execute(
+            cursor = self._conn.execute(
                 """
                 SELECT canonical_type
                 FROM type_aliases
@@ -2328,7 +2341,8 @@ class SqliteCacheBackend:
 
             row = cursor.fetchone()
             if row:
-                return row["canonical_type"]
+                result: str = row["canonical_type"]
+                return result
 
             return None
 
@@ -2348,7 +2362,7 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self.conn.execute("""
+            cursor = self._conn.execute("""
                 SELECT alias_name, qualified_name, canonical_type
                 FROM type_aliases
                 """)
