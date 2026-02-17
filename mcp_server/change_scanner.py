@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class ChangeType(Enum):

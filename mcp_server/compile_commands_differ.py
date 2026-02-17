@@ -27,7 +27,7 @@ from typing import Dict, List, Set, Tuple
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class CompileCommandsDiffer:
@@ -279,7 +279,7 @@ class CompileCommandsDiffer:
                 SET compile_args_hash = NULL
             """)
 
-            cleared = cursor.rowcount
+            cleared: int = cursor.rowcount or 0
             self.cache.conn.commit()
 
             diagnostics.info(f"Cleared {cleared} stored command hashes")

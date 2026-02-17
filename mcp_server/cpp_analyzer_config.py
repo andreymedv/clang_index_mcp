@@ -9,7 +9,7 @@ from typing import Dict, List, Any, Optional, Tuple
 try:
     from . import diagnostics
 except ImportError:
-    import diagnostics
+    import diagnostics  # type: ignore[no-redef]
 
 
 class CppAnalyzerConfig:
@@ -52,10 +52,10 @@ class CppAnalyzerConfig:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.config_path = None  # Will be set by _find_config_file
+        self.config_path: Optional[Path] = None  # Will be set by _find_config_file
         self.config = self._load_config()
 
-    def _find_config_file(self) -> Optional[Tuple[Path, str]]:
+    def _find_config_file(self) -> Tuple[Optional[Path], Optional[str]]:
         """Find config file by checking multiple locations in priority order.
 
         Priority order:
@@ -137,25 +137,36 @@ class CppAnalyzerConfig:
 
     def get_exclude_directories(self) -> List[str]:
         """Get list of directories to exclude."""
-        return self.config.get("exclude_directories", self.DEFAULT_CONFIG["exclude_directories"])
+        result: List[str] = self.config.get(
+            "exclude_directories", self.DEFAULT_CONFIG["exclude_directories"]
+        )
+        return result
 
     def get_dependency_directories(self) -> List[str]:
         """Get list of directories that contain dependencies."""
-        return self.config.get(
+        result: List[str] = self.config.get(
             "dependency_directories", self.DEFAULT_CONFIG["dependency_directories"]
         )
+        return result
 
     def get_exclude_patterns(self) -> List[str]:
         """Get list of file patterns to exclude."""
-        return self.config.get("exclude_patterns", self.DEFAULT_CONFIG["exclude_patterns"])
+        result: List[str] = self.config.get(
+            "exclude_patterns", self.DEFAULT_CONFIG["exclude_patterns"]
+        )
+        return result
 
     def get_include_dependencies(self) -> bool:
         """Get whether to include dependencies."""
-        return self.config.get("include_dependencies", self.DEFAULT_CONFIG["include_dependencies"])
+        result: bool = self.config.get(
+            "include_dependencies", self.DEFAULT_CONFIG["include_dependencies"]
+        )
+        return result
 
     def get_max_file_size_mb(self) -> float:
         """Get maximum file size in MB."""
-        return self.config.get("max_file_size_mb", self.DEFAULT_CONFIG["max_file_size_mb"])
+        result: float = self.config.get("max_file_size_mb", self.DEFAULT_CONFIG["max_file_size_mb"])
+        return result
 
     def get_max_workers(self) -> Optional[int]:
         """Get maximum number of worker processes for parallel indexing.
@@ -204,7 +215,8 @@ class CppAnalyzerConfig:
             )
             return "allow_partial"
 
-        return policy
+        result: str = policy
+        return result
 
     def get_compile_commands_config(self) -> Dict[str, Any]:
         """Get compile commands configuration.

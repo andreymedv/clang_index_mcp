@@ -30,9 +30,9 @@ try:
     from .change_scanner import ChangeScanner, ChangeSet
     from .compile_commands_differ import CompileCommandsDiffer
 except ImportError:
-    import diagnostics
-    from change_scanner import ChangeScanner, ChangeSet
-    from compile_commands_differ import CompileCommandsDiffer
+    import diagnostics  # type: ignore[no-redef]
+    from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
+    from compile_commands_differ import CompileCommandsDiffer  # type: ignore[no-redef]
 
 
 @dataclass
@@ -46,10 +46,10 @@ class AnalysisResult:
     files_analyzed: int = 0
     files_removed: int = 0
     elapsed_seconds: float = 0.0
-    changes: ChangeSet = None
+    changes: Optional[ChangeSet] = None
 
     @staticmethod
-    def no_changes():
+    def no_changes() -> "AnalysisResult":
         """Create result for no changes case."""
         return AnalysisResult(0, 0, 0.0, ChangeSet())
 
@@ -270,7 +270,8 @@ class IncrementalAnalyzer:
         if self.analyzer.header_tracker:
             self.analyzer.header_tracker.invalidate_header(header_path)
 
-        return dependents
+        result: Set[str] = dependents
+        return result
 
     def _handle_source_change(self, source_path: str):
         """
