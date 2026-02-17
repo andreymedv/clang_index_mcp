@@ -13,10 +13,10 @@ class FileScanner:
     CPP_EXTENSIONS = {".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"}
 
     # Directories to exclude (set by configuration)
-    EXCLUDE_DIRS = set()
+    EXCLUDE_DIRS: set[str] = set()
 
     # Directories that contain dependencies (set by configuration)
-    DEPENDENCY_DIRS = set()
+    DEPENDENCY_DIRS: set[str] = set()
 
     def __init__(self, project_root: Path, include_dependencies: bool = False):
         self.project_root = project_root

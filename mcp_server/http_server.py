@@ -58,7 +58,7 @@ class MCPHTTPServer:
 
         # Session management (for multi-client support)
         # Format: session_id -> (transport, task, last_activity_time)
-        self.sessions = {}
+        self.sessions: dict[str, tuple] = {}
 
         # Create SSE transport if needed (must match the POST route path)
         self.sse_transport = None
@@ -137,27 +137,29 @@ class MCPHTTPServer:
                 # Pass through to Starlette for all other routes
                 await original_app(scope, receive, send)
 
-            return sse_middleware
+            return sse_middleware  # type: ignore[return-value]
 
         return app
 
     async def handle_root(self, request: Request) -> Response:
         """Handle root endpoint - return server information."""
+        endpoints: dict[str, str] = {
+            "health": "/health",
+        }
+
+        if self.transport_type == "http":
+            endpoints["messages"] = "/messages"
+        elif self.transport_type == "sse":
+            endpoints["sse"] = "/sse"
+            endpoints["messages"] = "/messages"
+
         info = {
             "name": "C++ Code Analysis MCP Server",
             "version": "0.1.0",
             "transport": self.transport_type,
             "protocol": "MCP 1.0",
-            "endpoints": {
-                "health": "/health",
-            },
+            "endpoints": endpoints,
         }
-
-        if self.transport_type == "http":
-            info["endpoints"]["messages"] = "/messages"
-        elif self.transport_type == "sse":
-            info["endpoints"]["sse"] = "/sse"
-            info["endpoints"]["messages"] = "/messages"
 
         return JSONResponse(info)
 
@@ -227,7 +229,7 @@ class MCPHTTPServer:
                 modified_scope = dict(request.scope)
                 modified_scope["headers"] = scope_headers
             else:
-                modified_scope = request.scope
+                modified_scope = dict(request.scope)
 
             # Get or create transport for this session
             if session_id not in self.sessions:
