@@ -6,6 +6,7 @@ This module provides C++ code analysis functionality using libclang bindings.
 It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
+import dataclasses
 import os
 import sys
 import re
@@ -658,6 +659,13 @@ class CppAnalyzer:
 
                     # Definition-wins: If new symbol is a definition and existing is not, replace
                     if info.is_definition and not existing_symbol.is_definition:
+                        # Preserve parent_class from declaration if definition lost it
+                        # (out-of-line definitions are AST children of namespace, not class)
+                        if not info.parent_class and existing_symbol.parent_class:
+                            info = dataclasses.replace(
+                                info, parent_class=existing_symbol.parent_class
+                            )
+
                         diagnostics.debug(
                             f"Definition-wins: Replacing declaration of {info.name} with definition "
                             f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
@@ -2164,8 +2172,17 @@ class CppAnalyzer:
                 template_params = self._extract_template_parameters(cursor)
 
                 # Phase 5: Extract virtual/const/static/access for template methods
-                # Check if this is a method template (has parent_class)
-                is_method_template = bool(parent_class)
+                # Check if this is a method template (has parent_class or semantic parent is class)
+                effective_parent_class = parent_class
+                if not parent_class:
+                    sem_parent = cursor.semantic_parent
+                    if sem_parent and sem_parent.kind in (
+                        CursorKind.CLASS_DECL,
+                        CursorKind.STRUCT_DECL,
+                        CursorKind.CLASS_TEMPLATE,
+                    ):
+                        effective_parent_class = sem_parent.spelling
+                is_method_template = bool(effective_parent_class)
                 is_virtual = cursor.is_virtual_method() if is_method_template else False
                 is_pure_virtual = cursor.is_pure_virtual_method() if is_method_template else False
                 is_const = cursor.is_const_method() if is_method_template else False
@@ -2188,7 +2205,7 @@ class CppAnalyzer:
                     ),
                     namespace=namespace,
                     access=access,
-                    parent_class=parent_class,  # Could be template method
+                    parent_class=effective_parent_class,  # Could be template method
                     usr=function_usr,
                     # Template functions are not specializations themselves
                     is_template_specialization=False,
@@ -2229,7 +2246,13 @@ class CppAnalyzer:
             return  # Don't process children again below
 
         # Process functions and methods (only if should extract)
-        elif kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
+        elif kind in (
+            CursorKind.FUNCTION_DECL,
+            CursorKind.CXX_METHOD,
+            CursorKind.CONSTRUCTOR,
+            CursorKind.DESTRUCTOR,
+            CursorKind.CONVERSION_FUNCTION,
+        ):
             if cursor.spelling and should_extract:
                 # Get function signature (human-readable format)
                 signature = self._build_human_readable_signature(cursor)
@@ -2255,7 +2278,12 @@ class CppAnalyzer:
                     primary_usr = self._get_primary_template_usr(cursor)
 
                 # Phase 5: Extract virtual/const/static/access for methods
-                is_method = kind == CursorKind.CXX_METHOD
+                is_method = kind in (
+                    CursorKind.CXX_METHOD,
+                    CursorKind.CONSTRUCTOR,
+                    CursorKind.DESTRUCTOR,
+                    CursorKind.CONVERSION_FUNCTION,
+                )
                 is_virtual = cursor.is_virtual_method() if is_method else False
                 is_pure_virtual = cursor.is_pure_virtual_method() if is_method else False
                 is_const = cursor.is_const_method() if is_method else False
@@ -2266,6 +2294,20 @@ class CppAnalyzer:
                 # Normalize: treat "none" and "invalid" as "public" for functions
                 if access in ("none", "invalid"):
                     access = "public"
+
+                # Resolve parent_class for out-of-line method definitions.
+                # AST traversal passes parent_class from parent cursor, but out-of-line
+                # definitions (e.g., void Foo::bar() {}) are children of the namespace
+                # cursor, not the class cursor. Use semantic_parent to recover it.
+                effective_parent_class = parent_class
+                if is_method and not parent_class:
+                    sem_parent = cursor.semantic_parent
+                    if sem_parent and sem_parent.kind in (
+                        CursorKind.CLASS_DECL,
+                        CursorKind.STRUCT_DECL,
+                        CursorKind.CLASS_TEMPLATE,
+                    ):
+                        effective_parent_class = sem_parent.spelling
 
                 info = SymbolInfo(
                     name=cursor.spelling,
@@ -2280,7 +2322,7 @@ class CppAnalyzer:
                     ),
                     namespace=namespace,
                     access=access,
-                    parent_class=parent_class if is_method else "",
+                    parent_class=effective_parent_class if is_method else "",
                     usr=function_usr,
                     # Phase 3: Overload metadata
                     is_template_specialization=is_template_spec,
