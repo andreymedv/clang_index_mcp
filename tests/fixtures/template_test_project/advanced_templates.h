@@ -191,4 +191,54 @@ public:
     bool isNull() const { return first == nullptr; }
 };
 
+// ============================================================================
+// TEST CASE 19: Methods with Templated Parameter Types (NOT specializations)
+// These methods use template types in parameters but are NOT template
+// specializations themselves. Tests for false positive detection.
+// ============================================================================
+
+#include <functional>
+#include <initializer_list>
+#include <vector>
+#include <map>
+#include <memory>
+
+/// Base class for widget hierarchy
+struct WidgetBase {
+    virtual ~WidgetBase() = default;
+};
+
+/// Widget with methods using templated parameter types
+struct DataProcessor : WidgetBase {
+    /// Method with no template params — baseline
+    virtual int& itemCount() = 0;
+
+    /// Method with std::initializer_list<> param — NOT a specialization
+    virtual DataProcessor& addEntries(std::initializer_list<const char*> entries) = 0;
+
+    /// Method with std::function<> param — NOT a specialization
+    virtual DataProcessor& transform(std::function<void(DataProcessor&)> functor) = 0;
+
+    /// Method with std::vector<> param — NOT a specialization
+    virtual void setItems(std::vector<int> items) = 0;
+
+    /// Method with std::map<> param — NOT a specialization
+    virtual void setMapping(std::map<int, int> mapping) = 0;
+
+    /// Method with std::shared_ptr<> param — NOT a specialization
+    virtual void setShared(std::shared_ptr<WidgetBase> ptr) = 0;
+
+    /// Method with nested template params — NOT a specialization
+    virtual void setNestedItems(std::vector<std::vector<int>> items) = 0;
+};
+
+/// Free function with templated parameter type — NOT a specialization
+void processItems(std::vector<int> items);
+
+/// Free function with std::function param — NOT a specialization
+void executeCallback(std::function<void(int)> callback);
+
+/// Free function with multiple templated params — NOT a specialization
+void mergeData(std::map<int, int> a, std::vector<int> b);
+
 #endif // ADVANCED_TEMPLATES_H
