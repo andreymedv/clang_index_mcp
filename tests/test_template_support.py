@@ -1133,3 +1133,127 @@ class TestBaseClassResolutionFromIndex:
             # (it doesn't inherit from Derived, the derived classes inherit from Base<Derived>)
             # This is expected - the fixture tests CRTP usage, not parameter inheritance
             assert base_template.get('base_classes', []) == []
+
+
+class TestFalsePositiveTemplateSpecialization:
+    """Tests that methods/functions with templated parameter types are NOT marked
+    as template specializations. Regression tests for cplusplus_mcp-7ap."""
+
+    def test_method_with_initializer_list_param_not_specialization(self, analyzer):
+        """Method with std::initializer_list<T> param is not a specialization."""
+        results = analyzer.search_functions("addEntries")
+        matched = [
+            r for r in results
+            if r["name"] == "addEntries" and "initializer_list" in r.get("signature", "")
+        ]
+        assert len(matched) > 0, "Should find addEntries method with initializer_list param"
+        for m in matched:
+            assert m.get("is_template_specialization") is not True, \
+                f"Method with initializer_list param should not be a specialization: {m}"
+            assert m.get("is_template") is not True, \
+                f"Method with initializer_list param should not be flagged as template: {m}"
+
+    def test_method_with_std_function_param_not_specialization(self, analyzer):
+        """Method with std::function<Sig> param is not a specialization."""
+        results = analyzer.search_functions("transform")
+        matched = [
+            r for r in results
+            if r["name"] == "transform" and "function" in r.get("signature", "")
+        ]
+        assert len(matched) > 0, "Should find transform method with std::function param"
+        for m in matched:
+            assert m.get("is_template_specialization") is not True, \
+                f"Method with std::function param should not be a specialization: {m}"
+            assert m.get("is_template") is not True, \
+                f"Method with std::function param should not be flagged as template: {m}"
+
+    def test_method_with_vector_param_not_specialization(self, analyzer):
+        """Method with std::vector<T> param is not a specialization."""
+        results = analyzer.search_functions("setItems")
+        assert len(results) > 0, "Should find setItems method"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Method with vector param should not be a specialization: {m}"
+
+    def test_method_with_map_param_not_specialization(self, analyzer):
+        """Method with std::map<K,V> param is not a specialization."""
+        results = analyzer.search_functions("setMapping")
+        assert len(results) > 0, "Should find setMapping method"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Method with map param should not be a specialization: {m}"
+
+    def test_method_with_shared_ptr_param_not_specialization(self, analyzer):
+        """Method with std::shared_ptr<T> param is not a specialization."""
+        results = analyzer.search_functions("setShared")
+        assert len(results) > 0, "Should find setShared method"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Method with shared_ptr param should not be a specialization: {m}"
+
+    def test_method_with_nested_template_param_not_specialization(self, analyzer):
+        """Method with std::vector<std::vector<T>> param is not a specialization."""
+        results = analyzer.search_functions("setNestedItems")
+        assert len(results) > 0, "Should find setNestedItems method"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Method with nested template param should not be a specialization: {m}"
+
+    def test_free_function_with_template_param_not_specialization(self, analyzer):
+        """Free function with templated param type is not a specialization."""
+        results = analyzer.search_functions("processItems")
+        assert len(results) > 0, "Should find processItems function"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Function with vector param should not be a specialization: {m}"
+
+    def test_free_function_with_std_function_param_not_specialization(self, analyzer):
+        """Free function with std::function param is not a specialization."""
+        results = analyzer.search_functions("executeCallback")
+        assert len(results) > 0, "Should find executeCallback function"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Function with std::function param should not be a specialization: {m}"
+
+    def test_free_function_with_multiple_template_params_not_specialization(self, analyzer):
+        """Free function with multiple templated params is not a specialization."""
+        results = analyzer.search_functions("mergeData")
+        assert len(results) > 0, "Should find mergeData function"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                f"Function with multiple template params should not be a specialization: {m}"
+
+    def test_method_without_template_params_unaffected(self, analyzer):
+        """Method with no template params remains correctly classified."""
+        results = analyzer.search_functions("itemCount")
+        assert len(results) > 0, "Should find itemCount method"
+        for m in results:
+            assert m.get("is_template_specialization") is not True, \
+                "Plain method should not be a specialization"
+
+    def test_real_function_specialization_still_detected(self, analyzer):
+        """Actual template specializations should still be detected correctly."""
+        # multiply<2> is a real explicit specialization in advanced_templates.h
+        results = analyzer.search_functions("multiply")
+        specializations = [
+            r for r in results
+            if r.get("is_template_specialization") is True
+        ]
+        assert len(specializations) > 0, \
+            "Real function template specializations should still be detected"
+
+    def test_get_class_info_methods_not_false_positive(self, analyzer):
+        """get_class_info should not show methods as template specializations."""
+        info = analyzer.get_class_info("DataProcessor")
+        assert info is not None, "Should find DataProcessor class"
+
+        methods = info.get("methods", [])
+        for method in methods:
+            name = method.get("name", "")
+            # None of DataProcessor's methods are template specializations
+            assert method.get("is_template_specialization") is not True, \
+                f"DataProcessor::{name} should not be marked as template specialization"
+            assert method.get("is_template") is not True, \
+                f"DataProcessor::{name} should not be marked as template"
+            assert method.get("template_kind") is None, \
+                f"DataProcessor::{name} should have template_kind=None"
