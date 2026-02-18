@@ -1006,14 +1006,31 @@ class CppAnalyzer:
         For example: Container<ns1::Foo> instead of Container<Foo>
 
         Special handling for template parameters:
-        - libclang returns "type-parameter-0-0" for template parameter bases
-        - We detect this pattern and use the actual parameter name instead
-        - This makes output LLM-friendly (e.g., "BuilderBase" instead of "type-parameter-0-0")
-
-        Task T3.2.1: Qualified Names Phase 1
-        Issue: Template base class name improvement for LLM readability
+        - libclang returns "type-parameter-D-I" for template parameter references
+          (D=depth, I=index) in canonical type spellings
+        - We build a mapping from these positional names to actual parameter names
+          by inspecting the cursor's TEMPLATE_TYPE_PARAMETER etc. children
+        - This replaces both standalone occurrences (entire base is a parameter)
+          and embedded occurrences (parameter inside a complex dependent type)
+        - Example: "typename ChainResolver<type-parameter-0-0, Mixin>::Type"
+          becomes: "typename ChainResolver<BaseParam, Mixin>::Type"
         """
         import re
+
+        # Build a map from "type-parameter-D-I" to actual template parameter names.
+        # For the cursor's own template parameters, depth is 0.
+        # Template template parameters have inner parameters at depth+1.
+        type_param_map: Dict[str, str] = {}
+        param_index = 0
+        for child in cursor.get_children():
+            if child.kind in (
+                CursorKind.TEMPLATE_TYPE_PARAMETER,
+                CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+                CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
+            ):
+                if child.spelling:
+                    type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
+                param_index += 1
 
         base_classes = []
         for child in cursor.get_children():
@@ -1027,11 +1044,23 @@ class CppAnalyzer:
                 canonical_type = base_type.get_canonical()
                 base_name_qualified = canonical_type.spelling
 
-                # Check if this is a template parameter (type-parameter-X-Y pattern)
-                # If so, use the actual parameter name from type.spelling
-                # This makes output LLM-friendly
-                if re.match(r"type-parameter-\d+-\d+", base_name_qualified):
-                    # Use the spelling which contains the actual parameter name
+                # Replace type-parameter-D-I patterns with actual parameter names.
+                # Handles both standalone (entire base is a parameter) and embedded
+                # occurrences (parameter inside a complex dependent type expression).
+                if "type-parameter-" in base_name_qualified and type_param_map:
+
+                    def _replace_type_param(m: re.Match[str]) -> str:
+                        key: str = m.group(0)
+                        return type_param_map.get(key, key)
+
+                    base_name_qualified = re.sub(
+                        r"type-parameter-\d+-\d+", _replace_type_param, base_name_qualified
+                    )
+
+                # If after substitution there are still unresolved type-parameter-D-I
+                # patterns (e.g., from outer template depths we don't have names for),
+                # fall back to the non-canonical spelling for the entire string
+                if re.search(r"type-parameter-\d+-\d+", base_name_qualified):
                     base_name_qualified = base_type.spelling
 
                 # Clean up the type name (remove "class " or "struct " prefix if present)
