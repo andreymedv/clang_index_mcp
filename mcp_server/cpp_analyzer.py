@@ -1911,11 +1911,19 @@ class CppAnalyzer:
         ):
             try:
                 displayname = cursor.displayname
-                # Template specializations have '<' and '>' in their display name
-                # e.g., "foo<int>" vs "foo", "Container<int>" vs "Container"
-                # Check that displayname is a string (not Mock or other non-iterable)
-                if isinstance(displayname, str):
-                    return "<" in displayname and ">" in displayname
+                if not isinstance(displayname, str):
+                    return False
+                # For functions/methods, displayname includes parameter types:
+                #   "foo<int>(int)" — specialization (angle brackets in name)
+                #   "doWork(std::initializer_list<std::string>)" — NOT a specialization
+                # Only check the name portion (before first '(') for angle brackets.
+                # Class displaynames don't include parameters, so this is safe for all.
+                if kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
+                    paren_pos = displayname.find("(")
+                    name_part = displayname[:paren_pos] if paren_pos >= 0 else displayname
+                else:
+                    name_part = displayname
+                return "<" in name_part and ">" in name_part
             except (AttributeError, TypeError):
                 # Handle cases where displayname is not accessible or not iterable
                 return False
