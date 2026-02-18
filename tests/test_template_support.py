@@ -1089,6 +1089,199 @@ class TestTemplateBaseClassImprovement:
             f"Base should contain 'InterfaceA': {base_classes[0]}"
 
 
+@pytest.fixture
+def embedded_type_param_project(tmp_path):
+    """
+    Create a test project where type-parameter-D-I appears embedded inside
+    a complex dependent type expression (not as the entire base class).
+
+    This tests the case where a template class inherits from a type that
+    uses its template parameter inside a nested template expression, e.g.:
+        ChainResolver<BaseParam, WithStyleProps>::Type
+    libclang canonical spelling produces:
+        typename ChainResolverDetails<type-parameter-0-0, WithStyleProps>::Type
+    We need to replace 'type-parameter-0-0' with 'BaseParam'.
+    """
+    header = tmp_path / "chain_resolver.h"
+    header.write_text('''
+#ifndef CHAIN_RESOLVER_H
+#define CHAIN_RESOLVER_H
+
+namespace testns {
+
+namespace Details {
+
+template <typename Base, template <typename> typename FirstMixin,
+          template <typename> typename... RestMixins>
+struct ChainResolverDetails
+{
+    using Type = typename ChainResolverDetails<FirstMixin<Base>,
+                                                RestMixins...>::Type;
+};
+
+template <typename Base, template <typename> typename Mixin>
+struct ChainResolverDetails<Base, Mixin>
+{
+    using Type = Mixin<Base>;
+};
+
+} // namespace Details
+
+template <typename Base, template <typename> typename... Mixins>
+using ChainResolver = typename Details::ChainResolverDetails<Base, Mixins...>::Type;
+
+template <typename T>
+struct WithStyleProps : public T
+{
+    int style_flags = 0;
+};
+
+class NodeWithChildren {
+public:
+    virtual ~NodeWithChildren() = default;
+};
+
+template <typename BaseParam>
+class ComposedWidget : public ChainResolver<BaseParam, WithStyleProps>,
+                       public NodeWithChildren
+{
+public:
+    void widget_method() {}
+};
+
+struct BasicConfig
+{
+    int config_value = 0;
+};
+
+class ConcreteWidget : public ComposedWidget<BasicConfig>
+{
+public:
+    void concrete_method() {}
+};
+
+} // namespace testns
+
+#endif
+''')
+
+    main = tmp_path / "main.cpp"
+    main.write_text('''
+#include "chain_resolver.h"
+
+int main() {
+    testns::ConcreteWidget w;
+    w.concrete_method();
+    return 0;
+}
+''')
+
+    compile_commands = tmp_path / "compile_commands.json"
+    compile_commands.write_text(json.dumps([
+        {
+            "directory": str(tmp_path),
+            "command": "/usr/bin/c++ -std=c++17 -I. -c chain_resolver.h -o chain_resolver.h.o",
+            "file": "chain_resolver.h",
+        },
+        {
+            "directory": str(tmp_path),
+            "command": "/usr/bin/c++ -std=c++17 -I. -c main.cpp -o main.o",
+            "file": "main.cpp",
+        },
+    ], indent=2))
+
+    return tmp_path
+
+
+@pytest.fixture
+def embedded_type_param_analyzer(embedded_type_param_project):
+    """Create and index embedded type-parameter test project."""
+    analyzer = CppAnalyzer(project_root=str(embedded_type_param_project))
+    analyzer.index_project(force=True)
+    return analyzer
+
+
+class TestEmbeddedTypeParameterSubstitution:
+    """
+    Tests for embedded type-parameter-D-I substitution in base class strings.
+
+    When a template class inherits from a complex dependent type that contains
+    template parameters (e.g., ChainResolver<BaseParam, ...>::Type), libclang's
+    canonical type spelling uses positional names like 'type-parameter-0-0'
+    instead of the declared parameter name 'BaseParam'. These tests verify that
+    embedded occurrences are replaced with actual parameter names.
+    """
+
+    def test_embedded_type_param_replaced_in_base_class(self, embedded_type_param_analyzer):
+        """
+        Test that type-parameter-0-0 embedded inside a dependent type is replaced.
+
+        ComposedWidget<BaseParam> has base:
+            ChainResolver<BaseParam, WithStyleProps> which resolves to
+            typename ChainResolverDetails<type-parameter-0-0, WithStyleProps>::Type
+        After fix, should show 'BaseParam' instead of 'type-parameter-0-0'.
+        """
+        results = embedded_type_param_analyzer.search_classes("ComposedWidget")
+
+        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        assert primary is not None, "Should find primary template ComposedWidget"
+
+        base_classes = primary.get('base_classes', [])
+        assert len(base_classes) == 2, f"Should have 2 base classes, got {base_classes}"
+
+        # Find the dependent type base (the one with ChainResolverDetails)
+        dependent_base = next(
+            (b for b in base_classes if 'ChainResolverDetails' in b or 'BaseParam' in b),
+            None
+        )
+
+        # Verify no type-parameter-X-Y remnants in any base class
+        for bc in base_classes:
+            assert 'type-parameter-' not in bc, \
+                f"Base class should not contain 'type-parameter-': {bc}"
+
+        # If we found the dependent type base, verify it contains BaseParam
+        if dependent_base:
+            assert 'BaseParam' in dependent_base, \
+                f"Dependent base should contain 'BaseParam': {dependent_base}"
+
+    def test_non_dependent_base_unaffected(self, embedded_type_param_analyzer):
+        """
+        Test that non-dependent base classes (like NodeWithChildren) are unaffected.
+        """
+        results = embedded_type_param_analyzer.search_classes("ComposedWidget")
+
+        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        assert primary is not None
+
+        base_classes = primary.get('base_classes', [])
+
+        # NodeWithChildren should appear as a base class with its qualified name
+        node_base = next(
+            (b for b in base_classes if 'NodeWithChildren' in b),
+            None
+        )
+        assert node_base is not None, \
+            f"Should have NodeWithChildren as base class, got {base_classes}"
+
+    def test_concrete_class_has_resolved_bases(self, embedded_type_param_analyzer):
+        """
+        Test that ConcreteWidget (concrete class) has properly resolved bases.
+        """
+        results = embedded_type_param_analyzer.search_classes("ConcreteWidget")
+
+        impl = next((r for r in results if r['kind'] in ('class', 'struct')), None)
+        assert impl is not None, "Should find ConcreteWidget"
+
+        base_classes = impl.get('base_classes', [])
+        assert len(base_classes) >= 1, f"Should have at least 1 base class, got {base_classes}"
+
+        # Verify no type-parameter remnants in concrete class bases
+        for bc in base_classes:
+            assert 'type-parameter-' not in bc, \
+                f"Concrete class base should not contain 'type-parameter-': {bc}"
+
+
 class TestBaseClassResolutionFromIndex:
     """
     Tests for _resolve_instantiation_base_classes method.
