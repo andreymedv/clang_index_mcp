@@ -4696,6 +4696,7 @@ class CppAnalyzer:
                                 derived_classes.append(
                                     {
                                         "name": info.name,
+                                        "qualified_name": info.qualified_name,
                                         "kind": info.kind,
                                         "file": info.file,
                                         "line": info.line,
@@ -4813,6 +4814,7 @@ class CppAnalyzer:
         simple_name = SearchEngine._extract_simple_name(lookup_name)
 
         base_classes = []
+        qualified_name_resolved: Optional[str] = None
         with self.index_lock:
             infos = self.class_index.get(simple_name, [])
 
@@ -4833,6 +4835,11 @@ class CppAnalyzer:
                     if not SearchEngine.matches_qualified_pattern(info_qualified, lookup_name):
                         continue
                 base_classes.extend(info.base_classes)
+                # Capture qualified_name from the first matching info
+                if qualified_name_resolved is None:
+                    qualified_name_resolved = (
+                        info.qualified_name if info.qualified_name else info.name
+                    )
 
         base_classes = list(set(base_classes))
 
@@ -4841,7 +4848,11 @@ class CppAnalyzer:
         for base in base_classes:
             base_hierarchies.append(self._get_base_hierarchy(base, visited.copy()))
 
-        return {"name": class_name, "base_classes": base_hierarchies}
+        node: Dict[str, Any] = {"name": class_name}
+        if qualified_name_resolved is not None:
+            node["qualified_name"] = qualified_name_resolved
+        node["base_classes"] = base_hierarchies
+        return node
 
     def _get_derived_hierarchy(
         self, class_name: str, visited: Optional[Set[str]] = None
@@ -4855,15 +4866,31 @@ class CppAnalyzer:
 
         visited.add(class_name)
 
-        # Get derived classes
+        # Get derived classes (now includes qualified_name)
         derived = self.get_derived_classes(class_name, project_only=False)
 
-        # Recursively get hierarchy for each derived class
+        # Recursively get hierarchy for each derived class.
+        # Use qualified_name for recursion when available for accurate lookup.
         derived_hierarchies = []
         for d in derived:
-            derived_hierarchies.append(self._get_derived_hierarchy(d["name"], visited.copy()))
+            recurse_name = d.get("qualified_name") or d["name"]
+            derived_hierarchies.append(self._get_derived_hierarchy(recurse_name, visited.copy()))
 
-        return {"name": class_name, "derived_classes": derived_hierarchies}
+        # Resolve qualified_name for the current node
+        simple_name = SearchEngine._extract_simple_name(
+            SearchEngine._strip_template_args(class_name) if "<" in class_name else class_name
+        )
+        qualified_name_resolved: Optional[str] = None
+        with self.index_lock:
+            for info in self.class_index.get(simple_name, []):
+                qualified_name_resolved = info.qualified_name if info.qualified_name else info.name
+                break
+
+        node: Dict[str, Any] = {"name": class_name}
+        if qualified_name_resolved is not None:
+            node["qualified_name"] = qualified_name_resolved
+        node["derived_classes"] = derived_hierarchies
+        return node
 
     def find_callers(
         self, function_name: str, class_name: str = "", include_call_sites: bool = True
