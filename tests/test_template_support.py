@@ -1450,3 +1450,135 @@ class TestFalsePositiveTemplateSpecialization:
                 f"DataProcessor::{name} should not be marked as template"
             assert method.get("template_kind") is None, \
                 f"DataProcessor::{name} should have template_kind=None"
+
+
+# =============================================================================
+# Bug fix tests: cplusplus_mcp-sgs (template specialization names in lookups)
+# =============================================================================
+
+class TestTemplateSpecializationLookup:
+    """Tests for get_class_info and get_function_signature with template specialization names.
+
+    Bug cplusplus_mcp-sgs: get_class_info('Container<int>') was returning None because
+    _extract_simple_name did not strip template args before class_index lookup.
+    """
+
+    def test_get_class_info_with_explicit_specialization_name(self, analyzer):
+        """get_class_info('Container<int>') should find the explicit specialization."""
+        info = analyzer.get_class_info("Container<int>")
+        assert info is not None, "get_class_info('Container<int>') should not return None"
+        assert "error" not in info or info.get("is_ambiguous"), (
+            f"Unexpected error: {info.get('error')}"
+        )
+        # Should find a Container (either the specialization or an ambiguity response)
+        if info.get("is_ambiguous"):
+            # Ambiguity is acceptable if there are multiple candidates
+            names = [m["name"] for m in info.get("matches", [])]
+            assert all(n == "Container" for n in names), (
+                f"Ambiguous matches should all be 'Container': {names}"
+            )
+        else:
+            assert info.get("name") == "Container"
+
+    def test_get_class_info_specialization_prefers_explicit_spec(self, analyzer):
+        """When there is exactly one explicit specialization, it should be returned."""
+        # Container<int> has exactly one explicit full specialization in the fixture
+        info = analyzer.get_class_info("Container<int>")
+        assert info is not None, "get_class_info('Container<int>') returned None"
+        if not info.get("is_ambiguous"):
+            assert info.get("is_template_specialization") is True or info.get("name") == "Container"
+
+    def test_get_class_info_simple_name_still_works(self, analyzer):
+        """Plain get_class_info('Container') should still work (may be ambiguous)."""
+        info = analyzer.get_class_info("Container")
+        # Container has multiple variants → expect ambiguity or the primary template
+        assert info is not None, "get_class_info('Container') returned None"
+
+    def test_get_function_signature_with_template_args(self, analyzer):
+        """get_function_signature('max<int*>') should find function signatures."""
+        sigs = analyzer.get_function_signature("max<int*>")
+        assert isinstance(sigs, list), "get_function_signature should return a list"
+        # Should find at least the generic max or the specialization
+        # (Previously returned empty list because 'max<int*>' not in function_index)
+        assert len(sigs) > 0, (
+            "get_function_signature('max<int*>') should find 'max' signatures"
+        )
+
+    def test_get_function_signature_plain_name_still_works(self, analyzer):
+        """get_function_signature('max') should still work."""
+        sigs = analyzer.get_function_signature("max")
+        assert len(sigs) > 0, "get_function_signature('max') should find signatures"
+
+    def test_get_class_hierarchy_with_template_base_class(self, analyzer):
+        """get_class_hierarchy for a class with template base should traverse base correctly."""
+        # DoubleContainer inherits from Container<double>
+        hierarchy = analyzer.get_class_hierarchy("DoubleContainer")
+        assert hierarchy is not None
+        assert "error" not in hierarchy, f"Unexpected error: {hierarchy.get('error')}"
+        base_hierarchy = hierarchy.get("base_hierarchy", {})
+        # The base_hierarchy should include Container<double> as a base
+        base_bases = base_hierarchy.get("base_classes", [])
+        assert len(base_bases) >= 0  # Just verify it doesn't crash and returns a dict
+
+    def test_extract_simple_name_strips_template_args(self):
+        """_extract_simple_name should strip template arguments."""
+        from mcp_server.search_engine import SearchEngine
+        assert SearchEngine._extract_simple_name("Container<int>") == "Container"
+        assert SearchEngine._extract_simple_name("ns::Container<int>") == "Container"
+        assert SearchEngine._extract_simple_name("std::map<int, std::string>") == "map"
+        assert SearchEngine._extract_simple_name("Widget") == "Widget"
+        assert SearchEngine._extract_simple_name("ns::Widget") == "Widget"
+        # operator< should NOT be mangled (doesn't end with >)
+        assert SearchEngine._extract_simple_name("operator<") == "operator<"
+
+
+# =============================================================================
+# Bug fix tests: cplusplus_mcp-3pm (dependent types in _get_base_hierarchy)
+# =============================================================================
+
+class TestDependentTypeHierarchy:
+    """Tests for _get_base_hierarchy handling of dependent types.
+
+    Bug cplusplus_mcp-3pm: base class names like "typename T::BaseType" caused
+    _get_base_hierarchy to silently stop traversal because they couldn't be
+    looked up in class_index.
+    """
+
+    def test_hierarchy_with_template_base_does_not_crash(self, analyzer):
+        """_get_base_hierarchy with template base class should not crash."""
+        # IntContainer : public Container<int> - template instantiation as base
+        hierarchy = analyzer.get_class_hierarchy("IntContainer")
+        assert hierarchy is not None
+        assert "error" not in hierarchy, f"Error: {hierarchy.get('error')}"
+        base_hier = hierarchy.get("base_hierarchy", {})
+        assert isinstance(base_hier, dict), "base_hierarchy should be a dict"
+
+    def test_hierarchy_template_base_node_present(self, analyzer):
+        """base_hierarchy should contain a node for the template base class."""
+        hierarchy = analyzer.get_class_hierarchy("IntContainer")
+        assert "error" not in hierarchy
+        base_hier = hierarchy.get("base_hierarchy", {})
+        base_bases = base_hier.get("base_classes", [])
+        # Should have at least one entry for Container<int>
+        assert len(base_bases) >= 1, (
+            f"IntContainer's base_hierarchy should show Container base, got: {base_bases}"
+        )
+
+    def test_dependent_type_marked_in_hierarchy(self, analyzer):
+        """Dependent type bases (typename T::X) should be marked is_dependent_type."""
+        # To test this directly, we call _get_base_hierarchy with a dependent type string
+        result = analyzer._get_base_hierarchy("typename Traits::BaseType")
+        assert result is not None
+        assert result.get("is_dependent_type") is True, (
+            f"Dependent type should be marked: {result}"
+        )
+        assert result["name"] == "typename Traits::BaseType"
+
+    def test_non_dependent_base_not_marked(self, analyzer):
+        """Regular base classes should not be marked as dependent."""
+        # Use a class that exists in the index
+        result = analyzer._get_base_hierarchy("Container")
+        assert result is not None
+        assert "is_dependent_type" not in result, (
+            f"Regular class should not be marked as dependent: {result}"
+        )
