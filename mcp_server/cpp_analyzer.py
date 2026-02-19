@@ -4737,9 +4737,14 @@ class CppAnalyzer:
             return {"error": f"Class '{class_name}' not found"}
 
         # Get direct base classes from the class info
-        # class_index is keyed by simple name, so extract it from qualified input
-        is_qualified = "::" in class_name
-        simple_name = SearchEngine._extract_simple_name(class_name)
+        # class_index is keyed by simple name, so extract it from qualified input.
+        # Strip template arguments first since stored qualified_names don't include them.
+        has_template_args = "<" in class_name
+        lookup_name = (
+            SearchEngine._strip_template_args(class_name) if has_template_args else class_name
+        )
+        is_qualified = "::" in lookup_name
+        simple_name = SearchEngine._extract_simple_name(lookup_name)
 
         base_classes = []
         with self.index_lock:
@@ -4747,10 +4752,11 @@ class CppAnalyzer:
             for info in infos:
                 # If qualified name was provided, filter using qualified pattern matching
                 # This supports partially qualified names (e.g., "ns::MyClass"
-                # matches "outer::ns::MyClass")
+                # matches "outer::ns::MyClass").
+                # Use lookup_name (without template args) for matching.
                 if is_qualified:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not SearchEngine.matches_qualified_pattern(info_qualified, class_name):
+                    if not SearchEngine.matches_qualified_pattern(info_qualified, lookup_name):
                         continue
                 base_classes.extend(info.base_classes)
 
@@ -4784,21 +4790,47 @@ class CppAnalyzer:
 
         visited.add(class_name)
 
-        # Get base classes for this class
+        # Detect dependent types that cannot be resolved (e.g., "typename T::BaseType",
+        # "typename Details::Helper<T>::Type"). These are template-dependent names that
+        # require instantiation context to resolve. Mark them and stop recursing.
+        # A dependent type either starts with "typename " or has template args in the
+        # middle (i.e., "<...>" not at the end, indicating "Template<T>::NestedType").
+        is_dependent = class_name.startswith("typename ") or (
+            "<" in class_name and ">" in class_name and not class_name.endswith(">")
+        )
+        if is_dependent:
+            return {"name": class_name, "is_dependent_type": True}
+
+        # Strip template arguments for lookup: class_index uses names without template args.
+        # e.g., "Container<int>" → lookup "Container"
+        has_template_args = "<" in class_name
+        lookup_name = (
+            SearchEngine._strip_template_args(class_name) if has_template_args else class_name
+        )
+
         # class_index is keyed by simple name, so extract it from qualified input
-        is_qualified = "::" in class_name
-        simple_name = SearchEngine._extract_simple_name(class_name)
+        is_qualified = "::" in lookup_name
+        simple_name = SearchEngine._extract_simple_name(lookup_name)
 
         base_classes = []
         with self.index_lock:
             infos = self.class_index.get(simple_name, [])
+
+            # When template args are provided, prefer explicit specializations over
+            # the primary template to get the correct base classes for that specialization
+            if has_template_args and not is_qualified:
+                specializations = [i for i in infos if i.is_template_specialization]
+                if specializations:
+                    infos = specializations
+
             for info in infos:
                 # If qualified name was provided, filter using qualified pattern matching
                 # This supports partially qualified names (e.g., "ns::MyClass"
-                # matches "outer::ns::MyClass")
+                # matches "outer::ns::MyClass").
+                # Use lookup_name (without template args) for matching.
                 if is_qualified:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not SearchEngine.matches_qualified_pattern(info_qualified, class_name):
+                    if not SearchEngine.matches_qualified_pattern(info_qualified, lookup_name):
                         continue
                 base_classes.extend(info.base_classes)
 

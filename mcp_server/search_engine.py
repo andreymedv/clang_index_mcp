@@ -736,17 +736,39 @@ class SearchEngine:
             return list(self.file_index.get(file_path, []))
 
     @staticmethod
+    def _strip_template_args(name: str) -> str:
+        """Strip template argument suffix from a name.
+
+        Examples:
+            "Container<int>" → "Container"
+            "ns::Container<int>" → "ns::Container"
+            "std::map<int, std::string>" → "std::map"
+            "Widget" → "Widget" (unchanged)
+        """
+        idx = name.find("<")
+        if idx == -1:
+            return name
+        return name[:idx]
+
+    @staticmethod
     def _extract_simple_name(qualified_name: str) -> str:
-        """Extract simple name from qualified name.
+        """Extract simple name from qualified name, ignoring template arguments.
 
         Examples:
             "myapp::builders::Widget" → "Widget"
             "std::vector" → "vector"
+            "Container<int>" → "Container"
+            "ns::Container<int>" → "Container"
             "Widget" → "Widget" (already simple)
         """
-        if "::" not in qualified_name:
-            return qualified_name
-        return qualified_name.split("::")[-1]
+        name = qualified_name
+        # Strip template argument suffix: "Container<int>" → "Container"
+        # Guard with endswith(">") to avoid mangling "operator<" or "operator<="
+        if "<" in name and name.endswith(">"):
+            name = name[: name.index("<")]
+        if "::" not in name:
+            return name
+        return name.split("::")[-1]
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a class.
@@ -759,10 +781,15 @@ class SearchEngine:
             Class info dict or None if not found
         """
         with self.index_lock:
+            # Strip template arguments for lookup: class_index and qualified_names
+            # don't include template args (e.g., "Container<int>" → lookup "Container")
+            has_template_args = "<" in class_name
+            lookup_name = self._strip_template_args(class_name) if has_template_args else class_name
+
             # Handle both simple and qualified names
             # class_index is keyed by simple name, so extract it from qualified input
-            is_qualified = "::" in class_name
-            simple_name = self._extract_simple_name(class_name)
+            is_qualified = "::" in lookup_name
+            simple_name = self._extract_simple_name(lookup_name)
 
             # Try direct lookup first (fast path)
             infos = self.class_index.get(simple_name, [])
@@ -779,7 +806,9 @@ class SearchEngine:
 
             # If qualified name was provided, find match using qualified pattern matching
             # This supports partially qualified names (e.g., "builders::Widget"
-            # matches "myapp::builders::Widget")
+            # matches "myapp::builders::Widget").
+            # Use lookup_name (without template args) since stored qualified_names also
+            # don't include template args.
             info = None
             if is_qualified:
                 # Collect all matching candidates
@@ -788,7 +817,7 @@ class SearchEngine:
                     candidate_qualified = (
                         candidate.qualified_name if candidate.qualified_name else candidate.name
                     )
-                    if self.matches_qualified_pattern(candidate_qualified, class_name):
+                    if self.matches_qualified_pattern(candidate_qualified, lookup_name):
                         matching_candidates.append(candidate)
 
                 if not matching_candidates:
@@ -809,35 +838,64 @@ class SearchEngine:
             else:
                 # Check for ambiguity when using simple name
                 if len(infos) > 1:
-                    # Multiple classes with same simple name - ambiguous
-                    return {
-                        "error": f"Ambiguous class name '{class_name}'",
-                        "is_ambiguous": True,
-                        "matches": [
-                            {
-                                "name": m.name,
-                                "qualified_name": m.qualified_name if m.qualified_name else m.name,
-                                "namespace": m.namespace,
-                                "kind": m.kind,
-                                "file": m.file,
-                                "line": m.line,
+                    # When user provides template args (e.g., "Container<int>"),
+                    # prefer explicit specializations over the primary template
+                    if has_template_args:
+                        specializations = [c for c in infos if c.is_template_specialization]
+                        if len(specializations) == 1:
+                            info = specializations[0]
+                        elif len(specializations) > 1:
+                            return {
+                                "error": f"Ambiguous template specialization '{class_name}'",
+                                "is_ambiguous": True,
+                                "matches": [
+                                    {
+                                        "name": m.name,
+                                        "qualified_name": (
+                                            m.qualified_name if m.qualified_name else m.name
+                                        ),
+                                        "namespace": m.namespace,
+                                        "kind": m.kind,
+                                        "file": m.file,
+                                        "line": m.line,
+                                    }
+                                    for m in specializations
+                                ],
+                                "suggestion": "Use qualified name to disambiguate",
                             }
-                            for m in infos
-                        ],
-                        "suggestion": "Use qualified name to disambiguate",
-                    }
 
-                # Apply definition-wins logic: prefer richest definition
-                # (Fix for cplusplus_mcp-2u9, cplusplus_mcp-5tl)
-                info = None
-                for candidate in infos:
-                    if candidate.is_definition:
-                        if info is None or is_richer_definition(candidate, info):
-                            info = candidate
+                    if info is None:
+                        # Multiple classes with same simple name - ambiguous
+                        return {
+                            "error": f"Ambiguous class name '{class_name}'",
+                            "is_ambiguous": True,
+                            "matches": [
+                                {
+                                    "name": m.name,
+                                    "qualified_name": (
+                                        m.qualified_name if m.qualified_name else m.name
+                                    ),
+                                    "namespace": m.namespace,
+                                    "kind": m.kind,
+                                    "file": m.file,
+                                    "line": m.line,
+                                }
+                                for m in infos
+                            ],
+                            "suggestion": "Use qualified name to disambiguate",
+                        }
 
-                # Fall back to first match if no definition found
                 if info is None:
-                    info = infos[0]
+                    # Apply definition-wins logic: prefer richest definition
+                    # (Fix for cplusplus_mcp-2u9, cplusplus_mcp-5tl)
+                    for candidate in infos:
+                        if candidate.is_definition:
+                            if info is None or is_richer_definition(candidate, info):
+                                info = candidate
+
+                    # Fall back to first match if no definition found
+                    if info is None:
+                        info = infos[0]
 
             # For method lookup, we need to match parent_class
             # parent_class is stored as simple name (from cursor.spelling)
@@ -939,9 +997,16 @@ class SearchEngine:
         """
         signatures = []
 
+        # Strip template arguments for lookup: function_index uses names without template args
+        # e.g., "max<int*>" → lookup "max", "ns::Class::foo<T>" → "foo"
+        has_template_args = "<" in function_name
+        lookup_name = (
+            self._strip_template_args(function_name) if has_template_args else function_name
+        )
+
         # function_index is keyed by simple name, so extract it from qualified input
-        is_qualified = "::" in function_name
-        simple_name = self._extract_simple_name(function_name)
+        is_qualified = "::" in lookup_name
+        simple_name = self._extract_simple_name(lookup_name)
 
         # Normalize class_name: extract simple name from qualified name
         # parent_class is stored as simple name
@@ -961,10 +1026,12 @@ class SearchEngine:
             for info in infos:
                 # If qualified name was provided, filter using qualified pattern matching
                 # This supports partially qualified names (e.g., "MyClass::foo"
-                # matches "ns::MyClass::foo")
+                # matches "ns::MyClass::foo").
+                # Use lookup_name (without template args) since stored qualified_names
+                # also don't include template args.
                 if is_qualified:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not self.matches_qualified_pattern(info_qualified, function_name):
+                    if not self.matches_qualified_pattern(info_qualified, lookup_name):
                         continue
                 # Match by parent_class or qualified_name prefix for class filtering
                 if class_name is not None:
