@@ -1161,3 +1161,105 @@ class TestCrossToolWorkflows:
             f"Base count mismatch: info has {len(info_bases)}, "
             f"hierarchy has {len(hier_bases)}"
         )
+
+
+# =============================================================================
+# TEST: Qualified name in hierarchy nodes (cplusplus_mcp-4gv, cplusplus_mcp-5tv)
+# =============================================================================
+
+class TestHierarchyQualifiedNames:
+    """Verify that hierarchy nodes include qualified_name fields."""
+
+    def test_get_derived_classes_has_qualified_name(self, analyzer):
+        """get_derived_classes entries must include qualified_name."""
+        derived = analyzer.get_derived_classes("inheritance_test::SingleBase")
+        assert len(derived) > 0, "Expected at least one derived class"
+        for d in derived:
+            assert "qualified_name" in d, (
+                f"derived class entry missing 'qualified_name': {d}"
+            )
+            # qualified_name should be fully qualified (include namespace)
+            qname = d["qualified_name"]
+            assert "::" in qname, (
+                f"qualified_name should include namespace, got '{qname}'"
+            )
+
+    def test_get_derived_classes_qualified_name_matches_name(self, analyzer):
+        """qualified_name should end with the simple class name."""
+        derived = analyzer.get_derived_classes("inheritance_test::SingleBase")
+        for d in derived:
+            name = d["name"]
+            qname = d["qualified_name"]
+            assert qname.endswith(name) or qname == name, (
+                f"qualified_name '{qname}' should end with simple name '{name}'"
+            )
+
+    def test_base_hierarchy_nodes_have_qualified_name(self, analyzer):
+        """_get_base_hierarchy nodes should include qualified_name when resolvable."""
+        hierarchy = analyzer.get_class_hierarchy("inheritance_test::SingleDerived")
+        assert hierarchy is not None and "error" not in hierarchy
+
+        base_hier = hierarchy.get("base_hierarchy", {})
+        # The top-level node should have qualified_name
+        assert "qualified_name" in base_hier, (
+            f"base_hierarchy root node missing 'qualified_name': {base_hier}"
+        )
+        # qualified_name should be fully qualified
+        assert "::" in base_hier["qualified_name"], (
+            f"base_hierarchy node qualified_name should include namespace: "
+            f"{base_hier['qualified_name']}"
+        )
+        # Recurse into base_classes nodes
+        for child in base_hier.get("base_classes", []):
+            if not child.get("is_dependent_type") and not child.get("circular_reference"):
+                assert "qualified_name" in child, (
+                    f"base_hierarchy child node missing 'qualified_name': {child}"
+                )
+
+    def test_derived_hierarchy_nodes_have_qualified_name(self, analyzer):
+        """_get_derived_hierarchy nodes should include qualified_name when resolvable."""
+        hierarchy = analyzer.get_class_hierarchy("inheritance_test::SingleBase")
+        assert hierarchy is not None and "error" not in hierarchy
+
+        derived_hier = hierarchy.get("derived_hierarchy", {})
+        # The top-level node should have qualified_name
+        assert "qualified_name" in derived_hier, (
+            f"derived_hierarchy root node missing 'qualified_name': {derived_hier}"
+        )
+        # Check derived_classes nodes
+        for child in derived_hier.get("derived_classes", []):
+            if not child.get("circular_reference"):
+                assert "qualified_name" in child, (
+                    f"derived_hierarchy child node missing 'qualified_name': {child}"
+                )
+
+    def test_base_hierarchy_multi_level_qualified_names(self, analyzer):
+        """Deep hierarchies should have qualified_name at all resolvable levels."""
+        hierarchy = analyzer.get_class_hierarchy("inheritance_test::DeepE")
+        assert hierarchy is not None and "error" not in hierarchy
+
+        def check_nodes(node: dict, depth: int = 0):
+            if node.get("is_dependent_type") or node.get("circular_reference"):
+                return
+            assert "qualified_name" in node, (
+                f"Missing qualified_name at depth {depth}: {node}"
+            )
+            for child in node.get("base_classes", []):
+                check_nodes(child, depth + 1)
+
+        check_nodes(hierarchy.get("base_hierarchy", {}))
+
+    def test_derived_classes_qualified_name_usable_with_get_class_info(self, analyzer):
+        """qualified_name from get_derived_classes should work with get_class_info."""
+        derived = analyzer.get_derived_classes("inheritance_test::SingleBase")
+        assert len(derived) > 0
+
+        for d in derived:
+            qname = d["qualified_name"]
+            info = analyzer.get_class_info(qname)
+            assert info is not None, (
+                f"get_class_info('{qname}') returned None"
+            )
+            assert "error" not in info, (
+                f"get_class_info('{qname}') returned error: {info.get('error')}"
+            )
