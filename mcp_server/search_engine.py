@@ -937,8 +937,8 @@ class SearchEngine:
 
         def _method_sort_line(m: Dict[str, Any]) -> int:
             """Extract line number for sorting from declaration or definition."""
-            loc = m.get("declaration") or m.get("definition") or {}
-            return loc.get("line", 0)
+            loc: Dict[str, Any] = m.get("declaration") or m.get("definition") or {}
+            return int(loc.get("line", 0))
 
         return {
             "name": info.name,
