@@ -17,7 +17,7 @@ import gc
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Callable
-from collections import defaultdict
+from collections import defaultdict, deque
 import hashlib
 import json
 from .symbol_info import CLASS_KINDS, SymbolInfo, build_location_objects, is_richer_definition
@@ -4704,179 +4704,156 @@ class CppAnalyzer:
 
     def get_class_hierarchy(self, class_name: str) -> Dict[str, Any]:
         """
-        Get the complete inheritance hierarchy for a class.
+        Get the complete inheritance graph for a class as a flat adjacency list.
+
+        Performs BFS starting from the queried class, exploring both base (upward)
+        and derived (downward) edges from every discovered node. Returns the entire
+        connected component of the inheritance graph, so diamond inheritance,
+        multiple inheritance, and cross-hierarchy relationships are all captured
+        without duplication.
 
         Args:
-            class_name: Name of the class to analyze
+            class_name: Name of the class to analyze (simple or qualified)
 
         Returns:
             Dictionary containing:
-            - name: The class name
-            - class_info: Information about the class itself
-            - base_classes: Direct base classes
-            - derived_classes: Direct derived classes
-            - base_hierarchy: Complete base class hierarchy tree (recursive)
-            - derived_hierarchy: Complete derived class hierarchy tree (recursive)
+            - queried_class: Canonical qualified name of the queried class
+            - classes: Flat dict keyed by qualified name. Each entry has:
+                - name: Simple class name
+                - qualified_name: Fully qualified name (same as dict key)
+                - kind: Class kind (class, struct, class_template, etc.)
+                - is_project: Whether the class is from project files
+                - base_classes: List of qualified names (keys into 'classes')
+                - derived_classes: List of qualified names (keys into 'classes')
+                - is_unresolved: True if not found in index (external lib class)
+                - is_dependent_type: True if template-dependent (typename T::X)
         """
-        # Get the class info
-        class_info = self.get_class_info(class_name)
-        if not class_info:
+
+        # --- Helper: resolve a raw base-class name to a canonical key ---
+        def resolve_base_key(raw: str) -> str:
+            is_dependent = raw.startswith("typename ") or (
+                "<" in raw and ">" in raw and not raw.endswith(">")
+            )
+            if is_dependent:
+                return raw
+            has_targs = "<" in raw
+            lookup = SearchEngine._strip_template_args(raw) if has_targs else raw
+            is_qual = "::" in lookup
+            simple = SearchEngine._extract_simple_name(lookup)
+            with self.index_lock:
+                infos = self.class_index.get(simple, [])
+                for info in infos:
+                    if is_qual:
+                        info_qn = info.qualified_name if info.qualified_name else info.name
+                        if not SearchEngine.matches_qualified_pattern(info_qn, lookup):
+                            continue
+                    qn = info.qualified_name if info.qualified_name else info.name
+                    return qn  # canonical key is bare qualified name (no template args)
+            return raw
+
+        # --- Helper: look up SymbolInfo objects for a name/key ---
+        def lookup_infos(key: str) -> List:
+            has_targs = "<" in key
+            lookup = SearchEngine._strip_template_args(key) if has_targs else key
+            is_qual = "::" in lookup
+            simple = SearchEngine._extract_simple_name(lookup)
+            with self.index_lock:
+                infos = list(self.class_index.get(simple, []))
+            if is_qual:
+                infos = [
+                    i
+                    for i in infos
+                    if SearchEngine.matches_qualified_pattern(
+                        i.qualified_name if i.qualified_name else i.name, lookup
+                    )
+                ]
+            if has_targs and not is_qual:
+                specs = [i for i in infos if i.is_template_specialization]
+                if specs:
+                    infos = specs
+            return infos
+
+        # --- Phase 1: resolve the start class ---
+        start_infos = lookup_infos(class_name)
+        if not start_infos:
             return {"error": f"Class '{class_name}' not found"}
 
-        # Get direct base classes from the class info
-        # class_index is keyed by simple name, so extract it from qualified input.
-        # Strip template arguments first since stored qualified_names don't include them.
-        has_template_args = "<" in class_name
-        lookup_name = (
-            SearchEngine._strip_template_args(class_name) if has_template_args else class_name
-        )
-        is_qualified = "::" in lookup_name
-        simple_name = SearchEngine._extract_simple_name(lookup_name)
+        start_info = start_infos[0]
+        start_key = start_info.qualified_name if start_info.qualified_name else start_info.name
 
-        base_classes = []
-        with self.index_lock:
-            infos = self.class_index.get(simple_name, [])
-            for info in infos:
-                # If qualified name was provided, filter using qualified pattern matching
-                # This supports partially qualified names (e.g., "ns::MyClass"
-                # matches "outer::ns::MyClass").
-                # Use lookup_name (without template args) for matching.
-                if is_qualified:
-                    info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not SearchEngine.matches_qualified_pattern(info_qualified, lookup_name):
-                        continue
-                base_classes.extend(info.base_classes)
+        # --- Phase 2: BFS over the inheritance graph ---
+        classes: Dict[str, Any] = {}
+        visited: Set[str] = set()
+        queue: deque = deque([start_key])
 
-        # Remove duplicates
-        base_classes = list(set(base_classes))
+        while queue:
+            current = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
 
-        # Get derived classes
-        derived_classes = self.get_derived_classes(class_name)
+            infos = lookup_infos(current)
+            if not infos:
+                # Unresolved: external lib or template-dependent name
+                is_dep = current.startswith("typename ") or (
+                    "<" in current and ">" in current and not current.endswith(">")
+                )
+                raw_simple = current.split("::")[-1].split("<")[0] if "::" in current else current
+                node: Dict[str, Any] = {
+                    "name": raw_simple,
+                    "qualified_name": current,
+                    "kind": "unknown",
+                    "is_project": False,
+                    "base_classes": [],
+                    "derived_classes": [],
+                }
+                if is_dep:
+                    node["is_dependent_type"] = True
+                else:
+                    node["is_unresolved"] = True
+                classes[current] = node
+                continue
 
-        # Build the hierarchy
-        hierarchy = {
-            "name": class_name,
-            "class_info": class_info,
-            "base_classes": base_classes,
-            "derived_classes": derived_classes,
-            "base_hierarchy": self._get_base_hierarchy(class_name),
-            "derived_hierarchy": self._get_derived_hierarchy(class_name),
+            info = infos[0]
+            info_key = info.qualified_name if info.qualified_name else info.name
+
+            # Resolve raw base class names to canonical keys (dedup, preserve order)
+            base_keys: List[str] = []
+            seen_base: Set[str] = set()
+            for raw_base in info.base_classes:
+                bk = resolve_base_key(raw_base)
+                if bk not in seen_base:
+                    seen_base.add(bk)
+                    base_keys.append(bk)
+
+            # Get derived classes for this node
+            derived = self.get_derived_classes(info_key, project_only=False)
+            derived_keys: List[str] = []
+            seen_derived: Set[str] = set()
+            for d in derived:
+                dk = d.get("qualified_name") or d["name"]
+                if dk not in seen_derived:
+                    seen_derived.add(dk)
+                    derived_keys.append(dk)
+
+            classes[info_key] = {
+                "name": info.name,
+                "qualified_name": info_key,
+                "kind": info.kind,
+                "is_project": info.is_project,
+                "base_classes": base_keys,
+                "derived_classes": derived_keys,
+            }
+
+            # Enqueue unvisited neighbors in both directions
+            for neighbor in base_keys + derived_keys:
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        return {
+            "queried_class": start_key,
+            "classes": classes,
         }
-
-        return hierarchy
-
-    def _get_base_hierarchy(
-        self, class_name: str, visited: Optional[Set[str]] = None
-    ) -> Dict[str, Any]:
-        """Recursively get base class hierarchy"""
-        if visited is None:
-            visited = set()
-
-        if class_name in visited:
-            return {"name": class_name, "circular_reference": True}
-
-        visited.add(class_name)
-
-        # Detect dependent types that cannot be resolved (e.g., "typename T::BaseType",
-        # "typename Details::Helper<T>::Type"). These are template-dependent names that
-        # require instantiation context to resolve. Mark them and stop recursing.
-        # A dependent type either starts with "typename " or has template args in the
-        # middle (i.e., "<...>" not at the end, indicating "Template<T>::NestedType").
-        is_dependent = class_name.startswith("typename ") or (
-            "<" in class_name and ">" in class_name and not class_name.endswith(">")
-        )
-        if is_dependent:
-            return {"name": class_name, "is_dependent_type": True}
-
-        # Strip template arguments for lookup: class_index uses names without template args.
-        # e.g., "Container<int>" → lookup "Container"
-        has_template_args = "<" in class_name
-        lookup_name = (
-            SearchEngine._strip_template_args(class_name) if has_template_args else class_name
-        )
-
-        # class_index is keyed by simple name, so extract it from qualified input
-        is_qualified = "::" in lookup_name
-        simple_name = SearchEngine._extract_simple_name(lookup_name)
-
-        base_classes = []
-        qualified_name_resolved: Optional[str] = None
-        with self.index_lock:
-            infos = self.class_index.get(simple_name, [])
-
-            # When template args are provided, prefer explicit specializations over
-            # the primary template to get the correct base classes for that specialization
-            if has_template_args and not is_qualified:
-                specializations = [i for i in infos if i.is_template_specialization]
-                if specializations:
-                    infos = specializations
-
-            for info in infos:
-                # If qualified name was provided, filter using qualified pattern matching
-                # This supports partially qualified names (e.g., "ns::MyClass"
-                # matches "outer::ns::MyClass").
-                # Use lookup_name (without template args) for matching.
-                if is_qualified:
-                    info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not SearchEngine.matches_qualified_pattern(info_qualified, lookup_name):
-                        continue
-                base_classes.extend(info.base_classes)
-                # Capture qualified_name from the first matching info
-                if qualified_name_resolved is None:
-                    qualified_name_resolved = (
-                        info.qualified_name if info.qualified_name else info.name
-                    )
-
-        base_classes = list(set(base_classes))
-
-        # Recursively get hierarchy for each base class
-        base_hierarchies = []
-        for base in base_classes:
-            base_hierarchies.append(self._get_base_hierarchy(base, visited.copy()))
-
-        node: Dict[str, Any] = {"name": class_name}
-        if qualified_name_resolved is not None:
-            node["qualified_name"] = qualified_name_resolved
-        node["base_classes"] = base_hierarchies
-        return node
-
-    def _get_derived_hierarchy(
-        self, class_name: str, visited: Optional[Set[str]] = None
-    ) -> Dict[str, Any]:
-        """Recursively get derived class hierarchy"""
-        if visited is None:
-            visited = set()
-
-        if class_name in visited:
-            return {"name": class_name, "circular_reference": True}
-
-        visited.add(class_name)
-
-        # Get derived classes (now includes qualified_name)
-        derived = self.get_derived_classes(class_name, project_only=False)
-
-        # Recursively get hierarchy for each derived class.
-        # Use qualified_name for recursion when available for accurate lookup.
-        derived_hierarchies = []
-        for d in derived:
-            recurse_name = d.get("qualified_name") or d["name"]
-            derived_hierarchies.append(self._get_derived_hierarchy(recurse_name, visited.copy()))
-
-        # Resolve qualified_name for the current node
-        simple_name = SearchEngine._extract_simple_name(
-            SearchEngine._strip_template_args(class_name) if "<" in class_name else class_name
-        )
-        qualified_name_resolved: Optional[str] = None
-        with self.index_lock:
-            for info in self.class_index.get(simple_name, []):
-                qualified_name_resolved = info.qualified_name if info.qualified_name else info.name
-                break
-
-        node: Dict[str, Any] = {"name": class_name}
-        if qualified_name_resolved is not None:
-            node["qualified_name"] = qualified_name_resolved
-        node["derived_classes"] = derived_hierarchies
-        return node
 
     def find_callers(
         self, function_name: str, class_name: str = "", include_call_sites: bool = True

@@ -223,12 +223,23 @@ class MoreDerived : public Derived {};
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        # Get class hierarchy
+        # Get class hierarchy (flat adjacency list format)
         hierarchy = analyzer.get_class_hierarchy("Derived")
         assert hierarchy is not None
-        assert hierarchy["name"] == "Derived"
-        assert "base_hierarchy" in hierarchy
-        assert "derived_hierarchy" in hierarchy
+        assert "error" not in hierarchy
+        assert "queried_class" in hierarchy
+        assert "classes" in hierarchy
+        # Queried class node should be present in the flat dict
+        qname = hierarchy["queried_class"]
+        assert qname in hierarchy["classes"]
+        node = hierarchy["classes"][qname]
+        assert node["name"] == "Derived"
+        # Should have Base as a base class and MoreDerived as a derived class
+        assert len(node["base_classes"]) > 0
+        assert len(node["derived_classes"]) > 0
+        # All referenced classes should be present in the flat dict
+        for ref in node["base_classes"] + node["derived_classes"]:
+            assert ref in hierarchy["classes"], f"Referenced class '{ref}' missing from classes"
 
     def test_get_derived_classes_tool(self, temp_project_dir):
         """Test get_derived_classes functionality"""

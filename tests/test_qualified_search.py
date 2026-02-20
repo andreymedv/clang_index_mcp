@@ -586,10 +586,16 @@ namespace outer {
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
 
-            # Partially qualified
+            # Partially qualified - flat adjacency list format
             hierarchy = analyzer.get_class_hierarchy("inner::Derived")
             assert "error" not in hierarchy
-            assert hierarchy["name"] == "inner::Derived"
+            assert "queried_class" in hierarchy
+            assert "classes" in hierarchy
+            # queried_class should be the canonical qualified name
+            qname = hierarchy["queried_class"]
+            assert qname in hierarchy["classes"]
+            node = hierarchy["classes"][qname]
+            assert node["name"] == "Derived"
 
     def test_case_insensitive_partially_qualified(self):
         """Partially qualified matching should be case-insensitive."""
