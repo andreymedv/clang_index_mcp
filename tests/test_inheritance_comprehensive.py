@@ -700,9 +700,9 @@ class TestExternTemplate:
         """Extern template instantiation ExternParamInherit<ExternBase> should have
         resolved base_classes via post-indexing deferred resolution."""
         results = analyzer.search_classes("ExternParamInherit")
-        # Look for the explicit instantiation (is_template_specialization=True)
+        # Look for the explicit instantiation (template_kind == "full_specialization")
         for r in results:
-            if r.get("is_template_specialization"):
+            if r.get("template_kind") in ("full_specialization", "partial_specialization"):
                 bases = r.get("base_classes", [])
                 assert len(bases) > 0, (
                     f"Explicit instantiation should have resolved bases, got {bases}"
@@ -713,7 +713,10 @@ class TestExternTemplate:
     def test_case39_multiple_extern_instantiations(self, analyzer):
         """Multiple extern instantiations of same template each get correct bases."""
         results = analyzer.search_classes("ExternParamInherit")
-        specs = [r for r in results if r.get("is_template_specialization")]
+        specs = [
+            r for r in results
+            if r.get("template_kind") in ("full_specialization", "partial_specialization")
+        ]
         # We should find at least the ExternBase, ExternBase2, ExternBase3 instantiations
         resolved_bases = set()
         for spec in specs:
@@ -728,7 +731,10 @@ class TestExternTemplate:
     def test_case41_extern_mixed_fixed_and_param_bases(self, analyzer):
         """ExternMixedInherit<ExternBase> should have both T-resolved and fixed bases."""
         results = analyzer.search_classes("ExternMixedInherit")
-        specs = [r for r in results if r.get("is_template_specialization")]
+        specs = [
+            r for r in results
+            if r.get("template_kind") in ("full_specialization", "partial_specialization")
+        ]
         assert len(specs) > 0, "Should find ExternMixedInherit specialization"
         for spec in specs:
             bases = base_names(spec.get("base_classes", []))
@@ -752,7 +758,7 @@ class TestSpecialization:
         results = analyzer.search_classes("SpecPrimary")
         primary = None
         for r in results:
-            if r["name"] == "SpecPrimary" and not r.get("is_template_specialization"):
+            if r["name"] == "SpecPrimary" and r.get("template_kind") not in ("full_specialization", "partial_specialization"):
                 primary = r
                 break
         if primary:
@@ -765,7 +771,7 @@ class TestSpecialization:
         """SpecPrimary<int> specialization inherits from SpecBaseB."""
         results = analyzer.search_classes("SpecPrimary")
         for r in results:
-            if r.get("is_template_specialization"):
+            if r.get("template_kind") in ("full_specialization", "partial_specialization"):
                 bases = base_names(r.get("base_classes", []))
                 if "SpecBaseB" in bases:
                     return  # Found the int specialization with correct base
@@ -775,7 +781,7 @@ class TestSpecialization:
         """SpecExtraBases<double> has both SpecBaseA and SpecBaseB."""
         results = analyzer.search_classes("SpecExtraBases")
         for r in results:
-            if r.get("is_template_specialization"):
+            if r.get("template_kind") in ("full_specialization", "partial_specialization"):
                 bases = base_names(r.get("base_classes", []))
                 if "SpecBaseA" in bases and "SpecBaseB" in bases:
                     return

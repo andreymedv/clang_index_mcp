@@ -85,26 +85,34 @@ class TestTemplateIndexing:
             "Explicit specializations should have ># in USR"
 
     def test_class_specialization_has_is_template_specialization_flag(self, analyzer):
-        """Test that class template specializations have is_template_specialization=True."""
+        """Test that class template specializations have template_kind='full_specialization'.
+
+        Note: is_template_specialization was removed as redundant.
+        Use template_kind in ('full_specialization', 'partial_specialization') instead.
+        """
         results = analyzer.search_classes("Container")
 
-        # Find explicit specializations (kind='class' with template_kind='full_specialization')
+        # Find explicit specializations via template_kind
         specializations = [
             r for r in results
-            if r['kind'] == 'class' and r.get('template_kind') == 'full_specialization'
+            if r.get("template_kind") in ("full_specialization", "partial_specialization")
         ]
         assert len(specializations) > 0, "Should find at least one class specialization"
 
-        # Verify is_template_specialization is True for all specializations
+        # Verify removed fields are absent
         for spec in specializations:
-            assert spec.get('is_template_specialization') is True, \
-                f"Class specialization should have is_template_specialization=True: {spec}"
+            assert "is_template_specialization" not in spec, (
+                "is_template_specialization was removed; use template_kind"
+            )
+            assert "is_template" not in spec, (
+                "is_template was removed; use template_kind != null"
+            )
 
-        # Verify primary template does NOT have is_template_specialization=True
-        primary = next((r for r in results if r['kind'] == 'class_template'), None)
+        # Verify primary template is NOT a specialization
+        primary = next((r for r in results if r.get("template_kind") == "class_template"), None)
         if primary:
-            assert primary.get('is_template_specialization') is not True, \
-                "Primary template should not have is_template_specialization=True"
+            assert primary.get("template_kind") not in ("full_specialization", "partial_specialization"), \
+                "Primary template should not be a specialization"
 
 
 class TestTemplateSpecializationDiscovery:
@@ -578,7 +586,9 @@ class TestAdvancedTemplatePatterns:
         template = next((r for r in results if r['kind'] == 'class_template'), None)
 
         assert template is not None, "Should find Vector template"
-        assert template.get('is_template') is True
+        assert template.get('template_kind') is not None, (
+            "Template should have non-null template_kind (is_template removed as redundant)"
+        )
 
         import json
         params = json.loads(template['template_parameters'])
@@ -591,7 +601,9 @@ class TestAdvancedTemplatePatterns:
         outer = next((r for r in results if r['kind'] == 'class_template'), None)
 
         assert outer is not None, "Should find Outer template"
-        assert outer.get('is_template') is True
+        assert outer.get('template_kind') is not None, (
+            "Template should have non-null template_kind (is_template removed as redundant)"
+        )
 
         # Inner should also be indexed
         inner_results = analyzer.search_classes("Inner")
@@ -1430,7 +1442,7 @@ class TestFalsePositiveTemplateSpecialization:
         results = analyzer.search_functions("multiply")
         specializations = [
             r for r in results
-            if r.get("is_template_specialization") is True
+            if r.get("template_kind") in ("full_specialization", "partial_specialization")
         ]
         assert len(specializations) > 0, \
             "Real function template specializations should still be detected"
@@ -1486,7 +1498,7 @@ class TestTemplateSpecializationLookup:
         info = analyzer.get_class_info("Container<int>")
         assert info is not None, "get_class_info('Container<int>') returned None"
         if not info.get("is_ambiguous"):
-            assert info.get("is_template_specialization") is True or info.get("name") == "Container"
+            assert info.get("template_kind") in ("full_specialization", "partial_specialization") or info.get("name") == "Container"
 
     def test_get_class_info_simple_name_still_works(self, analyzer):
         """Plain get_class_info('Container') should still work (may be ambiguous)."""
