@@ -233,20 +233,25 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        # Get hierarchy for DerivedClass
+        # Get hierarchy for DerivedClass (flat adjacency list format)
         hierarchy = analyzer.get_class_hierarchy("DerivedClass")
 
         # Verify hierarchy was retrieved
-        assert "class_info" in hierarchy, "Should have class_info"
-        assert hierarchy['class_info']['name'] == "DerivedClass"
+        assert "queried_class" in hierarchy
+        assert "classes" in hierarchy
+        qname = hierarchy["queried_class"]
+        assert qname in hierarchy["classes"]
+        node = hierarchy["classes"][qname]
+        assert node["name"] == "DerivedClass"
 
-        # Verify base classes
-        assert "base_classes" in hierarchy
-        assert "BaseClass" in hierarchy['base_classes'], "Should show BaseClass as base"
+        # Verify base classes (list of canonical keys into classes dict)
+        base_keys = node.get("base_classes", [])
+        base_names = [hierarchy["classes"][k]["name"] for k in base_keys if k in hierarchy["classes"]]
+        assert "BaseClass" in base_names, "Should show BaseClass as base"
 
         # Verify derived classes
-        assert "derived_classes" in hierarchy
-        derived_names = [d['name'] for d in hierarchy['derived_classes']]
+        derived_keys = node.get("derived_classes", [])
+        derived_names = [hierarchy["classes"][k]["name"] for k in derived_keys if k in hierarchy["classes"]]
         assert "FurtherDerived" in derived_names, "Should show FurtherDerived as derived"
 
 
