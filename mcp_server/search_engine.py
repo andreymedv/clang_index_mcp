@@ -431,10 +431,8 @@ class SearchEngine:
                                 "kind": info.kind,
                                 "is_project": info.is_project,
                                 "base_classes": info.base_classes,
-                                # Phase 3: Overload metadata
-                                "is_template_specialization": info.is_template_specialization,
-                                # v13.0: Template tracking
-                                "is_template": info.is_template,
+                                # Template tracking (is_template and is_template_specialization
+                                # removed as redundant: derive from template_kind and specialization_of)
                                 "template_kind": info.template_kind,
                                 "template_parameters": info.template_parameters,
                                 "specialization_of": self._resolve_specialization_of(
@@ -522,10 +520,8 @@ class SearchEngine:
                 "signature": info.signature,
                 "is_project": info.is_project,
                 "parent_class": info.parent_class,
-                # Phase 3: Overload metadata
-                "is_template_specialization": info.is_template_specialization,
-                # v13.0: Template tracking
-                "is_template": info.is_template,
+                # Template tracking (is_template and is_template_specialization
+                # removed as redundant: derive from template_kind and specialization_of)
                 "template_kind": info.template_kind,
                 "template_parameters": info.template_parameters,
                 "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
@@ -912,10 +908,8 @@ class SearchEngine:
                             "name": func_info.name,
                             "signature": func_info.signature,
                             "access": func_info.access,
-                            # Phase 3: Overload metadata
-                            "is_template_specialization": func_info.is_template_specialization,
-                            # v13.0: Template tracking
-                            "is_template": func_info.is_template,
+                            # Template tracking (is_template and is_template_specialization
+                            # removed as redundant: derive from template_kind and specialization_of)
                             "template_kind": func_info.template_kind,
                             "template_parameters": func_info.template_parameters,
                             "specialization_of": self._resolve_specialization_of(
@@ -950,8 +944,7 @@ class SearchEngine:
             "methods": sorted(methods, key=_method_sort_line),
             "members": [],  # TODO: Implement member variable indexing
             "is_project": info.is_project,
-            # v13.0: Template tracking for class
-            "is_template": info.is_template,
+            # Template tracking (is_template removed as redundant: derive from template_kind)
             "template_kind": info.template_kind,
             "template_parameters": info.template_parameters,
             "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
