@@ -53,7 +53,8 @@ public:
         assert len(results) > 0, "SimpleClass should be found"
         assert results[0]['name'] == "SimpleClass"
         assert results[0]['kind'] == "class"
-        assert "test_class.cpp" in results[0]['file']
+        _loc = results[0].get("definition") or results[0].get("declaration") or {}
+        assert "test_class.cpp" in _loc['file']
 
     def test_basic_function_indexing(self, temp_project_dir):
         """Test indexing simple function definitions - Task 1.1.2"""

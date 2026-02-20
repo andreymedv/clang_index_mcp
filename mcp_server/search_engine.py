@@ -5,6 +5,7 @@ import threading
 from typing import Dict, List, Optional, Any, Tuple, Union, cast
 from .symbol_info import (
     SymbolInfo,
+    build_location_objects,
     get_template_param_base_indices,
     is_richer_definition,
 )
@@ -428,8 +429,6 @@ class SearchEngine:
                                 "qualified_name": info.qualified_name,  # Phase 2: Qualified name
                                 "namespace": info.namespace,  # Phase 2: Namespace portion
                                 "kind": info.kind,
-                                "file": info.file,
-                                "line": info.line,
                                 "is_project": info.is_project,
                                 "base_classes": info.base_classes,
                                 # Phase 3: Overload metadata
@@ -441,13 +440,8 @@ class SearchEngine:
                                 "specialization_of": self._resolve_specialization_of(
                                     info.primary_template_usr
                                 ),
-                                # Phase 1: Line ranges
-                                "start_line": info.start_line,
-                                "end_line": info.end_line,
-                                "header_file": info.header_file,
-                                "header_line": info.header_line,
-                                "header_start_line": info.header_start_line,
-                                "header_end_line": info.header_end_line,
+                                # Location objects (replaces flat file/line/start_line/end_line/header_*)
+                                **build_location_objects(info),
                                 # Phase 2: Documentation
                                 "brief": info.brief,
                                 "doc_comment": info.doc_comment,
@@ -525,8 +519,6 @@ class SearchEngine:
                 "qualified_name": info.qualified_name,  # Phase 2: Qualified name
                 "namespace": info.namespace,  # Phase 2: Namespace portion
                 "kind": info.kind,
-                "file": info.file,
-                "line": info.line,
                 "signature": info.signature,
                 "is_project": info.is_project,
                 "parent_class": info.parent_class,
@@ -537,13 +529,8 @@ class SearchEngine:
                 "template_kind": info.template_kind,
                 "template_parameters": info.template_parameters,
                 "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-                # Phase 1: Line ranges
-                "start_line": info.start_line,
-                "end_line": info.end_line,
-                "header_file": info.header_file,
-                "header_line": info.header_line,
-                "header_start_line": info.header_start_line,
-                "header_end_line": info.header_end_line,
+                # Location objects (replaces flat file/line/start_line/end_line/header_*)
+                **build_location_objects(info),
                 # Phase 5: Virtual/abstract indicators
                 "is_virtual": info.is_virtual,
                 "is_pure_virtual": info.is_pure_virtual,
@@ -925,7 +912,6 @@ class SearchEngine:
                             "name": func_info.name,
                             "signature": func_info.signature,
                             "access": func_info.access,
-                            "line": func_info.line,
                             # Phase 3: Overload metadata
                             "is_template_specialization": func_info.is_template_specialization,
                             # v13.0: Template tracking
@@ -935,12 +921,8 @@ class SearchEngine:
                             "specialization_of": self._resolve_specialization_of(
                                 func_info.primary_template_usr
                             ),
-                            # Phase 1: Line ranges for methods
-                            "start_line": func_info.start_line,
-                            "end_line": func_info.end_line,
-                            "header_line": func_info.header_line,
-                            "header_start_line": func_info.header_start_line,
-                            "header_end_line": func_info.header_end_line,
+                            # Location objects (replaces flat line/start_line/end_line/header_*)
+                            **build_location_objects(func_info),
                             # Phase 5: Virtual/abstract indicators
                             "is_virtual": func_info.is_virtual,
                             "is_pure_virtual": func_info.is_pure_virtual,
@@ -953,16 +935,19 @@ class SearchEngine:
                         }
                     )
 
+        def _method_sort_line(m: Dict[str, Any]) -> int:
+            """Extract line number for sorting from declaration or definition."""
+            loc: Dict[str, Any] = m.get("declaration") or m.get("definition") or {}
+            return int(loc.get("line", 0))
+
         return {
             "name": info.name,
             "qualified_name": info.qualified_name,
             "namespace": info.namespace,
             "kind": info.kind,
-            "file": info.file,
-            "line": info.line,
             "base_classes": info.base_classes,
             "template_param_base_indices": get_template_param_base_indices(info),
-            "methods": sorted(methods, key=lambda x: x["line"]),
+            "methods": sorted(methods, key=_method_sort_line),
             "members": [],  # TODO: Implement member variable indexing
             "is_project": info.is_project,
             # v13.0: Template tracking for class
@@ -970,13 +955,8 @@ class SearchEngine:
             "template_kind": info.template_kind,
             "template_parameters": info.template_parameters,
             "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-            # Phase 1: Line ranges for class
-            "start_line": info.start_line,
-            "end_line": info.end_line,
-            "header_file": info.header_file,
-            "header_line": info.header_line,
-            "header_start_line": info.header_start_line,
-            "header_end_line": info.header_end_line,
+            # Location objects (replaces flat file/line/start_line/end_line/header_*)
+            **build_location_objects(info),
             # Phase 2: Documentation for class
             "brief": info.brief,
             "doc_comment": info.doc_comment,
