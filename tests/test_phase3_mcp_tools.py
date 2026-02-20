@@ -104,16 +104,17 @@ class TestFindCallersToolIntegration:
                 assert pair1 <= pair2, f"Call sites not properly sorted: {pair1} > {pair2}"
 
     def test_callers_list_has_line_ranges(self, indexed_analyzer):
-        """Test that caller function info includes start_line and end_line."""
+        """Test that caller function info includes start_line and end_line (in nested location)."""
         result = indexed_analyzer.find_callers("helper")
 
         for caller in result['callers']:
-            # Phase 1 fields should be present
-            assert 'start_line' in caller, "Missing start_line"
-            assert 'end_line' in caller, "Missing end_line"
+            # Location info is now nested under 'definition' or 'declaration'
+            _caller_loc = caller.get("definition") or caller.get("declaration") or {}
+            assert 'start_line' in _caller_loc, "Missing start_line in location object"
+            assert 'end_line' in _caller_loc, "Missing end_line in location object"
 
-            if caller['start_line'] is not None and caller['end_line'] is not None:
-                assert caller['start_line'] <= caller['end_line'], \
+            if _caller_loc['start_line'] is not None and _caller_loc['end_line'] is not None:
+                assert _caller_loc['start_line'] <= _caller_loc['end_line'], \
                     "start_line should be <= end_line"
 
 

@@ -91,7 +91,8 @@ public:
 
         # Verify file paths
         for result in myclass_results:
-            assert result['file'].endswith("MyClass.h"), f"Result file should be MyClass.h, got {result['file']}"
+            _res_loc = result.get("definition") or result.get("declaration") or {}
+            assert _res_loc['file'].endswith("MyClass.h"), f"Result file should be MyClass.h, got {_res_loc['file']}"
 
     def test_search_classes_with_partial_path(self, temp_project_dir):
         """Test file_name filter with partial paths"""
@@ -180,8 +181,12 @@ int divide(int a, int b) { return a / b; }
         # Functions defined only in .cpp should not match when filtering by .h
         # Note: This depends on whether declarations or definitions are indexed
         for result in functions_h_results:
-            assert result['file'].endswith("functions.h"), \
-                f"Result should be from functions.h, got {result['file']}"
+            # The result was matched because its declaration or definition is in functions.h
+            # Check that at least one location is in functions.h
+            _decl_file = (result.get("declaration") or {}).get("file", "")
+            _def_file = (result.get("definition") or {}).get("file", "")
+            assert _decl_file.endswith("functions.h") or _def_file.endswith("functions.h"), \
+                f"Result should have a location in functions.h, got decl={_decl_file}, def={_def_file}"
 
     def test_search_classes_no_filter_returns_all(self, temp_project_dir):
         """Test that omitting file_name returns all classes"""
@@ -265,7 +270,8 @@ public:
         results = analyzer.search_functions("commonMethod", class_name="ClassA", file_name="Multi.h")
         assert len(results) == 1, "Should find only ClassA::commonMethod"
         assert results[0]['parent_class'] == "ClassA"
-        assert results[0]['file'].endswith("Multi.h")
+        _res_loc = results[0].get("definition") or results[0].get("declaration") or {}
+        assert _res_loc['file'].endswith("Multi.h")
 
     def test_search_functions_with_qualified_class_name(self, temp_project_dir):
         """Test that class_name filter works with qualified names (namespace::class)
@@ -356,13 +362,15 @@ public:
         cpp_results = analyzer.search_classes(".*", file_name="source.cpp")
         assert len(cpp_results) == 1
         assert cpp_results[0]['name'] == "SourceClass"
-        assert cpp_results[0]['file'].endswith("source.cpp")
+        _cpp_loc = cpp_results[0].get("definition") or cpp_results[0].get("declaration") or {}
+        assert _cpp_loc['file'].endswith("source.cpp")
 
         # Filter by .h file
         h_results = analyzer.search_classes(".*", file_name="header.h")
         assert len(h_results) == 1
         assert h_results[0]['name'] == "HeaderClass"
-        assert h_results[0]['file'].endswith("header.h")
+        _h_loc = h_results[0].get("definition") or h_results[0].get("declaration") or {}
+        assert _h_loc['file'].endswith("header.h")
 
         # Verify functions work too
         func_results = analyzer.search_functions("standaloneFunction", file_name="source.cpp")
@@ -505,7 +513,8 @@ void otherFunc();
 
         # Verify all results are from Mixed.h
         for result in results:
-            assert result['file'].endswith("Mixed.h")
+            _res_loc = result.get("definition") or result.get("declaration") or {}
+            assert _res_loc['file'].endswith("Mixed.h")
 
     def test_header_file_empty_string_behaves_as_no_filter(self, temp_project_dir):
         """Test that empty string for header_file returns all results"""
@@ -535,7 +544,8 @@ void otherFunc();
 
         # Should only find classes from Project.h
         for result in results:
-            assert result['file'].endswith("Project.h")
+            _res_loc = result.get("definition") or result.get("declaration") or {}
+            assert _res_loc['file'].endswith("Project.h")
 
     def test_multiple_classes_same_file_filtered_correctly(self, temp_project_dir):
         """Test that all classes from filtered file are returned"""
@@ -586,7 +596,8 @@ class OtherClass {};
 
         # Verify no classes from Other.h are included
         for result in results:
-            assert result['file'].endswith("Target.h"), f"Found unexpected file: {result['file']}"
+            _res_loc = result.get("definition") or result.get("declaration") or {}
+            assert _res_loc['file'].endswith("Target.h"), f"Found unexpected file: {_res_loc['file']}"
 
     def test_empty_pattern_with_file_name_functions(self, temp_project_dir):
         """Test that empty pattern with file_name filter works for functions too."""

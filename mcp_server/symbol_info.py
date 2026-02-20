@@ -145,6 +145,49 @@ def is_richer_definition(new_symbol: "SymbolInfo", existing_symbol: "SymbolInfo"
     return False
 
 
+def build_location_objects(info: "SymbolInfo") -> dict:
+    """Build declaration/definition location objects from SymbolInfo for tool responses.
+
+    Replaces flat file/line/start_line/end_line/header_* fields with nested objects.
+
+    When the symbol has a split declaration/definition (e.g., declared in .h, defined in .cpp):
+        {"declaration": {"file": ..., "line": ..., "start_line": ..., "end_line": ...},
+         "definition":  {"file": ..., "line": ..., "start_line": ..., "end_line": ...}}
+
+    When there is only one location:
+        {"definition": {"file": ..., "line": ..., ...}}   -- if is_definition
+        {"declaration": {"file": ..., "line": ..., ...}}  -- if only a declaration
+
+    None values for start_line/end_line are omitted.
+    """
+
+    def _loc(file: str, line: int, start: Optional[int], end: Optional[int]) -> dict:
+        d: dict = {"file": file, "line": line}
+        if start is not None:
+            d["start_line"] = start
+        if end is not None:
+            d["end_line"] = end
+        return d
+
+    if info.header_file:
+        # Split case: info.file = declaration location, info.header_file = definition location
+        return {
+            "declaration": _loc(info.file, info.line, info.start_line, info.end_line),
+            "definition": _loc(
+                info.header_file,
+                info.header_line,  # type: ignore[arg-type]
+                info.header_start_line,
+                info.header_end_line,
+            ),
+        }
+    else:
+        loc = _loc(info.file, info.line, info.start_line, info.end_line)
+        if info.is_definition:
+            return {"definition": loc}
+        else:
+            return {"declaration": loc}
+
+
 def get_template_param_base_indices(info: "SymbolInfo") -> List[int]:
     """Return indices of base_classes entries that are template parameters.
 

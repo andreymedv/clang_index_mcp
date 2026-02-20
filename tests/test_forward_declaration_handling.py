@@ -136,8 +136,9 @@ class TestGetClassInfoReturnsDefinition:
         assert info is not None
         assert 'error' not in info
         # The returned info should be the definition (multi-line), not forward decl (single line)
-        start_line = info.get('start_line')
-        end_line = info.get('end_line')
+        _loc = info.get('definition') or info.get('declaration') or {}
+        start_line = _loc.get('start_line')
+        end_line = _loc.get('end_line')
         assert start_line is not None and end_line is not None
         # Definition spans multiple lines (struct with methods)
         # Forward declaration would be a single line
@@ -243,7 +244,8 @@ struct MyClass;  // Forward declaration
         # Definition should have base classes
         assert 'Base' in str(info.get('base_classes', [])), "Should have base classes"
         # Definition spans multiple lines
-        assert info.get('end_line', 0) > info.get('start_line', 0), "Should be multi-line definition"
+        _info_loc = info.get('definition') or info.get('declaration') or {}
+        assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), "Should be multi-line definition"
 
     def test_declaration_indexed_before_definition(self, tmp_path):
         """Test when forward declaration is indexed before definition."""
@@ -276,7 +278,8 @@ struct MyClass : public Base {
         # Definition should have base classes
         assert 'Base' in str(info.get('base_classes', [])), "Should have base classes"
         # Definition spans multiple lines
-        assert info.get('end_line', 0) > info.get('start_line', 0), "Should be multi-line definition"
+        _info_loc = info.get('definition') or info.get('declaration') or {}
+        assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), "Should be multi-line definition"
 
     def test_multiple_forward_declarations_one_definition(self, tmp_path):
         """Test with multiple forward declarations and one definition."""
@@ -315,7 +318,8 @@ struct Widget : WidgetBase {
         # Definition should have base classes
         assert 'WidgetBase' in str(info.get('base_classes', []))
         # Definition spans multiple lines
-        assert info.get('end_line', 0) > info.get('start_line', 0), "Should be multi-line definition"
+        _info_loc = info.get('definition') or info.get('declaration') or {}
+        assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), "Should be multi-line definition"
 
     def test_namespaced_forward_declaration(self, tmp_path):
         """Test forward declaration in namespace."""
@@ -348,7 +352,8 @@ struct Button : ButtonBase {
                 # Definition should have base classes
                 assert 'ButtonBase' in str(info.get('base_classes', [])), f"No base for {name}"
                 # Definition spans multiple lines
-                assert info.get('end_line', 0) > info.get('start_line', 0), (
+                _info_loc = info.get('definition') or info.get('declaration') or {}
+                assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), (
                     f"Should be multi-line definition for {name}"
                 )
 
