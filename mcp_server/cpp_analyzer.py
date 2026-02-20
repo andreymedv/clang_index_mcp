@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Any, Set, Callable
 from collections import defaultdict
 import hashlib
 import json
-from .symbol_info import CLASS_KINDS, SymbolInfo, is_richer_definition
+from .symbol_info import CLASS_KINDS, SymbolInfo, build_location_objects, is_richer_definition
 from .cache_manager import CacheManager
 from .file_scanner import FileScanner
 from .call_graph import CallGraphAnalyzer
@@ -1394,15 +1394,17 @@ class CppAnalyzer:
 
         Returns:
             Dictionary with:
-                - file: Primary location file path (uses extent.start for accurate attribution)
-                - line: Primary location line
-                - column: Primary location column
-                - start_line: Start line of symbol extent
-                - end_line: End line of symbol extent
-                - header_file: Header file path (if declaration separate from definition)
-                - header_line: Header declaration line
-                - header_start_line: Header declaration start line
-                - header_end_line: Header declaration end line
+                - file: Declaration location file path (uses extent.start for accurate attribution)
+                - line: Declaration location line
+                - column: Declaration location column
+                - start_line: Start line of declaration extent
+                - end_line: End line of declaration extent
+                - header_file: Definition file path (when declaration and definition are in different
+                  files, e.g. declared in .h, defined in .cpp). None when same file.
+                  Note: despite the name, this stores the DEFINITION location, not a header.
+                - header_line: Definition line
+                - header_start_line: Definition start line
+                - header_end_line: Definition end line
         """
         location = cursor.location
 
@@ -1462,17 +1464,12 @@ class CppAnalyzer:
                     decl_file = str(decl_location.file.name)
                     def_file = str(def_location.file.name)
 
-                    # Check if declaration is in a header file
-                    is_decl_header = decl_file.endswith((".h", ".hpp", ".hxx", ".hh"))
-                    is_def_header = def_file.endswith((".h", ".hpp", ".hxx", ".hh"))
-
-                    if is_decl_header and not is_def_header:
-                        # Declaration in header, definition in source
-                        # CRITICAL FIX FOR ISSUE #8:
-                        # Store alternate location (definition) in header_* fields
-                        # But DO NOT overwrite result["file"] - keep cursor's actual location
-                        # This ensures declarations stay in file_index under their header file
-                        result["header_file"] = def_file  # Store definition location
+                    if decl_file != def_file:
+                        # Declaration and definition are in different files.
+                        # Store definition location in header_* fields (despite the name).
+                        # Do NOT overwrite result["file"] — keep the declaration location
+                        # so declarations stay in file_index under their actual file.
+                        result["header_file"] = def_file
                         result["header_line"] = def_location.line
                         try:
                             def_extent = definition_cursor.extent
@@ -1482,15 +1479,6 @@ class CppAnalyzer:
                         except Exception:
                             result["header_start_line"] = def_location.line
                             result["header_end_line"] = def_location.line
-
-                        # NOTE: We intentionally do NOT overwrite result["file"] here
-                        # The cursor's location (declaration in header) is the primary location
-
-                    elif is_def_header and is_decl_header:
-                        # Both in headers (e.g., template, inline)
-                        # Primary location stays as declaration
-                        # No separate header info needed
-                        pass
 
         except Exception as e:
             # Declaration/definition tracking is best-effort
@@ -4698,18 +4686,10 @@ class CppAnalyzer:
                                         "name": info.name,
                                         "qualified_name": info.qualified_name,
                                         "kind": info.kind,
-                                        "file": info.file,
-                                        "line": info.line,
-                                        "column": info.column,
                                         "is_project": info.is_project,
                                         "base_classes": info.base_classes,
-                                        # Phase 1: Line ranges
-                                        "start_line": info.start_line,
-                                        "end_line": info.end_line,
-                                        "header_file": info.header_file,
-                                        "header_line": info.header_line,
-                                        "header_start_line": info.header_start_line,
-                                        "header_end_line": info.header_end_line,
+                                        # Location objects (replaces flat file/line/start_line/end_line/header_*)
+                                        **build_location_objects(info),
                                     }
                                 )
                                 break  # Found a match, no need to check other base classes
@@ -4920,8 +4900,12 @@ class CppAnalyzer:
         target_usrs = set()
         for func in target_functions:
             # Find the full symbol info with USR
+            # Extract file/line from nested location object (definition or declaration)
+            _loc = func.get("definition") or func.get("declaration") or {}
+            _func_file = _loc.get("file")
+            _func_line = _loc.get("line")
             for symbol in self.function_index.get(func["name"], []):
-                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
+                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
 
         # Find all callers
@@ -4934,14 +4918,11 @@ class CppAnalyzer:
                         {
                             "name": caller_info.name,
                             "kind": caller_info.kind,
-                            "file": caller_info.file,
-                            "line": caller_info.line,
-                            "column": caller_info.column,
                             "signature": caller_info.signature,
                             "parent_class": caller_info.parent_class,
                             "is_project": caller_info.is_project,
-                            "start_line": caller_info.start_line,
-                            "end_line": caller_info.end_line,
+                            # Location objects (replaces flat file/line/column/start_line/end_line)
+                            **build_location_objects(caller_info),
                         }
                     )
 
@@ -4996,8 +4977,12 @@ class CppAnalyzer:
         source_usrs = set()
         for func in source_functions:
             # Find the full symbol info with USR
+            # Extract file/line from nested location object (definition or declaration)
+            _loc = func.get("definition") or func.get("declaration") or {}
+            _func_file = _loc.get("file")
+            _func_line = _loc.get("line")
             for symbol in self.function_index.get(func["name"], []):
-                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
+                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     source_usrs.add(symbol.usr)
 
         # Get call sites for each source function
@@ -5049,8 +5034,12 @@ class CppAnalyzer:
         target_usrs = set()
         for func in target_functions:
             # Find the full symbol info with USR
+            # Extract file/line from nested location object (definition or declaration)
+            _loc = func.get("definition") or func.get("declaration") or {}
+            _func_file = _loc.get("file")
+            _func_line = _loc.get("line")
             for symbol in self.function_index.get(func["name"], []):
-                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
+                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
 
         # Find all callees
@@ -5063,18 +5052,11 @@ class CppAnalyzer:
                         {
                             "name": callee_info.name,
                             "kind": callee_info.kind,
-                            "file": callee_info.file,
-                            "line": callee_info.line,
-                            "column": callee_info.column,
                             "signature": callee_info.signature,
                             "parent_class": callee_info.parent_class,
                             "is_project": callee_info.is_project,
-                            "start_line": callee_info.start_line,
-                            "end_line": callee_info.end_line,
-                            "header_file": callee_info.header_file,
-                            "header_line": callee_info.header_line,
-                            "header_start_line": callee_info.header_start_line,
-                            "header_end_line": callee_info.header_end_line,
+                            # Location objects (replaces flat file/line/column/start_line/end_line/header_*)
+                            **build_location_objects(callee_info),
                         }
                     )
 
@@ -5094,14 +5076,20 @@ class CppAnalyzer:
         # Get USRs
         from_usrs = set()
         for func in from_funcs:
+            _loc = func.get("definition") or func.get("declaration") or {}
+            _func_file = _loc.get("file")
+            _func_line = _loc.get("line")
             for symbol in self.function_index.get(func["name"], []):
-                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
+                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     from_usrs.add(symbol.usr)
 
         to_usrs = set()
         for func in to_funcs:
+            _loc = func.get("definition") or func.get("declaration") or {}
+            _func_file = _loc.get("file")
+            _func_line = _loc.get("line")
             for symbol in self.function_index.get(func["name"], []):
-                if symbol.usr and symbol.file == func["file"] and symbol.line == func["line"]:
+                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     to_usrs.add(symbol.usr)
 
         # BFS to find paths
@@ -5232,7 +5220,9 @@ class CppAnalyzer:
         matched_files_set = set(matched_files)
 
         for item in all_classes + all_functions:
-            item_file = item.get("file", "")
+            # Extract file from nested location object (definition or declaration)
+            _item_loc = item.get("definition") or item.get("declaration") or {}
+            item_file = _item_loc.get("file") or item.get("file", "")
             if item_file in matched_files_set:
                 results.append(item)
 
@@ -5274,7 +5264,9 @@ class CppAnalyzer:
 
         # Filter by file path
         for item in all_classes + all_functions:
-            item_file = item.get("file", "")
+            # Extract file from nested location object (definition or declaration)
+            _item_loc = item.get("definition") or item.get("declaration") or {}
+            item_file = _item_loc.get("file") or item.get("file", "")
             if not item_file:
                 continue
 
