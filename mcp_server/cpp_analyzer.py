@@ -4122,8 +4122,14 @@ class CppAnalyzer:
                 del self.file_index[file_path]
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
-        """Get detailed information about a specific class"""
-        return self.search_engine.get_class_info(class_name)
+        """Get detailed information about a specific class, including direct derived classes."""
+        result = self.search_engine.get_class_info(class_name)
+        if result and "error" not in result:
+            # Append direct derived classes (project_only=True by default)
+            # Use qualified_name for accurate lookup when available
+            lookup_name = result.get("qualified_name") or class_name
+            result["derived_classes"] = self.get_derived_classes(lookup_name, project_only=True)
+        return result
 
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
