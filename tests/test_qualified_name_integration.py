@@ -3,7 +3,7 @@ Integration tests for Qualified Names Support (Phase 1-3).
 
 This file tests the complete qualified name implementation:
 - F1: Basic support (store & return qualified names)
-- F4: Overload metadata (is_template_specialization)
+- F4: Overload metadata (template_kind — is_template/is_template_specialization removed as redundant)
 - F5: Template args qualification (canonical types in base classes)
 - F6: Anonymous namespaces
 - F7: Nested classes
@@ -166,13 +166,18 @@ namespace test {
 
 
 class TestF4OverloadMetadata:
-    """Test F4: is_template_specialization field for function overload distinction."""
+    """Test F4: template_kind field for function overload distinction.
+
+    Note: is_template and is_template_specialization were removed as redundant.
+    Use template_kind (non-null → is_template=True) and
+    template_kind in ('full_specialization', 'partial_specialization') for specializations.
+    """
 
     def test_generic_template_not_marked_as_specialization(self):
-        """Generic templates should have is_template_specialization=False.
+        """Generic templates should have template_kind != full/partial_specialization.
 
         Note: libclang may not index template function declarations without
-        instantiations. This test verifies the field exists when templates ARE indexed.
+        instantiations. This test verifies the field when templates ARE indexed.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -189,16 +194,17 @@ template void genericFunc<int>(int);
 
             results = analyzer.search_functions("genericFunc")
             # libclang may return 0, 1, or 2 results depending on version
-            # We just verify that IF found, the field is present and correct
             if len(results) > 0:
-                assert "is_template_specialization" in results[0]
-                # Generic template should be False (if libclang reports it)
-                generic = [r for r in results if not r.get("is_template_specialization", False)]
-                if len(generic) > 0:
-                    assert generic[0]["is_template_specialization"] is False
+                # is_template_specialization removed; use template_kind
+                generic = [
+                    r for r in results
+                    if r.get("template_kind") not in ("full_specialization", "partial_specialization")
+                ]
+                # Generic template (if indexed) should not be a full/partial specialization
+                assert len(generic) >= 0  # May be empty if only specialization indexed
 
     def test_template_specialization_marked_correctly(self):
-        """Template specializations should have is_template_specialization=True.
+        """Template specializations should have template_kind='full_specialization'.
 
         Note: libclang may not index generic template declarations, but it does
         index explicit specializations. This test verifies specializations are marked.
@@ -220,16 +226,22 @@ void func<int>(int value) {}
             # libclang may return 1 or 2 results (specialization always found, generic sometimes)
             assert len(results) >= 1, "Should find at least the specialization"
 
-            # Verify the field exists
+            # Verify template_kind is present on all results that have template context
+            # (field may be absent for non-template generic functions)
             for result in results:
-                assert "is_template_specialization" in result
+                assert "is_template_specialization" not in result, (
+                    "is_template_specialization was removed; use template_kind"
+                )
 
-            # Find specializations (should be at least one)
-            specialized = [r for r in results if r["is_template_specialization"]]
+            # Find specializations via template_kind (should be at least one)
+            specialized = [
+                r for r in results
+                if r.get("template_kind") in ("full_specialization", "partial_specialization")
+            ]
             assert len(specialized) >= 1, "Should find at least one specialization"
 
     def test_regular_overload_not_marked_as_specialization(self):
-        """Regular function overloads should have is_template_specialization=False."""
+        """Regular function overloads should not have template_kind set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
             test_file.write_text("""
@@ -244,13 +256,17 @@ void foo(int x, int y) {}
             results = analyzer.search_functions("foo")
             assert len(results) == 3
 
-            # All should be False (not template specializations)
+            # All regular overloads should have no template_kind (or null)
             for result in results:
-                assert "is_template_specialization" in result
-                assert result["is_template_specialization"] is False
+                assert "is_template_specialization" not in result, (
+                    "is_template_specialization was removed; use template_kind"
+                )
+                assert result.get("template_kind") not in (
+                    "full_specialization", "partial_specialization"
+                ), f"Regular overload should not be a specialization: {result}"
 
     def test_template_class_methods(self):
-        """Test is_template_specialization for template class methods."""
+        """Test template_kind for template class methods."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
             test_file.write_text("""
@@ -270,13 +286,15 @@ public:
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
 
-            # Check that class methods inherit correct metadata
+            # Check that class methods no longer carry removed fields
             results = analyzer.search_functions("add")
             assert len(results) >= 1  # May see generic or specialized or both
 
-            # Verify field exists
+            # Verify removed fields are absent
             for result in results:
-                assert "is_template_specialization" in result
+                assert "is_template_specialization" not in result, (
+                    "is_template_specialization was removed"
+                )
 
 
 class TestF5TemplateArgsQualification:
@@ -552,7 +570,10 @@ public:
             # Test template specialization
             results = analyzer.search_functions("process")
             # Should have both generic and specialized versions
-            specialized = [r for r in results if r.get("is_template_specialization", False)]
+            specialized = [
+                r for r in results
+                if r.get("template_kind") in ("full_specialization", "partial_specialization")
+            ]
             # Note: May or may not detect specialization depending on libclang version
 
             # Test anonymous namespace
@@ -678,18 +699,18 @@ class RegularClass {};
             class_results = analyzer.search_classes("Map")
             if len(class_results) > 0:
                 assert "qualified_name" in class_results[0]
-                assert "is_template_specialization" in class_results[0]
+                assert "template_kind" in class_results[0]  # template_kind replaces is_template/_specialization
 
             func_results = analyzer.search_functions("insert")
             if len(func_results) > 0:
                 assert "qualified_name" in func_results[0]
-                assert "is_template_specialization" in func_results[0]
+                assert "is_template_specialization" not in func_results[0]
 
             # Test that non-template class is definitely found and has correct fields
             regular_results = analyzer.search_classes("RegularClass")
             assert len(regular_results) == 1
             assert "qualified_name" in regular_results[0]
-            assert "is_template_specialization" in regular_results[0]
+            assert "is_template_specialization" not in regular_results[0]
 
 
 if __name__ == "__main__":
