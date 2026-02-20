@@ -160,6 +160,7 @@ def build_location_objects(info: "SymbolInfo") -> dict:
 
     None values for start_line/end_line are omitted.
     """
+
     def _loc(file: str, line: int, start: Optional[int], end: Optional[int]) -> dict:
         d: dict = {"file": file, "line": line}
         if start is not None:
