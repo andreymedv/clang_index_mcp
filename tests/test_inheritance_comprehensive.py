@@ -1263,3 +1263,69 @@ class TestHierarchyQualifiedNames:
             assert "error" not in info, (
                 f"get_class_info('{qname}') returned error: {info.get('error')}"
             )
+
+
+# =============================================================================
+# TEST: get_class_info includes derived_classes (cplusplus_mcp-4tw)
+# =============================================================================
+
+class TestGetClassInfoDerivedClasses:
+    """Verify get_class_info now includes direct derived_classes."""
+
+    def test_get_class_info_has_derived_classes_key(self, analyzer):
+        """get_class_info must include a 'derived_classes' key."""
+        info = analyzer.get_class_info("inheritance_test::SingleBase")
+        assert info is not None and "error" not in info
+        assert "derived_classes" in info, (
+            "get_class_info result missing 'derived_classes' key"
+        )
+
+    def test_get_class_info_derived_classes_includes_direct_child(self, analyzer):
+        """derived_classes in get_class_info should include SingleDerived."""
+        info = analyzer.get_class_info("inheritance_test::SingleBase")
+        assert info is not None and "error" not in info
+        derived = info["derived_classes"]
+        derived_names = [d["name"] for d in derived]
+        assert "SingleDerived" in derived_names, (
+            f"derived_classes should include SingleDerived, got {derived_names}"
+        )
+
+    def test_get_class_info_derived_classes_is_list(self, analyzer):
+        """derived_classes must always be a list (even when empty)."""
+        info = analyzer.get_class_info("inheritance_test::SingleDerived")
+        assert info is not None and "error" not in info
+        assert isinstance(info["derived_classes"], list), (
+            "derived_classes should be a list"
+        )
+
+    def test_get_class_info_derived_classes_have_qualified_name(self, analyzer):
+        """Each entry in derived_classes should have a qualified_name."""
+        info = analyzer.get_class_info("inheritance_test::SingleBase")
+        assert info is not None and "error" not in info
+        for d in info["derived_classes"]:
+            assert "qualified_name" in d, (
+                f"derived_classes entry missing 'qualified_name': {d}"
+            )
+
+    def test_get_class_info_derived_qualified_name_chainable(self, analyzer):
+        """qualified_name from derived_classes in get_class_info should work with get_class_info."""
+        info = analyzer.get_class_info("inheritance_test::SingleBase")
+        assert info is not None and "error" not in info
+        for d in info["derived_classes"]:
+            qname = d["qualified_name"]
+            child_info = analyzer.get_class_info(qname)
+            assert child_info is not None, (
+                f"get_class_info('{qname}') from derived_classes returned None"
+            )
+            assert "error" not in child_info, (
+                f"get_class_info('{qname}') from derived_classes returned error"
+            )
+
+    def test_get_class_info_leaf_class_has_empty_derived(self, analyzer):
+        """A leaf class (no derived classes) should have an empty derived_classes list."""
+        # SingleDerived has no derived classes
+        info = analyzer.get_class_info("inheritance_test::SingleDerived")
+        assert info is not None and "error" not in info
+        assert info["derived_classes"] == [], (
+            f"SingleDerived should have no derived classes, got {info['derived_classes']}"
+        )

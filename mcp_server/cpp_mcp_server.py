@@ -413,7 +413,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_info",
-            description="Get comprehensive information about a specific class: methods with signatures (all access levels), base classes, file location, line ranges, documentation, and virtual/abstract indicators. **Use this when**: user wants to see class methods or API. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: name, kind, file, line, base_classes, methods (sorted by line, each with signature, access, line ranges, is_template_specialization for method templates, is_virtual, is_pure_virtual, is_const, is_static, is_definition, brief, and doc_comment), members, is_project, start_line, end_line (class body range), header_file (if declared in header), header_start_line, header_end_line, brief (class documentation first line or null), doc_comment (class full documentation up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Returns plain text error 'Class <name> not found' if not found.\n\n**AMBIGUITY HANDLING:** If multiple classes have the same simple name (e.g., 'SomeClass' exists in both 'ns1::SomeClass' and 'ns2::SomeClass'), returns an ambiguity response: {error, is_ambiguous: true, matches: [{name, qualified_name, namespace, kind, file, line}], suggestion}. Use a qualified name to disambiguate.\n\n**EDGE CASES:**\n- `members` array: Member variables are NOT currently indexed - this array will always be empty. Use the Read tool to view class source if you need member variables.\n- `methods` array: May be empty for pure data classes or forward declarations.\n\n**POST-FILTERING TIP:** Methods include rich metadata. Filter client-side: e.g., to find abstract interface methods, filter by `is_pure_virtual=true`. To find public API only, filter by `access='public'`. To find implementations (not declarations), filter by `is_definition=true`.\n\n**TIP:** If a class has `is_pure_virtual=true` methods, implementations are in DERIVED classes (use get_derived_classes to find them), not in this class.",
+            description="Get comprehensive information about a specific class: methods, base classes, direct derived classes, location, documentation, and virtual/abstract indicators. **Use this when**: user wants to see class methods, API, or inheritance neighborhood. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: name, kind, base_classes, derived_classes (direct project-only subclasses — each with name, qualified_name, kind, location), methods (sorted by line, each with signature, access, location, is_template_specialization, is_virtual, is_pure_virtual, is_const, is_static, is_definition, brief, doc_comment), members (always empty — member variables not indexed), is_project, location objects (declaration/definition), brief, doc_comment. Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments.\n\n**AMBIGUITY HANDLING:** If multiple classes have the same simple name (e.g., 'SomeClass' exists in both 'ns1::SomeClass' and 'ns2::SomeClass'), returns an ambiguity response: {error, is_ambiguous: true, matches: [{name, qualified_name, namespace, kind, file, line}], suggestion}. Use a qualified name to disambiguate.\n\n**EDGE CASES:**\n- `members` array: Member variables are NOT currently indexed - this array will always be empty.\n- `methods` array: May be empty for pure data classes or forward declarations.\n- `derived_classes`: Only includes DIRECT (one-level) subclasses from project files. For all descendants, use get_class_hierarchy.\n\n**POST-FILTERING TIP:** Methods include rich metadata. Filter client-side: e.g., to find abstract interface methods, filter by `is_pure_virtual=true`. To find public API only, filter by `access='public'`. To find implementations (not declarations), filter by `is_definition=true`.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -696,7 +696,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_hierarchy",
-            description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants both ancestors AND descendants. **Do NOT use** get_derived_classes which only returns immediate children.\n\nReturns: name (class name), base_hierarchy (all ancestors recursively to root), derived_hierarchy (all descendants recursively to leaves), class_info (detailed info), direct base_classes and derived_classes lists. If not found, returns {'error': 'Class <name> not found'}.",
+            description="Get the complete bidirectional inheritance hierarchy for a C++ class. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', or wants ALL ancestors AND descendants (not just direct ones). **Note:** get_class_info already returns direct derived classes — use get_class_hierarchy when you need the full transitive closure.\n\nReturns: name (class name), base_hierarchy (all ancestors recursively to root), derived_hierarchy (all descendants recursively to leaves), class_info (detailed info), direct base_classes and derived_classes lists. If not found, returns {'error': 'Class <name> not found'}.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -704,25 +704,6 @@ async def list_tools() -> List[Tool]:
                         "type": "string",
                         "description": "Name of the class to analyze. The result will show this class's complete inheritance hierarchy in both directions (ancestors and descendants).",
                     }
-                },
-                "required": ["class_name"],
-            },
-        ),
-        Tool(
-            name="get_derived_classes",
-            description="[WARNING] IMPORTANT: This returns ONLY DIRECT children (one level), NOT all descendants. If user asks for 'all classes that inherit from X' or 'all subclasses', use get_class_hierarchy instead for complete transitive closure.\n\nGet a flat list of classes that DIRECTLY inherit from a specified base class (immediate children only). Returns classes where the specified class appears in their direct base_classes list. Example: if C→B→A (C inherits B, B inherits A), calling this on 'A' returns only [B], not C. Returns list with: name, kind, file, line, column, is_project, base_classes, start_line, end_line (complete line range), header_file, header_start_line, header_end_line. Supports filtering by project_only.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "class_name": {
-                        "type": "string",
-                        "description": "Name of the base class for which to find direct derived classes (immediate children only, one level down in inheritance tree)",
-                    },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": "When true (default), only includes derived classes from project source files, excluding those from external dependencies and libraries. Set to false to include all derived classes from all indexed files.",
-                        "default": True,
-                    },
                 },
                 "required": ["class_name"],
             },
@@ -1301,7 +1282,6 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             "search_symbols",
             "find_in_file",
             "get_class_hierarchy",
-            "get_derived_classes",
             "find_callers",
             "find_callees",
             "get_call_path",
@@ -1659,16 +1639,6 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 return [TextContent(type="text", text=json.dumps(hierarchy, indent=2))]
             else:
                 return [TextContent(type="text", text=f"Class '{class_name}' not found")]
-
-        elif name == "get_derived_classes":
-            class_name = str(arguments["class_name"])
-            project_only = arguments.get("project_only", True)
-            # Run synchronous method in executor to avoid blocking event loop
-            derived = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_derived_classes(class_name, project_only),  # type: ignore[arg-type]
-            )
-            return [TextContent(type="text", text=json.dumps(derived, indent=2))]
 
         elif name == "find_callers":
             function_name = str(arguments["function_name"])
