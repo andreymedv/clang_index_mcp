@@ -159,8 +159,10 @@ class TestGetClassHierarchyReturnsDefinition:
         assert hierarchy is not None, "get_class_hierarchy should find test::ConcreteWidget"
         assert 'error' not in hierarchy, f"get_class_hierarchy returned error: {hierarchy.get('error')}"
 
-        # The critical assertion: base_classes must be present
-        base_classes = hierarchy.get('base_classes', [])
+        # The critical assertion: queried class node must have base_classes (not forward decl)
+        qname = hierarchy.get("queried_class")
+        node = hierarchy["classes"].get(qname, {})
+        base_classes = node.get('base_classes', [])
         assert len(base_classes) > 0, (
             "base_classes is empty in hierarchy - likely using forward declaration"
         )

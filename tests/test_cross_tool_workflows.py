@@ -212,9 +212,11 @@ class TestSearchClassesToGetHierarchy:
         hierarchy = analyzer.get_class_hierarchy(qualified_name)
         assert hierarchy is not None, \
             f"get_class_hierarchy failed for '{qualified_name}'"
-        # Hierarchy should have name or class_info
-        assert "name" in hierarchy or "class_info" in hierarchy, \
-            "Hierarchy should contain class information"
+        # New flat format: queried_class and classes dict
+        assert "queried_class" in hierarchy, "Hierarchy should have queried_class"
+        assert "classes" in hierarchy, "Hierarchy should have classes dict"
+        qname = hierarchy["queried_class"]
+        assert qname in hierarchy["classes"], "queried_class should be a key in classes"
 
     def test_hierarchy_returns_qualified_base_classes(self, namespaced_project):
         """
@@ -230,17 +232,14 @@ class TestSearchClassesToGetHierarchy:
         hierarchy = analyzer.get_class_hierarchy(derived["qualified_name"])
         assert hierarchy is not None
 
-        # Check base_classes exists and contains information
-        # base_classes can be a list of strings (qualified names) or dicts
-        if hierarchy.get("base_classes"):
-            for base in hierarchy["base_classes"]:
-                if isinstance(base, str):
-                    # String format: should be qualified name
-                    assert base, "base_classes entry should not be empty"
-                elif isinstance(base, dict):
-                    # Dict format: should have name
-                    assert base.get("name") or base.get("base_class"), \
-                        "base_classes dict should contain name information"
+        # In flat format, base_classes are keys into the classes dict
+        qname = hierarchy.get("queried_class")
+        node = hierarchy["classes"].get(qname, {})
+        for base_key in node.get("base_classes", []):
+            assert isinstance(base_key, str), "base_classes entries should be strings"
+            assert base_key, "base_classes entry should not be empty"
+            assert base_key in hierarchy["classes"], \
+                f"base_class key '{base_key}' should be present in classes dict"
 
 
 # =============================================================================
