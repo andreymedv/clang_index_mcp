@@ -204,7 +204,8 @@ namespace MyNamespace {
         # Verify all fields are preserved
         self.assertEqual(derived['name'], "DerivedClass")
         self.assertEqual(derived['kind'], "class")
-        self.assertIn("detailed.cpp", derived['file'])
+        _derived_loc = derived.get("definition") or derived.get("declaration") or {}
+        self.assertIn("detailed.cpp", _derived_loc['file'])
 
         # Create new analyzer - load from cache
         analyzer2 = CppAnalyzer(str(self.temp_project_dir))
@@ -219,8 +220,10 @@ namespace MyNamespace {
         # Verify all fields match
         self.assertEqual(derived2['name'], derived['name'])
         self.assertEqual(derived2['kind'], derived['kind'])
-        self.assertEqual(derived2['file'], derived['file'])
-        self.assertEqual(derived2['line'], derived['line'])
+        _loc1 = derived.get("definition") or derived.get("declaration") or {}
+        _loc2 = derived2.get("definition") or derived2.get("declaration") or {}
+        self.assertEqual(_loc2['file'], _loc1['file'])
+        self.assertEqual(_loc2['line'], _loc1['line'])
 
     def test_large_project_performance(self):
         """Test SQLite backend with moderately large project"""

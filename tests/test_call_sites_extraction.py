@@ -68,8 +68,9 @@ class TestBasicCallSiteExtraction:
         caller_usr = None
         for func in functions:
             symbols = analyzer.function_index.get(func['name'], [])
+            _func_loc = func.get("definition") or func.get("declaration") or {}
             for sym in symbols:
-                if sym.file == func['file'] and sym.line == func['line']:
+                if sym.file == _func_loc.get('file') and sym.line == _func_loc.get('line'):
                     caller_usr = sym.usr
                     break
 
