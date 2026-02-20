@@ -4702,7 +4702,12 @@ class CppAnalyzer:
 
         return derived_classes
 
-    def get_class_hierarchy(self, class_name: str) -> Dict[str, Any]:
+    def get_class_hierarchy(
+        self,
+        class_name: str,
+        max_nodes: Optional[int] = 200,
+        max_depth: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Get the complete inheritance graph for a class as a flat adjacency list.
 
@@ -4714,6 +4719,13 @@ class CppAnalyzer:
 
         Args:
             class_name: Name of the class to analyze (simple or qualified)
+            max_nodes: Maximum number of nodes to include in the result (default 200).
+                       Prevents response explosion for widely-used base classes like
+                       QObject or std::exception with hundreds of descendants.
+                       Set to None to disable the cap.
+            max_depth: Maximum BFS depth from the queried class (default None = unlimited).
+                       Depth 0 = queried class, depth 1 = direct parents/children, etc.
+                       Set to None to disable the cap.
 
         Returns:
             Dictionary containing:
@@ -4727,6 +4739,8 @@ class CppAnalyzer:
                 - derived_classes: List of qualified names (keys into 'classes')
                 - is_unresolved: True if not found in index (external lib class)
                 - is_dependent_type: True if template-dependent (typename T::X)
+            - truncated: True if the result was capped by max_nodes or max_depth
+            - nodes_returned: Total nodes returned (only when truncated=True)
         """
 
         # --- Helper: resolve a raw base-class name to a canonical key ---
@@ -4784,10 +4798,12 @@ class CppAnalyzer:
         # --- Phase 2: BFS over the inheritance graph ---
         classes: Dict[str, Any] = {}
         visited: Set[str] = set()
-        queue: deque = deque([start_key])
+        # Queue entries: (node_key, bfs_depth)
+        queue: deque = deque([(start_key, 0)])
+        truncated = False
 
         while queue:
-            current = queue.popleft()
+            current, depth = queue.popleft()
             if current in visited:
                 continue
             visited.add(current)
@@ -4812,6 +4828,10 @@ class CppAnalyzer:
                 else:
                     node["is_unresolved"] = True
                 classes[current] = node
+                # Check node cap
+                if max_nodes is not None and len(classes) >= max_nodes:
+                    truncated = True
+                    break
                 continue
 
             info = infos[0]
@@ -4845,15 +4865,30 @@ class CppAnalyzer:
                 "derived_classes": derived_keys,
             }
 
-            # Enqueue unvisited neighbors in both directions
-            for neighbor in base_keys + derived_keys:
-                if neighbor not in visited:
-                    queue.append(neighbor)
+            # Check node cap after adding this node
+            if max_nodes is not None and len(classes) >= max_nodes:
+                truncated = True
+                break
 
-        return {
+            # Enqueue unvisited neighbors in both directions (respecting max_depth)
+            next_depth = depth + 1
+            unvisited_neighbors = [n for n in base_keys + derived_keys if n not in visited]
+            if max_depth is not None and next_depth > max_depth:
+                if unvisited_neighbors:
+                    truncated = True
+                # Don't enqueue beyond max_depth
+            else:
+                for neighbor in unvisited_neighbors:
+                    queue.append((neighbor, next_depth))
+
+        result: Dict[str, Any] = {
             "queried_class": start_key,
             "classes": classes,
         }
+        if truncated:
+            result["truncated"] = True
+            result["nodes_returned"] = len(classes)
+        return result
 
     def find_callers(
         self, function_name: str, class_name: str = "", include_call_sites: bool = True

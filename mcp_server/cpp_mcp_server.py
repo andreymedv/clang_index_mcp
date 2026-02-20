@@ -696,14 +696,23 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_class_hierarchy",
-            description="Get the complete inheritance graph for a C++ class as a flat adjacency list. BFS from the queried class explores ALL edges in both directions (upward to ancestors, downward to descendants) from every discovered node, returning the entire connected component. Diamond inheritance and multiple inheritance are handled cleanly — no duplicated nodes. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', 'full hierarchy of X', 'what does X inherit from (all levels)'. **Note:** get_class_info already returns direct base/derived classes — use get_class_hierarchy for full transitive closure.\n\nReturns: {queried_class: qualified name of the queried class, classes: flat dict keyed by qualified name where each entry has {name, qualified_name, kind, is_project, base_classes: [qualified names], derived_classes: [qualified names]}}. Unresolvable base classes (external libs, template-dependent types) are included with is_unresolved or is_dependent_type flags. If not found, returns {'error': 'Class <name> not found'}.",
+            description="Get the complete inheritance graph for a C++ class as a flat adjacency list. BFS from the queried class explores ALL edges in both directions (upward to ancestors, downward to descendants) from every discovered node, returning the entire connected component. Diamond inheritance and multiple inheritance are handled cleanly — no duplicated nodes. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', 'full hierarchy of X', 'what does X inherit from (all levels)'. **Note:** get_class_info already returns direct base/derived classes — use get_class_hierarchy for full transitive closure.\n\nReturns: {queried_class: qualified name of the queried class, classes: flat dict keyed by qualified name where each entry has {name, qualified_name, kind, is_project, base_classes: [qualified names], derived_classes: [qualified names]}}. Unresolvable base classes (external libs, template-dependent types) are included with is_unresolved or is_dependent_type flags. If not found, returns {'error': 'Class <name> not found'}.\n\n**CAPS:** Result is limited to max_nodes (default 200) nodes and optionally max_depth BFS levels. When capped, response includes truncated=true and nodes_returned. Increase max_nodes or set max_depth to control scope.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "class_name": {
                         "type": "string",
                         "description": "Name of the class to analyze. The result will show this class's complete inheritance hierarchy in both directions (ancestors and descendants).",
-                    }
+                    },
+                    "max_nodes": {
+                        "type": "integer",
+                        "description": "Maximum number of nodes to include in the result (default 200). Prevents response explosion for widely-used base classes like QObject or std::exception. Set higher if you need the full hierarchy of a large class family.",
+                        "default": 200,
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "Maximum BFS depth from the queried class (default: unlimited). Depth 0 = queried class only, depth 1 = direct parents/children, depth 2 = grandparents/grandchildren, etc. Useful when you only need nearby relatives.",
+                    },
                 },
                 "required": ["class_name"],
             },
@@ -1631,9 +1640,14 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
 
         elif name == "get_class_hierarchy":
             class_name = str(arguments["class_name"])
+            max_nodes = arguments.get("max_nodes", 200)
+            max_depth = arguments.get("max_depth", None)
             # Run synchronous method in executor to avoid blocking event loop
             hierarchy = await loop.run_in_executor(
-                None, lambda: analyzer.get_class_hierarchy(class_name)  # type: ignore[arg-type]
+                None,
+                lambda: analyzer.get_class_hierarchy(  # type: ignore[arg-type]
+                    class_name, max_nodes=max_nodes, max_depth=max_depth  # type: ignore[arg-type]
+                ),
             )
             if hierarchy:
                 return [TextContent(type="text", text=json.dumps(hierarchy, indent=2))]

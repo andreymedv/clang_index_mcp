@@ -1325,3 +1325,128 @@ class TestGetClassInfoDerivedClasses:
         assert info["derived_classes"] == [], (
             f"SingleDerived should have no derived classes, got {info['derived_classes']}"
         )
+
+
+# =============================================================================
+# Tests: get_class_hierarchy max_nodes and max_depth caps
+# =============================================================================
+
+class TestHierarchyCaps:
+    """Verify max_nodes and max_depth cap parameters for get_class_hierarchy."""
+
+    # DeepA -> DeepB -> DeepC -> DeepD -> DeepE  (5-class linear chain)
+
+    def test_no_truncation_flag_for_small_hierarchy(self, analyzer):
+        """Normal result without hitting caps should NOT have a 'truncated' key."""
+        # The 5-class DeepA chain is well within default max_nodes=200
+        hierarchy = analyzer.get_class_hierarchy("inheritance_test::DeepA")
+        assert "error" not in hierarchy
+        assert "truncated" not in hierarchy, (
+            "Hierarchy within limits should not have 'truncated' key"
+        )
+
+    def test_max_nodes_cap_triggers_truncation(self, analyzer):
+        """max_nodes smaller than hierarchy size should produce truncated=True."""
+        # DeepA chain has 5 nodes; capping at 2 should truncate
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepA", max_nodes=2
+        )
+        assert "error" not in hierarchy
+        assert hierarchy.get("truncated") is True, (
+            "Expected truncated=True when max_nodes=2 on a 5-class chain"
+        )
+        assert hierarchy.get("nodes_returned") == len(hierarchy["classes"]), (
+            "nodes_returned must equal actual class count"
+        )
+        assert len(hierarchy["classes"]) <= 2, (
+            f"Should have at most 2 nodes, got {len(hierarchy['classes'])}"
+        )
+
+    def test_max_nodes_cap_includes_queried_class(self, analyzer):
+        """Queried class must always be present even when max_nodes=1."""
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepC", max_nodes=1
+        )
+        assert "error" not in hierarchy
+        assert "inheritance_test::DeepC" in hierarchy["classes"], (
+            "Queried class must be present even when max_nodes=1"
+        )
+
+    def test_max_nodes_none_disables_cap(self, analyzer):
+        """Setting max_nodes=None should return full result without truncation."""
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepA", max_nodes=None
+        )
+        assert "error" not in hierarchy
+        assert "truncated" not in hierarchy, (
+            "max_nodes=None should disable the cap and not set truncated"
+        )
+        # All 5 classes in the chain must be present
+        for cls in ["DeepA", "DeepB", "DeepC", "DeepD", "DeepE"]:
+            qname = f"inheritance_test::{cls}"
+            assert qname in hierarchy["classes"], (
+                f"Expected {qname} in full hierarchy with max_nodes=None"
+            )
+
+    def test_max_depth_zero_returns_only_queried_class(self, analyzer):
+        """max_depth=0 should return only the queried class (depth 0 = start node)."""
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepC", max_depth=0
+        )
+        assert "error" not in hierarchy
+        assert "inheritance_test::DeepC" in hierarchy["classes"], (
+            "Queried class must be present with max_depth=0"
+        )
+        assert len(hierarchy["classes"]) == 1, (
+            f"max_depth=0 should return exactly 1 class, got {len(hierarchy['classes'])}"
+        )
+        assert hierarchy.get("truncated") is True, (
+            "max_depth=0 on a class with neighbors should set truncated=True"
+        )
+
+    def test_max_depth_one_returns_direct_neighbors(self, analyzer):
+        """max_depth=1 should return queried class and its direct base/derived neighbors."""
+        # DeepC: base=DeepB, derived=DeepD — so depth-1 set = {DeepB, DeepC, DeepD}
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepC", max_depth=1
+        )
+        assert "error" not in hierarchy
+        classes = hierarchy["classes"]
+        assert "inheritance_test::DeepC" in classes
+        assert "inheritance_test::DeepB" in classes, (
+            "DeepB (direct base) should be in depth-1 result"
+        )
+        assert "inheritance_test::DeepD" in classes, (
+            "DeepD (direct derived) should be in depth-1 result"
+        )
+        # DeepA and DeepE are depth-2; they must NOT be present
+        assert "inheritance_test::DeepA" not in classes, (
+            "DeepA (depth-2) should NOT be in depth-1 result"
+        )
+        assert "inheritance_test::DeepE" not in classes, (
+            "DeepE (depth-2) should NOT be in depth-1 result"
+        )
+        assert hierarchy.get("truncated") is True, (
+            "truncated must be True when depth-2 nodes exist but are excluded"
+        )
+
+    def test_max_depth_covers_full_chain(self, analyzer):
+        """max_depth >= chain length should return full hierarchy without truncation."""
+        # DeepA -> DeepB -> DeepC -> DeepD -> DeepE: max depth from DeepA is 4
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepA", max_depth=10
+        )
+        assert "error" not in hierarchy
+        assert "truncated" not in hierarchy, (
+            "max_depth=10 should cover full 5-class chain without truncation"
+        )
+        for cls in ["DeepA", "DeepB", "DeepC", "DeepD", "DeepE"]:
+            assert f"inheritance_test::{cls}" in hierarchy["classes"]
+
+    def test_nodes_returned_matches_class_count(self, analyzer):
+        """nodes_returned field must equal len(classes) when truncation occurs."""
+        hierarchy = analyzer.get_class_hierarchy(
+            "inheritance_test::DeepA", max_nodes=3
+        )
+        assert hierarchy.get("truncated") is True
+        assert hierarchy["nodes_returned"] == len(hierarchy["classes"])
