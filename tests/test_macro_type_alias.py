@@ -74,15 +74,15 @@ class TestMacroTypeAlias:
         # Find the builder method
         builder_funcs = [f for f in functions if "DataBuilder" in f.get("qualified_name", "")]
 
-        # At least one should have DataBuilderUPtr in signature
+        # At least one should have DataBuilderUPtr in prototype
         has_uptr_return = any(
-            "DataBuilderUPtr" in f.get("signature", "")
+            "DataBuilderUPtr" in f.get("prototype", "")
             for f in builder_funcs
         )
 
         assert has_uptr_return, (
             f"Expected DataBuilder::builder to return DataBuilderUPtr, "
-            f"found: {[f.get('signature') for f in builder_funcs]}"
+            f"found: {[f.get('prototype') for f in builder_funcs]}"
         )
 
     def test_macro_type_alias_const_variant(self, analyzer):

@@ -3640,6 +3640,7 @@ class CppAnalyzer:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
+        include_attributes: bool = False,
     ):
         """Search for functions matching pattern, optionally within a specific class"""
         self._last_fallback = None
@@ -3652,6 +3653,7 @@ class CppAnalyzer:
                 namespace,
                 max_results,
                 signature_pattern,
+                include_attributes,
             )
             actual = results[0] if isinstance(results, tuple) else results
             if not actual:

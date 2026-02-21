@@ -1,5 +1,6 @@
 """Search functionality for C++ symbols."""
 
+import json
 import re
 import threading
 from typing import Dict, List, Optional, Any, Tuple, Union, cast
@@ -11,6 +12,97 @@ from .symbol_info import (
     omit_empty,
 )
 from .regex_validator import RegexValidator
+
+
+def _build_function_prototype(info: SymbolInfo) -> Optional[str]:
+    """Build a C++ prototype string for a function/method.
+
+    Produces: "[access] [virtual|static] <signature with qualified name> [= 0]"
+    Examples:
+        "public virtual void app::Handler::processData(int, std::string) const = 0"
+        "public static void app::Util::create()"
+        "void globalFunc(int x)"
+
+    Access modifier is only included for class members (info.parent_class is set).
+    Returns None if info.signature is empty.
+    """
+    if not info.signature:
+        return None
+
+    prefix_parts = []
+
+    # Access modifier only for class members
+    if info.parent_class and info.access:
+        prefix_parts.append(info.access)
+
+    # Virtual/static qualifiers (mutually exclusive in valid C++)
+    if info.is_pure_virtual or info.is_virtual:
+        prefix_parts.append("virtual")
+    elif info.is_static:
+        prefix_parts.append("static")
+
+    # Substitute qualified name into signature (replaces simple name)
+    # info.signature uses simple name, e.g. "void processData(int x) const"
+    # Result: "void app::Handler::processData(int x) const"
+    sig = info.signature
+    if info.qualified_name and info.name and info.qualified_name != info.name:
+        target = info.name + "("
+        idx = sig.find(target)
+        if idx >= 0:
+            sig = sig[:idx] + info.qualified_name + "(" + sig[idx + len(target) :]
+
+    # Append "= 0" for pure virtual
+    if info.is_pure_virtual and "= 0" not in sig:
+        sig = sig.rstrip() + " = 0"
+
+    if prefix_parts:
+        return " ".join(prefix_parts) + " " + sig
+    return sig
+
+
+def _build_class_prototype(info: SymbolInfo) -> Optional[str]:
+    """Build a C++ class declaration prototype from SymbolInfo.
+
+    Produces: "[template<...>] class|struct qualified_name[ : Base1, Base2, ...]"
+    Examples:
+        "class app::Widget : BaseWidget, Serializable"
+        "template<typename T> class Container : Allocator<T>"
+        "struct Point"
+
+    Returns None if qualified_name is empty.
+    """
+    qname = info.qualified_name or info.name
+    if not qname:
+        return None
+
+    # Template prefix for class templates and partial specializations
+    template_prefix = ""
+    if info.template_kind and info.template_parameters:
+        try:
+            params = json.loads(info.template_parameters)
+            param_strs = []
+            for p in params:
+                kind = p.get("kind", "type")
+                name = p.get("name", "")
+                if kind == "type" or not kind:
+                    param_strs.append(f"typename {name}" if name else "typename")
+                else:
+                    # Non-type parameter: use name directly
+                    param_strs.append(name if name else "auto")
+            if param_strs:
+                template_prefix = "template<" + ", ".join(param_strs) + "> "
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Keyword: "struct" for structs, "class" for everything else
+    kind_str = "struct" if info.kind == "struct" else "class"
+
+    # Base classes (no access specifiers since we don't store them per-base)
+    bases_str = ""
+    if info.base_classes:
+        bases_str = " : " + ", ".join(info.base_classes)
+
+    return f"{template_prefix}{kind_str} {qname}{bases_str}"
 
 
 def _build_attributes(info: SymbolInfo) -> Optional[List[str]]:
@@ -451,6 +543,7 @@ class SearchEngine:
                                 continue
 
                         entry = {
+                            "prototype": _build_class_prototype(info),
                             "qualified_name": info.qualified_name or info.name,
                             "namespace": info.namespace,
                             "kind": info.kind,
@@ -485,6 +578,7 @@ class SearchEngine:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
+        include_attributes: bool = False,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching a pattern.
 
@@ -512,6 +606,9 @@ class SearchEngine:
                         - "" (empty string) matches only global namespace
             max_results: Optional maximum number of results to return. When specified,
                         returns tuple (results, total_count) for truncation tracking.
+            include_attributes: When True, include machine-filterable 'attributes' list
+                        (e.g. ['virtual', 'const', 'definition']). Default False because
+                        the 'prototype' field already encodes this information visually.
 
         Returns:
             If max_results is None: List of matching function dictionaries
@@ -534,23 +631,23 @@ class SearchEngine:
 
         # Helper to create result dict
         def _create_result(info: SymbolInfo) -> Dict[str, Any]:
-            return omit_empty(
-                {
-                    "qualified_name": info.qualified_name or info.name,
-                    "namespace": info.namespace,
-                    "kind": info.kind,
-                    "signature": info.signature,
-                    "is_project": info.is_project,
-                    "parent_class": info.parent_class or None,
-                    "template_kind": info.template_kind,
-                    "template_parameters": info.template_parameters,
-                    "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-                    **build_location_objects(info),
-                    "attributes": _build_attributes(info),
-                    "brief": info.brief,
-                    "doc_comment": info.doc_comment,
-                }
-            )
+            d: Dict[str, Any] = {
+                "prototype": _build_function_prototype(info),
+                "qualified_name": info.qualified_name or info.name,
+                "namespace": info.namespace,
+                "kind": info.kind,
+                "is_project": info.is_project,
+                "parent_class": info.parent_class or None,
+                "template_kind": info.template_kind,
+                "template_parameters": info.template_parameters,
+                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+                **build_location_objects(info),
+                "brief": info.brief,
+                "doc_comment": info.doc_comment,
+            }
+            if include_attributes:
+                d["attributes"] = _build_attributes(info)
+            return omit_empty(d)
 
         # CRITICAL FIX FOR ISSUE #8:
         # When file_name is specified, search file_index instead of function_index
@@ -593,9 +690,12 @@ class SearchEngine:
                                 if not self._matches_namespace(info.namespace, namespace):
                                     continue
 
-                            # Filter by signature substring (case-insensitive)
+                            # Filter by prototype substring (case-insensitive)
+                            # Prototype supersedes raw signature: contains return type,
+                            # qualified name, params, const/virtual/static qualifiers.
                             if signature_pattern is not None:
-                                if signature_pattern.lower() not in (info.signature or "").lower():
+                                prototype = _build_function_prototype(info) or ""
+                                if signature_pattern.lower() not in prototype.lower():
                                     continue
 
                             results.append(_create_result(info))
@@ -628,9 +728,10 @@ class SearchEngine:
                                 if not self._matches_namespace(info.namespace, namespace):
                                     continue
 
-                            # Filter by signature substring (case-insensitive)
+                            # Filter by prototype substring (case-insensitive)
                             if signature_pattern is not None:
-                                if signature_pattern.lower() not in (info.signature or "").lower():
+                                prototype = _build_function_prototype(info) or ""
+                                if signature_pattern.lower() not in prototype.lower():
                                     continue
 
                             results.append(_create_result(info))
@@ -651,6 +752,7 @@ class SearchEngine:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
+        include_attributes: bool = False,
     ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for any symbols matching a pattern.
 
@@ -703,7 +805,11 @@ class SearchEngine:
             results["functions"] = cast(
                 List[Dict[str, Any]],
                 self.search_functions(
-                    pattern, project_only, namespace=namespace, signature_pattern=signature_pattern
+                    pattern,
+                    project_only,
+                    namespace=namespace,
+                    signature_pattern=signature_pattern,
+                    include_attributes=include_attributes,
                 ),
             )
 
@@ -920,8 +1026,8 @@ class SearchEngine:
                     methods.append(
                         omit_empty(
                             {
+                                "prototype": _build_function_prototype(func_info),
                                 "qualified_name": func_info.qualified_name or func_info.name,
-                                "signature": func_info.signature,
                                 "access": func_info.access,
                                 "template_kind": func_info.template_kind,
                                 "template_parameters": func_info.template_parameters,
@@ -943,6 +1049,7 @@ class SearchEngine:
 
         return omit_empty(
             {
+                "prototype": _build_class_prototype(info),
                 "qualified_name": info.qualified_name or info.name,
                 "namespace": info.namespace,
                 "kind": info.kind,

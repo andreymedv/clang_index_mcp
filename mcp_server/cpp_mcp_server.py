@@ -336,7 +336,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_functions",
-            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, qualified_name (fully qualified with namespaces and class, e.g. 'app::Database::save'), namespace (namespace and class portion, e.g. 'app::Database'), kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), file, line, signature, parent_class, is_project, template_kind (null for non-templates; 'function_template'/'full_specialization'/'partial_specialization' for templates), template_parameters, specialization_of (for specializations), start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line, is_virtual (true for virtual methods), is_pure_virtual (true for pure virtual = 0 methods), is_const (true for const methods), is_static (true for static methods/functions), is_definition (true if has body/implementation, false if declaration only), brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Searches both standalone functions and class methods. Supports regex patterns.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side instead of making more tool calls: e.g., to find only implementations (not declarations), filter by `is_definition=true`. To find only virtual methods, filter by `is_virtual=true`. To find abstract interfaces, filter by `is_pure_virtual=true`. Use `signature_pattern` to filter by parameter types or return types (e.g., signature_pattern='std::string' finds functions taking or returning std::string).",
+            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: prototype (full C++ declaration, e.g. 'public virtual void app::Handler::process(int) const = 0' — encodes access, qualifiers, return type, qualified name, params in one readable string), qualified_name (for tool chaining, e.g. 'app::Database::save'), namespace, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), parent_class, is_project, template_kind, template_parameters, specialization_of, location objects (declaration/definition with file/line/start_line/end_line), brief, doc_comment. Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Searches both standalone functions and class methods. Supports regex patterns.\n\n**POST-FILTERING TIP:** The prototype field makes filtering intuitive: scan for 'virtual', 'const', '= 0', 'static' in prototype to identify method kinds. Use `signature_pattern` to filter by parameter types or return types (e.g., signature_pattern='std::string' finds functions taking or returning std::string — matches against the prototype string). Add `include_attributes=true` to get a machine-filterable `attributes` list (['virtual', 'const', 'definition', etc.]) for programmatic filtering without string parsing.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -399,13 +399,25 @@ async def list_tools() -> List[Tool]:
                     "signature_pattern": {
                         "type": "string",
                         "description": (
-                            "Optional: Filter to functions whose signature contains this substring "
-                            "(case-insensitive). Matches against the full human-readable signature. "
+                            "Optional: Filter to functions whose prototype contains this substring "
+                            "(case-insensitive). Matches against the full prototype string which includes "
+                            "access modifier, qualifiers, return type, qualified name, and parameters. "
                             "Examples: 'std::string' finds functions with std::string in params or "
-                            "return type; 'const' finds const-qualified signatures; 'void' finds "
-                            "void-returning functions. This is plain substring match — special "
-                            "characters like *, &, <, > are matched literally."
+                            "return type; 'const' finds const-qualified methods; 'void' finds "
+                            "void-returning functions; 'virtual' finds virtual methods. "
+                            "This is plain substring match — special characters like *, &, <, > are matched literally."
                         ),
+                    },
+                    "include_attributes": {
+                        "type": "boolean",
+                        "description": (
+                            "Optional (default false): When true, include a machine-filterable 'attributes' "
+                            "list in each result (e.g. ['virtual', 'const', 'definition']). "
+                            "Useful for programmatic filtering without parsing the prototype string. "
+                            "The prototype field already encodes all this information visually; "
+                            "set this to true only when you need reliable attribute-based filtering."
+                        ),
+                        "default": False,
                     },
                     "max_results": {
                         "type": "integer",
@@ -1348,6 +1360,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             pattern = arguments["pattern"]
             max_results = arguments.get("max_results", None)
             signature_pattern = arguments.get("signature_pattern", None)
+            include_attributes = arguments.get("include_attributes", False)
             # Run synchronous method in executor to avoid blocking event loop
             raw_results = await loop.run_in_executor(
                 None,
@@ -1359,6 +1372,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                     namespace,
                     max_results,
                     signature_pattern,
+                    include_attributes,
                 ),
             )
             fallback = analyzer.pop_last_fallback()
