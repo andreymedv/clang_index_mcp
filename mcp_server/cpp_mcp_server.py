@@ -261,7 +261,7 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: name, qualified_name (fully qualified with namespaces, e.g. 'app::ui::View'), namespace (namespace portion, e.g. 'app::ui'), kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes, template_kind (null for non-templates; 'class_template'/'partial_specialization'/'full_specialization' for templates), template_parameters, specialization_of (qualified name of primary template, for specializations), start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line, brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Supports regex patterns.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side instead of making more tool calls: e.g., to find only structs, filter by `kind='STRUCT_DECL'`. To find base classes, check `base_classes` array. To find templates, filter by `template_kind != null`. To find specializations, filter by `template_kind in ('full_specialization', 'partial_specialization')`.",
+            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: qualified_name (fully qualified with namespaces, e.g. 'app::ui::View'), namespace (namespace portion, e.g. 'app::ui'), kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes (present by default; omit with include_base_classes=false), template_kind (null for non-templates; 'class_template'/'partial_specialization'/'full_specialization' for templates), template_parameters, specialization_of (qualified name of primary template, for specializations), start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line, brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Supports regex patterns.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side instead of making more tool calls: e.g., to find only structs, filter by `kind='STRUCT_DECL'`. To find base classes, check `base_classes` array (or use get_class_info for full inheritance info). To find templates, filter by `template_kind != null`. To find specializations, filter by `template_kind in ('full_specialization', 'partial_specialization')`.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -320,6 +320,15 @@ async def list_tools() -> List[Tool]:
                             "'total_matches' counts for pagination awareness."
                         ),
                         "minimum": 1,
+                    },
+                    "include_base_classes": {
+                        "type": "boolean",
+                        "description": (
+                            "When true (default), each result includes a base_classes list showing "
+                            "direct parent classes. Set to false to reduce response size when inheritance "
+                            "info is not needed (e.g., when only searching for class locations)."
+                        ),
+                        "default": True,
                     },
                 },
                 "required": ["pattern"],
@@ -1311,11 +1320,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
             max_results = arguments.get("max_results", None)
+            include_base_classes = arguments.get("include_base_classes", True)
             # Run synchronous method in executor to avoid blocking event loop
             raw_results = await loop.run_in_executor(
                 None,
                 lambda: analyzer.search_classes(
-                    pattern, project_only, file_name, namespace, max_results
+                    pattern, project_only, file_name, namespace, max_results, include_base_classes
                 ),
             )
             fallback = analyzer.pop_last_fallback()
