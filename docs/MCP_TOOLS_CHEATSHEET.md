@@ -15,7 +15,7 @@ Quick reference for C++ code analysis tools. All examples use YAML format for re
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ DETAILS (get full info about specific symbol)                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ get_class_info     │ Methods, members, base classes of a class              │
+│ get_class_info     │ Methods, base classes, hierarchy of a class            │
 │ get_function_signature │ Parameters, return type, template info             │
 │ get_type_alias_info │ Underlying type of using/typedef                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -183,7 +183,6 @@ methods:                                   # All methods of this class
     signature: "bool (const Event &)"
     access: protected
     line: 70
-members: []                                # Data members (if extracted)
 is_template: false
 template_kind: null
 template_parameters: null
