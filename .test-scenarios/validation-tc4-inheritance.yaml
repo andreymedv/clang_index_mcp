@@ -17,11 +17,11 @@ steps:
     timeout: 30
     description: "Wait for indexing to complete"
 
-  # TC4.1: get_derived_classes for IInterface
-  - tool: get_derived_classes
+  # TC4.1: get_class_hierarchy for IInterface (replaces removed get_derived_classes tool)
+  - tool: get_class_hierarchy
     args:
       class_name: "IInterface"
-    description: "TC4.1: get_derived_classes('IInterface') - should find ConcreteImpl (ideally, through ImplementationBase)"
+    description: "TC4.1: get_class_hierarchy('IInterface') - should find ConcreteImpl in derived_classes (through ImplementationBase)"
 
   # TC4.2: get_class_info for ConcreteImpl
   - tool: get_class_info
@@ -35,11 +35,11 @@ steps:
       class_name: "ImplementationBase<IInterface>"
     description: "TC4.3: get_class_info('ImplementationBase<IInterface>') - should show IInterface as base"
 
-  # TC4.4: get_derived_classes for ImplementationBase
-  - tool: get_derived_classes
+  # TC4.4: get_class_hierarchy for ImplementationBase (replaces removed get_derived_classes tool)
+  - tool: get_class_hierarchy
     args:
       class_name: "ImplementationBase"
-    description: "TC4.4: get_derived_classes('ImplementationBase') - should find derived classes"
+    description: "TC4.4: get_class_hierarchy('ImplementationBase') - should find derived classes"
 
   # TC4.5: Check if ImplementationBase is stored
   - tool: search_classes

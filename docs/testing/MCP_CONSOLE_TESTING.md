@@ -296,8 +296,7 @@ The MCP server provides these tools:
 | `get_function_signature` | Get function signatures | `function_name`, `class_name` |
 | `search_symbols` | Search all symbols | `pattern`, `project_only`, `symbol_types` |
 | `find_in_file` | Search symbols in a specific file | `file_path`, `pattern` |
-| `get_class_hierarchy` | Get inheritance hierarchy | `class_name` |
-| `get_derived_classes` | Find derived classes | `class_name`, `project_only` |
+| `get_class_hierarchy` | Get complete inheritance hierarchy (ancestors and descendants) | `class_name` |
 | `find_callers` | Find functions that call a function | `function_name`, `class_name` |
 | `find_callees` | Find functions called by a function | `function_name`, `class_name` |
 | `get_call_path` | Find call paths between functions | `from_function`, `to_function`, `max_depth` |
