@@ -69,7 +69,7 @@ using WidgetAlias = Widget;
         # Should find Widget class (canonical type)
         assert len(results) >= 1
         # At least one result should be Widget (the canonical class)
-        class_names = [r["name"] for r in results]
+        class_names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "Widget" in class_names
 
     def test_search_by_canonical_includes_aliases(self, temp_project_dir):
@@ -108,7 +108,7 @@ typedef Button ButtonType;
         # Should find Button class
         assert len(results) >= 1
         # Verify Button is in results
-        class_names = [r["name"] for r in results]
+        class_names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "Button" in class_names
 
     @pytest.mark.skip(reason="Phase 1.6: Automatic type expansion in search not yet implemented")
@@ -148,7 +148,7 @@ using AliasTwo = AliasOne;
 
         # Should resolve chain and find RealClass
         assert len(results) >= 1
-        class_names = [r["name"] for r in results]
+        class_names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "RealClass" in class_names
 
     @pytest.mark.skip(reason="Phase 1.6: Automatic type expansion in search not yet implemented")
@@ -193,7 +193,7 @@ namespace ui {
         # Should find canonical widgets::Widget
         assert len(results) >= 1
         # Check that we found the right class
-        qualified_names = [r.get("qualified_name", r["name"]) for r in results]
+        qualified_names = [r.get("qualified_name", "") for r in results]
         assert any("Widget" in name for name in qualified_names)
 
 
@@ -241,7 +241,7 @@ void processWidget(WidgetPtr widget) {
 
         # Should find function
         assert len(results) >= 1
-        assert any(r["name"] == "processWidget" for r in results)
+        assert any(r["qualified_name"].split("::")[-1] == "processWidget" for r in results)
 
     def test_search_function_with_alias_return_type(self, temp_project_dir):
         """IT-2.2: Find functions with aliased return types."""
@@ -279,7 +279,7 @@ DataPtr getData() {
 
         # Should find function
         assert len(results) >= 1
-        assert any(r["name"] == "getData" for r in results)
+        assert any(r["qualified_name"].split("::")[-1] == "getData" for r in results)
 
 
 # ============================================================================
@@ -365,7 +365,7 @@ using ButtonAlias = Button;
         # Should include methods
         assert result is not None
         assert "methods" in result
-        method_names = [m["name"] for m in result["methods"]]
+        method_names = [m["qualified_name"].split("::")[-1] for m in result["methods"]]
         assert "click" in method_names
 
 
@@ -431,7 +431,7 @@ namespace app {
         # 1. Verify DataStore is indexed
         results = analyzer.search_classes("DataStore")
         assert len(results) >= 1
-        assert any("DataStore" in r["name"] for r in results)
+        assert any("DataStore" in r["qualified_name"].split("::")[-1] for r in results)
 
         # 2. Verify processStorage function is indexed
         func_results = analyzer.search_functions("processStorage")

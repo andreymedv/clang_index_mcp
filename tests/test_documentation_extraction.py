@@ -54,8 +54,8 @@ public:
         class_results = analyzer.search_classes("Parser")
         assert len(class_results) == 1
         parser_class = class_results[0]
-        assert parser_class['brief'] is not None
-        assert "Parses C++ source files" in parser_class['brief']
+        assert parser_class.get('brief') is not None
+        assert "Parses C++ source files" in parser_class.get('brief')
 
         # Note: Methods are tested separately in other test classes
 
@@ -84,8 +84,8 @@ public:
 
         class_results = analyzer.search_classes("RequestHandler")
         assert len(class_results) == 1
-        assert class_results[0]['brief'] is not None
-        assert "HTTP request" in class_results[0]['brief'].lower() or "request handling" in class_results[0]['brief'].lower()
+        assert class_results[0].get('brief') is not None
+        assert "HTTP request" in class_results[0].get('brief').lower() or "request handling" in class_results[0].get('brief').lower()
 
     def test_extract_brief_qt_style(self, temp_project_dir):
         """UT-1.3: Extract brief from Qt-style comment (/*!)."""
@@ -108,8 +108,8 @@ public:
 
         class_results = analyzer.search_classes("Config")
         assert len(class_results) == 1
-        assert class_results[0]['brief'] is not None
-        assert "configuration" in class_results[0]['brief'].lower()
+        assert class_results[0].get('brief') is not None
+        assert "configuration" in class_results[0].get('brief').lower()
 
     def test_extract_brief_fallback_from_raw_comment(self, temp_project_dir):
         """UT-1.4: Extract brief from raw comment when brief_comment unavailable."""
@@ -153,8 +153,8 @@ class LongBriefClass {{
 
         class_results = analyzer.search_classes("LongBriefClass")
         assert len(class_results) == 1
-        if class_results[0]['brief']:
-            assert len(class_results[0]['brief']) <= 200
+        if class_results[0].get('brief'):
+            assert len(class_results[0].get('brief')) <= 200
 
     def test_brief_null_when_no_documentation(self, temp_project_dir):
         """UT-1.6: Brief should be NULL when no documentation exists."""
@@ -174,7 +174,7 @@ class UndocumentedClass {
 
         class_results = analyzer.search_classes("UndocumentedClass")
         assert len(class_results) == 1
-        assert class_results[0]['brief'] is None
+        assert class_results[0].get('brief') is None
 
 
 # ============================================================================
@@ -214,9 +214,9 @@ class DatabaseManager {
 
         class_results = analyzer.search_classes("DatabaseManager")
         assert len(class_results) == 1
-        assert class_results[0]['doc_comment'] is not None
+        assert class_results[0].get('doc_comment') is not None
         # Full doc should preserve structure
-        assert "Connection pooling" in class_results[0]['doc_comment'] or "database access" in class_results[0]['doc_comment'].lower()
+        assert "Connection pooling" in class_results[0].get('doc_comment') or "database access" in class_results[0].get('doc_comment').lower()
 
     def test_doc_comment_length_limit(self, temp_project_dir):
         """UT-2.2: Documentation should be truncated to max 4000 characters."""
@@ -242,8 +242,8 @@ class LongDocsClass {{
 
         class_results = analyzer.search_classes("LongDocsClass")
         assert len(class_results) == 1
-        if class_results[0]['doc_comment']:
-            assert len(class_results[0]['doc_comment']) <= 4000
+        if class_results[0].get('doc_comment'):
+            assert len(class_results[0].get('doc_comment')) <= 4000
 
     def test_doc_comment_null_when_missing(self, temp_project_dir):
         """UT-2.3: doc_comment should be NULL when no documentation exists."""
@@ -263,7 +263,7 @@ class NoDocsClass {
 
         class_results = analyzer.search_classes("NoDocsClass")
         assert len(class_results) == 1
-        assert class_results[0]['doc_comment'] is None
+        assert class_results[0].get('doc_comment') is None
 
     def test_doc_comment_preserves_structure(self, temp_project_dir):
         """UT-2.4: Documentation should preserve formatting and structure."""
@@ -291,9 +291,9 @@ void documentedFunction(int x, int y);
 
         func_results = analyzer.search_functions("documentedFunction")
         assert len(func_results) == 1
-        if func_results[0]['doc_comment']:
+        if func_results[0].get('doc_comment'):
             # Should preserve @param and @return tags
-            assert "@param" in func_results[0]['doc_comment'] or "parameter" in func_results[0]['doc_comment'].lower()
+            assert "@param" in func_results[0].get('doc_comment') or "parameter" in func_results[0].get('doc_comment').lower()
 
 
 # ============================================================================
@@ -322,7 +322,7 @@ class DoxygenSlash {
 
         results = analyzer.search_classes("DoxygenSlash")
         assert len(results) == 1
-        assert results[0]['brief'] is not None
+        assert results[0].get('brief') is not None
 
     def test_doxygen_multiline_star(self, temp_project_dir):
         """UT-3.2: Support /** ... */ Doxygen style."""
@@ -345,7 +345,7 @@ class DoxygenStar {
 
         results = analyzer.search_classes("DoxygenStar")
         assert len(results) == 1
-        assert results[0]['brief'] is not None
+        assert results[0].get('brief') is not None
 
     def test_qt_style_exclamation(self, temp_project_dir):
         """UT-3.3: Support /*! ... */ Qt style."""
@@ -366,7 +366,7 @@ class QtStyle {
 
         results = analyzer.search_classes("QtStyle")
         assert len(results) == 1
-        assert results[0]['brief'] is not None
+        assert results[0].get('brief') is not None
 
     def test_mixed_comment_styles(self, temp_project_dir):
         """UT-3.4: Handle mixed comment styles in same file."""
@@ -397,7 +397,7 @@ class Style3 {
         for class_name in ["Style1", "Style2", "Style3"]:
             results = analyzer.search_classes(class_name)
             assert len(results) == 1
-            assert results[0]['brief'] is not None
+            assert results[0].get('brief') is not None
 
 
 # ============================================================================
@@ -426,12 +426,12 @@ class TestDocumentationWithRealFiles:
         # Verify Parser class
         parser_results = analyzer.search_classes("Parser")
         assert len(parser_results) == 1
-        assert parser_results[0]['brief'] is not None
+        assert parser_results[0].get('brief') is not None
 
         # Verify RequestHandler class
         handler_results = analyzer.search_classes("RequestHandler")
         assert len(handler_results) == 1
-        assert handler_results[0]['brief'] is not None
+        assert handler_results[0].get('brief') is not None
 
     def test_no_docs_fixture(self, temp_project_dir):
         """Test with no_docs.cpp fixture (undocumented code)."""
@@ -451,8 +451,8 @@ class TestDocumentationWithRealFiles:
         # Undocumented classes should have None for brief
         results = analyzer.search_classes("UndocumentedClass")
         assert len(results) == 1
-        assert results[0]['brief'] is None
-        assert results[0]['doc_comment'] is None
+        assert results[0].get('brief') is None
+        assert results[0].get('doc_comment') is None
 
 
 if __name__ == "__main__":

@@ -182,7 +182,7 @@ class TestSearchClassesReturnsDefinition:
         # Find the ConcreteWidget result
         concrete_widget = None
         for result in results:
-            if result.get('name') == 'ConcreteWidget':
+            if result.get('qualified_name', '').split('::')[-1] == 'ConcreteWidget':
                 concrete_widget = result
                 break
 
@@ -205,7 +205,7 @@ class TestSearchClassesReturnsDefinition:
 
         # All results should have base classes (definition)
         for result in results:
-            if result.get('name') == 'ConcreteWidget':
+            if result.get('qualified_name', '').split('::')[-1] == 'ConcreteWidget':
                 base_classes = result.get('base_classes', [])
                 assert 'BaseWidget' in str(base_classes), (
                     f"BaseWidget not in base_classes for qualified search: {base_classes}"

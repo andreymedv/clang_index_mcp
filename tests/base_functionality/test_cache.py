@@ -72,8 +72,8 @@ void cachedFunction() {}
         assert len(funcs2) > 0, "Should find cachedFunction from cache"
 
         # Verify results are the same
-        assert classes1[0]['name'] == classes2[0]['name']
-        assert funcs1[0]['name'] == funcs2[0]['name']
+        assert classes1[0]['qualified_name'] == classes2[0]['qualified_name']
+        assert funcs1[0]['qualified_name'] == funcs2[0]['qualified_name']
 
     def test_cache_invalidation_on_file_change(self, temp_project_dir):
         """Test that cache is invalidated when files change"""

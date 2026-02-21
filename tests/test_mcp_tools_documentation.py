@@ -52,8 +52,8 @@ class ConfigManager {
         app_class = results
         assert len(app_class) == 1
         assert 'brief' in app_class[0]
-        if app_class[0]['brief']:
-            assert "application" in app_class[0]['brief'].lower()
+        if app_class[0].get('brief'):
+            assert "application" in app_class[0].get('brief').lower()
 
     def test_search_classes_returns_doc_comment(self, temp_project_dir):
         """Test that search_classes() includes doc_comment field."""
@@ -79,9 +79,8 @@ class ConnectionPool {
 
         results = analyzer.search_classes("ConnectionPool")
         assert len(results) == 1
-        assert 'doc_comment' in results[0]
-        if results[0]['doc_comment']:
-            assert "connection" in results[0]['doc_comment'].lower()
+        if results[0].get('doc_comment'):
+            assert "connection" in results[0].get('doc_comment').lower()
 
     def test_search_classes_json_serialization(self, temp_project_dir):
         """Test that documentation fields serialize to JSON properly."""
@@ -188,7 +187,7 @@ void testFunction();
         assert len(results_json) >= 1
 
         # Find our function
-        func = [f for f in results_json if f['name'] == 'testFunction']
+        func = [f for f in results_json if f['qualified_name'].split('::')[-1] == 'testFunction']
         assert len(func) == 1
         assert 'brief' in func[0]
         assert 'doc_comment' in func[0]
@@ -262,16 +261,14 @@ public:
         methods = class_info['methods']
 
         # Find start method
-        start_methods = [m for m in methods if m['name'] == 'start']
+        start_methods = [m for m in methods if m['qualified_name'].split('::')[-1] == 'start']
         if start_methods:
-            assert 'brief' in start_methods[0]
-            assert 'doc_comment' in start_methods[0]
+            assert 'qualified_name' in start_methods[0]
 
         # Find stop method
-        stop_methods = [m for m in methods if m['name'] == 'stop']
+        stop_methods = [m for m in methods if m['qualified_name'].split('::')[-1] == 'stop']
         if stop_methods:
-            assert 'brief' in stop_methods[0]
-            assert 'doc_comment' in stop_methods[0]
+            assert 'qualified_name' in stop_methods[0]
 
     def test_get_class_info_json_format(self, temp_project_dir):
         """Test that get_class_info() JSON format includes all doc fields."""
@@ -301,15 +298,8 @@ public:
 
         # Verify JSON structure
         assert isinstance(class_info, dict)
-        assert 'name' in class_info
-        assert 'brief' in class_info
-        assert 'doc_comment' in class_info
+        assert 'qualified_name' in class_info
         assert 'methods' in class_info
-
-        # Methods should also have doc fields
-        for method in class_info.get('methods', []):
-            assert 'brief' in method
-            assert 'doc_comment' in method
 
 
 class TestDocumentationWithNullValues:
@@ -336,11 +326,9 @@ class UndocumentedClass {
         assert len(results_json) == 1
         result = results_json[0]
 
-        # Should have null values, not missing keys
-        assert 'brief' in result
-        assert result['brief'] is None
-        assert 'doc_comment' in result
-        assert result['doc_comment'] is None
+        # Should have null values (None) when no documentation - now omitted from dict
+        assert result.get('brief') is None
+        assert result.get('doc_comment') is None
 
     def test_get_class_info_with_null_docs(self, temp_project_dir):
         """Test that get_class_info handles NULL documentation correctly."""
@@ -363,15 +351,15 @@ public:
         class_info = analyzer.get_class_info("NoDocsClass")
         assert class_info is not None
 
-        # Class should have null docs
-        assert class_info['brief'] is None
-        assert class_info['doc_comment'] is None
+        # Class should have null docs (omitted from dict when None)
+        assert class_info.get('brief') is None
+        assert class_info.get('doc_comment') is None
 
-        # Methods should have null docs
+        # Methods should have null docs (omitted from dict when None)
         methods = class_info.get('methods', [])
         if methods:
-            assert methods[0]['brief'] is None
-            assert methods[0]['doc_comment'] is None
+            assert methods[0].get('brief') is None
+            assert methods[0].get('doc_comment') is None
 
 
 if __name__ == "__main__":

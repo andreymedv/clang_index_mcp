@@ -154,7 +154,7 @@ def test_filter_methods_by_namespace_and_class(multi_namespace_project):
     ns1_view_methods = analyzer.search_functions("render", namespace="ns1::View")
     assert len(ns1_view_methods) == 1
     assert ns1_view_methods[0]["namespace"] == "ns1::View"
-    assert ns1_view_methods[0]["parent_class"] == "View"
+    assert ns1_view_methods[0].get("parent_class") == "View"
 
     # Search for display method
     ns2_display = analyzer.search_functions("display", namespace="ns2::View")
@@ -205,7 +205,7 @@ def test_namespace_filter_with_empty_pattern(multi_namespace_project):
     # Get all functions in global namespace
     global_functions = analyzer.search_functions("", namespace="")
     # Should only get global handleEvent, not methods
-    global_standalone = [f for f in global_functions if not f["parent_class"]]
+    global_standalone = [f for f in global_functions if not f.get("parent_class")]
     assert all(f["namespace"] == "" for f in global_standalone)
 
 
@@ -381,7 +381,7 @@ def test_partial_namespace_matching_functions(nested_namespace_project):
     results = analyzer.search_functions("", namespace="builders")
 
     # Should find: initialize (outer::builders), setup (builders)
-    standalone_funcs = [f for f in results if not f["parent_class"]]
+    standalone_funcs = [f for f in results if not f.get("parent_class")]
     assert len(standalone_funcs) == 2, f"Expected 2 functions, got {len(standalone_funcs)}"
 
 
@@ -414,7 +414,7 @@ def test_unique_namespace_exact_match(nested_namespace_project):
     assert (
         len(results) == 1
     ), f"Expected 1 class in TopLevel::outer::builders, got {len(results)}"
-    assert results[0]["name"] == "PdfWidget"
+    assert results[0]["qualified_name"].split("::")[-1] == "PdfWidget"
 
     # Standalone "builders" namespace is also matchable exactly
     results2 = analyzer.search_classes("XmlWidget", namespace="builders")

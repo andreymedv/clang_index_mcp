@@ -184,7 +184,7 @@ class TestComplementaryTools:
 
         # Get functions that call helper (backward analysis)
         callers_result = indexed_analyzer.find_callers("helper")
-        callers = {c['name'] for c in callers_result['callers']}
+        callers = {c['qualified_name'].split('::')[-1] for c in callers_result['callers']}
 
         # For each caller, check that get_call_sites shows helper as target (forward analysis)
         for caller_name in callers:

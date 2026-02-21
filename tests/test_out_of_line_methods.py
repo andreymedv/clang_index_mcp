@@ -136,7 +136,7 @@ class TestOutOfLineMethodsInGetClassInfo:
         """Methods defined in .cpp should appear in get_class_info."""
         info = analyzer.get_class_info("Calculator")
         assert info is not None, "Calculator not found"
-        method_names = {m["name"] for m in info.get("methods", [])}
+        method_names = {m["qualified_name"].split("::")[-1] for m in info.get("methods", [])}
         assert "add" in method_names, f"'add' not in methods: {method_names}"
         assert "subtract" in method_names, f"'subtract' not in methods: {method_names}"
 
@@ -144,7 +144,7 @@ class TestOutOfLineMethodsInGetClassInfo:
         """Constructors and destructors should appear in methods."""
         info = analyzer.get_class_info("Calculator")
         assert info is not None
-        method_names = {m["name"] for m in info.get("methods", [])}
+        method_names = {m["qualified_name"].split("::")[-1] for m in info.get("methods", [])}
         assert "Calculator" in method_names, f"Constructor not in methods: {method_names}"
         assert "~Calculator" in method_names, f"Destructor not in methods: {method_names}"
 
@@ -152,26 +152,26 @@ class TestOutOfLineMethodsInGetClassInfo:
         """Static out-of-line methods should appear."""
         info = analyzer.get_class_info("Calculator")
         assert info is not None
-        method_names = {m["name"] for m in info.get("methods", [])}
+        method_names = {m["qualified_name"].split("::")[-1] for m in info.get("methods", [])}
         assert "create" in method_names, f"'create' not in methods: {method_names}"
 
     def test_private_method_appears(self, analyzer):
         """Private out-of-line methods should appear."""
         info = analyzer.get_class_info("Calculator")
         assert info is not None
-        method_names = {m["name"] for m in info.get("methods", [])}
+        method_names = {m["qualified_name"].split("::")[-1] for m in info.get("methods", [])}
         assert "reset" in method_names, f"'reset' not in methods: {method_names}"
 
     def test_separate_class_methods(self, analyzer):
         """Printer methods should only appear in Printer, not Calculator."""
         calc_info = analyzer.get_class_info("Calculator")
         assert calc_info is not None
-        calc_methods = {m["name"] for m in calc_info.get("methods", [])}
+        calc_methods = {m["qualified_name"].split("::")[-1] for m in calc_info.get("methods", [])}
         assert "print_value" not in calc_methods
 
         printer_info = analyzer.get_class_info("Printer")
         assert printer_info is not None
-        printer_methods = {m["name"] for m in printer_info.get("methods", [])}
+        printer_methods = {m["qualified_name"].split("::")[-1] for m in printer_info.get("methods", [])}
         assert "print_value" in printer_methods
 
 
@@ -182,7 +182,7 @@ class TestInlineMethodsStillWork:
         """Methods defined inline in the class body should still appear."""
         info = analyzer.get_class_info("InlineHelper")
         assert info is not None
-        method_names = {m["name"] for m in info.get("methods", [])}
+        method_names = {m["qualified_name"].split("::")[-1] for m in info.get("methods", [])}
         assert "get_value" in method_names
         assert "set_value" in method_names
 
@@ -205,7 +205,7 @@ class TestParentClassPreservedInDedup:
         """After dedup, methods should have non-empty parent_class."""
         # Search for 'add' method and check parent_class
         results = analyzer.search_functions("add")
-        add_results = [r for r in results if r["name"] == "add"]
+        add_results = [r for r in results if r["qualified_name"].split("::")[-1] == "add"]
         assert len(add_results) > 0, "No 'add' function found"
         for r in add_results:
             if r.get("qualified_name", "").startswith("mylib::Calculator"):
