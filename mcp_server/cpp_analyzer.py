@@ -3607,12 +3607,13 @@ class CppAnalyzer:
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
+        include_base_classes: bool = True,
     ):
         """Search for classes matching pattern"""
         self._last_fallback = None
         try:
             results = self.search_engine.search_classes(
-                pattern, project_only, file_name, namespace, max_results
+                pattern, project_only, file_name, namespace, max_results, include_base_classes
             )
             actual = results[0] if isinstance(results, tuple) else results
             if not actual:

@@ -384,6 +384,7 @@ class SearchEngine:
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
+        include_base_classes: bool = True,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for classes matching a pattern.
 
@@ -408,6 +409,9 @@ class SearchEngine:
                         - "" (empty string) matches only global namespace
             max_results: Optional maximum number of results to return. When specified,
                         returns tuple (results, total_count) for truncation tracking.
+            include_base_classes: When True (default), include base_classes list in each result.
+                                  Set to False to reduce token usage for large searches where
+                                  inheritance info is not needed.
 
         Returns:
             If max_results is None: List of matching class dictionaries
@@ -446,25 +450,23 @@ class SearchEngine:
                             if not self._matches_namespace(info.namespace, namespace):
                                 continue
 
-                        results.append(
-                            omit_empty(
-                                {
-                                    "qualified_name": info.qualified_name or info.name,
-                                    "namespace": info.namespace,
-                                    "kind": info.kind,
-                                    "is_project": info.is_project,
-                                    "base_classes": info.base_classes,
-                                    "template_kind": info.template_kind,
-                                    "template_parameters": info.template_parameters,
-                                    "specialization_of": self._resolve_specialization_of(
-                                        info.primary_template_usr
-                                    ),
-                                    **build_location_objects(info),
-                                    "brief": info.brief,
-                                    "doc_comment": info.doc_comment,
-                                }
-                            )
-                        )
+                        entry = {
+                            "qualified_name": info.qualified_name or info.name,
+                            "namespace": info.namespace,
+                            "kind": info.kind,
+                            "is_project": info.is_project,
+                            "template_kind": info.template_kind,
+                            "template_parameters": info.template_parameters,
+                            "specialization_of": self._resolve_specialization_of(
+                                info.primary_template_usr
+                            ),
+                            **build_location_objects(info),
+                            "brief": info.brief,
+                            "doc_comment": info.doc_comment,
+                        }
+                        if include_base_classes:
+                            entry["base_classes"] = info.base_classes
+                        results.append(omit_empty(entry))
 
         # Handle max_results truncation
         if max_results is not None:
