@@ -1,0 +1,274 @@
+"""
+Unit tests for mcp_server/suggestions.py — conditional next-step suggestions.
+"""
+
+import pytest
+from mcp_server import suggestions
+from mcp_server.state_manager import EnhancedQueryResult
+
+
+# ---------------------------------------------------------------------------
+# for_get_class_info
+# ---------------------------------------------------------------------------
+
+
+def test_get_class_info_no_suggestions_for_empty_result():
+    assert suggestions.for_get_class_info({}) == []
+
+
+def test_get_class_info_no_suggestions_on_error():
+    assert suggestions.for_get_class_info({"error": "Not found"}) == []
+
+
+def test_get_class_info_no_suggestions_for_none():
+    assert suggestions.for_get_class_info(None) == []  # type: ignore[arg-type]
+
+
+def test_get_class_info_base_class_suggestion():
+    result = {
+        "qualified_name": "Child",
+        "base_classes": ["BaseA"],
+        "methods": [],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert any("get_class_info('BaseA')" in h for h in hints)
+    assert any("base class" in h for h in hints)
+
+
+def test_get_class_info_multiple_base_classes_capped_at_3():
+    result = {
+        "qualified_name": "Multi",
+        "base_classes": ["A", "B", "C", "D", "E"],
+        "methods": [],
+    }
+    hints = suggestions.for_get_class_info(result)
+    # Only first 3 bases should produce hints
+    base_hints = [h for h in hints if "get_class_info" in h and "base class" in h]
+    assert len(base_hints) == 3
+
+
+def test_get_class_info_template_base_stripped():
+    result = {
+        "qualified_name": "Container",
+        "base_classes": ["BaseTemplate<T>"],
+        "methods": [],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert any("get_class_info('BaseTemplate')" in h for h in hints)
+
+
+def test_get_class_info_pure_virtual_suggestion():
+    result = {
+        "qualified_name": "IInterface",
+        "base_classes": [],
+        "methods": [
+            {"prototype": "virtual void foo() = 0", "attributes": ["pure_virtual", "virtual"]},
+            {"prototype": "void bar()", "attributes": []},
+        ],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert any("pure virtual" in h for h in hints)
+    assert any("search_functions" in h for h in hints)
+
+
+def test_get_class_info_no_pure_virtual_no_suggestion():
+    result = {
+        "qualified_name": "Concrete",
+        "base_classes": [],
+        "methods": [
+            {"prototype": "void foo()", "attributes": []},
+        ],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert not any("pure virtual" in h for h in hints)
+
+
+def test_get_class_info_many_methods_suggestion():
+    result = {
+        "qualified_name": "BigClass",
+        "base_classes": [],
+        "methods": [{"prototype": f"void m{i}()", "attributes": []} for i in range(11)],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert any("filter" in h and "search_functions" in h for h in hints)
+
+
+def test_get_class_info_few_methods_no_filter_suggestion():
+    result = {
+        "qualified_name": "SmallClass",
+        "base_classes": [],
+        "methods": [{"prototype": f"void m{i}()", "attributes": []} for i in range(5)],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert not any("filter" in h for h in hints)
+
+
+def test_get_class_info_no_suggestions_for_leaf_class():
+    """Leaf class with no bases and few methods should produce no suggestions."""
+    result = {
+        "qualified_name": "LeafClass",
+        "base_classes": [],
+        "methods": [{"prototype": "void run()", "attributes": []}],
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert hints == []
+
+
+# ---------------------------------------------------------------------------
+# for_search_classes
+# ---------------------------------------------------------------------------
+
+
+def test_search_classes_empty_returns_no_hints():
+    assert suggestions.for_search_classes([]) == []
+
+
+def test_search_classes_single_result():
+    results = [{"qualified_name": "ns::MyClass", "name": "MyClass"}]
+    hints = suggestions.for_search_classes(results)
+    assert len(hints) == 1
+    assert "get_class_info('ns::MyClass')" in hints[0]
+    assert "full class details" in hints[0]
+
+
+def test_search_classes_three_results():
+    results = [
+        {"qualified_name": "A"},
+        {"qualified_name": "B"},
+        {"qualified_name": "C"},
+    ]
+    hints = suggestions.for_search_classes(results)
+    assert len(hints) == 3
+    assert all("get_class_info" in h for h in hints)
+
+
+def test_search_classes_more_than_three_results():
+    results = [{"qualified_name": f"Class{i}"} for i in range(5)]
+    hints = suggestions.for_search_classes(results)
+    # Only top match suggested when >3 results
+    assert len(hints) == 1
+    assert "get_class_info('Class0')" in hints[0]
+    assert "top match" in hints[0]
+
+
+def test_search_classes_uses_name_fallback():
+    results = [{"name": "FallbackClass"}]
+    hints = suggestions.for_search_classes(results)
+    assert any("FallbackClass" in h for h in hints)
+
+
+# ---------------------------------------------------------------------------
+# for_search_functions
+# ---------------------------------------------------------------------------
+
+
+def test_search_functions_empty_returns_no_hints():
+    assert suggestions.for_search_functions([]) == []
+
+
+def test_search_functions_no_parent_class():
+    results = [{"qualified_name": "freeFunc", "parent_class": None}]
+    hints = suggestions.for_search_functions(results)
+    assert hints == []
+
+
+def test_search_functions_with_parent_class():
+    results = [{"qualified_name": "MyClass::foo", "parent_class": "MyClass"}]
+    hints = suggestions.for_search_functions(results)
+    assert len(hints) == 1
+    assert "get_class_info('MyClass')" in hints[0]
+
+
+def test_search_functions_unique_parents_capped_at_2():
+    results = [
+        {"qualified_name": "A::foo", "parent_class": "A"},
+        {"qualified_name": "B::bar", "parent_class": "B"},
+        {"qualified_name": "C::baz", "parent_class": "C"},
+    ]
+    hints = suggestions.for_search_functions(results)
+    assert len(hints) == 2
+
+
+def test_search_functions_deduplicates_parent_class():
+    results = [
+        {"qualified_name": "Widget::show", "parent_class": "Widget"},
+        {"qualified_name": "Widget::hide", "parent_class": "Widget"},
+    ]
+    hints = suggestions.for_search_functions(results)
+    # Only one unique parent → one hint
+    assert len(hints) == 1
+
+
+# ---------------------------------------------------------------------------
+# for_find_callers
+# ---------------------------------------------------------------------------
+
+
+def test_find_callers_empty_callers_no_hints():
+    assert suggestions.for_find_callers("doThing", {"callers": []}) == []
+
+
+def test_find_callers_non_empty_callers():
+    result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
+    hints = suggestions.for_find_callers("doThing", result_data)
+    assert len(hints) == 1
+    assert "get_call_sites('doThing')" in hints[0]
+    assert "file:line:column" in hints[0]
+
+
+def test_find_callers_non_dict_result_no_hints():
+    hints = suggestions.for_find_callers("doThing", [])  # type: ignore[arg-type]
+    assert hints == []
+
+
+# ---------------------------------------------------------------------------
+# for_find_callees
+# ---------------------------------------------------------------------------
+
+
+def test_find_callees_empty_callees_no_hints():
+    assert suggestions.for_find_callees("process", {"callees": []}) == []
+
+
+def test_find_callees_non_empty_callees():
+    result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
+    hints = suggestions.for_find_callees("process", result_data)
+    assert len(hints) == 1
+    assert "get_call_sites('process')" in hints[0]
+    assert "function body" in hints[0]
+
+
+def test_find_callees_non_dict_result_no_hints():
+    hints = suggestions.for_find_callees("process", [])  # type: ignore[arg-type]
+    assert hints == []
+
+
+# ---------------------------------------------------------------------------
+# EnhancedQueryResult.to_dict() smoke tests
+# ---------------------------------------------------------------------------
+
+
+def test_enhanced_result_next_steps_in_metadata():
+    result = EnhancedQueryResult(data=[1, 2, 3], next_steps=["do_this()", "do_that()"])
+    d = result.to_dict()
+    assert "metadata" in d
+    assert d["metadata"]["next_steps"] == ["do_this()", "do_that()"]
+    assert "data" in d
+
+
+def test_enhanced_result_no_next_steps_no_metadata():
+    result = EnhancedQueryResult(data=[1, 2, 3])
+    d = result.to_dict()
+    assert "metadata" not in d
+
+
+def test_enhanced_result_create_normal_with_next_steps():
+    result = EnhancedQueryResult.create_normal(data={"x": 1}, next_steps=["hint()"])
+    d = result.to_dict()
+    assert d["metadata"]["next_steps"] == ["hint()"]
+
+
+def test_enhanced_result_create_normal_no_next_steps():
+    result = EnhancedQueryResult.create_normal(data={"x": 1})
+    d = result.to_dict()
+    assert "metadata" not in d
