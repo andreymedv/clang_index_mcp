@@ -100,7 +100,6 @@ Tests are organized by category:
 | get_indexing_status | ✅ Progress tracking | Pass |
 | wait_for_indexing | ✅ Blocking wait | Pass |
 | get_class_hierarchy | ✅ Inheritance | Pass |
-| get_derived_classes | ✅ Derived | Pass |
 | find_callers | ✅ Call graph | Pass |
 | find_callees | ✅ Call graph | Pass |
 | get_call_sites | ✅ Call sites | Pass |
