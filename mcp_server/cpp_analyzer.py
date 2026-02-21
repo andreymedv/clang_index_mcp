@@ -20,7 +20,13 @@ from typing import Dict, List, Optional, Any, Set, Callable
 from collections import defaultdict, deque
 import hashlib
 import json
-from .symbol_info import CLASS_KINDS, SymbolInfo, build_location_objects, is_richer_definition
+from .symbol_info import (
+    CLASS_KINDS,
+    SymbolInfo,
+    build_location_objects,
+    is_richer_definition,
+    omit_empty,
+)
 from .cache_manager import CacheManager
 from .file_scanner import FileScanner
 from .call_graph import CallGraphAnalyzer
@@ -4688,15 +4694,15 @@ class CppAnalyzer:
 
                             if match_found:
                                 derived_classes.append(
-                                    {
-                                        "name": info.name,
-                                        "qualified_name": info.qualified_name,
-                                        "kind": info.kind,
-                                        "is_project": info.is_project,
-                                        "base_classes": info.base_classes,
-                                        # Location objects (replaces flat file/line/start_line/end_line/header_*)
-                                        **build_location_objects(info),
-                                    }
+                                    omit_empty(
+                                        {
+                                            "qualified_name": info.qualified_name or info.name,
+                                            "kind": info.kind,
+                                            "is_project": info.is_project,
+                                            "base_classes": info.base_classes,
+                                            **build_location_objects(info),
+                                        }
+                                    )
                                 )
                                 break  # Found a match, no need to check other base classes
 
@@ -4814,9 +4820,7 @@ class CppAnalyzer:
                 is_dep = current.startswith("typename ") or (
                     "<" in current and ">" in current and not current.endswith(">")
                 )
-                raw_simple = current.split("::")[-1].split("<")[0] if "::" in current else current
                 node: Dict[str, Any] = {
-                    "name": raw_simple,
                     "qualified_name": current,
                     "kind": "unknown",
                     "is_project": False,
@@ -4851,13 +4855,12 @@ class CppAnalyzer:
             derived_keys: List[str] = []
             seen_derived: Set[str] = set()
             for d in derived:
-                dk = d.get("qualified_name") or d["name"]
+                dk = d["qualified_name"]
                 if dk not in seen_derived:
                     seen_derived.add(dk)
                     derived_keys.append(dk)
 
             classes[info_key] = {
-                "name": info.name,
                 "qualified_name": info_key,
                 "kind": info.kind,
                 "is_project": info.is_project,
@@ -4922,7 +4925,7 @@ class CppAnalyzer:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["name"], []):
+            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
 
@@ -4933,15 +4936,16 @@ class CppAnalyzer:
                 if caller_usr in self.usr_index:
                     caller_info = self.usr_index[caller_usr]
                     callers_list.append(
-                        {
-                            "name": caller_info.name,
-                            "kind": caller_info.kind,
-                            "signature": caller_info.signature,
-                            "parent_class": caller_info.parent_class,
-                            "is_project": caller_info.is_project,
-                            # Location objects (replaces flat file/line/column/start_line/end_line)
-                            **build_location_objects(caller_info),
-                        }
+                        omit_empty(
+                            {
+                                "qualified_name": caller_info.qualified_name or caller_info.name,
+                                "kind": caller_info.kind,
+                                "signature": caller_info.signature,
+                                "parent_class": caller_info.parent_class or None,
+                                "is_project": caller_info.is_project,
+                                **build_location_objects(caller_info),
+                            }
+                        )
                     )
 
             # Phase 3: Get call sites with line-level precision
@@ -4999,7 +5003,7 @@ class CppAnalyzer:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["name"], []):
+            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     source_usrs.add(symbol.usr)
 
@@ -5056,7 +5060,7 @@ class CppAnalyzer:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["name"], []):
+            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
 
@@ -5067,15 +5071,16 @@ class CppAnalyzer:
                 if callee_usr in self.usr_index:
                     callee_info = self.usr_index[callee_usr]
                     callees_list.append(
-                        {
-                            "name": callee_info.name,
-                            "kind": callee_info.kind,
-                            "signature": callee_info.signature,
-                            "parent_class": callee_info.parent_class,
-                            "is_project": callee_info.is_project,
-                            # Location objects (replaces flat file/line/column/start_line/end_line/header_*)
-                            **build_location_objects(callee_info),
-                        }
+                        omit_empty(
+                            {
+                                "qualified_name": callee_info.qualified_name or callee_info.name,
+                                "kind": callee_info.kind,
+                                "signature": callee_info.signature,
+                                "parent_class": callee_info.parent_class or None,
+                                "is_project": callee_info.is_project,
+                                **build_location_objects(callee_info),
+                            }
+                        )
                     )
 
         return {"function": function_name, "callees": callees_list}
@@ -5097,7 +5102,7 @@ class CppAnalyzer:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["name"], []):
+            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     from_usrs.add(symbol.usr)
 
@@ -5106,7 +5111,7 @@ class CppAnalyzer:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["name"], []):
+            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     to_usrs.add(symbol.usr)
 

@@ -95,6 +95,7 @@ class TestSignaturePattern(unittest.TestCase):
         """Helper to create a SymbolInfo for a function."""
         return SymbolInfo(
             name=name,
+            qualified_name=name,
             kind="function",
             file=file,
             line=line,
@@ -117,7 +118,7 @@ class TestSignaturePattern(unittest.TestCase):
     def test_substring_match(self):
         """Test basic substring matching against signatures."""
         results = self.search_engine.search_functions(".*", signature_pattern="std::string")
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertEqual(names, {"processData", "getWidget"})
 
     def test_case_insensitive(self):
@@ -131,28 +132,28 @@ class TestSignaturePattern(unittest.TestCase):
         results_mixed = self.search_engine.search_functions(
             ".*", signature_pattern="Std::String"
         )
-        names_lower = {r["name"] for r in results_lower}
-        names_upper = {r["name"] for r in results_upper}
-        names_mixed = {r["name"] for r in results_mixed}
+        names_lower = {r["qualified_name"].split("::")[-1] for r in results_lower}
+        names_upper = {r["qualified_name"].split("::")[-1] for r in results_upper}
+        names_mixed = {r["qualified_name"].split("::")[-1] for r in results_mixed}
         self.assertEqual(names_lower, names_upper)
         self.assertEqual(names_lower, names_mixed)
 
     def test_return_type_match(self):
         """Test matching against return type in signature."""
         results = self.search_engine.search_functions(".*", signature_pattern="double")
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertEqual(names, {"calculateArea"})
 
     def test_special_characters_literal(self):
         """Test that special characters are matched literally (not as regex)."""
         # Match pointer syntax
         results = self.search_engine.search_functions(".*", signature_pattern="Widget *")
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertEqual(names, {"getWidget"})
 
         # Match reference syntax
         results = self.search_engine.search_functions(".*", signature_pattern="&")
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertIn("processData", names)
         self.assertIn("getWidget", names)
         self.assertIn("handleEvent", names)
@@ -162,7 +163,7 @@ class TestSignaturePattern(unittest.TestCase):
         results = self.search_engine.search_functions(
             ".*", signature_pattern="std::function<void(int)>"
         )
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertEqual(names, {"setCallback"})
 
     def test_no_match_returns_empty(self):
@@ -175,7 +176,7 @@ class TestSignaturePattern(unittest.TestCase):
     def test_empty_signature_excluded(self):
         """Test that functions with empty signatures are excluded when pattern specified."""
         results = self.search_engine.search_functions(".*", signature_pattern="void")
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         # noSignature has "" signature, nullSignature has None — neither should match
         self.assertNotIn("noSignature", names)
         self.assertNotIn("nullSignature", names)
@@ -197,7 +198,7 @@ class TestSignaturePattern(unittest.TestCase):
         results = self.search_engine.search_functions(
             "get.*", signature_pattern="std::string"
         )
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         # Only getWidget matches both "get.*" name AND "std::string" in signature
         self.assertEqual(names, {"getWidget"})
 
@@ -219,7 +220,7 @@ class TestSignaturePattern(unittest.TestCase):
     def test_bool_return_type(self):
         """Test matching bool return type."""
         results = self.search_engine.search_functions(".*", signature_pattern="bool")
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertEqual(names, {"handleEvent"})
 
 
@@ -316,10 +317,10 @@ class TestSignaturePatternSearchSymbols(unittest.TestCase):
         )
         # Classes should still be returned (signature_pattern doesn't apply to classes)
         self.assertEqual(len(results["classes"]), 1)
-        self.assertEqual(results["classes"][0]["name"], "StringProcessor")
+        self.assertEqual(results["classes"][0]["qualified_name"].split("::")[-1], "StringProcessor")
         # Only "process" function has std::string in signature
         self.assertEqual(len(results["functions"]), 1)
-        self.assertEqual(results["functions"][0]["name"], "process")
+        self.assertEqual(results["functions"][0]["qualified_name"].split("::")[-1], "process")
 
     def test_search_symbols_none_preserves_behavior(self):
         """Test that signature_pattern=None in search_symbols returns everything."""
@@ -403,7 +404,7 @@ class TestSignaturePatternWithFileIndex(unittest.TestCase):
             "", file_name="io.cpp", signature_pattern="bool"
         )
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["name"], "writeFile")
+        self.assertEqual(results[0]["qualified_name"].split("::")[-1], "writeFile")
 
     def test_file_name_branch_no_match(self):
         """Test no match in file_index path."""
@@ -417,7 +418,7 @@ class TestSignaturePatternWithFileIndex(unittest.TestCase):
         results = self.search_engine.search_functions(
             "", file_name="io.cpp", signature_pattern="const char *"
         )
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertEqual(names, {"readFile", "writeFile"})
 
 

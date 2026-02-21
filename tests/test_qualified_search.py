@@ -193,7 +193,7 @@ void testFunc() {}
             response = analyzer.find_in_file(str(test_file), "View")
             results = response["results"]
             assert len(results) >= 1
-            names = [r["name"] for r in results]
+            names = [r["qualified_name"].split("::")[-1] for r in results]
             assert "View" in names
 
             # Test empty pattern (all symbols)
@@ -238,7 +238,7 @@ class View {};
             # Test unqualified: should find all 3 View classes
             unqualified_response = analyzer.find_in_file(str(test_file), "View")
             unqualified_results = unqualified_response["results"]
-            view_results = [r for r in unqualified_results if r["name"] == "View"]
+            view_results = [r for r in unqualified_results if r["qualified_name"].split("::")[-1] == "View"]
             assert len(view_results) == 3
 
             # Test qualified suffix: ui::View should find 2 (app::ui::View and legacy::ui::View)
@@ -260,7 +260,7 @@ class View {};
             regex_response = analyzer.find_in_file(str(test_file), ".*ListView")
             regex_results = regex_response["results"]
             assert len(regex_results) >= 1
-            assert any(r["name"] == "ListView" for r in regex_results)
+            assert any(r["qualified_name"].split("::")[-1] == "ListView" for r in regex_results)
 
 
 class TestBackwardCompatibility:
@@ -449,19 +449,19 @@ namespace outer {
             # Fully qualified should work
             result = analyzer.get_class_info("outer::builders::Presenter")
             assert result is not None
-            assert result["name"] == "Presenter"
+            assert result["qualified_name"].split("::")[-1] == "Presenter"
             assert result["qualified_name"] == "outer::builders::Presenter"
 
             # Partially qualified (missing outer::) should also work
             result = analyzer.get_class_info("builders::Presenter")
             assert result is not None
-            assert result["name"] == "Presenter"
+            assert result["qualified_name"].split("::")[-1] == "Presenter"
             assert result["qualified_name"] == "outer::builders::Presenter"
 
             # Simple name should work
             result = analyzer.get_class_info("Presenter")
             assert result is not None
-            assert result["name"] == "Presenter"
+            assert result["qualified_name"].split("::")[-1] == "Presenter"
 
     def test_get_class_info_disambiguates_correctly(self):
         """Partially qualified name should find the right class when there are multiple."""
@@ -498,18 +498,18 @@ namespace legacy {
             result = analyzer.get_class_info("app::ui::View")
             assert result is not None
             assert result["qualified_name"] == "app::ui::View"
-            assert any(m["name"] == "render" for m in result["methods"])
+            assert any(m["qualified_name"].split("::")[-1] == "render" for m in result["methods"])
 
             # "legacy::ui::View" should find the legacy version
             result = analyzer.get_class_info("legacy::ui::View")
             assert result is not None
             assert result["qualified_name"] == "legacy::ui::View"
-            assert any(m["name"] == "display" for m in result["methods"])
+            assert any(m["qualified_name"].split("::")[-1] == "display" for m in result["methods"])
 
             # "ui::View" (partial) should find one of them (first match)
             result = analyzer.get_class_info("ui::View")
             assert result is not None
-            assert result["name"] == "View"
+            assert result["qualified_name"].split("::")[-1] == "View"
             assert "ui::View" in result["qualified_name"]
 
     def test_get_function_signature_partially_qualified(self):
@@ -595,7 +595,7 @@ namespace outer {
             qname = hierarchy["queried_class"]
             assert qname in hierarchy["classes"]
             node = hierarchy["classes"][qname]
-            assert node["name"] == "Derived"
+            assert node["qualified_name"].split("::")[-1] == "Derived"
 
     def test_case_insensitive_partially_qualified(self):
         """Partially qualified matching should be case-insensitive."""
@@ -619,11 +619,11 @@ namespace MyApp {
             # Case-insensitive partial match
             result = analyzer.get_class_info("core::myclass")
             assert result is not None
-            assert result["name"] == "MyClass"
+            assert result["qualified_name"].split("::")[-1] == "MyClass"
 
             result = analyzer.get_class_info("CORE::MYCLASS")
             assert result is not None
-            assert result["name"] == "MyClass"
+            assert result["qualified_name"].split("::")[-1] == "MyClass"
 
 
 class TestAmbiguousClassNameHandling:
@@ -710,13 +710,13 @@ namespace ns2 {
             assert result is not None
             assert result.get("is_ambiguous") is not True
             assert result["qualified_name"] == "ns1::SomeClass"
-            assert any(m["name"] == "build1" for m in result["methods"])
+            assert any(m["qualified_name"].split("::")[-1] == "build1" for m in result["methods"])
 
             result = analyzer.get_class_info("ns2::SomeClass")
             assert result is not None
             assert result.get("is_ambiguous") is not True
             assert result["qualified_name"] == "ns2::SomeClass"
-            assert any(m["name"] == "build2" for m in result["methods"])
+            assert any(m["qualified_name"].split("::")[-1] == "build2" for m in result["methods"])
 
     def test_get_class_info_single_match_no_ambiguity(self):
         """Single class with simple name should return normally, not ambiguity error."""
@@ -742,7 +742,7 @@ namespace ns1 {
             result = analyzer.get_class_info("UniqueClass")
             assert result is not None
             assert result.get("is_ambiguous") is not True
-            assert result["name"] == "UniqueClass"
+            assert result["qualified_name"].split("::")[-1] == "UniqueClass"
             assert result["qualified_name"] == "ns1::UniqueClass"
 
 

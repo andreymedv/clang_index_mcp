@@ -227,8 +227,8 @@ class TestSearchEngineIntegration(unittest.TestCase):
         results = self.search_engine.search_classes("View")
 
         # Should return only "View", not "ViewManager", "ListView", etc.
-        self.assertEqual(len(results), 1, f"Expected 1 result, got {len(results)}: {[r['name'] for r in results]}")
-        self.assertEqual(results[0]["name"], "View")
+        self.assertEqual(len(results), 1, f"Expected 1 result, got {len(results)}: {[r['qualified_name'].split('::')[-1] for r in results]}")
+        self.assertEqual(results[0]["qualified_name"].split("::")[-1], "View")
 
     def test_search_classes_pattern_any(self):
         """Test pattern matching for any class."""
@@ -236,7 +236,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
         results = self.search_engine.search_classes(".*")
 
         # Should return all classes
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         expected = {"View", "ViewManager", "ListView", "TreeView", "PreviewPanel", "MyClass"}
         self.assertEqual(names, expected)
 
@@ -245,7 +245,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
         results = self.search_engine.search_classes("View.*")
 
         # Should return classes starting with "View"
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         expected = {"View", "ViewManager"}
         self.assertEqual(names, expected)
 
@@ -254,7 +254,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
         results = self.search_engine.search_classes(".*View")
 
         # Should return classes ending with "View"
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         expected = {"View", "ListView", "TreeView"}
         self.assertEqual(names, expected)
 
@@ -264,14 +264,14 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
         # Should return only "getValue", not "getWidth"
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["name"], "getValue")
+        self.assertEqual(results[0]["qualified_name"].split("::")[-1], "getValue")
 
     def test_search_functions_pattern_prefix(self):
         """Test that search_functions supports prefix pattern matching."""
         results = self.search_engine.search_functions("get.*")
 
         # Should return all functions starting with "get"
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         expected = {"getValue", "getWidth"}
         self.assertEqual(names, expected)
 
@@ -283,7 +283,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
             with self.subTest(pattern=pattern):
                 results = self.search_engine.search_classes(pattern)
                 self.assertEqual(len(results), 1)
-                self.assertEqual(results[0]["name"], "View")
+                self.assertEqual(results[0]["qualified_name"].split("::")[-1], "View")
 
     def test_no_false_positives_exact_match(self):
         """Test that exact match doesn't return substring matches."""
@@ -291,7 +291,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
         results = self.search_engine.search_classes("View")
 
         # Verify no false positives
-        names = {r["name"] for r in results}
+        names = {r["qualified_name"].split("::")[-1] for r in results}
         self.assertNotIn("ViewManager", names)
         self.assertNotIn("ListView", names)
         self.assertNotIn("TreeView", names)

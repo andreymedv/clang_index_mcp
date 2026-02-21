@@ -40,14 +40,14 @@ class GlobalClass {};
             # Test nested namespace class
             results = analyzer.search_classes("MyClass")
             assert len(results) == 1
-            assert results[0]["name"] == "MyClass"
+            assert results[0]["qualified_name"].split("::")[-1] == "MyClass"
             assert results[0]["qualified_name"] == "ns1::ns2::MyClass"
             assert results[0]["namespace"] == "ns1::ns2"
 
             # Test global namespace class
             results = analyzer.search_classes("GlobalClass")
             assert len(results) == 1
-            assert results[0]["name"] == "GlobalClass"
+            assert results[0]["qualified_name"].split("::")[-1] == "GlobalClass"
             assert results[0]["qualified_name"] == "GlobalClass"
             assert results[0]["namespace"] == ""
 
@@ -71,7 +71,7 @@ void globalFunction() {}
             # Test namespaced function
             results = analyzer.search_functions("helperFunction")
             assert len(results) == 1
-            assert results[0]["name"] == "helperFunction"
+            assert results[0]["qualified_name"].split("::")[-1] == "helperFunction"
             assert results[0]["qualified_name"] == "app::utils::helperFunction"
             assert results[0]["namespace"] == "app::utils"
 
@@ -101,7 +101,7 @@ namespace ui {
             # Test methods
             results = analyzer.search_functions("render")
             assert len(results) == 1
-            assert results[0]["name"] == "render"
+            assert results[0]["qualified_name"].split("::")[-1] == "render"
             assert results[0]["qualified_name"] == "ui::View::render"
             assert results[0]["namespace"] == "ui::View"
 
@@ -513,7 +513,7 @@ namespace core {
             assert len(results) >= 1
 
             # Find the connect method
-            connect = [r for r in results if r["name"] == "connect"][0]
+            connect = [r for r in results if r["qualified_name"].split("::")[-1] == "connect"][0]
             assert connect["qualified_name"] == "core::Database::Connection::connect"
             assert connect["namespace"] == "core::Database::Connection"
 
