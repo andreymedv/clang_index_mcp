@@ -1,9 +1,17 @@
 """
 Tests for virtual method extraction (Phase 5: LLM Integration).
 
-Verifies that the analyzer correctly extracts method attributes into a compact
-'attributes' list: virtual, pure_virtual, const, static, definition.
+Verifies that the analyzer correctly extracts method qualifiers into the
+'prototype' field (and optionally into 'attributes' for programmatic filtering).
+
+Helper functions use two strategies:
+- Prototype-based: parse the prototype string (used for search_functions results
+  which have include_attributes=False by default)
+- Attribute-based: check the 'attributes' list (used for get_class_info results
+  which always include attributes)
 """
+
+import re
 
 import pytest
 from pathlib import Path
@@ -11,31 +19,50 @@ from pathlib import Path
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 
+# Prototype-based helpers (for search_functions results)
+def _is_virtual(result):
+    """Return True if method is virtual or pure_virtual (from prototype)."""
+    proto = result.get("prototype", "")
+    return bool(re.search(r"\bvirtual\b", proto))
+
+
+def _is_pure_virtual(result):
+    """Return True if method is pure virtual (= 0) from prototype."""
+    proto = result.get("prototype", "")
+    return "= 0" in proto
+
+
+def _is_const(result):
+    """Return True if method is const-qualified (from prototype)."""
+    proto = result.get("prototype", "")
+    return bool(re.search(r"\)\s*const\b", proto))
+
+
+def _is_static(result):
+    """Return True if method is static (from prototype)."""
+    proto = result.get("prototype", "")
+    return bool(re.search(r"\bstatic\b", proto))
+
+
+def _is_definition(result):
+    """Return True if this is a definition (has a 'definition' location key)."""
+    return "definition" in result
+
+
+# Attribute-based helpers (for get_class_info method results which always include attributes)
 def _attrs(result):
     """Return the attributes list from a method/function result."""
     return result.get("attributes", [])
 
 
-def _is_virtual(result):
-    """Return True if method is virtual or pure_virtual."""
+def _is_virtual_attr(result):
+    """Return True if method is virtual or pure_virtual (from attributes)."""
     attrs = _attrs(result)
     return "virtual" in attrs or "pure_virtual" in attrs
 
 
-def _is_pure_virtual(result):
+def _is_pure_virtual_attr(result):
     return "pure_virtual" in _attrs(result)
-
-
-def _is_const(result):
-    return "const" in _attrs(result)
-
-
-def _is_static(result):
-    return "static" in _attrs(result)
-
-
-def _is_definition(result):
-    return "definition" in _attrs(result)
 
 
 @pytest.fixture
@@ -162,8 +189,8 @@ class TestGetClassInfoVirtualMethods:
         assert len(process_methods) >= 1, "Should have process method"
 
         process = process_methods[0]
-        assert _is_virtual(process)
-        assert _is_pure_virtual(process)
+        assert _is_virtual_attr(process)
+        assert _is_pure_virtual_attr(process)
 
     def test_concrete_methods_not_pure_virtual(self, virtual_analyzer):
         """Test that concrete class methods are not marked pure virtual."""
