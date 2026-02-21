@@ -56,7 +56,7 @@ public:
         assert len(class_results) >= 1, "Should extract at least one valid class despite errors"
 
         # Check that ValidClass was extracted
-        valid_class_found = any(c['name'] == 'ValidClass' for c in class_results)
+        valid_class_found = any(c['qualified_name'].split("::")[-1] == 'ValidClass' for c in class_results)
         assert valid_class_found, "ValidClass should be extracted despite later syntax error"
 
     def test_continue_parsing_with_undeclared_identifier(self, tmp_path):
@@ -186,7 +186,7 @@ public:
         # We should get at least FirstClass and SecondClass
         assert len(class_results) >= 2, "Should extract classes before preprocessor error"
 
-        class_names = [c['name'] for c in class_results]
+        class_names = [c['qualified_name'].split("::")[-1] for c in class_results]
         assert 'FirstClass' in class_names, "FirstClass should be extracted"
         assert 'SecondClass' in class_names, "SecondClass should be extracted"
 
@@ -232,6 +232,6 @@ void brokenFunction() {
         class_results = analyzer.search_classes("Class.*")
         assert len(class_results) >= 2, "Should extract classes from both files"
 
-        class_names = [c['name'] for c in class_results]
+        class_names = [c['qualified_name'].split("::")[-1] for c in class_results]
         assert 'Class1Valid' in class_names or 'Class2' in class_names, \
             "Should have classes from files with errors"

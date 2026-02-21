@@ -167,7 +167,7 @@ class TestCrossSpecializationQueries:
         # Should find DoubleContainer and IntContainer
         assert len(derived) >= 2, "Should find at least 2 derived classes"
 
-        names = [d['name'] for d in derived]
+        names = [d['qualified_name'].split("::")[-1] for d in derived]
         assert 'DoubleContainer' in names, "Should find DoubleContainer (from Container<double>)"
         assert 'IntContainer' in names, "Should find IntContainer (from Container<int>)"
 
@@ -178,7 +178,7 @@ class TestCrossSpecializationQueries:
         # Should find DerivedA and DerivedB
         assert len(derived) >= 2, "Should find CRTP-derived classes"
 
-        names = [d['name'] for d in derived]
+        names = [d['qualified_name'].split("::")[-1] for d in derived]
         assert 'DerivedA' in names, "Should find DerivedA (from Base<DerivedA>)"
         assert 'DerivedB' in names, "Should find DerivedB (from Base<DerivedB>)"
 
@@ -193,7 +193,7 @@ class TestCrossSpecializationQueries:
 
             # Verify base class starts with "Container<"
             assert any(bc.startswith("Container<") for bc in d['base_classes']), \
-                f"{d['name']} should inherit from a Container specialization"
+                f"{d['qualified_name']} should inherit from a Container specialization"
 
     def test_non_template_still_works(self, analyzer):
         """Test that regular (non-template) class queries still work."""
@@ -212,8 +212,8 @@ class TestTemplateSearchPatterns:
         results = analyzer.search_classes("Container")
 
         assert len(results) > 0, "Should find results for 'Container'"
-        assert all(r['name'] == 'Container' for r in results), \
-            "All results should have name 'Container'"
+        assert all(r['qualified_name'].split("::")[-1] == 'Container' for r in results), \
+            "All results should have simple name 'Container'"
 
     def test_regex_with_templates(self, analyzer):
         """Test regex pattern matching with templates."""
@@ -300,7 +300,7 @@ class TestTemplateEdgeCases:
 
         for d in derived:
             assert d.get('is_project', False), \
-                f"{d['name']} should be marked as project file"
+                f"{d['qualified_name']} should be marked as project file"
 
 
 class TestWhitespaceNormalization:
@@ -360,7 +360,7 @@ class TestWhitespaceNormalization:
         derived = analyzer.get_derived_classes("Container")
 
         # Verify we find derived classes
-        names = [d['name'] for d in derived]
+        names = [d['qualified_name'].split("::")[-1] for d in derived]
         assert 'DoubleContainer' in names or 'IntContainer' in names, \
             "Should find classes derived from Container specializations"
 
@@ -778,7 +778,7 @@ class TestCrossNamespaceInheritance:
         # Should find DerivedFromTemplate in derived_ns
         # Note: This may return 0 if no cross-namespace derived classes are found
         # because get_derived_classes may not traverse across namespaces by default
-        names = [d['name'] for d in derived]
+        names = [d['qualified_name'].split("::")[-1] for d in derived]
         # At minimum, the cross-namespace inheritance should be discoverable
         # via direct class lookup
         results = analyzer.search_classes("DerivedFromTemplate")
@@ -1327,7 +1327,7 @@ class TestBaseClassResolutionFromIndex:
 
         # Find the CRTP base template
         base_template = next(
-            (r for r in results if r['kind'] == 'class_template' and r['name'] == 'Base'),
+            (r for r in results if r['kind'] == 'class_template' and r['qualified_name'].split("::")[-1] == 'Base'),
             None
         )
 
@@ -1349,7 +1349,7 @@ class TestFalsePositiveTemplateSpecialization:
         results = analyzer.search_functions("addEntries")
         matched = [
             r for r in results
-            if r["name"] == "addEntries" and "initializer_list" in r.get("signature", "")
+            if r["qualified_name"].split("::")[-1] == "addEntries" and "initializer_list" in r.get("signature", "")
         ]
         assert len(matched) > 0, "Should find addEntries method with initializer_list param"
         for m in matched:
@@ -1363,7 +1363,7 @@ class TestFalsePositiveTemplateSpecialization:
         results = analyzer.search_functions("transform")
         matched = [
             r for r in results
-            if r["name"] == "transform" and "function" in r.get("signature", "")
+            if r["qualified_name"].split("::")[-1] == "transform" and "function" in r.get("signature", "")
         ]
         assert len(matched) > 0, "Should find transform method with std::function param"
         for m in matched:
@@ -1454,7 +1454,7 @@ class TestFalsePositiveTemplateSpecialization:
 
         methods = info.get("methods", [])
         for method in methods:
-            name = method.get("name", "")
+            name = method.get("qualified_name", "").split("::")[-1]
             # None of DataProcessor's methods are template specializations
             assert method.get("is_template_specialization") is not True, \
                 f"DataProcessor::{name} should not be marked as template specialization"
@@ -1485,12 +1485,12 @@ class TestTemplateSpecializationLookup:
         # Should find a Container (either the specialization or an ambiguity response)
         if info.get("is_ambiguous"):
             # Ambiguity is acceptable if there are multiple candidates
-            names = [m["name"] for m in info.get("matches", [])]
+            names = [m["qualified_name"].split("::")[-1] for m in info.get("matches", [])]
             assert all(n == "Container" for n in names), (
                 f"Ambiguous matches should all be 'Container': {names}"
             )
         else:
-            assert info.get("name") == "Container"
+            assert info.get("qualified_name", "").split("::")[-1] == "Container"
 
     def test_get_class_info_specialization_prefers_explicit_spec(self, analyzer):
         """When there is exactly one explicit specialization, it should be returned."""
@@ -1498,7 +1498,7 @@ class TestTemplateSpecializationLookup:
         info = analyzer.get_class_info("Container<int>")
         assert info is not None, "get_class_info('Container<int>') returned None"
         if not info.get("is_ambiguous"):
-            assert info.get("template_kind") in ("full_specialization", "partial_specialization") or info.get("name") == "Container"
+            assert info.get("template_kind") in ("full_specialization", "partial_specialization") or info.get("qualified_name", "").split("::")[-1] == "Container"
 
     def test_get_class_info_simple_name_still_works(self, analyzer):
         """Plain get_class_info('Container') should still work (may be ambiguous)."""

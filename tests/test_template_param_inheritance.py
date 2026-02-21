@@ -61,7 +61,7 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
         # DirectDerived directly inherits from BaseClass
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         assert "DirectDerived" in derived_names, \
             f"DirectDerived should be found as directly inheriting from BaseClass. Found: {derived_names}"
@@ -74,7 +74,7 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         # Since TemplateInheritsParam<T> : public T, this means
         # DerivedFromTemplate indirectly inherits from BaseClass
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         assert "DerivedFromTemplate" in derived_names, \
             f"DerivedFromTemplate should be found via template param inheritance. Found: {derived_names}"
@@ -87,7 +87,7 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         # TemplateMultipleBases<T> : public T, public AnotherBase
         # So DerivedFromTemplateMulti indirectly inherits from BaseClass
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         assert "DerivedFromTemplateMulti" in derived_names, \
             f"DerivedFromTemplateMulti should be found via template param inheritance. Found: {derived_names}"
@@ -97,7 +97,7 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         analyzer.index_project()
 
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         assert "Unrelated" not in derived_names, \
             f"Unrelated should NOT be found as derived from BaseClass. Found: {derived_names}"
@@ -108,7 +108,7 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
         # Search using qualified name
         derived = analyzer.get_derived_classes("ns::BaseClass", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         # Should still find the derived classes
         assert "DirectDerived" in derived_names or "DerivedFromTemplate" in derived_names, \
@@ -195,7 +195,7 @@ class TestTemplateParamNameCollision:
         analyzer.index_project()
 
         derived = analyzer.get_derived_classes("Base", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         # Adapter has template param named 'Base' - should NOT appear
         assert "Adapter" not in derived_names, (
@@ -209,7 +209,7 @@ class TestTemplateParamNameCollision:
         analyzer.index_project()
 
         derived = analyzer.get_derived_classes("Base", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         assert "RealDerivedFromBase" in derived_names, (
             f"RealDerivedFromBase should be found as derived from struct Base. "
@@ -224,7 +224,7 @@ class TestTemplateParamNameCollision:
         # which inherits from its template param T=BaseClass
         # This is INDIRECT inheritance (through instantiation), not a false positive
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         assert "DerivedFromTemplate" in derived_names, (
             f"DerivedFromTemplate should still be found through indirect inheritance. "

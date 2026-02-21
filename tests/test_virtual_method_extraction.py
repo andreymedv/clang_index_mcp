@@ -1,18 +1,41 @@
 """
 Tests for virtual method extraction (Phase 5: LLM Integration).
 
-Verifies that the analyzer correctly extracts:
-- is_virtual: True for virtual methods
-- is_pure_virtual: True for pure virtual (= 0) methods
-- is_const: True for const methods
-- is_static: True for static methods
-- is_definition: True if method has body/implementation
+Verifies that the analyzer correctly extracts method attributes into a compact
+'attributes' list: virtual, pure_virtual, const, static, definition.
 """
 
 import pytest
 from pathlib import Path
 
 from mcp_server.cpp_analyzer import CppAnalyzer
+
+
+def _attrs(result):
+    """Return the attributes list from a method/function result."""
+    return result.get("attributes", [])
+
+
+def _is_virtual(result):
+    """Return True if method is virtual or pure_virtual."""
+    attrs = _attrs(result)
+    return "virtual" in attrs or "pure_virtual" in attrs
+
+
+def _is_pure_virtual(result):
+    return "pure_virtual" in _attrs(result)
+
+
+def _is_const(result):
+    return "const" in _attrs(result)
+
+
+def _is_static(result):
+    return "static" in _attrs(result)
+
+
+def _is_definition(result):
+    return "definition" in _attrs(result)
 
 
 @pytest.fixture
@@ -49,13 +72,9 @@ class TestVirtualMethodExtraction:
         assert len(ihandler_process) >= 1, "Should find IHandler::process"
 
         method = ihandler_process[0]
-        assert method.get("is_virtual") is True, "IHandler::process should be virtual"
-        assert (
-            method.get("is_pure_virtual") is True
-        ), "IHandler::process should be pure virtual"
-        assert (
-            method.get("is_definition") is False
-        ), "Pure virtual has no definition in interface"
+        assert _is_virtual(method), "IHandler::process should be virtual"
+        assert _is_pure_virtual(method), "IHandler::process should be pure virtual"
+        assert not _is_definition(method), "Pure virtual has no definition in interface"
 
     def test_override_method_detection(self, virtual_analyzer):
         """Test that override methods are correctly identified as virtual."""
@@ -72,10 +91,8 @@ class TestVirtualMethodExtraction:
         assert len(concrete_process) >= 1, "Should find ConcreteHandler::process"
 
         method = concrete_process[0]
-        assert method.get("is_virtual") is True, "Override methods are virtual"
-        assert (
-            method.get("is_pure_virtual") is False
-        ), "Override is not pure virtual"
+        assert _is_virtual(method), "Override methods are virtual"
+        assert not _is_pure_virtual(method), "Override is not pure virtual"
 
     def test_const_method_detection(self, virtual_analyzer):
         """Test that const methods are correctly identified."""
@@ -86,9 +103,9 @@ class TestVirtualMethodExtraction:
         assert len(ihandler_calc) >= 1, "Should find IHandler::calculate"
 
         method = ihandler_calc[0]
-        assert method.get("is_const") is True, "calculate should be const"
-        assert method.get("is_virtual") is True, "calculate should be virtual"
-        assert method.get("is_pure_virtual") is True, "calculate should be pure virtual"
+        assert _is_const(method), "calculate should be const"
+        assert _is_virtual(method), "calculate should be virtual"
+        assert _is_pure_virtual(method), "calculate should be pure virtual"
 
     def test_static_method_detection(self, virtual_analyzer):
         """Test that static methods are correctly identified."""
@@ -96,8 +113,8 @@ class TestVirtualMethodExtraction:
 
         assert len(results) >= 1, "Should find staticHelper"
         method = results[0]
-        assert method.get("is_static") is True, "staticHelper should be static"
-        assert method.get("is_virtual") is False, "Static methods cannot be virtual"
+        assert _is_static(method), "staticHelper should be static"
+        assert not _is_virtual(method), "Static methods cannot be virtual"
 
     def test_non_virtual_method(self, virtual_analyzer):
         """Test that non-virtual methods are correctly identified."""
@@ -105,10 +122,8 @@ class TestVirtualMethodExtraction:
 
         assert len(results) >= 1, "Should find helperMethod"
         method = results[0]
-        assert method.get("is_virtual") is False, "helperMethod should not be virtual"
-        assert (
-            method.get("is_pure_virtual") is False
-        ), "helperMethod should not be pure virtual"
+        assert not _is_virtual(method), "helperMethod should not be virtual"
+        assert not _is_pure_virtual(method), "helperMethod should not be pure virtual"
 
     def test_const_non_virtual_method(self, virtual_analyzer):
         """Test const non-virtual method."""
@@ -116,15 +131,15 @@ class TestVirtualMethodExtraction:
 
         assert len(results) >= 1, "Should find getValue"
         method = results[0]
-        assert method.get("is_const") is True, "getValue should be const"
-        assert method.get("is_virtual") is False, "getValue should not be virtual"
+        assert _is_const(method), "getValue should be const"
+        assert not _is_virtual(method), "getValue should not be virtual"
 
     def test_definition_vs_declaration(self, virtual_analyzer):
         """Test that definitions and declarations are distinguished."""
         results = virtual_analyzer.search_functions("helperMethod")
 
         # Should find at least one definition (in .cpp)
-        definitions = [r for r in results if r.get("is_definition") is True]
+        definitions = [r for r in results if _is_definition(r)]
         # Note: Due to definition-wins logic, we may only see the definition
         assert len(definitions) >= 1 or len(results) >= 1, "Should find helperMethod"
 
@@ -139,13 +154,16 @@ class TestGetClassInfoVirtualMethods:
         assert info is not None, "Should find IHandler class"
         methods = info.get("methods", [])
 
-        # Find process method
-        process_methods = [m for m in methods if m["name"] == "process"]
+        # Find process method by qualified_name suffix
+        process_methods = [
+            m for m in methods
+            if m.get("qualified_name", "").split("::")[-1] == "process"
+        ]
         assert len(process_methods) >= 1, "Should have process method"
 
         process = process_methods[0]
-        assert process.get("is_virtual") is True
-        assert process.get("is_pure_virtual") is True
+        assert _is_virtual(process)
+        assert _is_pure_virtual(process)
 
     def test_concrete_methods_not_pure_virtual(self, virtual_analyzer):
         """Test that concrete class methods are not marked pure virtual."""
@@ -164,7 +182,5 @@ class TestGetClassInfoVirtualMethods:
         assert len(concrete_process) >= 1, "Should find ConcreteHandler::process"
 
         process = concrete_process[0]
-        assert process.get("is_virtual") is True, "Override methods are virtual"
-        assert (
-            process.get("is_pure_virtual") is False
-        ), "Concrete override is not pure virtual"
+        assert _is_virtual(process), "Override methods are virtual"
+        assert not _is_pure_virtual(process), "Concrete override is not pure virtual"

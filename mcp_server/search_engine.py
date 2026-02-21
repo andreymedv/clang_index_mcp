@@ -8,8 +8,31 @@ from .symbol_info import (
     build_location_objects,
     get_template_param_base_indices,
     is_richer_definition,
+    omit_empty,
 )
 from .regex_validator import RegexValidator
+
+
+def _build_attributes(info: SymbolInfo) -> Optional[List[str]]:
+    """Build attributes list from boolean method/function flags.
+
+    Replaces is_virtual, is_pure_virtual, is_const, is_static, is_definition
+    with a compact list of applicable attribute names.
+    pure_virtual implies virtual, so only 'pure_virtual' is listed (not both).
+    Returns None when no attributes apply (omitted by omit_empty).
+    """
+    attrs = []
+    if info.is_pure_virtual:
+        attrs.append("pure_virtual")
+    elif info.is_virtual:
+        attrs.append("virtual")
+    if info.is_const:
+        attrs.append("const")
+    if info.is_static:
+        attrs.append("static")
+    if info.is_definition:
+        attrs.append("definition")
+    return attrs if attrs else None
 
 
 class SearchEngine:
@@ -424,26 +447,23 @@ class SearchEngine:
                                 continue
 
                         results.append(
-                            {
-                                "name": info.name,
-                                "qualified_name": info.qualified_name,  # Phase 2: Qualified name
-                                "namespace": info.namespace,  # Phase 2: Namespace portion
-                                "kind": info.kind,
-                                "is_project": info.is_project,
-                                "base_classes": info.base_classes,
-                                # Template tracking (is_template and is_template_specialization
-                                # removed as redundant: derive from template_kind and specialization_of)
-                                "template_kind": info.template_kind,
-                                "template_parameters": info.template_parameters,
-                                "specialization_of": self._resolve_specialization_of(
-                                    info.primary_template_usr
-                                ),
-                                # Location objects (replaces flat file/line/start_line/end_line/header_*)
-                                **build_location_objects(info),
-                                # Phase 2: Documentation
-                                "brief": info.brief,
-                                "doc_comment": info.doc_comment,
-                            }
+                            omit_empty(
+                                {
+                                    "qualified_name": info.qualified_name or info.name,
+                                    "namespace": info.namespace,
+                                    "kind": info.kind,
+                                    "is_project": info.is_project,
+                                    "base_classes": info.base_classes,
+                                    "template_kind": info.template_kind,
+                                    "template_parameters": info.template_parameters,
+                                    "specialization_of": self._resolve_specialization_of(
+                                        info.primary_template_usr
+                                    ),
+                                    **build_location_objects(info),
+                                    "brief": info.brief,
+                                    "doc_comment": info.doc_comment,
+                                }
+                            )
                         )
 
         # Handle max_results truncation
@@ -512,31 +532,23 @@ class SearchEngine:
 
         # Helper to create result dict
         def _create_result(info: SymbolInfo) -> Dict[str, Any]:
-            return {
-                "name": info.name,
-                "qualified_name": info.qualified_name,  # Phase 2: Qualified name
-                "namespace": info.namespace,  # Phase 2: Namespace portion
-                "kind": info.kind,
-                "signature": info.signature,
-                "is_project": info.is_project,
-                "parent_class": info.parent_class,
-                # Template tracking (is_template and is_template_specialization
-                # removed as redundant: derive from template_kind and specialization_of)
-                "template_kind": info.template_kind,
-                "template_parameters": info.template_parameters,
-                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-                # Location objects (replaces flat file/line/start_line/end_line/header_*)
-                **build_location_objects(info),
-                # Phase 5: Virtual/abstract indicators
-                "is_virtual": info.is_virtual,
-                "is_pure_virtual": info.is_pure_virtual,
-                "is_const": info.is_const,
-                "is_static": info.is_static,
-                "is_definition": info.is_definition,
-                # Phase 2: Documentation
-                "brief": info.brief,
-                "doc_comment": info.doc_comment,
-            }
+            return omit_empty(
+                {
+                    "qualified_name": info.qualified_name or info.name,
+                    "namespace": info.namespace,
+                    "kind": info.kind,
+                    "signature": info.signature,
+                    "is_project": info.is_project,
+                    "parent_class": info.parent_class or None,
+                    "template_kind": info.template_kind,
+                    "template_parameters": info.template_parameters,
+                    "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+                    **build_location_objects(info),
+                    "attributes": _build_attributes(info),
+                    "brief": info.brief,
+                    "doc_comment": info.doc_comment,
+                }
+            )
 
         # CRITICAL FIX FOR ISSUE #8:
         # When file_name is specified, search file_index instead of function_index
@@ -904,29 +916,22 @@ class SearchEngine:
                         continue
 
                     methods.append(
-                        {
-                            "name": func_info.name,
-                            "signature": func_info.signature,
-                            "access": func_info.access,
-                            # Template tracking (is_template and is_template_specialization
-                            # removed as redundant: derive from template_kind and specialization_of)
-                            "template_kind": func_info.template_kind,
-                            "template_parameters": func_info.template_parameters,
-                            "specialization_of": self._resolve_specialization_of(
-                                func_info.primary_template_usr
-                            ),
-                            # Location objects (replaces flat line/start_line/end_line/header_*)
-                            **build_location_objects(func_info),
-                            # Phase 5: Virtual/abstract indicators
-                            "is_virtual": func_info.is_virtual,
-                            "is_pure_virtual": func_info.is_pure_virtual,
-                            "is_const": func_info.is_const,
-                            "is_static": func_info.is_static,
-                            "is_definition": func_info.is_definition,
-                            # Phase 2: Documentation for methods
-                            "brief": func_info.brief,
-                            "doc_comment": func_info.doc_comment,
-                        }
+                        omit_empty(
+                            {
+                                "qualified_name": func_info.qualified_name or func_info.name,
+                                "signature": func_info.signature,
+                                "access": func_info.access,
+                                "template_kind": func_info.template_kind,
+                                "template_parameters": func_info.template_parameters,
+                                "specialization_of": self._resolve_specialization_of(
+                                    func_info.primary_template_usr
+                                ),
+                                **build_location_objects(func_info),
+                                "attributes": _build_attributes(func_info),
+                                "brief": func_info.brief,
+                                "doc_comment": func_info.doc_comment,
+                            }
+                        )
                     )
 
         def _method_sort_line(m: Dict[str, Any]) -> int:
@@ -934,26 +939,23 @@ class SearchEngine:
             loc: Dict[str, Any] = m.get("declaration") or m.get("definition") or {}
             return int(loc.get("line", 0))
 
-        return {
-            "name": info.name,
-            "qualified_name": info.qualified_name,
-            "namespace": info.namespace,
-            "kind": info.kind,
-            "base_classes": info.base_classes,
-            "template_param_base_indices": get_template_param_base_indices(info),
-            "methods": sorted(methods, key=_method_sort_line),
-            "members": [],  # TODO: Implement member variable indexing
-            "is_project": info.is_project,
-            # Template tracking (is_template removed as redundant: derive from template_kind)
-            "template_kind": info.template_kind,
-            "template_parameters": info.template_parameters,
-            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-            # Location objects (replaces flat file/line/start_line/end_line/header_*)
-            **build_location_objects(info),
-            # Phase 2: Documentation for class
-            "brief": info.brief,
-            "doc_comment": info.doc_comment,
-        }
+        return omit_empty(
+            {
+                "qualified_name": info.qualified_name or info.name,
+                "namespace": info.namespace,
+                "kind": info.kind,
+                "base_classes": info.base_classes,
+                "template_param_base_indices": get_template_param_base_indices(info) or None,
+                "methods": sorted(methods, key=_method_sort_line),
+                "is_project": info.is_project,
+                "template_kind": info.template_kind,
+                "template_parameters": info.template_parameters,
+                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+                **build_location_objects(info),
+                "brief": info.brief,
+                "doc_comment": info.doc_comment,
+            }
+        )
 
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None

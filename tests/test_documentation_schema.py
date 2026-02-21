@@ -111,7 +111,7 @@ class DocumentedClass {
         # Retrieve from analyzer
         results = analyzer.search_classes("DocumentedClass")
         assert len(results) == 1
-        stored_brief = results[0]['brief']
+        stored_brief = results[0].get('brief')
 
         # Verify it was actually stored in DB
         cache_backend = analyzer.cache_manager.backend
@@ -145,7 +145,7 @@ class FullyDocumentedClass {
 
         results = analyzer.search_classes("FullyDocumentedClass")
         assert len(results) == 1
-        stored_doc = results[0]['doc_comment']
+        stored_doc = results[0].get('doc_comment')
 
         # Verify stored in DB
         cache_backend = analyzer.cache_manager.backend
@@ -173,8 +173,8 @@ class UndocumentedClass {
 
         results = analyzer.search_classes("UndocumentedClass")
         assert len(results) == 1
-        assert results[0]['brief'] is None
-        assert results[0]['doc_comment'] is None
+        assert results[0].get('brief') is None
+        assert results[0].get('doc_comment') is None
 
         # Verify NULL stored in DB (not empty string)
         cache_backend = analyzer.cache_manager.backend
@@ -213,8 +213,8 @@ class PersistentClass {
         analyzer1.index_project()
         results1 = analyzer1.search_classes("PersistentClass")
         assert len(results1) == 1
-        original_brief = results1[0]['brief']
-        original_doc = results1[0]['doc_comment']
+        original_brief = results1[0].get('brief')
+        original_doc = results1[0].get('doc_comment')
 
         # Second analyzer - should use cached data
         analyzer2 = CppAnalyzer(str(temp_project_dir))
@@ -222,8 +222,8 @@ class PersistentClass {
         analyzer2.index_project()
         results2 = analyzer2.search_classes("PersistentClass")
         assert len(results2) == 1
-        assert results2[0]['brief'] == original_brief
-        assert results2[0]['doc_comment'] == original_doc
+        assert results2[0].get('brief') == original_brief
+        assert results2[0].get('doc_comment') == original_doc
 
 
 class TestCacheBackendDocumentation:
