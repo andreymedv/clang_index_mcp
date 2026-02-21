@@ -1349,7 +1349,7 @@ class TestFalsePositiveTemplateSpecialization:
         results = analyzer.search_functions("addEntries")
         matched = [
             r for r in results
-            if r["qualified_name"].split("::")[-1] == "addEntries" and "initializer_list" in r.get("signature", "")
+            if r["qualified_name"].split("::")[-1] == "addEntries" and "initializer_list" in r.get("prototype", "")
         ]
         assert len(matched) > 0, "Should find addEntries method with initializer_list param"
         for m in matched:
@@ -1363,7 +1363,7 @@ class TestFalsePositiveTemplateSpecialization:
         results = analyzer.search_functions("transform")
         matched = [
             r for r in results
-            if r["qualified_name"].split("::")[-1] == "transform" and "function" in r.get("signature", "")
+            if r["qualified_name"].split("::")[-1] == "transform" and "function" in r.get("prototype", "")
         ]
         assert len(matched) > 0, "Should find transform method with std::function param"
         for m in matched:

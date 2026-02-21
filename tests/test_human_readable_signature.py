@@ -249,35 +249,35 @@ public:
         return tmp_path
 
     def test_signatures_are_human_readable(self, project_dir):
-        """Verify that indexed signatures use human-readable format."""
+        """Verify that prototype uses human-readable format."""
         analyzer = CppAnalyzer(str(project_dir))
         analyzer.index_project()
 
         # Check a simple function
         results = analyzer.search_functions("simpleFunction")
         assert len(results) > 0
-        sig = results[0].get("signature", "")
+        proto = results[0].get("prototype", "")
         # Should contain function name and param names
-        assert "simpleFunction" in sig
-        assert "int" in sig
-        assert "double" in sig
+        assert "simpleFunction" in proto
+        assert "int" in proto
+        assert "double" in proto
         # Should NOT be the old C type notation like "void (int, double)"
         # The old format would not contain the function name
-        assert sig != "void (int, double)"
+        assert proto != "void (int, double)"
 
     def test_zero_arg_function_signature(self, project_dir):
-        """Verify zero-arg function has proper signature."""
+        """Verify zero-arg function has proper prototype."""
         analyzer = CppAnalyzer(str(project_dir))
         analyzer.index_project()
 
         results = analyzer.search_functions("noParams")
         assert len(results) > 0
-        sig = results[0].get("signature", "")
-        assert "noParams" in sig
-        assert "()" in sig
+        proto = results[0].get("prototype", "")
+        assert "noParams" in proto
+        assert "()" in proto
 
     def test_const_method_signature(self, project_dir):
-        """Verify const qualifier is preserved in signature."""
+        """Verify const qualifier is preserved in prototype."""
         analyzer = CppAnalyzer(str(project_dir))
         analyzer.index_project()
 
@@ -285,8 +285,8 @@ public:
         # Find the one from MyClass
         my_results = [r for r in results if r.get("parent_class") == "MyClass"]
         if my_results:
-            sig = my_results[0].get("signature", "")
-            assert "const" in sig
+            proto = my_results[0].get("prototype", "")
+            assert "const" in proto
 
     def test_get_function_signature_tool_format(self, project_dir):
         """Verify get_function_signature returns human-readable format with class scope."""
