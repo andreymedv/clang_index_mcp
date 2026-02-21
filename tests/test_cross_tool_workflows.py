@@ -158,7 +158,7 @@ class TestSearchClassesToGetClassInfo:
         search_results = analyzer.search_classes("Base")
         assert len(search_results) > 0, "search_classes should find Base"
 
-        base_result = next(r for r in search_results if r["name"] == "Base")
+        base_result = next(r for r in search_results if r["qualified_name"].split("::")[-1] == "Base")
         qualified_name = base_result["qualified_name"]
         assert "::" in qualified_name, "qualified_name should include namespace"
 
@@ -166,7 +166,7 @@ class TestSearchClassesToGetClassInfo:
         class_info = analyzer.search_engine.get_class_info(qualified_name)
         assert class_info is not None, \
             f"get_class_info failed for qualified name '{qualified_name}'"
-        assert class_info["name"] == "Base"
+        assert class_info["qualified_name"].split("::")[-1] == "Base"
 
     def test_all_search_results_work_with_get_info(self, namespaced_project):
         """
@@ -203,7 +203,7 @@ class TestSearchClassesToGetHierarchy:
 
         # Step 1: Search for Derived class
         search_results = analyzer.search_classes("Derived")
-        derived_results = [r for r in search_results if r["name"] == "Derived"]
+        derived_results = [r for r in search_results if r["qualified_name"].split("::")[-1] == "Derived"]
         assert len(derived_results) > 0, "Should find Derived class"
 
         qualified_name = derived_results[0]["qualified_name"]
@@ -226,7 +226,7 @@ class TestSearchClassesToGetHierarchy:
 
         # Find Derived and get its hierarchy
         search_results = analyzer.search_classes("Derived")
-        derived = next((r for r in search_results if r["name"] == "Derived"), None)
+        derived = next((r for r in search_results if r["qualified_name"].split("::")[-1] == "Derived"), None)
         assert derived is not None
 
         hierarchy = analyzer.get_class_hierarchy(derived["qualified_name"])
@@ -260,7 +260,7 @@ class TestSearchClassesToGetDerived:
 
         # Step 1: Search for Base class
         search_results = analyzer.search_classes("Base")
-        base_results = [r for r in search_results if r["name"] == "Base"]
+        base_results = [r for r in search_results if r["qualified_name"].split("::")[-1] == "Base"]
         assert len(base_results) > 0, "Should find Base class"
 
         qualified_name = base_results[0]["qualified_name"]
@@ -271,7 +271,7 @@ class TestSearchClassesToGetDerived:
             f"get_derived_classes failed for '{qualified_name}'"
 
         # Should find Derived class
-        derived_names = [d.get("name", d.get("class_name", "")) for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
         assert any("Derived" in name for name in derived_names), \
             f"Should find Derived class, got: {derived_names}"
 
@@ -297,7 +297,7 @@ class TestSearchFunctionsToGetSignature:
         assert len(search_results) > 0, "Should find functions"
 
         for func in search_results:
-            qualified_name = func.get("qualified_name", func["name"])
+            qualified_name = func.get("qualified_name", "")
 
             # Step 2: Get signature using qualified name (if available)
             if "::" in qualified_name:
@@ -395,7 +395,8 @@ class TestTemplateWorkflows:
         # Search for Container
         search_results = analyzer.search_classes("Container")
         container_results = [r for r in search_results
-                           if "Container" in r["name"] and "Derived" not in r["name"]]
+                           if "Container" in r["qualified_name"].split("::")[-1]
+                           and "Derived" not in r["qualified_name"].split("::")[-1]]
 
         if container_results:
             qualified_name = container_results[0]["qualified_name"]
@@ -412,7 +413,7 @@ class TestTemplateWorkflows:
         # Search for base Container
         search_results = analyzer.search_classes("Container")
         container_results = [r for r in search_results
-                           if r["name"] == "Container" or
+                           if r["qualified_name"].split("::")[-1] == "Container" or
                            r["qualified_name"].endswith("::Container")]
 
         for container in container_results:
@@ -440,7 +441,7 @@ class TestCompleteChains:
 
         # Step 1: Search
         search_results = analyzer.search_classes("Base")
-        base = next((r for r in search_results if r["name"] == "Base"), None)
+        base = next((r for r in search_results if r["qualified_name"].split("::")[-1] == "Base"), None)
         assert base is not None, "Step 1 failed: search_classes"
 
         # Step 2: Get info using search result
@@ -466,7 +467,7 @@ class TestCompleteChains:
 
         # Get class info with methods
         search_results = analyzer.search_classes("Helper")
-        helper = next((r for r in search_results if r["name"] == "Helper"), None)
+        helper = next((r for r in search_results if r["qualified_name"].split("::")[-1] == "Helper"), None)
         assert helper is not None
 
         class_info = analyzer.search_engine.get_class_info(helper["qualified_name"])
@@ -476,6 +477,6 @@ class TestCompleteChains:
         if class_info.get("methods"):
             for method in class_info["methods"]:
                 # Method should have name at minimum
-                assert method.get("name"), "Method should have name"
+                assert method.get("qualified_name"), "Method should have qualified_name"
 
 

@@ -188,6 +188,16 @@ def build_location_objects(info: "SymbolInfo") -> dict:
             return {"declaration": loc}
 
 
+def omit_empty(d: dict) -> dict:
+    """Filter None values from a response dict.
+
+    Keeps False, 0, empty strings, and empty lists (which may convey
+    meaningful information such as namespace="" for global scope).
+    Used to reduce token count in MCP tool responses.
+    """
+    return {k: v for k, v in d.items() if v is not None}
+
+
 def get_template_param_base_indices(info: "SymbolInfo") -> List[int]:
     """Return indices of base_classes entries that are template parameters.
 

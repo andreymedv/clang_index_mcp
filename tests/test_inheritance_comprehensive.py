@@ -81,7 +81,7 @@ def base_names(base_classes_list):
 def find_class(results, name):
     """Find a class result by simple name."""
     for r in results:
-        if r["name"] == name:
+        if r.get("qualified_name", "").split("::")[-1] == name:
             return r
     return None
 
@@ -239,7 +239,7 @@ class TestBasicInheritance:
     def test_get_derived_single_base(self, analyzer):
         """get_derived_classes for SingleBase should include SingleDerived."""
         derived = analyzer.get_derived_classes("inheritance_test::SingleBase")
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
         assert "SingleDerived" in derived_names
 
 
@@ -354,7 +354,7 @@ class TestTemplateInheritance:
         assert len(results) > 0
         # The template should have FixedBase in base_classes
         for r in results:
-            if r["name"] == "FixedPlusParam":
+            if r["qualified_name"].split("::")[-1] == "FixedPlusParam":
                 bases = base_names(r.get("base_classes", []))
                 # FixedBase should be present as a concrete base
                 if "FixedBase" in bases:
@@ -417,7 +417,7 @@ class TestTemplateInheritance:
     def test_get_derived_generic_container(self, analyzer):
         """get_derived_classes for GenericContainer should find IntContainer, DoubleContainer."""
         derived = analyzer.get_derived_classes("inheritance_test::GenericContainer")
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
         assert "IntContainer" in derived_names or "DoubleContainer" in derived_names, (
             f"GenericContainer derived: {derived_names}"
         )
@@ -681,7 +681,7 @@ class TestExternTemplate:
         assert len(results) > 0
         # The template definition should have ExternFixedBase as base
         for r in results:
-            if r["name"] == "ExternFixedInherit":
+            if r["qualified_name"].split("::")[-1] == "ExternFixedInherit":
                 bases = r.get("base_classes", [])
                 if any("ExternFixedBase" in b for b in bases):
                     return  # Found the expected base
@@ -758,7 +758,7 @@ class TestSpecialization:
         results = analyzer.search_classes("SpecPrimary")
         primary = None
         for r in results:
-            if r["name"] == "SpecPrimary" and r.get("template_kind") not in ("full_specialization", "partial_specialization"):
+            if r["qualified_name"].split("::")[-1] == "SpecPrimary" and r.get("template_kind") not in ("full_specialization", "partial_specialization"):
                 primary = r
                 break
         if primary:
@@ -787,7 +787,7 @@ class TestSpecialization:
                     return
         # Primary should at least have SpecBaseA
         for r in results:
-            if r["name"] == "SpecExtraBases":
+            if r["qualified_name"].split("::")[-1] == "SpecExtraBases":
                 bases = base_names(r.get("base_classes", []))
                 if "SpecBaseA" in bases:
                     return
@@ -797,7 +797,7 @@ class TestSpecialization:
         results = analyzer.search_classes("MultiSpec")
         assert len(results) > 0, "Should find MultiSpec"
         # Primary + specializations
-        names = [r["name"] for r in results]
+        names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "MultiSpec" in names
 
 
@@ -831,7 +831,7 @@ class TestNamespaceAmbiguity:
     def test_case47_widget_is_ambiguous(self, analyzer):
         """'Widget' alone is ambiguous (gui::Widget vs data::Widget)."""
         results = analyzer.search_classes("Widget")
-        widget_results = [r for r in results if r["name"] == "Widget"]
+        widget_results = [r for r in results if r["qualified_name"].split("::")[-1] == "Widget"]
         # Should find at least 2 different Widgets (gui:: and data::)
         assert len(widget_results) >= 2, (
             f"Expected multiple Widget classes, got {len(widget_results)}"
@@ -1110,7 +1110,7 @@ class TestCrossToolWorkflows:
 
         failures = []
         for cls in all_classes:
-            qname = cls.get("qualified_name", cls["name"])
+            qname = cls.get("qualified_name", "")
             info = analyzer.get_class_info(qname)
             if info is None:
                 failures.append(f"get_class_info('{qname}') returned None")
@@ -1150,7 +1150,7 @@ class TestCrossToolWorkflows:
         ]
         for base_qname, expected_derived in test_cases:
             derived = analyzer.get_derived_classes(base_qname)
-            derived_names = [d["name"] for d in derived]
+            derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
             assert expected_derived in derived_names, (
                 f"get_derived_classes('{base_qname}') should include {expected_derived}, "
                 f"got {derived_names}"
@@ -1196,15 +1196,13 @@ class TestHierarchyQualifiedNames:
                 f"qualified_name should include namespace, got '{qname}'"
             )
 
-    def test_get_derived_classes_qualified_name_matches_name(self, analyzer):
-        """qualified_name should end with the simple class name."""
+    def test_get_derived_classes_qualified_name_has_simple_name(self, analyzer):
+        """qualified_name should contain a simple class name as the last component."""
         derived = analyzer.get_derived_classes("inheritance_test::SingleBase")
         for d in derived:
-            name = d["name"]
             qname = d["qualified_name"]
-            assert qname.endswith(name) or qname == name, (
-                f"qualified_name '{qname}' should end with simple name '{name}'"
-            )
+            simple = qname.split("::")[-1]
+            assert simple, f"qualified_name '{qname}' should have a non-empty simple name"
 
     def test_hierarchy_nodes_have_qualified_name(self, analyzer):
         """All resolved nodes in flat hierarchy dict should have qualified_name."""
@@ -1287,7 +1285,7 @@ class TestGetClassInfoDerivedClasses:
         info = analyzer.get_class_info("inheritance_test::SingleBase")
         assert info is not None and "error" not in info
         derived = info["derived_classes"]
-        derived_names = [d["name"] for d in derived]
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
         assert "SingleDerived" in derived_names, (
             f"derived_classes should include SingleDerived, got {derived_names}"
         )

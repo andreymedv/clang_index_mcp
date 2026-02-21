@@ -46,7 +46,7 @@ public:
         # List classes using search_classes with .*
         classes = analyzer.search_classes(".*", project_only=True)
         assert len(classes) > 0
-        class_names = [c["name"] for c in classes]
+        class_names = [c["qualified_name"].split("::")[-1] for c in classes]
         assert "TestClass" in class_names
         assert "AnotherClass" in class_names
 
@@ -64,7 +64,7 @@ class DifferentClass {};
         # Search for classes with pattern (starts with "Test")
         results = analyzer.search_classes("Test.*")
         assert len(results) >= 2
-        names = [r["name"] for r in results]
+        names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "TestClass" in names
         assert "TestHelper" in names
         assert "DifferentClass" not in names
@@ -88,7 +88,7 @@ public:
         # Search for functions with pattern
         results = analyzer.search_functions("test.*")
         assert len(results) >= 2
-        names = [r["name"] for r in results]
+        names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "testFunction" in names
         assert "testMethod" in names
 
@@ -110,7 +110,7 @@ private:
         # Get class info
         info = analyzer.get_class_info("TestClass")
         assert info is not None
-        assert info["name"] == "TestClass"
+        assert info["qualified_name"] == "TestClass"
         assert "methods" in info
         assert len(info["methods"]) >= 3
 
@@ -152,13 +152,11 @@ namespace ns2 {
         # get_class_info should work with qualified name from search_classes
         info1 = analyzer.get_class_info("ns1::Builder")
         assert info1 is not None
-        assert info1["name"] == "Builder"
         assert info1["qualified_name"] == "ns1::Builder"
         assert info1["namespace"] == "ns1"
 
         info2 = analyzer.get_class_info("ns2::Builder")
         assert info2 is not None
-        assert info2["name"] == "Builder"
         assert info2["qualified_name"] == "ns2::Builder"
         assert info2["namespace"] == "ns2"
 
@@ -233,7 +231,7 @@ class MoreDerived : public Derived {};
         qname = hierarchy["queried_class"]
         assert qname in hierarchy["classes"]
         node = hierarchy["classes"][qname]
-        assert node["name"] == "Derived"
+        assert node["qualified_name"] == "Derived"
         # Should have Base as a base class and MoreDerived as a derived class
         assert len(node["base_classes"]) > 0
         assert len(node["derived_classes"]) > 0
@@ -255,7 +253,7 @@ class Derived2 : public Base {};
         # Get derived classes
         derived = analyzer.get_derived_classes("Base")
         assert len(derived) >= 2
-        names = [d["name"] for d in derived]
+        names = [d["qualified_name"].split("::")[-1] for d in derived]
         assert "Derived1" in names
         assert "Derived2" in names
 
@@ -282,14 +280,14 @@ class Derived2 : public Base {};
         # Get derived classes using simple name
         derived_simple = analyzer.get_derived_classes("Base")
         assert len(derived_simple) >= 2
-        names_simple = [d["name"] for d in derived_simple]
+        names_simple = [d["qualified_name"].split("::")[-1] for d in derived_simple]
         assert "Derived1" in names_simple
         assert "Derived2" in names_simple
 
         # Get derived classes using qualified name - should also work
         derived_qualified = analyzer.get_derived_classes("MyNamespace::Inner::Base")
         assert len(derived_qualified) >= 2
-        names_qualified = [d["name"] for d in derived_qualified]
+        names_qualified = [d["qualified_name"].split("::")[-1] for d in derived_qualified]
         assert "Derived1" in names_qualified
         assert "Derived2" in names_qualified
 
@@ -585,7 +583,7 @@ class TestMCPServerToolsAdditional:
         assert "matched_files" in response
 
         # Should find both test classes
-        names = [r["name"] for r in response["results"]]
+        names = [r["qualified_name"].split("::")[-1] for r in response["results"]]
         assert "TestA" in names
         assert "TestB" in names
         # Should not find Main (not in tests directory)

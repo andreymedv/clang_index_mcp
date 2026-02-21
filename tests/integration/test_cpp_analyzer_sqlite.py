@@ -90,8 +90,8 @@ void testFunction() {
         self.assertEqual(len(funcs2), func_count1, "Should find same number of functions")
 
         # Verify results match
-        self.assertEqual(classes1[0]['name'], classes2[0]['name'])
-        self.assertEqual(funcs1[0]['name'], funcs2[0]['name'])
+        self.assertEqual(classes1[0]['qualified_name'], classes2[0]['qualified_name'])
+        self.assertEqual(funcs1[0]['qualified_name'], funcs2[0]['qualified_name'])
 
     def test_incremental_file_update_sqlite(self):
         """Test incremental update when file changes with SQLite"""
@@ -202,7 +202,7 @@ namespace MyNamespace {
         derived = derived_results[0]
 
         # Verify all fields are preserved
-        self.assertEqual(derived['name'], "DerivedClass")
+        self.assertEqual(derived['qualified_name'].split("::")[-1], "DerivedClass")
         self.assertEqual(derived['kind'], "class")
         _derived_loc = derived.get("definition") or derived.get("declaration") or {}
         self.assertIn("detailed.cpp", _derived_loc['file'])
@@ -218,7 +218,7 @@ namespace MyNamespace {
         derived2 = derived_results2[0]
 
         # Verify all fields match
-        self.assertEqual(derived2['name'], derived['name'])
+        self.assertEqual(derived2['qualified_name'], derived['qualified_name'])
         self.assertEqual(derived2['kind'], derived['kind'])
         _loc1 = derived.get("definition") or derived.get("declaration") or {}
         _loc2 = derived2.get("definition") or derived2.get("declaration") or {}
