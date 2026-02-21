@@ -69,6 +69,51 @@ class DifferentClass {};
         assert "TestHelper" in names
         assert "DifferentClass" not in names
 
+    def test_search_classes_include_base_classes_default(self, temp_project_dir):
+        """Test search_classes includes base_classes by default."""
+        (temp_project_dir / "src" / "test.cpp").write_text("""
+class Base {};
+class Derived : public Base {};
+""")
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        results = analyzer.search_classes("Derived")
+        assert len(results) >= 1
+        derived = results[0]
+        assert "base_classes" in derived, "base_classes should be present by default"
+        assert any("Base" in bc for bc in derived["base_classes"])
+
+    def test_search_classes_exclude_base_classes(self, temp_project_dir):
+        """Test search_classes omits base_classes when include_base_classes=False."""
+        (temp_project_dir / "src" / "test.cpp").write_text("""
+class Base {};
+class Derived : public Base {};
+""")
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        results = analyzer.search_classes("Derived", include_base_classes=False)
+        assert len(results) >= 1
+        derived = results[0]
+        assert "base_classes" not in derived, "base_classes should be absent when include_base_classes=False"
+
+    def test_search_classes_include_base_classes_no_inheritance(self, temp_project_dir):
+        """Test search_classes with include_base_classes=False on class with no bases."""
+        (temp_project_dir / "src" / "test.cpp").write_text("""
+class StandaloneClass {};
+""")
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        analyzer.index_project()
+
+        # With default (True): base_classes omitted by omit_empty since it's empty list
+        results_default = analyzer.search_classes("StandaloneClass")
+        assert len(results_default) >= 1
+        # With False: also no base_classes key
+        results_no_base = analyzer.search_classes("StandaloneClass", include_base_classes=False)
+        assert len(results_no_base) >= 1
+        assert "base_classes" not in results_no_base[0]
+
     def test_search_functions_tool(self, temp_project_dir):
         """Test search_functions functionality"""
         (temp_project_dir / "src" / "test.cpp").write_text("""
