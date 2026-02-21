@@ -364,6 +364,7 @@ class EnhancedQueryResult:
         metadata: Optional[QueryMetadata] = None,
         status: Optional[QueryCompletenessStatus] = None,
         extra_metadata: Optional[dict] = None,
+        next_steps: Optional[List[str]] = None,
     ):
         """
         Initialize EnhancedQueryResult.
@@ -373,11 +374,13 @@ class EnhancedQueryResult:
             metadata: Full QueryMetadata object (for partial indexing case)
             status: Simple status without full metadata (for empty/truncated/large)
             extra_metadata: Additional metadata fields (returned, total_matches, etc.)
+            next_steps: Conditional workflow hints for LLMs (only populated when useful)
         """
         self.data = data
         self.metadata = metadata
         self.status = status
         self.extra_metadata = extra_metadata or {}
+        self.next_steps: List[str] = next_steps or []
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization.
@@ -389,25 +392,32 @@ class EnhancedQueryResult:
 
         # Partial indexing case - include full metadata
         if self.metadata and self.metadata.status == QueryCompletenessStatus.PARTIAL:
-            result["metadata"] = self.metadata.to_dict()
+            metadata_dict = self.metadata.to_dict()
+            if self.next_steps:
+                metadata_dict["next_steps"] = self.next_steps
+            result["metadata"] = metadata_dict
             return result
 
-        # Special conditions - include minimal metadata
+        # Build metadata dict (may remain empty for normal results)
+        secondary_dict: dict = {}
         if self.status:
-            metadata_dict = {"status": self.status.value}
-            metadata_dict.update(self.extra_metadata)
-            result["metadata"] = metadata_dict
+            secondary_dict["status"] = self.status.value
+            secondary_dict.update(self.extra_metadata)
+        if self.next_steps:
+            secondary_dict["next_steps"] = self.next_steps
+        if secondary_dict:
+            result["metadata"] = secondary_dict
 
         return result
 
     @staticmethod
-    def create_normal(data: Any) -> "EnhancedQueryResult":
+    def create_normal(data: Any, next_steps: Optional[List[str]] = None) -> "EnhancedQueryResult":
         """
         Create result for normal case (1-20 results, fully indexed).
 
-        No metadata included - silence = success.
+        No metadata included unless next_steps are provided.
         """
-        return EnhancedQueryResult(data)
+        return EnhancedQueryResult(data, next_steps=next_steps)
 
     @staticmethod
     def create_empty(
