@@ -91,7 +91,6 @@ A: All MCP tools are supported:
 - `search_symbols`
 - `get_class_info`
 - `find_callers`
-- `get_derived_classes`
 - etc.
 
 **Q: How do I validate expectations in YAML?**

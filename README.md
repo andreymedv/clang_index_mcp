@@ -22,8 +22,7 @@ Context-efficient C++ code analysis:
 - **get_class_info** - Get detailed class information (methods, members, inheritance)
 - **get_function_signature** - Get function signatures and parameters
 - **find_in_file** - Search symbols within specific files
-- **get_class_hierarchy** - Get complete inheritance hierarchy for a class
-- **get_derived_classes** - Find all classes that inherit from a base class
+- **get_class_hierarchy** - Get complete inheritance hierarchy for a class (all descendants and ancestors)
 - **find_callers** - Find all functions that call a specific function
 - **find_callees** - Find all functions called by a specific function
 - **get_call_path** - Find call paths from one function to another

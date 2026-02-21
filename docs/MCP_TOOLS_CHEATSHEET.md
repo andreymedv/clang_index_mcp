@@ -21,9 +21,7 @@ Quick reference for C++ code analysis tools. All examples use YAML format for re
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ HIERARCHY (inheritance relationships)                                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ get_class_hierarchy │ Full base + derived class tree                        │
-│ get_derived_classes │ Direct derived classes only                           │
-│ get_template_param_inheritance │ Template parameter inheritance tracking    │
+│ get_class_hierarchy │ Full base + derived class tree (all descendants)      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ CALL GRAPH (who calls what)                                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -284,52 +282,6 @@ derived_hierarchy:                         # Full tree downward
       derived_classes:
         - name: app::ui::RichTextButton
           derived_classes: []
-```
-
-### get_derived_classes
-
-Get only direct derived classes (simpler than full hierarchy).
-
-**Input:**
-```yaml
-class_name: "Widget"            # Simple or qualified name
-include_indirect: false         # Optional: include grandchildren
-```
-
-**Output:**
-```yaml
-- name: Button
-  qualified_name: app::ui::Button
-  file: /path/to/button.h
-  line: 30
-- name: Label
-  qualified_name: app::ui::Label
-  file: /path/to/label.h
-  line: 15
-```
-
-### get_template_param_inheritance
-
-Track how template parameters flow through inheritance.
-
-**Input:**
-```yaml
-class_name: "Container<int>"    # Template instantiation
-```
-
-**Output:**
-```yaml
-class_name: Container<int>
-template_parameters:
-  - T: int
-base_class_mappings:
-  - base_class: BaseContainer<int>
-    parameter_mappings:
-      T: int
-derived_classes_with_params:
-  - class_name: SpecialContainer<int>
-    inherits_parameters:
-      T: int
 ```
 
 ---

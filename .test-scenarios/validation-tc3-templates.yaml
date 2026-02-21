@@ -41,14 +41,14 @@ steps:
       pattern: "Container.*"
     description: "TC3.4: search_classes('Container.*') - should match Container variants"
 
-  # TC3.5: get_derived_classes for Container
-  - tool: get_derived_classes
+  # TC3.5: get_class_hierarchy for Container (replaces removed get_derived_classes tool)
+  - tool: get_class_hierarchy
     args:
       class_name: "Container"
-    description: "TC3.5: get_derived_classes('Container') - should find IntContainer, DoubleContainer, PtrContainer"
+    description: "TC3.5: get_class_hierarchy('Container') - should find IntContainer, DoubleContainer, PtrContainer in derived_classes"
 
-  # TC3.6: get_derived_classes for Container<int>
-  - tool: get_derived_classes
+  # TC3.6: get_class_hierarchy for Container<int>
+  - tool: get_class_hierarchy
     args:
       class_name: "Container<int>"
-    description: "TC3.6: get_derived_classes('Container<int>') - should find IntContainer"
+    description: "TC3.6: get_class_hierarchy('Container<int>') - should find IntContainer in derived_classes"
