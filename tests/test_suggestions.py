@@ -69,6 +69,10 @@ def test_get_class_info_pure_virtual_suggestion():
     hints = suggestions.for_get_class_info(result)
     assert any("pure virtual" in h for h in hints)
     assert any("search_functions" in h for h in hints)
+    # Placeholder must use angle brackets so LLMs don't treat it as a literal value
+    pure_virtual_hints = [h for h in hints if "pure virtual" in h]
+    assert all("<DerivedClassName>" in h for h in pure_virtual_hints)
+    assert not any("parent_class='DerivedClass'" in h for h in pure_virtual_hints)
 
 
 def test_get_class_info_no_pure_virtual_no_suggestion():
