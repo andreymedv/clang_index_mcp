@@ -589,5 +589,103 @@ class TestCallGraphEmptyResultFlags:
         assert "_has_any_in_graph" not in result
 
 
+# =============================================================================
+# project_only parameter for find_callers / find_callees
+# =============================================================================
+
+class TestProjectOnlyFlag:
+    """
+    Verify that project_only=True/False controls inclusion of external symbols.
+
+    Uses a snippet that calls an external (unindexed) function to confirm:
+    - project_only=True (default): external symbols absent from results
+    - project_only=False: external symbols present as {"usr": "...", "is_project": false}
+    """
+
+    @staticmethod
+    def _make_analyzer(tmp_path, source: str) -> "CppAnalyzer":
+        from tests.utils.test_helpers import temp_compile_commands
+
+        src_file = tmp_path / "main.cpp"
+        src_file.write_text(source)
+        temp_compile_commands(tmp_path, [
+            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
+        ])
+        az = CppAnalyzer(str(tmp_path))
+        az.index_project()
+        return az
+
+    # ------------------------------------------------------------------
+    # find_callees
+    # ------------------------------------------------------------------
+
+    def test_find_callees_project_only_true_hides_external(self, tmp_path):
+        """Default project_only=True: callees not in usr_index are omitted."""
+        # caller() calls an external function (printf) that is not in usr_index
+        source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
+        az = self._make_analyzer(tmp_path, source)
+        result = az.find_callees("caller", project_only=True)
+        assert result["_function_found"] is True
+        assert result["_has_any_in_graph"] is True
+        # All returned callees must be project symbols
+        for c in result["callees"]:
+            assert c.get("is_project") is not False, (
+                f"Expected only project callees with project_only=True, got: {c}"
+            )
+
+    def test_find_callees_project_only_false_includes_external(self, tmp_path):
+        """project_only=False: external callees appear as {usr, is_project=false}."""
+        source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
+        az = self._make_analyzer(tmp_path, source)
+
+        result_default = az.find_callees("caller", project_only=True)
+        result_all = az.find_callees("caller", project_only=False)
+
+        assert result_all["_has_any_in_graph"] is True
+        # project_only=False must return at least as many callees
+        assert len(result_all["callees"]) >= len(result_default["callees"])
+        # At least one external entry must be present
+        external = [c for c in result_all["callees"] if c.get("is_project") is False]
+        assert external, "Expected at least one external callee with project_only=False"
+        # External entries must carry the USR field (no qualified_name)
+        for ext in external:
+            assert "usr" in ext, f"External callee missing 'usr' field: {ext}"
+
+    def test_find_callees_project_only_false_project_callee_unchanged(self, tmp_path):
+        """project_only=False still returns project callees with full metadata."""
+        source = "void leaf() {}\nvoid caller() { leaf(); }"
+        az = self._make_analyzer(tmp_path, source)
+        result = az.find_callees("caller", project_only=False)
+        project_callees = [c for c in result["callees"] if c.get("is_project") is not False]
+        assert project_callees, "Expected project callee 'leaf' to appear"
+        assert "qualified_name" in project_callees[0]
+
+    # ------------------------------------------------------------------
+    # find_callers
+    # ------------------------------------------------------------------
+
+    def test_find_callers_project_only_default(self, tmp_path):
+        """Default project_only=True: project callers appear normally."""
+        source = "void target() {}\nvoid caller() { target(); }"
+        az = self._make_analyzer(tmp_path, source)
+        result = az.find_callers("target", project_only=True)
+        assert result["_function_found"] is True
+        assert len(result["callers"]) > 0
+        for c in result["callers"]:
+            # Project callers always have qualified_name
+            assert "qualified_name" in c
+
+    def test_find_callers_project_only_false_does_not_break(self, tmp_path):
+        """project_only=False with only project callers: same result as project_only=True."""
+        source = "void target() {}\nvoid caller() { target(); }"
+        az = self._make_analyzer(tmp_path, source)
+        result_default = az.find_callers("target", project_only=True)
+        result_all = az.find_callers("target", project_only=False)
+        # No external callers exist here; both should return the same callers
+        default_names = {c["qualified_name"] for c in result_default["callers"]}
+        all_names = {c["qualified_name"] for c in result_all["callers"] if "qualified_name" in c}
+        assert default_names == all_names
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

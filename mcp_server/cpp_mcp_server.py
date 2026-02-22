@@ -789,6 +789,11 @@ async def list_tools() -> List[Tool]:
                         ),
                         "minimum": 1,
                     },
+                    "project_only": {
+                        "type": "boolean",
+                        "description": "When true (default), only returns callers from project source files. Set to false to also include callers from external dependencies (returned as {\"usr\": \"...\", \"is_project\": false} since no metadata is available for unindexed symbols).",
+                        "default": True,
+                    },
                 },
                 "required": ["function_name"],
             },
@@ -840,6 +845,11 @@ async def list_tools() -> List[Tool]:
                             "'total_matches' counts for pagination awareness."
                         ),
                         "minimum": 1,
+                    },
+                    "project_only": {
+                        "type": "boolean",
+                        "description": "When true (default), only returns callees from project source files, excluding calls to standard library, third-party, or system code. Set to false to include all callees (returned as {\"usr\": \"...\", \"is_project\": false} since no metadata is available for unindexed symbols).",
+                        "default": True,
                     },
                 },
                 "required": ["function_name"],
@@ -1688,10 +1698,11 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
+            project_only = arguments.get("project_only", True)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.find_callers(function_name, class_name),  # type: ignore[arg-type]
+                lambda: analyzer.find_callers(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
             )
             # Results is dict with "callers" list - use that for metadata logic
             callers_list = results.get("callers", []) if isinstance(results, dict) else []
@@ -1739,10 +1750,11 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
+            project_only = arguments.get("project_only", True)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.find_callees(function_name, class_name),  # type: ignore[arg-type]
+                lambda: analyzer.find_callees(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
             )
             # Results is dict with "callees" list - use that for metadata logic
             callees_list = results.get("callees", []) if isinstance(results, dict) else []
