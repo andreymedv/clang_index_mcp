@@ -5,17 +5,23 @@ Tests template indexing, search, and cross-specialization queries.
 """
 
 import json
+import shutil
 import pytest
 from pathlib import Path
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 
 @pytest.fixture
-def template_project_path():
-    """Path to template test project with dynamically generated compile_commands.json."""
-    project_path = Path(__file__).parent.parent / "tests/fixtures/template_test_project"
-    # Generate compile_commands.json with correct absolute paths for the current environment
-    # (the checked-in file has hardcoded paths that only work on the original dev machine)
+def template_project_path(tmp_path):
+    """Copy template test project to a temp dir and generate compile_commands.json there.
+
+    Writing into the fixture source directory would dirty the git working tree on every
+    test run, so we copy the sources to tmp_path instead.
+    """
+    src_path = Path(__file__).parent / "fixtures/template_test_project"
+    project_path = tmp_path / "template_test_project"
+    shutil.copytree(src_path, project_path)
+
     files = ["main.cpp", "templates.h", "advanced_templates.h", "namespaced_templates.h"]
     compile_commands = [
         {
@@ -25,7 +31,9 @@ def template_project_path():
         }
         for f in files
     ]
-    (project_path / "compile_commands.json").write_text(json.dumps(compile_commands, indent=2))
+    (project_path / "compile_commands.json").write_text(
+        json.dumps(compile_commands, indent=2) + "\n"
+    )
     return project_path
 
 
