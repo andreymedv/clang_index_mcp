@@ -1802,10 +1802,20 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             function_name = arguments["function_name"]
             class_name = arguments.get("class_name", "")
             # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
+            call_sites = await loop.run_in_executor(
                 None, lambda: analyzer.get_call_sites(function_name, class_name)
             )
-            return [TextContent(type="text", text=json.dumps(results, indent=2))]
+            output_sites: Dict[str, Any] = {"call_sites": call_sites}
+            if not call_sites:
+                output_sites["metadata"] = {
+                    "status": "empty",
+                    "suggestions": [
+                        "No call sites found. The function may have no body in the indexed "
+                        "files, or no outgoing calls were recorded. "
+                        "Try find_callees to check callee metadata."
+                    ],
+                }
+            return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
 
         elif name == "get_files_containing_symbol":
             symbol_name = arguments["symbol_name"]
@@ -1824,7 +1834,18 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             paths = await loop.run_in_executor(
                 None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
             )
-            return [TextContent(type="text", text=json.dumps(paths, indent=2))]
+            output_paths: Dict[str, Any] = {"paths": paths}
+            if not paths:
+                output_paths["metadata"] = {
+                    "status": "empty",
+                    "suggestions": [
+                        f"No call path found from '{from_function}' to '{to_function}' "
+                        f"within max_depth={max_depth}. "
+                        "Try increasing max_depth or verify both functions exist "
+                        "with search_functions."
+                    ],
+                }
+            return [TextContent(type="text", text=json.dumps(output_paths, indent=2))]
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
