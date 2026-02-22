@@ -5404,31 +5404,40 @@ class CppAnalyzer:
         total_refs = 0
         kind = None
 
+        # Support partially qualified names (e.g. "ClassName::method") by using the
+        # simple (unqualified) name for index keying and matches_qualified_pattern for
+        # the full match check.  This mirrors the approach used in find_callers/find_callees.
+        simple_name = symbol_name.split("::")[-1]
+
+        def _name_matches(info) -> bool:
+            """Return True if info matches symbol_name (simple or qualified)."""
+            return SearchEngine.matches_qualified_pattern(
+                info.qualified_name or info.name, symbol_name
+            )
+
         with self.index_lock:
             # 1. Find where symbol is defined (classes)
             if symbol_kind in (None, "class"):
-                for qname, infos in self.class_index.items():
-                    for info in infos:
-                        if info.name == symbol_name:
-                            if not project_only or info.is_project:
-                                files.add(info.file)
-                                if info.header_file:
-                                    files.add(info.header_file)
-                                kind = info.kind
-                                break
+                for info in self.class_index.get(simple_name, []):
+                    if _name_matches(info):
+                        if not project_only or info.is_project:
+                            files.add(info.file)
+                            if info.header_file:
+                                files.add(info.header_file)
+                            kind = info.kind
+                            break
 
             # 2. Find where symbol is defined (functions/methods)
             if symbol_kind in (None, "function", "method"):
-                for qname, infos in self.function_index.items():
-                    for info in infos:
-                        if info.name == symbol_name:
-                            if not project_only or info.is_project:
-                                files.add(info.file)
-                                if info.header_file:
-                                    files.add(info.header_file)
-                                if not kind:  # Don't override if already set
-                                    kind = info.kind
-                                # Don't break - could be overloaded
+                for info in self.function_index.get(simple_name, []):
+                    if _name_matches(info):
+                        if not project_only or info.is_project:
+                            files.add(info.file)
+                            if info.header_file:
+                                files.add(info.header_file)
+                            if not kind:  # Don't override if already set
+                                kind = info.kind
+                            # Don't break - could be overloaded
 
             # 3. Find callers (for functions/methods)
             if kind in ("function", "method") or (
@@ -5436,11 +5445,10 @@ class CppAnalyzer:
             ):
                 # Get USRs for all functions with this name
                 target_usrs = set()
-                for infos in self.function_index.values():
-                    for info in infos:
-                        if info.name == symbol_name and info.usr:
-                            if not project_only or info.is_project:
-                                target_usrs.add(info.usr)
+                for info in self.function_index.get(simple_name, []):
+                    if _name_matches(info) and info.usr:
+                        if not project_only or info.is_project:
+                            target_usrs.add(info.usr)
 
                 # Find all callers of these functions
                 for usr in target_usrs:
@@ -5460,7 +5468,13 @@ class CppAnalyzer:
                     if not project_only or self._is_project_file(file_path):
                         # If file has the class definition or any methods of the class
                         for symbol in symbols:
-                            if symbol.name == symbol_name or symbol.parent_class == symbol_name:
+                            sym_qname = symbol.qualified_name or symbol.name
+                            parent_qname = symbol.parent_class or ""
+                            if SearchEngine.matches_qualified_pattern(
+                                sym_qname, symbol_name
+                            ) or SearchEngine.matches_qualified_pattern(
+                                parent_qname, symbol_name
+                            ):
                                 files.add(file_path)
                                 break
 

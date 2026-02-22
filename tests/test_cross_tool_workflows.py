@@ -12,6 +12,7 @@ Key principle: If Tool A returns qualified_name, and Tool B accepts class_name p
 there MUST be a test that uses A's output as B's input.
 """
 
+import asyncio
 import pytest
 from pathlib import Path
 
@@ -479,4 +480,95 @@ class TestCompleteChains:
                 # Method should have name at minimum
                 assert method.get("qualified_name"), "Method should have qualified_name"
 
+
+# =============================================================================
+# Regression tests: get_files_containing_symbol with qualified names
+# (Bug: info.name == symbol_name failed for "Class::method" patterns)
+# =============================================================================
+
+class TestGetFilesContainingSymbolQualifiedNames:
+    """
+    Regression tests for get_files_containing_symbol accepting partially and
+    fully qualified names.
+
+    Historical context: The function used info.name == symbol_name throughout,
+    which only matched the simple (unqualified) name.  Passing "ClassName::method"
+    always returned an empty list because info.name == "method", not the full form.
+    """
+
+    def test_simple_method_name_returns_file(self, namespaced_project):
+        """Baseline: simple name still works after the fix."""
+        analyzer = namespaced_project
+        result = asyncio.run(analyzer.get_files_containing_symbol("helperMethod"))
+        assert result["files"], "Simple name 'helperMethod' must find files"
+        assert result["kind"] in ("function", "method", None)
+
+    def test_partially_qualified_method_returns_file(self, namespaced_project):
+        """Helper::helperMethod should find the file (was broken: returned empty list)."""
+        analyzer = namespaced_project
+        result = asyncio.run(analyzer.get_files_containing_symbol("Helper::helperMethod"))
+        assert result["files"], (
+            "Partially qualified name 'Helper::helperMethod' must find files; "
+            "previously returned empty list due to info.name comparison bug"
+        )
+
+    def test_fully_qualified_method_returns_file(self, namespaced_project):
+        """outer::Helper::helperMethod should find the file."""
+        analyzer = namespaced_project
+        result = asyncio.run(
+            analyzer.get_files_containing_symbol("outer::Helper::helperMethod")
+        )
+        assert result["files"], (
+            "Fully qualified 'outer::Helper::helperMethod' must find files"
+        )
+
+    def test_partially_qualified_class_returns_file(self, namespaced_project):
+        """inner::Base should find the file via class lookup."""
+        analyzer = namespaced_project
+        result = asyncio.run(
+            analyzer.get_files_containing_symbol("inner::Base", symbol_kind="class")
+        )
+        assert result["files"], (
+            "Partially qualified class name 'inner::Base' must find files"
+        )
+
+    def test_fully_qualified_class_returns_file(self, namespaced_project):
+        """outer::inner::Derived should find the file."""
+        analyzer = namespaced_project
+        result = asyncio.run(
+            analyzer.get_files_containing_symbol(
+                "outer::inner::Derived", symbol_kind="class"
+            )
+        )
+        assert result["files"], (
+            "Fully qualified class name 'outer::inner::Derived' must find files"
+        )
+
+    def test_partially_qualified_free_function_returns_file(self, namespaced_project):
+        """outer::outerFunction should find the file."""
+        analyzer = namespaced_project
+        result = asyncio.run(
+            analyzer.get_files_containing_symbol(
+                "outer::outerFunction", symbol_kind="function"
+            )
+        )
+        assert result["files"], (
+            "Partially qualified free function 'outer::outerFunction' must find files"
+        )
+
+    def test_nonexistent_qualified_name_returns_empty(self, namespaced_project):
+        """A name that does not exist should return an empty files list."""
+        analyzer = namespaced_project
+        result = asyncio.run(
+            analyzer.get_files_containing_symbol("NoSuchClass::noSuchMethod")
+        )
+        assert result["files"] == [], "Non-existent qualified name must return empty list"
+
+    def test_symbol_name_preserved_in_result(self, namespaced_project):
+        """The 'symbol' field in the result should echo back the input name."""
+        analyzer = namespaced_project
+        result = asyncio.run(
+            analyzer.get_files_containing_symbol("Helper::helperMethod")
+        )
+        assert result["symbol"] == "Helper::helperMethod"
 
