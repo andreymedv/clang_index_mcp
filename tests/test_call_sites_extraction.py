@@ -634,7 +634,7 @@ class TestProjectOnlyFlag:
             )
 
     def test_find_callees_project_only_false_includes_external(self, tmp_path):
-        """project_only=False: external callees appear as {usr, is_project=false}."""
+        """project_only=False: external callees are included with readable metadata."""
         source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
         az = self._make_analyzer(tmp_path, source)
 
@@ -647,9 +647,12 @@ class TestProjectOnlyFlag:
         # At least one external entry must be present
         external = [c for c in result_all["callees"] if c.get("is_project") is False]
         assert external, "Expected at least one external callee with project_only=False"
-        # External entries must carry the USR field (no qualified_name)
+        # External entries must have either a qualified_name (if found in SQLite)
+        # or a 'usr' fallback (if truly unknown).  Raw USR-only entries are a last resort.
         for ext in external:
-            assert "usr" in ext, f"External callee missing 'usr' field: {ext}"
+            has_name = "qualified_name" in ext
+            has_usr = "usr" in ext
+            assert has_name or has_usr, f"External callee has neither qualified_name nor usr: {ext}"
 
     def test_find_callees_project_only_false_project_callee_unchanged(self, tmp_path):
         """project_only=False still returns project callees with full metadata."""
@@ -685,6 +688,21 @@ class TestProjectOnlyFlag:
         default_names = {c["qualified_name"] for c in result_default["callers"]}
         all_names = {c["qualified_name"] for c in result_all["callers"] if "qualified_name" in c}
         assert default_names == all_names
+
+    def test_find_callees_external_no_raw_usr_when_in_db(self, tmp_path):
+        """External callees found in SQLite must have qualified_name, not raw USR."""
+        # Include a standard header so libclang indexes the external symbol
+        source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
+        az = self._make_analyzer(tmp_path, source)
+        result = az.find_callees("caller", project_only=False)
+        external = [c for c in result["callees"] if c.get("is_project") is False]
+        # For any external entry that has a qualified_name, it must not also expose
+        # the opaque USR string (the whole point is to replace USRs with names).
+        for ext in external:
+            if "qualified_name" in ext:
+                assert "usr" not in ext, (
+                    f"External callee with qualified_name should not expose raw usr: {ext}"
+                )
 
 
 if __name__ == '__main__':

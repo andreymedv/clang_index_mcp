@@ -4896,6 +4896,41 @@ class CppAnalyzer:
             result["nodes_returned"] = len(classes)
         return result
 
+    def _lookup_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
+        """Return a rich symbol dict for *usr*, querying SQLite when not in usr_index.
+
+        Used by find_callers/find_callees to avoid returning opaque USR strings for
+        external symbols.  Returns None when the symbol cannot be found at all.
+        """
+        if usr in self.usr_index:
+            info = self.usr_index[usr]
+            return omit_empty(
+                {
+                    "qualified_name": info.qualified_name or info.name,
+                    "kind": info.kind,
+                    "signature": info.signature,
+                    "parent_class": info.parent_class or None,
+                    "is_project": info.is_project,
+                    **build_location_objects(info),
+                }
+            )
+        # Not in in-memory index — try SQLite (external symbols indexed as dependencies)
+        backend = getattr(self.cache_manager, "backend", None)
+        if backend is not None and hasattr(backend, "load_symbol_by_usr"):
+            info = backend.load_symbol_by_usr(usr)
+            if info is not None:
+                return omit_empty(
+                    {
+                        "qualified_name": info.qualified_name or info.name,
+                        "kind": info.kind,
+                        "signature": info.signature,
+                        "parent_class": info.parent_class or None,
+                        "is_project": False,
+                        **build_location_objects(info),
+                    }
+                )
+        return None
+
     def find_callers(
         self,
         function_name: str,
@@ -4965,7 +5000,11 @@ class CppAnalyzer:
                         )
                     )
                 elif not project_only:
-                    callers_list.append({"usr": caller_usr, "is_project": False})
+                    rich = self._lookup_symbol_info(caller_usr)
+                    if rich is not None:
+                        callers_list.append(rich)
+                    else:
+                        callers_list.append({"usr": caller_usr, "is_project": False})
 
             # Phase 3: Get call sites with line-level precision
             if include_call_sites:
@@ -5134,7 +5173,11 @@ class CppAnalyzer:
                         )
                     )
                 elif not project_only:
-                    callees_list.append({"usr": callee_usr, "is_project": False})
+                    rich = self._lookup_symbol_info(callee_usr)
+                    if rich is not None:
+                        callees_list.append(rich)
+                    else:
+                        callees_list.append({"usr": callee_usr, "is_project": False})
 
         # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
         #   _function_found          — True if the function name resolved to at least one USR
