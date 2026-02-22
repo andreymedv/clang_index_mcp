@@ -216,6 +216,7 @@ try:
     )
     from mcp_server.session_manager import SessionManager
     from mcp_server.tool_call_logger import ToolCallLogger
+    from mcp_server import suggestions
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer  # type: ignore[no-redef]
@@ -229,6 +230,7 @@ except ImportError:
     )
     from session_manager import SessionManager  # type: ignore[no-redef]
     from tool_call_logger import ToolCallLogger  # type: ignore[no-redef]
+    import suggestions  # type: ignore[no-redef]
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -1350,6 +1352,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results, state_manager, "search_classes", max_results, total_count, fallback
             )
+            if results:
+                enhanced_result.next_steps = suggestions.for_search_classes(results)
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_functions":
@@ -1385,6 +1389,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results, state_manager, "search_functions", max_results, total_count, fallback
             )
+            if results:
+                enhanced_result.next_steps = suggestions.for_search_functions(results)
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "get_class_info":
@@ -1397,15 +1403,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = EnhancedQueryResult.create_from_state(
                 result, state_manager, "get_class_info"
             )
-            if result:
-                return [
-                    TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))
-                ]
-            else:
-                # Include metadata even for "not found" case
-                return [
-                    TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))
-                ]
+            if result and "error" not in (result or {}):
+                enhanced_result.next_steps = suggestions.for_get_class_info(result)
+            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "get_function_signature":
             function_name = arguments["function_name"]
@@ -1697,6 +1697,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results.get("callers", []), state_manager, "find_callers", max_results, total_count
             )
+            enhanced_result.next_steps = suggestions.for_find_callers(function_name, results)
             # Merge metadata into results dict
             output = results.copy() if isinstance(results, dict) else {"callers": results}
             enhanced_dict = enhanced_result.to_dict()
@@ -1723,6 +1724,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results.get("callees", []), state_manager, "find_callees", max_results, total_count
             )
+            enhanced_result.next_steps = suggestions.for_find_callees(function_name, results)
             # Merge metadata into results dict
             output = results.copy() if isinstance(results, dict) else {"callees": results}
             enhanced_dict = enhanced_result.to_dict()
