@@ -4936,9 +4936,12 @@ class CppAnalyzer:
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
 
-        # Find all callers
+        # Find all callers; also count raw graph entries to distinguish
+        # "genuinely no callers" from "callers exist but all are external".
+        total_raw_callers = 0
         for usr in target_usrs:
             callers = self.call_graph_analyzer.find_callers(usr)
+            total_raw_callers += len(callers)
             for caller_usr in callers:
                 if caller_usr in self.usr_index:
                     caller_info = self.usr_index[caller_usr]
@@ -4974,7 +4977,15 @@ class CppAnalyzer:
                         )
 
         # Return dictionary with both callers and call_sites
-        result: Dict[str, Any] = {"function": function_name, "callers": callers_list}
+        # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
+        #   _function_found      — True if the function name resolved to at least one USR
+        #   _has_any_in_graph    — True if the call graph has any entries (including external)
+        result: Dict[str, Any] = {
+            "function": function_name,
+            "callers": callers_list,
+            "_function_found": len(target_usrs) > 0,
+            "_has_any_in_graph": total_raw_callers > 0,
+        }
 
         if include_call_sites:
             # Sort call sites by file, then line
@@ -5073,9 +5084,12 @@ class CppAnalyzer:
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
 
-        # Find all callees
+        # Find all callees; also count raw graph entries to distinguish
+        # "genuinely no callees" from "callees exist but all are external".
+        total_raw_callees = 0
         for usr in target_usrs:
             callees = self.call_graph_analyzer.find_callees(usr)
+            total_raw_callees += len(callees)
             for callee_usr in callees:
                 if callee_usr in self.usr_index:
                     callee_info = self.usr_index[callee_usr]
@@ -5092,7 +5106,15 @@ class CppAnalyzer:
                         )
                     )
 
-        return {"function": function_name, "callees": callees_list}
+        # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
+        #   _function_found      — True if the function name resolved to at least one USR
+        #   _has_any_in_graph    — True if the call graph has any entries (including external)
+        return {
+            "function": function_name,
+            "callees": callees_list,
+            "_function_found": len(target_usrs) > 0,
+            "_has_any_in_graph": total_raw_callees > 0,
+        }
 
     def get_call_path(
         self, from_function: str, to_function: str, max_depth: int = 10

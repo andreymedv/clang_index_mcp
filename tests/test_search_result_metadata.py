@@ -58,6 +58,15 @@ class TestEnhancedQueryResultFactoryMethods:
         output = result.to_dict()
         assert output["metadata"]["suggestions"] == custom_suggestions
 
+    def test_create_empty_with_empty_suggestions_suppresses_hints(self):
+        """Passing suggestions=[] suppresses the hints entirely (no 'suggestions' key)."""
+        result = EnhancedQueryResult.create_empty([], suggestions=[])
+        output = result.to_dict()
+        assert output["metadata"]["status"] == "empty"
+        assert "suggestions" not in output["metadata"], (
+            "suggestions=[] should suppress hints, not emit an empty list"
+        )
+
     def test_create_truncated_with_counts(self):
         """Truncated results should include returned and total_matches"""
         data = [{"name": f"Class{i}"} for i in range(10)]

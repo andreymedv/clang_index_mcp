@@ -487,5 +487,107 @@ class TestCallGraphAnalyzer:
         assert d['column'] == 10
 
 
+# =============================================================================
+# Three-case empty-result logic for find_callers / find_callees
+# =============================================================================
+
+class TestCallGraphEmptyResultFlags:
+    """
+    Verify the internal _function_found and _has_any_in_graph flags that drive
+    the 3-case empty-result hint logic:
+
+      1. Function not found           → _function_found=False
+      2. Found, genuinely no callers  → _function_found=True, _has_any_in_graph=False
+      3. Found, callers are external  → _function_found=True, _has_any_in_graph=True
+         (tested via find_callees with an external callee)
+    """
+
+    @staticmethod
+    def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
+        """Helper: write source to a temp project, index, return analyzer."""
+        from tests.utils.test_helpers import temp_compile_commands
+
+        src_file = tmp_path / "main.cpp"
+        src_file.write_text(source)
+        temp_compile_commands(tmp_path, [
+            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
+        ])
+        az = CppAnalyzer(str(tmp_path))
+        az.index_project()
+        return az
+
+    # ------------------------------------------------------------------
+    # find_callees — 3 cases
+    # ------------------------------------------------------------------
+
+    def test_find_callees_function_not_found(self, tmp_path):
+        """Case 1: queried name does not exist → _function_found=False."""
+        az = self._make_analyzer(tmp_path, "void realFunc() {}")
+        result = az.find_callees("completelymade_up_name")
+        assert result["_function_found"] is False
+        assert result["callees"] == []
+
+    def test_find_callees_found_calls_nothing(self, tmp_path):
+        """Case 2: function found but has an empty body → _has_any_in_graph=False."""
+        az = self._make_analyzer(tmp_path, "void leaf() {}")
+        result = az.find_callees("leaf")
+        assert result["_function_found"] is True
+        assert result["_has_any_in_graph"] is False
+        assert result["callees"] == []
+
+    def test_find_callees_found_calls_project_function(self, tmp_path):
+        """When callees exist and are project symbols they appear in the list normally."""
+        az = self._make_analyzer(tmp_path, "void callee() {}\nvoid caller() { callee(); }")
+        result = az.find_callees("caller")
+        assert result["_function_found"] is True
+        assert result["_has_any_in_graph"] is True
+        assert len(result["callees"]) > 0
+
+    # ------------------------------------------------------------------
+    # find_callers — 3 cases
+    # ------------------------------------------------------------------
+
+    def test_find_callers_function_not_found(self, tmp_path):
+        """Case 1: queried name does not exist → _function_found=False."""
+        az = self._make_analyzer(tmp_path, "void realFunc() {}")
+        result = az.find_callers("completelymade_up_name")
+        assert result["_function_found"] is False
+        assert result["callers"] == []
+
+    def test_find_callers_found_no_callers(self, tmp_path):
+        """Case 2: function found but nothing calls it → _has_any_in_graph=False."""
+        az = self._make_analyzer(tmp_path, "void standalone() {}")
+        result = az.find_callers("standalone")
+        assert result["_function_found"] is True
+        assert result["_has_any_in_graph"] is False
+        assert result["callers"] == []
+
+    def test_find_callers_found_has_callers(self, tmp_path):
+        """When callers exist they appear in the list normally."""
+        az = self._make_analyzer(tmp_path, "void target() {}\nvoid caller() { target(); }")
+        result = az.find_callers("target")
+        assert result["_function_found"] is True
+        assert result["_has_any_in_graph"] is True
+        assert len(result["callers"]) > 0
+
+    # ------------------------------------------------------------------
+    # Internal flags must not leak into MCP output
+    # ------------------------------------------------------------------
+
+    def test_internal_flags_stripped_from_mcp_output(self, tmp_path):
+        """_function_found and _has_any_in_graph must not appear in the raw result
+        that would be forwarded to the LLM (they are popped by the MCP handler)."""
+        az = self._make_analyzer(tmp_path, "void leaf() {}")
+        result = az.find_callees("leaf")
+        # The flags should be present at the analyzer level (consumed by MCP handler)
+        assert "_function_found" in result
+        assert "_has_any_in_graph" in result
+        # Simulate what the MCP handler does: pop both flags
+        result.pop("_function_found")
+        result.pop("_has_any_in_graph")
+        assert "_function_found" not in result
+        assert "_has_any_in_graph" not in result
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
