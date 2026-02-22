@@ -4897,7 +4897,11 @@ class CppAnalyzer:
         return result
 
     def find_callers(
-        self, function_name: str, class_name: str = "", include_call_sites: bool = True
+        self,
+        function_name: str,
+        class_name: str = "",
+        include_call_sites: bool = True,
+        project_only: bool = True,
     ) -> Dict[str, Any]:
         """
         Find all functions that call the specified function.
@@ -4906,6 +4910,9 @@ class CppAnalyzer:
             function_name: Name of the target function
             class_name: Optional class name to disambiguate methods
             include_call_sites: Whether to include call site locations (Phase 3)
+            project_only: When True (default), only return callers from project files.
+                When False, also include callers from external dependencies (shown as
+                {"usr": "<USR>", "is_project": false} entries since no metadata is indexed).
 
         Returns:
             Dictionary with:
@@ -4957,6 +4964,8 @@ class CppAnalyzer:
                             }
                         )
                     )
+                elif not project_only:
+                    callers_list.append({"usr": caller_usr, "is_project": False})
 
             # Phase 3: Get call sites with line-level precision
             if include_call_sites:
@@ -4973,6 +4982,15 @@ class CppAnalyzer:
                                 "caller": caller_info.name,
                                 "caller_file": caller_info.file,
                                 "caller_signature": caller_info.signature,
+                            }
+                        )
+                    elif not project_only:
+                        call_sites_list.append(
+                            {
+                                "file": call_site.file,
+                                "line": call_site.line,
+                                "column": call_site.column,
+                                "caller_usr": call_site.caller_usr,
                             }
                         )
 
@@ -5050,13 +5068,18 @@ class CppAnalyzer:
 
         return call_sites_list
 
-    def find_callees(self, function_name: str, class_name: str = "") -> Dict[str, Any]:
+    def find_callees(
+        self, function_name: str, class_name: str = "", project_only: bool = True
+    ) -> Dict[str, Any]:
         """
         Find all functions called by the specified function.
 
         Args:
             function_name: Name of the source function
             class_name: Optional class name to disambiguate methods
+            project_only: When True (default), only return callees from project files.
+                When False, also include callees from external dependencies (shown as
+                {"usr": "<USR>", "is_project": false} entries since no metadata is indexed).
 
         Returns:
             Dictionary with:
@@ -5105,6 +5128,8 @@ class CppAnalyzer:
                             }
                         )
                     )
+                elif not project_only:
+                    callees_list.append({"usr": callee_usr, "is_project": False})
 
         # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
         #   _function_found      — True if the function name resolved to at least one USR
