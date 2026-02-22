@@ -4916,8 +4916,12 @@ class CppAnalyzer:
         call_sites_list = []
 
         # Find the target function(s)
+        # Pass function_name directly so matches_qualified_pattern uses suffix matching for
+        # partially qualified names (e.g. "ClassName::method") and unqualified matching for
+        # simple names (e.g. "method"). Wrapping in ^re.escape()$ would force regex mode,
+        # breaking partial qualification.
         target_functions = self.search_functions(
-            f"^{re.escape(function_name)}$", project_only=False, class_name=class_name
+            function_name, project_only=False, class_name=class_name
         )
 
         # Collect USRs of target functions
@@ -4994,8 +4998,9 @@ class CppAnalyzer:
         call_sites_list = []
 
         # Find the source function(s)
+        # Pass function_name directly (see find_callers comment for rationale).
         source_functions = self.search_functions(
-            f"^{re.escape(function_name)}$", project_only=False, class_name=class_name
+            function_name, project_only=False, class_name=class_name
         )
 
         # Collect USRs of source functions
@@ -5051,8 +5056,9 @@ class CppAnalyzer:
         callees_list = []
 
         # Find the target function(s)
+        # Pass function_name directly (see find_callers comment for rationale).
         target_functions = self.search_functions(
-            f"^{re.escape(function_name)}$", project_only=False, class_name=class_name
+            function_name, project_only=False, class_name=class_name
         )
 
         # Collect USRs of target functions
@@ -5093,8 +5099,9 @@ class CppAnalyzer:
     ) -> List[List[str]]:
         """Find call paths from one function to another using BFS"""
         # Find source and target USRs
-        from_funcs = self.search_functions(f"^{re.escape(from_function)}$", project_only=False)
-        to_funcs = self.search_functions(f"^{re.escape(to_function)}$", project_only=False)
+        # Pass names directly (see find_callers comment for rationale).
+        from_funcs = self.search_functions(from_function, project_only=False)
+        to_funcs = self.search_functions(to_function, project_only=False)
 
         if not from_funcs or not to_funcs:
             return []
