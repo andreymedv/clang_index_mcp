@@ -160,6 +160,4 @@ def for_find_callees(
         return []
 
     name_to_use = qualified_name or function_name
-    return [
-        f"get_call_sites('{name_to_use}') — get exact call locations within the function body"
-    ]
+    return [f"get_call_sites('{name_to_use}') — get exact call locations within the function body"]
