@@ -5,7 +5,7 @@ Design principle: hints only appear when returned data warrants them.
 Each function returns list[str] — empty list means no suggestions (no metadata added).
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 def _strip_template_args(name: str) -> str:
@@ -117,12 +117,17 @@ def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
     return hints
 
 
-def for_find_callers(function_name: str, result_data: Dict[str, Any]) -> List[str]:
+def for_find_callers(
+    function_name: str,
+    result_data: Dict[str, Any],
+    qualified_name: Optional[str] = None,
+) -> List[str]:
     """Generate next-step suggestions for find_callers results.
 
     Args:
         function_name: The function name that was queried
         result_data: The full dict returned by find_callers (with 'callers' list)
+        qualified_name: Fully qualified name of the resolved function (preferred for hint)
 
     Returns:
         List of suggestion strings, empty if none warranted.
@@ -131,15 +136,21 @@ def for_find_callers(function_name: str, result_data: Dict[str, Any]) -> List[st
     if not callers:
         return []
 
-    return [f"get_call_sites('{function_name}') — get exact file:line:column call locations"]
+    name_to_use = qualified_name or function_name
+    return [f"get_call_sites('{name_to_use}') — get exact file:line:column call locations"]
 
 
-def for_find_callees(function_name: str, result_data: Dict[str, Any]) -> List[str]:
+def for_find_callees(
+    function_name: str,
+    result_data: Dict[str, Any],
+    qualified_name: Optional[str] = None,
+) -> List[str]:
     """Generate next-step suggestions for find_callees results.
 
     Args:
         function_name: The function name that was queried
         result_data: The full dict returned by find_callees (with 'callees' list)
+        qualified_name: Fully qualified name of the resolved function (preferred for hint)
 
     Returns:
         List of suggestion strings, empty if none warranted.
@@ -148,6 +159,7 @@ def for_find_callees(function_name: str, result_data: Dict[str, Any]) -> List[st
     if not callees:
         return []
 
+    name_to_use = qualified_name or function_name
     return [
-        f"get_call_sites('{function_name}') — get exact call locations within the function body"
+        f"get_call_sites('{name_to_use}') — get exact call locations within the function body"
     ]
