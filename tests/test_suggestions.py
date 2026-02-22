@@ -221,6 +221,20 @@ def test_find_callers_non_dict_result_no_hints():
     assert hints == []
 
 
+def test_find_callers_uses_qualified_name_in_hint():
+    result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
+    hints = suggestions.for_find_callers("build", result_data, qualified_name="NS::Cls::build")
+    assert len(hints) == 1
+    assert "get_call_sites('NS::Cls::build')" in hints[0]
+    assert "doThing" not in hints[0]
+
+
+def test_find_callers_falls_back_to_function_name_when_no_qualified():
+    result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
+    hints = suggestions.for_find_callers("doThing", result_data, qualified_name=None)
+    assert "get_call_sites('doThing')" in hints[0]
+
+
 # ---------------------------------------------------------------------------
 # for_find_callees
 # ---------------------------------------------------------------------------
@@ -241,6 +255,23 @@ def test_find_callees_non_empty_callees():
 def test_find_callees_non_dict_result_no_hints():
     hints = suggestions.for_find_callees("process", [])  # type: ignore[arg-type]
     assert hints == []
+
+
+def test_find_callees_uses_qualified_name_in_hint():
+    result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
+    hints = suggestions.for_find_callees(
+        "builder", result_data, qualified_name="NS::Doc::builder"
+    )
+    assert len(hints) == 1
+    assert "get_call_sites('NS::Doc::builder')" in hints[0]
+    assert "builder" in hints[0]
+    assert "process" not in hints[0]
+
+
+def test_find_callees_falls_back_to_function_name_when_no_qualified():
+    result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
+    hints = suggestions.for_find_callees("process", result_data, qualified_name=None)
+    assert "get_call_sites('process')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
