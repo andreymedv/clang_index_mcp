@@ -435,14 +435,18 @@ class EnhancedQueryResult:
         """
         if fallback is not None:
             extra = {"fallback": fallback.to_metadata()}
+        elif suggestions is not None:
+            # Caller provided explicit suggestions (may be [] to suppress hints entirely)
+            extra = {"suggestions": suggestions} if suggestions else {}
         else:
-            default_suggestions = [
-                "Broaden pattern (e.g., use '.*' prefix/suffix for partial match)",
-                "Check spelling of symbol name",
-                "Verify file is indexed (use get_indexing_status)",
-                "Try search_symbols for unified search across types",
-            ]
-            extra = {"suggestions": suggestions or default_suggestions}
+            extra = {
+                "suggestions": [
+                    "Broaden pattern (e.g., use '.*' prefix/suffix for partial match)",
+                    "Check spelling of symbol name",
+                    "Verify file is indexed (use get_indexing_status)",
+                    "Try search_symbols for unified search across types",
+                ]
+            }
         return EnhancedQueryResult(
             data,
             status=QueryCompletenessStatus.EMPTY,

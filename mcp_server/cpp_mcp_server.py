@@ -1051,6 +1051,7 @@ def _create_search_result(
     max_results: Optional[int] = None,
     total_count: Optional[int] = None,
     fallback: Any = None,
+    empty_suggestions: Optional[List[str]] = None,
 ) -> EnhancedQueryResult:
     """
     Create an EnhancedQueryResult with appropriate metadata based on special conditions.
@@ -1065,6 +1066,9 @@ def _create_search_result(
         max_results: If specified, max_results limit was applied
         total_count: Total count before truncation (when max_results is specified)
         fallback: Optional FallbackResult from smart_fallback module
+        empty_suggestions: Custom suggestions for the empty-result case.  When None,
+            create_empty() uses its own default "search" suggestions.  Pass an explicit
+            list (including []) to override those defaults.
 
     Returns:
         EnhancedQueryResult with appropriate metadata
@@ -1084,7 +1088,9 @@ def _create_search_result(
 
     # Priority 2: Check for empty results (with smart fallback if available)
     if result_count == 0:
-        return EnhancedQueryResult.create_empty(data, fallback=fallback)
+        return EnhancedQueryResult.create_empty(
+            data, suggestions=empty_suggestions, fallback=fallback
+        )
 
     # Priority 3: Check for truncation (max_results was specified and applied)
     if max_results is not None and total_count is not None and total_count > max_results:
@@ -1693,9 +1699,29 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             # Apply truncation if max_results specified
             if max_results is not None and len(callers_list) > max_results:
                 results["callers"] = callers_list[:max_results]
+            # 3-case empty-result logic (internal flags stripped before sending to LLM):
+            #   not found            → default "check spelling" suggestions  (None)
+            #   found, no callers    → no hints at all                        ([])
+            #   found, ext. callers  → suggest project_only=false             ([...])
+            function_found = results.pop("_function_found", False) if isinstance(results, dict) else False
+            has_any_in_graph = results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+            if not function_found:
+                empty_suggestions = None  # default "check spelling / broaden pattern"
+            elif has_any_in_graph:
+                empty_suggestions = [
+                    "Function found but all callers are outside the indexed project; "
+                    "pass project_only=false to include external callers"
+                ]
+            else:
+                empty_suggestions = []  # genuinely no callers → no hints
             # Wrap with appropriate metadata
             enhanced_result = _create_search_result(
-                results.get("callers", []), state_manager, "find_callers", max_results, total_count
+                results.get("callers", []),
+                state_manager,
+                "find_callers",
+                max_results,
+                total_count,
+                empty_suggestions=empty_suggestions,
             )
             enhanced_result.next_steps = suggestions.for_find_callers(function_name, results)
             # Merge metadata into results dict
@@ -1720,9 +1746,29 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             # Apply truncation if max_results specified
             if max_results is not None and len(callees_list) > max_results:
                 results["callees"] = callees_list[:max_results]
+            # 3-case empty-result logic (internal flags stripped before sending to LLM):
+            #   not found               → default "check spelling" suggestions  (None)
+            #   found, no callees       → no hints at all                        ([])
+            #   found, ext. callees     → suggest project_only=false             ([...])
+            function_found = results.pop("_function_found", False) if isinstance(results, dict) else False
+            has_any_in_graph = results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+            if not function_found:
+                empty_suggestions = None  # default "check spelling / broaden pattern"
+            elif has_any_in_graph:
+                empty_suggestions = [
+                    "Function found but all callees are outside the indexed project; "
+                    "pass project_only=false to include calls to external libraries"
+                ]
+            else:
+                empty_suggestions = []  # genuinely calls nothing → no hints
             # Wrap with appropriate metadata
             enhanced_result = _create_search_result(
-                results.get("callees", []), state_manager, "find_callees", max_results, total_count
+                results.get("callees", []),
+                state_manager,
+                "find_callees",
+                max_results,
+                total_count,
+                empty_suggestions=empty_suggestions,
             )
             enhanced_result.next_steps = suggestions.for_find_callees(function_name, results)
             # Merge metadata into results dict
