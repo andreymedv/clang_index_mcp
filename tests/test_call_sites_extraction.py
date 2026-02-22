@@ -352,6 +352,87 @@ class TestCallSiteAccuracy:
                 assert cs['column'] > 0, f"Column should be positive, got {cs['column']}"
 
 
+class TestPartiallyQualifiedNameLookup:
+    """Regression tests for cplusplus_mcp-9bh: partially qualified names rejected.
+
+    The bug: find_callers/find_callees/get_call_sites wrapped the name in
+    ^re.escape(name)$ which forced regex classification, breaking suffix matching
+    for names like "ClassName::method" that don't match the full qualified string.
+    """
+
+    def test_find_callers_simple_name(self, analyzer):
+        """Simple unqualified name still finds callers."""
+        analyzer.index_project()
+
+        # Processor::process() calls helper() — should be found with bare name
+        result = analyzer.find_callers("helper")
+        caller_names = [c["qualified_name"] for c in result["callers"]]
+        assert any("process" in n or "single_caller" in n or "nested_calls" in n
+                   for n in caller_names), (
+            f"Expected callers of helper(), got: {caller_names}"
+        )
+
+    def test_find_callers_partial_name_class_method(self, analyzer):
+        """Partially qualified 'ClassName::method' finds callers via suffix matching."""
+        analyzer.index_project()
+
+        # Processor::validate() is called from Processor::process() on line 41
+        result = analyzer.find_callers("Processor::validate")
+        assert result["callers"] or result["call_sites"], (
+            "Processor::validate should have callers (called from Processor::process), "
+            f"got callers={result['callers']}, call_sites={result['call_sites']}"
+        )
+
+    def test_find_callees_partial_name(self, analyzer):
+        """Partially qualified name works for find_callees too."""
+        analyzer.index_project()
+
+        # Processor::process() calls validate() and helper()
+        result = analyzer.find_callees("Processor::process")
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        assert callee_names, (
+            f"Processor::process should have callees, got: {callee_names}"
+        )
+
+    def test_get_call_sites_partial_name(self, analyzer):
+        """Partially qualified name works for get_call_sites."""
+        analyzer.index_project()
+
+        # Processor::process() makes calls — verify we can look it up by partial name
+        call_sites = analyzer.get_call_sites("Processor::process")
+        assert isinstance(call_sites, list), "get_call_sites should return a list"
+        assert call_sites, (
+            "Processor::process makes calls (to validate and helper), "
+            "get_call_sites should return non-empty list"
+        )
+
+    def test_find_callers_partial_disambiguates_from_global(self, analyzer):
+        """'Processor::validate' should return only callers of the member, not global validate()."""
+        analyzer.index_project()
+
+        # There are two validate() functions:
+        #   - global validate()     — called by multiple_calls() and nested_calls()
+        #   - Processor::validate() — called by Processor::process()
+        result_partial = analyzer.find_callers("Processor::validate")
+        partial_caller_names = [c["qualified_name"] for c in result_partial["callers"]]
+
+        # Processor::process calls Processor::validate → must appear
+        assert any("process" in n for n in partial_caller_names), (
+            f"Processor::process should be a caller of Processor::validate, "
+            f"got: {partial_caller_names}"
+        )
+
+        # multiple_calls and nested_calls only call the global validate() → must NOT appear
+        assert not any("multiple_calls" in n for n in partial_caller_names), (
+            f"multiple_calls calls global validate(), not Processor::validate; "
+            f"should not appear: {partial_caller_names}"
+        )
+        assert not any("nested_calls" in n for n in partial_caller_names), (
+            f"nested_calls calls global validate(), not Processor::validate; "
+            f"should not appear: {partial_caller_names}"
+        )
+
+
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
