@@ -5472,9 +5472,7 @@ class CppAnalyzer:
                             parent_qname = symbol.parent_class or ""
                             if SearchEngine.matches_qualified_pattern(
                                 sym_qname, symbol_name
-                            ) or SearchEngine.matches_qualified_pattern(
-                                parent_qname, symbol_name
-                            ):
+                            ) or SearchEngine.matches_qualified_pattern(parent_qname, symbol_name):
                                 files.add(file_path)
                                 break
 
