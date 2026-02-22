@@ -43,7 +43,7 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     if has_pure_virtual:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"search_functions(is_definition=True, parent_class='DerivedClass') "
+            f"search_functions(is_definition=True, parent_class='<DerivedClassName>') "
             f"— find concrete implementations of {class_name}'s pure virtual methods"
         )
 
