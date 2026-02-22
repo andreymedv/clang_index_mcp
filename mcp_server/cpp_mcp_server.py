@@ -791,7 +791,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "project_only": {
                         "type": "boolean",
-                        "description": "When true (default), only returns callers from project source files. Set to false to also include callers from external dependencies (returned as {\"usr\": \"...\", \"is_project\": false} since no metadata is available for unindexed symbols).",
+                        "description": 'When true (default), only returns callers from project source files. Set to false to also include callers from external dependencies (returned as {"usr": "...", "is_project": false} since no metadata is available for unindexed symbols).',
                         "default": True,
                     },
                 },
@@ -848,7 +848,7 @@ async def list_tools() -> List[Tool]:
                     },
                     "project_only": {
                         "type": "boolean",
-                        "description": "When true (default), only returns callees from project source files, excluding calls to standard library, third-party, or system code. Set to false to include all callees (returned as {\"usr\": \"...\", \"is_project\": false} since no metadata is available for unindexed symbols).",
+                        "description": 'When true (default), only returns callees from project source files, excluding calls to standard library, third-party, or system code. Set to false to include all callees (returned as {"usr": "...", "is_project": false} since no metadata is available for unindexed symbols).',
                         "default": True,
                     },
                 },
