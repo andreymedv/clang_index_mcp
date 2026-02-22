@@ -1720,6 +1720,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             has_any_in_graph = (
                 results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
             )
+            target_qualified_name = (
+                results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
+            )
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
@@ -1738,7 +1741,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 total_count,
                 empty_suggestions=empty_suggestions,
             )
-            enhanced_result.next_steps = suggestions.for_find_callers(function_name, results)
+            enhanced_result.next_steps = suggestions.for_find_callers(
+                function_name, results, qualified_name=target_qualified_name
+            )
             # Merge metadata into results dict
             output = results.copy() if isinstance(results, dict) else {"callers": results}
             enhanced_dict = enhanced_result.to_dict()
@@ -1772,6 +1777,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             has_any_in_graph = (
                 results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
             )
+            target_qualified_name = (
+                results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
+            )
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
@@ -1790,7 +1798,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 total_count,
                 empty_suggestions=empty_suggestions,
             )
-            enhanced_result.next_steps = suggestions.for_find_callees(function_name, results)
+            enhanced_result.next_steps = suggestions.for_find_callees(
+                function_name, results, qualified_name=target_qualified_name
+            )
             # Merge metadata into results dict
             output = results.copy() if isinstance(results, dict) else {"callees": results}
             enhanced_dict = enhanced_result.to_dict()
