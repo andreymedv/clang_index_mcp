@@ -12,6 +12,8 @@ import pytest
 import json
 from pathlib import Path
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState
+import mcp_server.cpp_mcp_server as cpp_mcp_server_module
 
 
 @pytest.fixture
@@ -298,6 +300,98 @@ class TestPerformance:
 
         # Should complete in under 1 second for small test project
         assert elapsed < 1.0, f"Query took {elapsed:.2f}s, expected <1s"
+
+
+class TestMCPHandlerResponseFormat:
+    """Test that MCP handler returns dict-wrapped responses, not raw lists.
+
+    Regression tests for bug: get_call_sites and get_call_path returned plain
+    JSON arrays (starting with '['), which caused LM Studio and similar clients
+    to show the raw MCP TextContent wrapper to the LLM instead of the JSON payload.
+    """
+
+    @pytest.fixture
+    def setup_mcp_server(self, indexed_analyzer):
+        """Set global MCP server state for handler-level tests."""
+        srv = cpp_mcp_server_module
+
+        original_analyzer = srv.analyzer
+        original_state = srv.state_manager
+        original_initialized = srv.analyzer_initialized
+
+        state_manager = AnalyzerStateManager()
+        state_manager.transition_to(AnalyzerState.INDEXED)
+        srv.analyzer = indexed_analyzer
+        srv.state_manager = state_manager
+        srv.analyzer_initialized = True
+
+        yield srv
+
+        srv.analyzer = original_analyzer
+        srv.state_manager = original_state
+        srv.analyzer_initialized = original_initialized
+
+    @pytest.mark.asyncio
+    async def test_get_call_sites_returns_dict_not_list(self, setup_mcp_server):
+        """get_call_sites MCP handler must return a dict with 'call_sites' key."""
+        srv = setup_mcp_server
+        result = await srv.call_tool("get_call_sites", {"function_name": "single_caller"})
+
+        assert len(result) == 1, "Should return exactly one TextContent"
+        payload = json.loads(result[0].text)
+        assert isinstance(payload, dict), (
+            "get_call_sites must return a JSON object ({}), not a raw array ([])"
+        )
+        assert "call_sites" in payload, "Response must have 'call_sites' key"
+        assert isinstance(payload["call_sites"], list), "'call_sites' must be a list"
+
+    @pytest.mark.asyncio
+    async def test_get_call_sites_empty_has_metadata(self, setup_mcp_server):
+        """get_call_sites with no results should include metadata with suggestions."""
+        srv = setup_mcp_server
+        result = await srv.call_tool(
+            "get_call_sites", {"function_name": "nonexistent_function_xyz"}
+        )
+
+        payload = json.loads(result[0].text)
+        assert isinstance(payload, dict)
+        assert "call_sites" in payload
+        assert payload["call_sites"] == []
+        assert "metadata" in payload
+        assert payload["metadata"]["status"] == "empty"
+
+    @pytest.mark.asyncio
+    async def test_get_call_path_returns_dict_not_list(self, setup_mcp_server):
+        """get_call_path MCP handler must return a dict with 'paths' key."""
+        srv = setup_mcp_server
+        result = await srv.call_tool(
+            "get_call_path",
+            {"from_function": "single_caller", "to_function": "nonexistent_xyz"},
+        )
+
+        assert len(result) == 1
+        payload = json.loads(result[0].text)
+        assert isinstance(payload, dict), (
+            "get_call_path must return a JSON object ({}), not a raw array ([])"
+        )
+        assert "paths" in payload, "Response must have 'paths' key"
+        assert isinstance(payload["paths"], list), "'paths' must be a list"
+
+    @pytest.mark.asyncio
+    async def test_get_call_path_empty_has_metadata(self, setup_mcp_server):
+        """get_call_path with no paths found should include metadata with suggestions."""
+        srv = setup_mcp_server
+        result = await srv.call_tool(
+            "get_call_path",
+            {"from_function": "nonexistent_a", "to_function": "nonexistent_b"},
+        )
+
+        payload = json.loads(result[0].text)
+        assert isinstance(payload, dict)
+        assert "paths" in payload
+        assert payload["paths"] == []
+        assert "metadata" in payload
+        assert payload["metadata"]["status"] == "empty"
 
 
 if __name__ == '__main__':
