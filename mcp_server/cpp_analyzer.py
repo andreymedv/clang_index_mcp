@@ -4996,13 +4996,18 @@ class CppAnalyzer:
 
         # Return dictionary with both callers and call_sites
         # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
-        #   _function_found      — True if the function name resolved to at least one USR
-        #   _has_any_in_graph    — True if the call graph has any entries (including external)
+        #   _function_found          — True if the function name resolved to at least one USR
+        #   _has_any_in_graph        — True if the call graph has any entries (including external)
+        #   _target_qualified_name   — Qualified name of the first matched function (for hints)
+        target_qualified_name = (
+            target_functions[0]["qualified_name"] if target_functions else function_name
+        )
         result: Dict[str, Any] = {
             "function": function_name,
             "callers": callers_list,
             "_function_found": len(target_usrs) > 0,
             "_has_any_in_graph": total_raw_callers > 0,
+            "_target_qualified_name": target_qualified_name,
         }
 
         if include_call_sites:
@@ -5132,13 +5137,18 @@ class CppAnalyzer:
                     callees_list.append({"usr": callee_usr, "is_project": False})
 
         # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
-        #   _function_found      — True if the function name resolved to at least one USR
-        #   _has_any_in_graph    — True if the call graph has any entries (including external)
+        #   _function_found          — True if the function name resolved to at least one USR
+        #   _has_any_in_graph        — True if the call graph has any entries (including external)
+        #   _target_qualified_name   — Qualified name of the first matched function (for hints)
+        target_qualified_name = (
+            target_functions[0]["qualified_name"] if target_functions else function_name
+        )
         return {
             "function": function_name,
             "callees": callees_list,
             "_function_found": len(target_usrs) > 0,
             "_has_any_in_graph": total_raw_callees > 0,
+            "_target_qualified_name": target_qualified_name,
         }
 
     def get_call_path(
