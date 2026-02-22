@@ -1703,8 +1703,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             #   not found            → default "check spelling" suggestions  (None)
             #   found, no callers    → no hints at all                        ([])
             #   found, ext. callers  → suggest project_only=false             ([...])
-            function_found = results.pop("_function_found", False) if isinstance(results, dict) else False
-            has_any_in_graph = results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+            function_found = (
+                results.pop("_function_found", False) if isinstance(results, dict) else False
+            )
+            has_any_in_graph = (
+                results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+            )
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
@@ -1750,8 +1754,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             #   not found               → default "check spelling" suggestions  (None)
             #   found, no callees       → no hints at all                        ([])
             #   found, ext. callees     → suggest project_only=false             ([...])
-            function_found = results.pop("_function_found", False) if isinstance(results, dict) else False
-            has_any_in_graph = results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+            function_found = (
+                results.pop("_function_found", False) if isinstance(results, dict) else False
+            )
+            has_any_in_graph = (
+                results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+            )
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
