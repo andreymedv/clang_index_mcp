@@ -185,6 +185,29 @@ def _process_file_worker(args_tuple):
     return (file_path, success, was_cached, symbols, call_sites, processed_headers)
 
 
+def _usr_to_display_name(usr: str) -> str:
+    """Convert a libclang USR to an approximate qualified name for display.
+
+    USRs like ``c:@N@std@F@move#&`` are opaque internal identifiers.  This
+    function extracts the named components (namespaces, classes, functions) and
+    joins them with ``::`` so callers/callees that are not present in the
+    in-memory index can still be presented with a human-readable name.
+
+    If the USR cannot be parsed, the raw USR is returned unchanged so no
+    information is silently lost.
+    """
+    if not usr:
+        return usr
+    s = usr[2:] if usr.startswith("c:") else usr
+    # Each named component is encoded as @<kind>@<name> where kind is a single
+    # letter (N=namespace, S=struct/class, C=class, F/f=function/method,
+    # E=enum, I=interface, …).  Template arguments appear after '>' or '#' and
+    # are intentionally skipped so we return e.g. "std::vector::push_back"
+    # rather than "std::vector<int>::push_back".
+    parts = re.findall(r"@[A-Za-z]@([^@#>]+)", s)
+    return "::".join(parts) if parts else usr
+
+
 class CppAnalyzer:
     """
     Pure Python C++ code analyzer using libclang.
@@ -5004,7 +5027,12 @@ class CppAnalyzer:
                     if rich is not None:
                         callers_list.append(rich)
                     else:
-                        callers_list.append({"usr": caller_usr, "is_project": False})
+                        callers_list.append(
+                            {
+                                "qualified_name": _usr_to_display_name(caller_usr),
+                                "is_project": False,
+                            }
+                        )
 
             # Phase 3: Get call sites with line-level precision
             if include_call_sites:
@@ -5029,7 +5057,7 @@ class CppAnalyzer:
                                 "file": call_site.file,
                                 "line": call_site.line,
                                 "column": call_site.column,
-                                "caller_usr": call_site.caller_usr,
+                                "caller": _usr_to_display_name(call_site.caller_usr),
                             }
                         )
 
@@ -5177,7 +5205,12 @@ class CppAnalyzer:
                     if rich is not None:
                         callees_list.append(rich)
                     else:
-                        callees_list.append({"usr": callee_usr, "is_project": False})
+                        callees_list.append(
+                            {
+                                "qualified_name": _usr_to_display_name(callee_usr),
+                                "is_project": False,
+                            }
+                        )
 
         # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
         #   _function_found          — True if the function name resolved to at least one USR
