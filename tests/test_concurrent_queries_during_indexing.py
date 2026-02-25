@@ -147,7 +147,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     # After indexing completes:
     # - For normal results (1-20 items): no metadata ("silence = success")
     # - For large results (>20 items): metadata with status="large"
-    # - For empty results: metadata with status="empty"
+    # - For empty results: metadata with suggestions only (no status field)
     classes = response_data2["data"]
     assert len(classes) > 0, "Should find Module classes"
 

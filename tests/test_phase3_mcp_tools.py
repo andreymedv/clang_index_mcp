@@ -358,7 +358,7 @@ class TestMCPHandlerResponseFormat:
         assert "call_sites" in payload
         assert payload["call_sites"] == []
         assert "metadata" in payload
-        assert payload["metadata"]["status"] == "empty"
+        assert "suggestions" in payload["metadata"]
 
     @pytest.mark.asyncio
     async def test_get_call_path_returns_dict_not_list(self, setup_mcp_server):
@@ -391,7 +391,7 @@ class TestMCPHandlerResponseFormat:
         assert "paths" in payload
         assert payload["paths"] == []
         assert "metadata" in payload
-        assert payload["metadata"]["status"] == "empty"
+        assert "suggestions" in payload["metadata"]
 
 
 if __name__ == '__main__':
