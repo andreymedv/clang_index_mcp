@@ -137,7 +137,9 @@ def for_find_callers(
         return []
 
     name_to_use = qualified_name or function_name
-    return [f"find_callees('{name_to_use}') — see what this function calls (complements callers view)"]
+    return [
+        f"find_callees('{name_to_use}') — see what this function calls (complements callers view)"
+    ]
 
 
 def for_find_callees(
