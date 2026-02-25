@@ -216,8 +216,8 @@ def test_find_callers_non_empty_callers():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
     hints = suggestions.for_find_callers("doThing", result_data)
     assert len(hints) == 1
-    assert "get_call_sites('doThing')" in hints[0]
-    assert "file:line:column" in hints[0]
+    assert "find_callees('doThing')" in hints[0]
+    assert "complements" in hints[0]
 
 
 def test_find_callers_non_dict_result_no_hints():
@@ -229,14 +229,14 @@ def test_find_callers_uses_qualified_name_in_hint():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
     hints = suggestions.for_find_callers("build", result_data, qualified_name="NS::Cls::build")
     assert len(hints) == 1
-    assert "get_call_sites('NS::Cls::build')" in hints[0]
-    assert "doThing" not in hints[0]
+    assert "find_callees('NS::Cls::build')" in hints[0]
+    assert "build" not in hints[0].replace("NS::Cls::build", "")
 
 
 def test_find_callers_falls_back_to_function_name_when_no_qualified():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
     hints = suggestions.for_find_callers("doThing", result_data, qualified_name=None)
-    assert "get_call_sites('doThing')" in hints[0]
+    assert "find_callees('doThing')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
@@ -307,3 +307,95 @@ def test_enhanced_result_create_normal_no_next_steps():
     result = EnhancedQueryResult.create_normal(data={"x": 1})
     d = result.to_dict()
     assert "metadata" not in d
+
+
+# ---------------------------------------------------------------------------
+# for_find_callers_external
+# ---------------------------------------------------------------------------
+
+
+def test_find_callers_external_uses_function_name():
+    hints = suggestions.for_find_callers_external("doThing")
+    assert len(hints) == 1
+    assert "find_callers('doThing', project_only=false)" in hints[0]
+    assert "external" in hints[0]
+
+
+def test_find_callers_external_uses_qualified_name():
+    hints = suggestions.for_find_callers_external("build", qualified_name="NS::Cls::build")
+    assert len(hints) == 1
+    assert "find_callers('NS::Cls::build', project_only=false)" in hints[0]
+
+
+def test_find_callers_external_falls_back_to_function_name():
+    hints = suggestions.for_find_callers_external("process", qualified_name=None)
+    assert "find_callers('process', project_only=false)" in hints[0]
+
+
+# ---------------------------------------------------------------------------
+# for_find_callees_external
+# ---------------------------------------------------------------------------
+
+
+def test_find_callees_external_uses_function_name():
+    hints = suggestions.for_find_callees_external("doThing")
+    assert len(hints) == 1
+    assert "find_callees('doThing', project_only=false)" in hints[0]
+    assert "external" in hints[0]
+
+
+def test_find_callees_external_uses_qualified_name():
+    hints = suggestions.for_find_callees_external("builder", qualified_name="NS::Doc::builder")
+    assert len(hints) == 1
+    assert "find_callees('NS::Doc::builder', project_only=false)" in hints[0]
+
+
+def test_find_callees_external_falls_back_to_function_name():
+    hints = suggestions.for_find_callees_external("process", qualified_name=None)
+    assert "find_callees('process', project_only=false)" in hints[0]
+
+
+# ---------------------------------------------------------------------------
+# for_get_call_sites_empty
+# ---------------------------------------------------------------------------
+
+
+def test_get_call_sites_empty_basic():
+    hints = suggestions.for_get_call_sites_empty("doThing")
+    assert len(hints) == 1
+    assert "doThing" in hints[0]
+    assert "find_callees('doThing')" in hints[0]
+    assert "project_only=false" in hints[0]
+
+
+def test_get_call_sites_empty_with_class_name():
+    hints = suggestions.for_get_call_sites_empty("builder", class_name="MyClass")
+    assert len(hints) == 1
+    assert "MyClass::builder" in hints[0]
+    assert "find_callees('MyClass::builder')" in hints[0]
+
+
+def test_get_call_sites_empty_no_class_name():
+    hints = suggestions.for_get_call_sites_empty("process", class_name="")
+    assert "find_callees('process')" in hints[0]
+    assert "::" not in hints[0].split("find_callees")[1].split(")")[0]
+
+
+# ---------------------------------------------------------------------------
+# for_get_call_path_empty
+# ---------------------------------------------------------------------------
+
+
+def test_get_call_path_empty_includes_functions_and_depth():
+    hints = suggestions.for_get_call_path_empty("main", "leaf", max_depth=10)
+    assert len(hints) == 1
+    assert "main" in hints[0]
+    assert "leaf" in hints[0]
+    assert "max_depth=10" in hints[0]
+    assert "search_functions" in hints[0]
+
+
+def test_get_call_path_empty_suggests_increasing_depth():
+    hints = suggestions.for_get_call_path_empty("A", "B", max_depth=5)
+    assert "max_depth=5" in hints[0]
+    assert "increasing max_depth" in hints[0]
