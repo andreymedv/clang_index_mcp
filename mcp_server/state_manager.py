@@ -308,10 +308,7 @@ class QueryBehaviorPolicy(Enum):
 class QueryCompletenessStatus(Enum):
     """Status of query result completeness"""
 
-    COMPLETE = "complete"  # Query executed on fully indexed data
     PARTIAL = "partial"  # Query executed during indexing (incomplete)
-    STALE = "stale"  # Query executed on outdated data (needs refresh)
-    EMPTY = "empty"  # Query returned no results
     TRUNCATED = "truncated"  # Results truncated due to max_results limit
     LARGE = "large"  # Large result set (>20 results without max_results)
 
@@ -402,7 +399,7 @@ class EnhancedQueryResult:
         secondary_dict: dict = {}
         if self.status:
             secondary_dict["status"] = self.status.value
-            secondary_dict.update(self.extra_metadata)
+        secondary_dict.update(self.extra_metadata)
         if self.next_steps:
             secondary_dict["next_steps"] = self.next_steps
         if secondary_dict:
@@ -449,7 +446,6 @@ class EnhancedQueryResult:
             }
         return EnhancedQueryResult(
             data,
-            status=QueryCompletenessStatus.EMPTY,
             extra_metadata=extra,
         )
 

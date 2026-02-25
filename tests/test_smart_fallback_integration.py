@@ -195,7 +195,6 @@ class TestFallbackInEnhancedQueryResult(unittest.TestCase):
 
         self.assertEqual(d["data"], [])
         self.assertIn("metadata", d)
-        self.assertEqual(d["metadata"]["status"], "empty")
         self.assertIn("fallback", d["metadata"])
         fb = d["metadata"]["fallback"]
         self.assertEqual(fb["reason"], "signature_detected")
