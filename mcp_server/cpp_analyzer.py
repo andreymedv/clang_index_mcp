@@ -185,26 +185,262 @@ def _process_file_worker(args_tuple):
     return (file_path, success, was_cached, symbols, call_sites, processed_headers)
 
 
+# ---------------------------------------------------------------------------
+# USR → human-readable qualified name conversion
+# ---------------------------------------------------------------------------
+# libclang USR (Unified Symbol Resolution) strings encode type information
+# using a compact scheme derived from Itanium ABI mangling.  The helpers below
+# decode the most common constructs so that template arguments are preserved
+# in the display name (e.g. ``std::vector<int>`` instead of ``std::vector``).
+
+_USR_TYPE_CODES: Dict[str, str] = {
+    "v": "void",
+    "b": "bool",
+    "c": "char",
+    "a": "signed char",
+    "h": "unsigned char",
+    "w": "wchar_t",
+    "s": "short",
+    # "t" is handled specially in _decode_usr_type (conflicts with tN.M param ref)
+    "i": "int",
+    "I": "unsigned int",
+    "j": "long",
+    "k": "unsigned long",
+    "l": "long long",
+    "m": "unsigned long long",
+    "f": "float",
+    "d": "double",
+    "e": "long double",
+    "D": "auto",
+}
+
+# Letters used as template parameter names: T, U, V, W, X, ...
+_TPARAM_LETTERS = "TUVWXYZABCDE"
+
+
+def _decode_usr_type(s: str, pos: int) -> tuple:
+    """Decode a single type from USR encoding starting at *pos*.
+
+    Returns ``(type_string, new_position)``.
+    """
+    if pos >= len(s):
+        return ("?", pos)
+
+    ch = s[pos]
+
+    # --- Template parameter reference (tN.M) --------------------------------
+    # Must be checked before primitives because 't' is also a primitive code
+    # ("unsigned short") but tN.M is a template param ref.
+    if ch == "t":
+        m = re.match(r"t(\d+)\.(\d+)", s[pos:])
+        if m:
+            depth = int(m.group(1))
+            idx = int(m.group(2))
+            total_idx = depth * 4 + idx  # rough linearisation
+            letter = (
+                _TPARAM_LETTERS[total_idx] if total_idx < len(_TPARAM_LETTERS) else f"T{total_idx}"
+            )
+            return (letter, pos + m.end())
+        # Bare 't' without digit.digit is the primitive "unsigned short"
+        return ("unsigned short", pos + 1)
+
+    # --- Primitives ---------------------------------------------------------
+    if ch in _USR_TYPE_CODES:
+        return (_USR_TYPE_CODES[ch], pos + 1)
+
+    # --- Pointer / reference qualifiers ------------------------------------
+    if ch == "*":
+        inner, npos = _decode_usr_type(s, pos + 1)
+        return (f"{inner} *", npos)
+    if ch == "&":
+        inner, npos = _decode_usr_type(s, pos + 1)
+        return (f"{inner} &", npos)
+    if ch == "O":  # r-value reference
+        inner, npos = _decode_usr_type(s, pos + 1)
+        return (f"{inner} &&", npos)
+
+    # --- CV qualifiers -----------------------------------------------------
+    if ch in ("K", "1"):  # const
+        inner, npos = _decode_usr_type(s, pos + 1)
+        return (f"const {inner}", npos)
+    if ch in ("V", "2"):  # volatile
+        inner, npos = _decode_usr_type(s, pos + 1)
+        return (f"volatile {inner}", npos)
+
+    # --- Named type reference ($@...) ---------------------------------------
+    if ch == "$":
+        return _decode_class_ref(s, pos + 1)
+
+    # --- Substitution (S followed by digit or _) ---------------------------
+    if ch == "S" and pos + 1 < len(s) and (s[pos + 1].isdigit() or s[pos + 1] == "_"):
+        end = pos + 1
+        while end < len(s) and (s[end].isdigit() or s[end] == "_"):
+            end += 1
+        return ("type", end)
+
+    return ("?", pos + 1)
+
+
+def _decode_class_ref(s: str, pos: int) -> tuple:
+    """Decode a class/namespace reference that appears inside template args.
+
+    Starting right after the ``$`` marker, parses ``@N@ns@S@Class`` segments
+    and optional trailing template args (``>#...``).
+    Returns ``(qualified_name, new_position)``.
+    """
+    parts: List[str] = []
+    i = pos
+    while i < len(s):
+        # Expect @<kind>@<name>
+        if s[i] != "@":
+            break
+        if i + 2 >= len(s):
+            break
+        kind = s[i + 1]
+        if s[i + 2] != "@":
+            break
+        # Extract the name until next @, #, >, or end
+        name_start = i + 3
+        name_end = name_start
+        while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
+            name_end += 1
+        if name_end == name_start:
+            break
+        parts.append(s[name_start:name_end])
+        i = name_end
+
+        # Check for template args: >#
+        if kind in ("S", "C") and i < len(s) and s[i] == ">":
+            if i + 1 < len(s) and s[i + 1] == "#":
+                targs, i = _decode_template_args(s, i + 2)
+                parts[-1] += targs
+            else:
+                i += 1  # skip lone >
+    name = "::".join(parts)
+    return (name if name else "?", i)
+
+
+def _decode_template_args(s: str, pos: int) -> tuple:
+    """Decode a ``#arg1#arg2...`` template argument list.
+
+    Returns ``("<T1, T2, ...>", new_position)``.
+    """
+    args: List[str] = []
+    i = pos
+    while i < len(s):
+        ch = s[i]
+        # Stop markers: start of new USR segment or end of arg area
+        if ch == "@":
+            break
+        if ch == "#":
+            i += 1
+            continue
+        arg, i = _decode_usr_type(s, i)
+        args.append(arg)
+    if not args:
+        return ("", i)
+    return (f"<{', '.join(args)}>", i)
+
+
 def _usr_to_display_name(usr: str) -> str:
     """Convert a libclang USR to an approximate qualified name for display.
 
-    USRs like ``c:@N@std@F@move#&`` are opaque internal identifiers.  This
-    function extracts the named components (namespaces, classes, functions) and
-    joins them with ``::`` so callers/callees that are not present in the
-    in-memory index can still be presented with a human-readable name.
+    USRs like ``c:@N@std@S@vector>#I@F@push_back#&1t0.0#`` are opaque
+    internal identifiers.  This function extracts the named components
+    (namespaces, classes, functions) and decodes template arguments so that
+    callers/callees not present in the in-memory index can still be
+    presented with a human-readable name such as
+    ``std::vector<int>::push_back``.
 
-    If the USR cannot be parsed, the raw USR is returned unchanged so no
-    information is silently lost.
+    If the USR cannot be parsed the raw string is returned unchanged.
     """
     if not usr:
         return usr
+
     s = usr[2:] if usr.startswith("c:") else usr
-    # Each named component is encoded as @<kind>@<name> where kind is a single
-    # letter (N=namespace, S=struct/class, C=class, F/f=function/method,
-    # E=enum, I=interface, …).  Template arguments appear after '>' or '#' and
-    # are intentionally skipped so we return e.g. "std::vector::push_back"
-    # rather than "std::vector<int>::push_back".
-    parts = re.findall(r"@[A-Za-z]@([^@#>]+)", s)
+    parts: List[str] = []
+    i = 0
+
+    while i < len(s):
+        # --- Template definition / partial specialization --------------------
+        # @ST>...@name  or  @SP>...@name  (note: > not @ after kind)
+        mt = re.match(r"@(ST|SP)>", s[i:])
+        if mt:
+            kind = mt.group(1)
+            j = i + mt.end()
+            # Skip template parameter descriptors until @<name>
+            inner_m = re.search(r"@([^@#>]+)", s[j:])
+            if inner_m:
+                parts.append(inner_m.group(1))
+                i = j + inner_m.end()
+                # SP may have template args after >
+                if kind == "SP" and i < len(s) and s[i] == ">":
+                    if i + 1 < len(s) and s[i + 1] == "#":
+                        targs, i = _decode_template_args(s, i + 2)
+                        parts[-1] += targs
+                    else:
+                        i += 1
+            else:
+                i = j
+            continue
+
+        # --- Function template: @FT@>param_descriptors@name#... -------------
+        if s[i:].startswith("@FT@"):
+            j = i + 4
+            if j < len(s) and s[j] == ">":
+                j += 1
+            # Skip param descriptors, find next @<letter>@<name> or bare name
+            inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
+            if inner_m:
+                i = j + inner_m.start()
+                # Let the main loop handle this segment
+            else:
+                bare_m = re.search(r"@([^@#>]+)", s[j:])
+                if bare_m:
+                    parts.append(bare_m.group(1))
+                    i = j + bare_m.end()
+                    if i < len(s) and s[i] == "#":
+                        while i < len(s) and s[i] != "@":
+                            i += 1
+                else:
+                    i = j
+            continue
+
+        # --- Regular segments: @<kind>@<name> --------------------------------
+        m = re.match(r"@([A-Za-z])@", s[i:])
+        if not m:
+            i += 1
+            continue
+
+        kind = m.group(1)
+        name_start = i + m.end()
+
+        # Extract name: runs until @, #, or >
+        name_end = name_start
+        while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
+            name_end += 1
+
+        if name_end == name_start:
+            i = name_start
+            continue
+
+        name = s[name_start:name_end]
+        parts.append(name)
+        i = name_end
+
+        # Class/struct segments may have template args: >#arg1#arg2...
+        if kind in ("S", "C") and i < len(s) and s[i] == ">":
+            if i + 1 < len(s) and s[i + 1] == "#":
+                targs, i = _decode_template_args(s, i + 2)
+                parts[-1] += targs
+            else:
+                i += 1
+
+        # Function segments: skip parameter type encoding after #
+        if kind in ("F", "f") and i < len(s) and s[i] == "#":
+            while i < len(s) and s[i] != "@":
+                i += 1
+
     return "::".join(parts) if parts else usr
 
 
