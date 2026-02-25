@@ -647,12 +647,10 @@ class TestProjectOnlyFlag:
         # At least one external entry must be present
         external = [c for c in result_all["callees"] if c.get("is_project") is False]
         assert external, "Expected at least one external callee with project_only=False"
-        # External entries must have either a qualified_name (if found in SQLite)
-        # or a 'usr' fallback (if truly unknown).  Raw USR-only entries are a last resort.
+        # External entries always have a qualified_name (decoded from USR
+        # when not found in the in-memory index).
         for ext in external:
-            has_name = "qualified_name" in ext
-            has_usr = "usr" in ext
-            assert has_name or has_usr, f"External callee has neither qualified_name nor usr: {ext}"
+            assert "qualified_name" in ext, f"External callee missing qualified_name: {ext}"
 
     def test_find_callees_project_only_false_project_callee_unchanged(self, tmp_path):
         """project_only=False still returns project callees with full metadata."""
