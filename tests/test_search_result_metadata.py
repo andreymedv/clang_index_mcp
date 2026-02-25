@@ -38,14 +38,14 @@ class TestEnhancedQueryResultFactoryMethods:
         assert "metadata" not in output, "Normal results should have no metadata"
 
     def test_create_empty_with_suggestions(self):
-        """Empty results should include status and suggestions"""
+        """Empty results include suggestions but no status field"""
         data = []
         result = EnhancedQueryResult.create_empty(data)
 
         output = result.to_dict()
         assert output["data"] == []
         assert "metadata" in output
-        assert output["metadata"]["status"] == "empty"
+        assert "status" not in output["metadata"], "Empty results must not emit a status field"
         assert "suggestions" in output["metadata"]
         assert len(output["metadata"]["suggestions"]) > 0
 
@@ -58,13 +58,12 @@ class TestEnhancedQueryResultFactoryMethods:
         output = result.to_dict()
         assert output["metadata"]["suggestions"] == custom_suggestions
 
-    def test_create_empty_with_empty_suggestions_suppresses_hints(self):
-        """Passing suggestions=[] suppresses the hints entirely (no 'suggestions' key)."""
+    def test_create_empty_with_empty_suggestions_produces_no_metadata(self):
+        """Passing suggestions=[] means no hints needed — no metadata block at all."""
         result = EnhancedQueryResult.create_empty([], suggestions=[])
         output = result.to_dict()
-        assert output["metadata"]["status"] == "empty"
-        assert "suggestions" not in output["metadata"], (
-            "suggestions=[] should suppress hints, not emit an empty list"
+        assert "metadata" not in output, (
+            "suggestions=[] with no status means nothing to say — metadata must be absent"
         )
 
     def test_create_truncated_with_counts(self):
@@ -149,25 +148,29 @@ class TestCreateSearchResultHelper:
         state_manager.transition_to(AnalyzerState.INDEXED)
         return state_manager
 
-    def test_empty_list_returns_empty_status(self, mock_state_manager):
-        """Empty list should trigger empty status"""
+    def test_empty_list_returns_suggestions_no_status(self, mock_state_manager):
+        """Empty list should include suggestions but no status field"""
         from mcp_server.cpp_mcp_server import _create_search_result
 
         result = _create_search_result([], mock_state_manager, "search_classes")
         output = result.to_dict()
 
         assert output["data"] == []
-        assert output["metadata"]["status"] == "empty"
+        assert "metadata" in output
+        assert "status" not in output["metadata"]
+        assert "suggestions" in output["metadata"]
 
-    def test_empty_dict_returns_empty_status(self, mock_state_manager):
-        """Empty dict with empty lists should trigger empty status"""
+    def test_empty_dict_returns_suggestions_no_status(self, mock_state_manager):
+        """Empty dict with empty lists should include suggestions but no status field"""
         from mcp_server.cpp_mcp_server import _create_search_result
 
         data = {"classes": [], "functions": []}
         result = _create_search_result(data, mock_state_manager, "search_symbols")
         output = result.to_dict()
 
-        assert output["metadata"]["status"] == "empty"
+        assert "metadata" in output
+        assert "status" not in output["metadata"]
+        assert "suggestions" in output["metadata"]
 
     def test_normal_list_returns_no_metadata(self, mock_state_manager):
         """List with 1-20 items should return no metadata"""
@@ -248,10 +251,7 @@ class TestQueryCompletenessStatusEnum:
 
     def test_all_status_values_exist(self):
         """Verify all expected status values are defined"""
-        assert QueryCompletenessStatus.COMPLETE.value == "complete"
         assert QueryCompletenessStatus.PARTIAL.value == "partial"
-        assert QueryCompletenessStatus.STALE.value == "stale"
-        assert QueryCompletenessStatus.EMPTY.value == "empty"
         assert QueryCompletenessStatus.TRUNCATED.value == "truncated"
         assert QueryCompletenessStatus.LARGE.value == "large"
 
