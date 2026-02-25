@@ -1817,9 +1817,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not call_sites:
                 output_sites["metadata"] = {
                     "status": "empty",
-                    "suggestions": suggestions.for_get_call_sites_empty(
-                        function_name, class_name
-                    ),
+                    "suggestions": suggestions.for_get_call_sites_empty(function_name, class_name),
                 }
             return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
 
