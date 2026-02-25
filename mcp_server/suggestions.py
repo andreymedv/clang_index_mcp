@@ -137,7 +137,9 @@ def for_find_callers(
         return []
 
     name_to_use = qualified_name or function_name
-    return [f"get_call_sites('{name_to_use}') — get exact file:line:column call locations"]
+    return [
+        f"find_callees('{name_to_use}') — see what this function calls (complements callers view)"
+    ]
 
 
 def for_find_callees(
@@ -161,3 +163,92 @@ def for_find_callees(
 
     name_to_use = qualified_name or function_name
     return [f"get_call_sites('{name_to_use}') — get exact call locations within the function body"]
+
+
+def for_find_callers_external(
+    function_name: str,
+    qualified_name: Optional[str] = None,
+) -> List[str]:
+    """Suggestion when find_callers finds the function but all callers are external code.
+
+    Args:
+        function_name: The function name that was queried
+        qualified_name: Fully qualified name (preferred for hint)
+
+    Returns:
+        List with one actionable suggestion string.
+    """
+    name = qualified_name or function_name
+    return [
+        f"Function found but all callers are in external code; "
+        f"call find_callers('{name}', project_only=false) to list them"
+    ]
+
+
+def for_find_callees_external(
+    function_name: str,
+    qualified_name: Optional[str] = None,
+) -> List[str]:
+    """Suggestion when find_callees finds the function but all callees are external libraries.
+
+    Args:
+        function_name: The function name that was queried
+        qualified_name: Fully qualified name (preferred for hint)
+
+    Returns:
+        List with one actionable suggestion string.
+    """
+    name = qualified_name or function_name
+    return [
+        f"Function found but all callees are in external libraries (stdlib, third-party); "
+        f"call find_callees('{name}', project_only=false) to list them"
+    ]
+
+
+def for_get_call_sites_empty(
+    function_name: str,
+    class_name: str = "",
+) -> List[str]:
+    """Suggestion when get_call_sites returns no call sites.
+
+    Guides the caller to use find_callees to distinguish between 'no body',
+    'leaf function', and 'all callees are external'.
+
+    Args:
+        function_name: The function name that was queried
+        class_name: Optional class name used to build a more specific hint name
+
+    Returns:
+        List with one actionable suggestion string.
+    """
+    name = f"{class_name}::{function_name}" if class_name else function_name
+    return [
+        f"No call sites found within '{name}'. "
+        f"Call find_callees('{name}') to check why — "
+        "if it reports 'all callees outside project', "
+        "the function calls only external libraries; "
+        "use project_only=false to list them."
+    ]
+
+
+def for_get_call_path_empty(
+    from_function: str,
+    to_function: str,
+    max_depth: int,
+) -> List[str]:
+    """Suggestion when get_call_path returns no paths.
+
+    Args:
+        from_function: The source function name
+        to_function: The target function name
+        max_depth: The max depth that was used
+
+    Returns:
+        List with one actionable suggestion string.
+    """
+    return [
+        f"No call path found from '{from_function}' to '{to_function}' "
+        f"within max_depth={max_depth}. "
+        "Try increasing max_depth or verify both functions exist "
+        "with search_functions."
+    ]
