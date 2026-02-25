@@ -1726,10 +1726,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
-                empty_suggestions = [
-                    "Function found but all callers are outside the indexed project; "
-                    "pass project_only=false to include external callers"
-                ]
+                empty_suggestions = suggestions.for_find_callers_external(
+                    function_name, qualified_name=target_qualified_name
+                )
             else:
                 empty_suggestions = []  # genuinely no callers → no hints
             # Wrap with appropriate metadata
@@ -1783,10 +1782,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
-                empty_suggestions = [
-                    "Function found but all callees are outside the indexed project; "
-                    "pass project_only=false to include calls to external libraries"
-                ]
+                empty_suggestions = suggestions.for_find_callees_external(
+                    function_name, qualified_name=target_qualified_name
+                )
             else:
                 empty_suggestions = []  # genuinely calls nothing → no hints
             # Wrap with appropriate metadata
@@ -1819,11 +1817,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not call_sites:
                 output_sites["metadata"] = {
                     "status": "empty",
-                    "suggestions": [
-                        "No call sites found. The function may have no body in the indexed "
-                        "files, or no outgoing calls were recorded. "
-                        "Try find_callees to check callee metadata."
-                    ],
+                    "suggestions": suggestions.for_get_call_sites_empty(function_name, class_name),
                 }
             return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
 
@@ -1848,12 +1842,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not paths:
                 output_paths["metadata"] = {
                     "status": "empty",
-                    "suggestions": [
-                        f"No call path found from '{from_function}' to '{to_function}' "
-                        f"within max_depth={max_depth}. "
-                        "Try increasing max_depth or verify both functions exist "
-                        "with search_functions."
-                    ],
+                    "suggestions": suggestions.for_get_call_path_empty(
+                        from_function, to_function, max_depth
+                    ),
                 }
             return [TextContent(type="text", text=json.dumps(output_paths, indent=2))]
 
