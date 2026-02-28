@@ -159,10 +159,72 @@ class TestTemplateDefinitions:
             ("c:@ST>1#T@Container", "Container"),
             ("c:@ST>1#T@Container@F@get#", "Container::get"),
             ("c:@ST>2#T#T@Pair", "Pair"),
+            # ST with trailing arity + type-ref encoding (Bug 2 regression)
+            (
+                "c:@N@std@ST>2#T#T@unique_ptr2t0.0t0.1#v#",
+                "std::unique_ptr",
+            ),
         ],
     )
     def test_template_definitions(self, usr, expected):
         assert _usr_to_display_name(usr) == expected
+
+
+# ---- Function templates (@FT@>) ---------------------------------------------
+
+
+class TestFunctionTemplates:
+    """Verify FT handler extracts function names from template USRs."""
+
+    @pytest.mark.parametrize(
+        "usr, expected",
+        [
+            # Bug 1: FT name follows descriptors with no @ prefix
+            (
+                "c:@N@std@FT@>2#T#pTmake_unique#P&&t0.1#"
+                "^_MakeUniq<type-parameter-0-0>:::__single_object#",
+                "std::make_unique",
+            ),
+            # Simple FT with one type param
+            (
+                "c:@N@ns@FT@>1#Tfunc_name#i#",
+                "ns::func_name",
+            ),
+        ],
+    )
+    def test_function_templates(self, usr, expected):
+        assert _usr_to_display_name(usr) == expected
+
+
+# ---- Real-world USR regression tests ----------------------------------------
+
+
+class TestRealWorldUSRs:
+    """Regression tests from real libclang output (Bugs 1-3)."""
+
+    def test_make_unique_usr(self):
+        """Bug 1: FT handler must extract make_unique from descriptor area."""
+        usr = (
+            "c:@N@std@FT@>2#T#pTmake_unique#P&&t0.1#"
+            "^_MakeUniq<type-parameter-0-0>:::__single_object#"
+        )
+        result = _usr_to_display_name(usr)
+        assert result == "std::make_unique"
+
+    def test_unique_ptr_constructor_usr(self):
+        """Bugs 2+3: ST name must not include arity/type-refs; FT must not
+        leak spurious namespace segments."""
+        usr = (
+            "c:@N@std@S@unique_ptr>#$@N@ns@S@SomeClass"
+            "#$@N@std@S@default_delete>#S0_"
+            "@FT@>3#T#T#Tunique_ptr#&&>"
+            "@N@std@ST>2#T#T@unique_ptr2t0.0t0.1#v#"
+        )
+        result = _usr_to_display_name(usr)
+        assert result == (
+            "std::unique_ptr<ns::SomeClass, std::default_delete<type>>"
+            "::unique_ptr"
+        )
 
 
 # ---- Edge cases -------------------------------------------------------------

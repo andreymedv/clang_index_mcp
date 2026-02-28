@@ -371,7 +371,13 @@ def _usr_to_display_name(usr: str) -> str:
             # Skip template parameter descriptors until @<name>
             inner_m = re.search(r"@([^@#>]+)", s[j:])
             if inner_m:
-                parts.append(inner_m.group(1))
+                # Extract just the C++ identifier from the matched segment.
+                # The raw match may include trailing arity + type-ref encoding
+                # (e.g. "unique_ptr2t0.0t0.1" where name is "unique_ptr",
+                #  "2" is arity, and "t0.0t0.1" are type parameter refs).
+                raw_name = inner_m.group(1)
+                name_only = re.match(r"([A-Za-z_]\w*?)(?=\d+t\d|\d*$)", raw_name)
+                parts.append(name_only.group(1) if name_only else raw_name)
                 i = j + inner_m.end()
                 # SP may have template args after >
                 if kind == "SP" and i < len(s) and s[i] == ">":
@@ -384,24 +390,58 @@ def _usr_to_display_name(usr: str) -> str:
                 i = j
             continue
 
-        # --- Function template: @FT@>param_descriptors@name#... -------------
+        # --- Function template: @FT@>N#desc1#desc2...descN name#params ----
+        # The count N tells how many #-prefixed param descriptors follow.
+        # After skipping N descriptors, the function name runs until the
+        # next # (which starts parameter type encoding).
+        #
+        # Descriptor formats (after #):
+        #   T    = type parameter
+        #   pT   = parameter pack of type
+        #   t    = template template parameter
+        #   pt   = parameter pack of template template
+        #   N<type> = non-type parameter (N followed by a type code)
         if s[i:].startswith("@FT@"):
             j = i + 4
             if j < len(s) and s[j] == ">":
                 j += 1
-            # Skip param descriptors, find next @<letter>@<name> or bare name
-            inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
-            if inner_m:
-                i = j + inner_m.start()
-                # Let the main loop handle this segment
+            # Parse the template parameter count and skip that many
+            # #-prefixed descriptors to find the function name.
+            bare_name = None
+            count_m = re.match(r"(\d+)", s[j:])
+            if count_m:
+                param_count = int(count_m.group(1))
+                k = j + count_m.end()
+                # Skip param_count #-prefixed descriptors
+                for _ in range(param_count):
+                    if k < len(s) and s[k] == "#":
+                        k += 1
+                        # Parse one descriptor based on its specific format
+                        if k < len(s) and s[k] == "p":
+                            k += 1  # skip 'p' (pack prefix)
+                        if k < len(s) and s[k] in ("T", "t"):
+                            k += 1  # skip T (type) or t (template)
+                        elif k < len(s) and s[k] == "N":
+                            k += 1  # skip 'N' (non-type)
+                            # Skip the following type code
+                            _, k = _decode_usr_type(s, k)
+                # Now k should point to the start of the function name
+                name_m = re.match(r"([A-Za-z_]\w*)", s[k:])
+                if name_m:
+                    bare_name = name_m.group(1)
+
+            if bare_name is not None:
+                parts.append(bare_name)
+                # Skip the rest of the USR.  Everything after the FT's
+                # parameter types is a "canonical context" suffix that
+                # re-encodes the parent scope (already captured by earlier
+                # segments).  Parsing it would produce duplicate parts.
+                i = len(s)
             else:
-                bare_m = re.search(r"@([^@#>]+)", s[j:])
-                if bare_m:
-                    parts.append(bare_m.group(1))
-                    i = j + bare_m.end()
-                    if i < len(s) and s[i] == "#":
-                        while i < len(s) and s[i] != "@":
-                            i += 1
+                # Fallback: look for @<kind>@<name> inside the FT block
+                inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
+                if inner_m:
+                    i = j + inner_m.start()
                 else:
                     i = j
             continue
