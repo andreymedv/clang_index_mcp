@@ -40,7 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Phase 4: Testing & Documentation
 - **Integration Tests**: 21 new tests covering features F1-F7 (qualified names, templates, nested classes, etc.)
 - **Performance Benchmarks**: 11 performance tests verifying <100ms query times
-- **Migration Guide**: Comprehensive guide at `docs/QUALIFIED_NAMES_MIGRATION.md`
 - **Updated Tool Descriptions**: All MCP tool descriptions now document qualified name features
 - **100% Test Coverage**: All features validated with automated tests
 
@@ -61,7 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **No Breaking Changes**: All existing code continues to work
 - **Recommended**: Use qualified patterns for disambiguation
 - **Recommended**: Display `qualified_name` instead of `name` for clarity
-- **See**: `docs/QUALIFIED_NAMES_MIGRATION.md` for detailed migration guide
 
 ---
 
@@ -117,7 +115,6 @@ This release adds powerful namespace-aware search capabilities to the C++ MCP se
 - Extensively tested with 1000+ class projects
 
 **See Also:**
-- Migration Guide: `docs/QUALIFIED_NAMES_MIGRATION.md`
 - Integration Tests: `tests/test_qualified_name_integration.py`
 - Performance Benchmarks: `tests/test_qualified_name_performance.py`
 
