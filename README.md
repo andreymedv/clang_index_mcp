@@ -204,7 +204,6 @@ python scripts/diagnose_cache.py
 ### More Information
 
 - **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
-- **Architecture**: See [ANALYSIS_STORAGE_ARCHITECTURE.md](docs/development/ANALYSIS_STORAGE_ARCHITECTURE.md) for technical details
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
 
 ## Intelligent Incremental Analysis (New in v3.1.0)

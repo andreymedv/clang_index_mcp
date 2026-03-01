@@ -674,8 +674,7 @@ Worker Process:
 ## References
 
 ### Phase 3 Investigation
-- Detailed analysis: `docs/MEMORY_ANALYSIS_PHASE3.md`
-- Memory profiling script: `scripts/archived/memory_profile_indexing.py` (archived - Phase 3/4 work)
+- Phase 3 analysis and profiling scripts removed during documentation cleanup
 
 ### Key Files for Phase 3 Implementation
 - `mcp_server/cpp_analyzer.py:73-170` - Worker function (`_process_file_worker`)
