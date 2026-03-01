@@ -131,7 +131,7 @@ QUERIES: list[dict[str, Any]] = [
         "id": "E-03",
         "category": "multi_tool",
         "text": ("Find all places in the codebase that call the " "assertionEnded method"),
-        "expected_tools": ["search_functions", "find_callers"],
+        "expected_tools": ["search_functions", "get_incoming_calls"],
     },
 ]
 

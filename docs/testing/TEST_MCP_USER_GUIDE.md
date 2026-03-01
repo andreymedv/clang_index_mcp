@@ -334,7 +334,7 @@ steps:
     timeout: 30
 
   # Add feature-specific test steps
-  - tool: find_callers
+  - tool: get_incoming_calls
     args:
       function_name: "myFunction"
     expect:

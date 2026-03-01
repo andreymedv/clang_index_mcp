@@ -74,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite-backed symbol cache with FTS5 full-text search
 - compile_commands.json support for accurate build configuration
 - 18 MCP tools for C++ code analysis
-- Call graph analysis (find_callers, find_callees)
+- Call graph analysis (get_incoming_calls, get_outgoing_calls)
 - Documentation extraction (Doxygen, JavaDoc, Qt-style comments)
 - Line range tracking for symbols
 - Definition-wins logic for multiple declarations

@@ -424,7 +424,7 @@ get_class_info({"class_name": "legacy::Api"})
 get_derived_classes({"class_name": "legacy::Api"})
 
 // Find all callers (qualified function names)
-find_callers({"function_name": "legacy::Api::execute"})
+get_incoming_calls({"function_name": "legacy::Api::execute"})
 ```
 
 **Benefit:** Precise scoping of refactoring impact
@@ -945,7 +945,7 @@ SELECT * FROM symbols WHERE namespace_components LIKE '%"ui"%';
 - [ ] ~~Add `prefer_namespace` parameter~~ *(removed per Q5 decision)*
 
 **3.2 Call Graph Tools Update (3 days)** *(renumbered)*
-- [ ] Update `find_callers` / `find_callees` to support qualified names
+- [ ] Update `get_incoming_calls` / `get_outgoing_calls` to support qualified names
 - [ ] Store qualified names for call sites (if not already)
 - [ ] Test with overloaded functions
 

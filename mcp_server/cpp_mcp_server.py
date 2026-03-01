@@ -741,16 +741,17 @@ async def list_tools() -> List[Tool]:
             },
         ),
         Tool(
-            name="find_callers",
+            name="get_incoming_calls",
             description=(
-                "**DIRECTION: INCOMING** - Find all code that CALLS (invokes) a specific target function.\n\n"
+                "Find all functions that call the specified function. Shows INCOMING references — "
+                "what code depends on this function.\n\n"
+                "**DIRECTION: INCOMING (callers → target)**\n\n"
                 "**USE THIS WHEN:**\n"
-                "- User asks 'what calls X?', 'where is X invoked?', 'show callers of X', "
-                "'what invokes X?', 'places where X is called', 'who calls X?'\n"
+                "- User asks 'what calls X?', 'where is X invoked?', 'who calls X?', "
+                "'show callers of X', 'find usages of X'\n"
                 "- Impact analysis: what code depends on this function?\n"
-                "- Refactoring: what breaks if I change this function?\n"
-                "- Finding all usages of a function\n\n"
-                "**DO NOT USE THIS WHEN (use find_callees or get_call_sites instead):**\n"
+                "- Refactoring: what breaks if I change this function?\n\n"
+                "**DO NOT USE THIS WHEN (use get_outgoing_calls or get_call_sites instead):**\n"
                 "- User asks 'what does X call?', 'show calls inside X'\n"
                 "- You want to see what functions X depends on\n\n"
                 "**Returns:**\n"
@@ -762,7 +763,7 @@ async def list_tools() -> List[Tool]:
                 "The call_sites array provides LINE-LEVEL PRECISION - exact file:line:column where the "
                 "target function is called.\n\n"
                 "**Example:**\n"
-                "  find_callers('processData') → returns all functions that CALL processData, "
+                "  get_incoming_calls('processData') → returns all functions that CALL processData, "
                 "with exact locations of each call"
             ),
             inputSchema={
@@ -799,15 +800,17 @@ async def list_tools() -> List[Tool]:
             },
         ),
         Tool(
-            name="find_callees",
+            name="get_outgoing_calls",
             description=(
-                "**DIRECTION: OUTGOING** - Find all functions that a specific source function CALLS "
-                "(the inverse of find_callers).\n\n"
+                "Find all functions that are called BY the specified function. Shows OUTGOING "
+                "dependencies — what other code this function relies on.\n\n"
+                "**DIRECTION: OUTGOING (source → called functions)**\n\n"
                 "**USE THIS WHEN:**\n"
-                "- User asks 'what does X call?', 'what functions does X invoke?', 'show X's dependencies'\n"
+                "- User asks 'what does X call?', 'what functions does X invoke?', "
+                "'show dependencies of X'\n"
                 "- Understanding what a function depends on\n"
                 "- Analyzing code flow or execution paths\n\n"
-                "**DO NOT USE THIS WHEN (use find_callers instead):**\n"
+                "**DO NOT USE THIS WHEN (use get_incoming_calls instead):**\n"
                 "- User asks 'what calls X?', 'where is X invoked?'\n"
                 "- You want to find code that depends ON this function\n\n"
                 "**Returns:** List of callee functions with: name, kind, file, line (where callee is DEFINED), "
@@ -816,10 +819,10 @@ async def list_tools() -> List[Tool]:
                 "within the source function. For exact call site locations, use get_call_sites instead.\n\n"
                 "**DIFFERENCE FROM get_call_sites:**\n"
                 "- Both show what X calls (outgoing direction)\n"
-                "- find_callees: Returns where called functions are DEFINED\n"
+                "- get_outgoing_calls: Returns where called functions are DEFINED\n"
                 "- get_call_sites: Returns exact CALL LOCATIONS within X's body\n\n"
                 "**Example:**\n"
-                "  find_callees('processData') → returns list of functions that processData calls, "
+                "  get_outgoing_calls('processData') → returns list of functions that processData calls, "
                 "with each function's definition location"
             ),
             inputSchema={
@@ -864,13 +867,13 @@ async def list_tools() -> List[Tool]:
                 "- User asks 'what does X call?', 'show calls inside X', 'what functions does X invoke?'\n"
                 "- You need exact file:line:column for call statements within a function body\n"
                 "- You want to understand a function's dependencies with precise locations\n\n"
-                "**DO NOT USE THIS WHEN (use find_callers instead):**\n"
+                "**DO NOT USE THIS WHEN (use get_incoming_calls instead):**\n"
                 "- User asks 'what calls X?', 'where is X invoked?', 'show callers of X', "
                 "'what invokes X?', 'places where X is called'\n"
                 "- You want to find code that DEPENDS ON a function\n\n"
-                "**DIFFERENCE FROM find_callees:**\n"
+                "**DIFFERENCE FROM get_outgoing_calls:**\n"
                 "- Both show what X calls (outgoing/forward direction)\n"
-                "- find_callees: Returns callee DEFINITIONS (where called functions are defined)\n"
+                "- get_outgoing_calls: Returns callee DEFINITIONS (where called functions are defined)\n"
                 "- get_call_sites: Returns CALL LOCATIONS (exact file:line:column of each call "
                 "statement within X's body)\n\n"
                 "**Returns** array of call sites, each with:\n"
@@ -883,7 +886,7 @@ async def list_tools() -> List[Tool]:
                 "**Example:**\n"
                 "  get_call_sites('processData') → returns all function calls made INSIDE "
                 "processData's body\n"
-                "  find_callers('processData') → returns all places WHERE processData is called"
+                "  get_incoming_calls('processData') → returns all places WHERE processData is called"
             ),
             inputSchema={
                 "type": "object",
@@ -893,7 +896,7 @@ async def list_tools() -> List[Tool]:
                         "description": (
                             "Name of the SOURCE function to analyze - the function whose BODY "
                             "you want to examine for outgoing calls. NOT the function you're "
-                            "looking for callers of (use find_callers for that)."
+                            "looking for callers of (use get_incoming_calls for that)."
                         ),
                     },
                     "class_name": {
@@ -1132,7 +1135,7 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
                 if isinstance(results_list, list):
                     result_count = len(results_list)
                 else:
-                    # find_callers/find_callees: count callers/callees list
+                    # get_incoming_calls/get_outgoing_calls: count callers/callees list
                     for key in ("callers", "callees"):
                         sub = parsed.get(key)
                         if isinstance(sub, list):
@@ -1330,8 +1333,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             "search_symbols",
             "find_in_file",
             "get_class_hierarchy",
-            "find_callers",
-            "find_callees",
+            "get_incoming_calls",
+            "get_outgoing_calls",
             "get_call_path",
         }
 
@@ -1694,7 +1697,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             else:
                 return [TextContent(type="text", text=f"Class '{class_name}' not found")]
 
-        elif name == "find_callers":
+        elif name == "get_incoming_calls":
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
@@ -1726,7 +1729,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
-                empty_suggestions = suggestions.for_find_callers_external(
+                empty_suggestions = suggestions.for_get_incoming_calls_external(
                     function_name, qualified_name=target_qualified_name
                 )
             else:
@@ -1735,12 +1738,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results.get("callers", []),
                 state_manager,
-                "find_callers",
+                "get_incoming_calls",
                 max_results,
                 total_count,
                 empty_suggestions=empty_suggestions,
             )
-            enhanced_result.next_steps = suggestions.for_find_callers(
+            enhanced_result.next_steps = suggestions.for_get_incoming_calls(
                 function_name, results, qualified_name=target_qualified_name
             )
             # Merge metadata into results dict
@@ -1750,7 +1753,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 output["metadata"] = enhanced_dict["metadata"]
             return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
-        elif name == "find_callees":
+        elif name == "get_outgoing_calls":
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
@@ -1782,7 +1785,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if not function_found:
                 empty_suggestions = None  # default "check spelling / broaden pattern"
             elif has_any_in_graph:
-                empty_suggestions = suggestions.for_find_callees_external(
+                empty_suggestions = suggestions.for_get_outgoing_calls_external(
                     function_name, qualified_name=target_qualified_name
                 )
             else:
@@ -1791,12 +1794,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results.get("callees", []),
                 state_manager,
-                "find_callees",
+                "get_outgoing_calls",
                 max_results,
                 total_count,
                 empty_suggestions=empty_suggestions,
             )
-            enhanced_result.next_steps = suggestions.for_find_callees(
+            enhanced_result.next_steps = suggestions.for_get_outgoing_calls(
                 function_name, results, qualified_name=target_qualified_name
             )
             # Merge metadata into results dict
