@@ -62,7 +62,7 @@ Find classes and structs by name pattern.
 **Input:**
 ```yaml
 pattern: "Builder"              # Required: name pattern (see modes above)
-project_only: true              # Optional: exclude system headers (default: true)
+search_scope: "project_code_only"  # Optional: "project_code_only" (default) or "include_external_libraries"
 file_name: "document.h"         # Optional: filter by file
 namespace: "app::core"          # Optional: exact namespace filter
 ```
@@ -94,7 +94,7 @@ Find functions and methods by name pattern.
 **Input:**
 ```yaml
 pattern: "parse.*"              # Required: name pattern
-project_only: true              # Optional
+search_scope: "project_code_only"  # Optional
 file_name: "parser.cpp"         # Optional
 namespace: "parser"             # Optional
 ```
@@ -127,7 +127,7 @@ Find any symbol type (classes + functions combined).
 **Input:**
 ```yaml
 pattern: "Widget.*"             # Required
-project_only: true              # Optional
+search_scope: "project_code_only"  # Optional
 ```
 
 **Output:** Same as search_classes + search_functions combined.

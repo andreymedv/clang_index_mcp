@@ -109,7 +109,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     # This should NOT block or timeout - it should return partial results
     result = await cpp_mcp_server.call_tool(
         "search_classes",
-        {"pattern": "Module.*", "project_only": True}
+        {"pattern": "Module.*", "search_scope": "project_code_only"}
     )
 
     # Verify we got a response (even if partial)
@@ -138,7 +138,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     # Now query again - should get complete results
     result2 = await cpp_mcp_server.call_tool(
         "search_classes",
-        {"pattern": "Module.*", "project_only": True}
+        {"pattern": "Module.*", "search_scope": "project_code_only"}
     )
 
     response_text2 = result2[0].text

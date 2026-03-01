@@ -182,7 +182,7 @@ def for_get_incoming_calls_external(
     name = qualified_name or function_name
     return [
         f"Function found but all callers are in external code; "
-        f"call get_incoming_calls('{name}', project_only=false) to list them"
+        f"call get_incoming_calls('{name}', search_scope='include_external_libraries') to list them"
     ]
 
 
@@ -202,7 +202,7 @@ def for_get_outgoing_calls_external(
     name = qualified_name or function_name
     return [
         f"Function found but all callees are in external libraries (stdlib, third-party); "
-        f"call get_outgoing_calls('{name}', project_only=false) to list them"
+        f"call get_outgoing_calls('{name}', search_scope='include_external_libraries') to list them"
     ]
 
 
@@ -228,7 +228,7 @@ def for_get_call_sites_empty(
         f"Call get_outgoing_calls('{name}') to check why — "
         "if it reports 'all callees outside project', "
         "the function calls only external libraries; "
-        "use project_only=false to list them."
+        "use search_scope='include_external_libraries' to list them."
     ]
 
 

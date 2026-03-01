@@ -319,7 +319,7 @@ def test_enhanced_result_create_normal_no_next_steps():
 def test_get_incoming_calls_external_uses_function_name():
     hints = suggestions.for_get_incoming_calls_external("doThing")
     assert len(hints) == 1
-    assert "get_incoming_calls('doThing', project_only=false)" in hints[0]
+    assert "get_incoming_calls('doThing', search_scope='include_external_libraries')" in hints[0]
     assert "external" in hints[0]
 
 
@@ -328,12 +328,12 @@ def test_get_incoming_calls_external_uses_qualified_name():
         "build", qualified_name="NS::Cls::build"
     )
     assert len(hints) == 1
-    assert "get_incoming_calls('NS::Cls::build', project_only=false)" in hints[0]
+    assert "get_incoming_calls('NS::Cls::build', search_scope='include_external_libraries')" in hints[0]
 
 
 def test_get_incoming_calls_external_falls_back_to_function_name():
     hints = suggestions.for_get_incoming_calls_external("process", qualified_name=None)
-    assert "get_incoming_calls('process', project_only=false)" in hints[0]
+    assert "get_incoming_calls('process', search_scope='include_external_libraries')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +344,7 @@ def test_get_incoming_calls_external_falls_back_to_function_name():
 def test_get_outgoing_calls_external_uses_function_name():
     hints = suggestions.for_get_outgoing_calls_external("doThing")
     assert len(hints) == 1
-    assert "get_outgoing_calls('doThing', project_only=false)" in hints[0]
+    assert "get_outgoing_calls('doThing', search_scope='include_external_libraries')" in hints[0]
     assert "external" in hints[0]
 
 
@@ -353,12 +353,12 @@ def test_get_outgoing_calls_external_uses_qualified_name():
         "builder", qualified_name="NS::Doc::builder"
     )
     assert len(hints) == 1
-    assert "get_outgoing_calls('NS::Doc::builder', project_only=false)" in hints[0]
+    assert "get_outgoing_calls('NS::Doc::builder', search_scope='include_external_libraries')" in hints[0]
 
 
 def test_get_outgoing_calls_external_falls_back_to_function_name():
     hints = suggestions.for_get_outgoing_calls_external("process", qualified_name=None)
-    assert "get_outgoing_calls('process', project_only=false)" in hints[0]
+    assert "get_outgoing_calls('process', search_scope='include_external_libraries')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +371,7 @@ def test_get_call_sites_empty_basic():
     assert len(hints) == 1
     assert "doThing" in hints[0]
     assert "get_outgoing_calls('doThing')" in hints[0]
-    assert "project_only=false" in hints[0]
+    assert "search_scope='include_external_libraries'" in hints[0]
 
 
 def test_get_call_sites_empty_with_class_name():
