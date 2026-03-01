@@ -290,11 +290,11 @@ The MCP server provides these tools:
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `set_project_directory` | Set the C++ project path | `project_path` (absolute path) |
-| `search_classes` | Find classes by name pattern | `pattern`, `project_only` |
-| `search_functions` | Find functions by name pattern | `pattern`, `project_only`, `class_name` |
+| `search_classes` | Find classes by name pattern | `pattern`, `search_scope` |
+| `search_functions` | Find functions by name pattern | `pattern`, `search_scope`, `class_name` |
 | `get_class_info` | Get detailed class information | `class_name` |
 | `get_function_signature` | Get function signatures | `function_name`, `class_name` |
-| `search_symbols` | Search all symbols | `pattern`, `project_only`, `symbol_types` |
+| `search_symbols` | Search all symbols | `pattern`, `search_scope`, `symbol_types` |
 | `find_in_file` | Search symbols in a specific file | `file_path`, `pattern` |
 | `get_class_hierarchy` | Get complete inheritance hierarchy (ancestors and descendants) | `class_name` |
 | `get_incoming_calls` | Find functions that call a function | `function_name`, `class_name` |
@@ -407,7 +407,7 @@ server_setup.bat  # Windows
 ### Issue: Parsing takes too long
 **Solution:**
 - First run on large projects will be slow
-- Use `project_only=True` to exclude dependencies
+- Use `search_scope='project_code_only'` (default) to exclude dependencies
 - Subsequent runs use cached results and are much faster
 
 ### Issue: Classes/functions not found
