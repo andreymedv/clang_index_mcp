@@ -166,46 +166,6 @@ def for_get_outgoing_calls(
     return [f"get_call_sites('{name_to_use}') — get exact call locations within the function body"]
 
 
-def for_get_incoming_calls_external(
-    function_name: str,
-    qualified_name: Optional[str] = None,
-) -> List[str]:
-    """Suggestion when get_incoming_calls finds the function but all callers are external code.
-
-    Args:
-        function_name: The function name that was queried
-        qualified_name: Fully qualified name (preferred for hint)
-
-    Returns:
-        List with one actionable suggestion string.
-    """
-    name = qualified_name or function_name
-    return [
-        f"Function found but all callers are in external code; "
-        f"call get_incoming_calls('{name}', search_scope='include_external_libraries') to list them"
-    ]
-
-
-def for_get_outgoing_calls_external(
-    function_name: str,
-    qualified_name: Optional[str] = None,
-) -> List[str]:
-    """Suggestion when get_outgoing_calls finds the function but all callees are external libraries.
-
-    Args:
-        function_name: The function name that was queried
-        qualified_name: Fully qualified name (preferred for hint)
-
-    Returns:
-        List with one actionable suggestion string.
-    """
-    name = qualified_name or function_name
-    return [
-        f"Function found but all callees are in external libraries (stdlib, third-party); "
-        f"call get_outgoing_calls('{name}', search_scope='include_external_libraries') to list them"
-    ]
-
-
 def for_get_call_sites_empty(
     function_name: str,
     class_name: str = "",

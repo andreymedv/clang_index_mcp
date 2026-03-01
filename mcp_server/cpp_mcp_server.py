@@ -1734,14 +1734,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             )
             # Results is dict with "callers" list - use that for metadata logic
             callers_list = results.get("callers", []) if isinstance(results, dict) else []
-            total_count = len(callers_list)
-            # Apply truncation if max_results specified
-            if max_results is not None and len(callers_list) > max_results:
-                results["callers"] = callers_list[:max_results]
             # 3-case empty-result logic (internal flags stripped before sending to LLM):
             #   not found            → default "check spelling" suggestions  (None)
             #   found, no callers    → no hints at all                        ([])
-            #   found, ext. callers  → suggest search_scope=include_external   ([...])
+            #   found, ext. callers  → auto-expand to include external results
             function_found = (
                 results.pop("_function_found", False) if isinstance(results, dict) else False
             )
@@ -1751,12 +1747,36 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             target_qualified_name = (
                 results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
             )
-            if not function_found:
-                empty_suggestions = None  # default "check spelling / broaden pattern"
-            elif has_any_in_graph:
-                empty_suggestions = suggestions.for_get_incoming_calls_external(
-                    function_name, qualified_name=target_qualified_name
+            # Auto-expand: when project_only=True yields 0 results but external callers
+            # exist, re-fetch with project_only=False so the LLM gets useful data without
+            # needing to interpret a suggestion and issue a second tool call.
+            search_note = None
+            if project_only and not callers_list and function_found and has_any_in_graph:
+                expanded = await loop.run_in_executor(
+                    None,
+                    lambda: analyzer.find_callers(function_name, class_name, project_only=False),  # type: ignore[arg-type]
                 )
+                # Strip internal flags from expanded results
+                expanded.pop("_function_found", None)
+                expanded.pop("_has_any_in_graph", None)
+                expanded.pop("_target_qualified_name", None)
+                results = expanded
+                callers_list = results.get("callers", [])
+                ext_count = len(callers_list)
+                search_note = (
+                    f"Project-only search yielded 0 results. "
+                    f"Auto-expanded to include external libraries "
+                    f"({ext_count} external caller{'s' if ext_count != 1 else ''} found)."
+                )
+            total_count = len(callers_list)
+            # Apply truncation if max_results specified
+            if max_results is not None and len(callers_list) > max_results:
+                results["callers"] = callers_list[:max_results]
+            empty_suggestions: Optional[List[str]] = None
+            if not function_found:
+                pass  # None → default "check spelling / broaden pattern"
+            elif has_any_in_graph:
+                empty_suggestions = []  # auto-expanded above; no hint needed
             else:
                 empty_suggestions = []  # genuinely no callers → no hints
             # Wrap with appropriate metadata
@@ -1776,6 +1796,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_dict = enhanced_result.to_dict()
             if "metadata" in enhanced_dict:
                 output["metadata"] = enhanced_dict["metadata"]
+            if search_note:
+                output["search_note"] = search_note
             return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "get_outgoing_calls":
@@ -1790,14 +1812,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             )
             # Results is dict with "callees" list - use that for metadata logic
             callees_list = results.get("callees", []) if isinstance(results, dict) else []
-            total_count = len(callees_list)
-            # Apply truncation if max_results specified
-            if max_results is not None and len(callees_list) > max_results:
-                results["callees"] = callees_list[:max_results]
             # 3-case empty-result logic (internal flags stripped before sending to LLM):
             #   not found               → default "check spelling" suggestions  (None)
             #   found, no callees       → no hints at all                        ([])
-            #   found, ext. callees     → suggest search_scope=include_external   ([...])
+            #   found, ext. callees     → auto-expand to include external results
             function_found = (
                 results.pop("_function_found", False) if isinstance(results, dict) else False
             )
@@ -1807,12 +1825,36 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             target_qualified_name = (
                 results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
             )
-            if not function_found:
-                empty_suggestions = None  # default "check spelling / broaden pattern"
-            elif has_any_in_graph:
-                empty_suggestions = suggestions.for_get_outgoing_calls_external(
-                    function_name, qualified_name=target_qualified_name
+            # Auto-expand: when project_only=True yields 0 results but external callees
+            # exist, re-fetch with project_only=False so the LLM gets useful data without
+            # needing to interpret a suggestion and issue a second tool call.
+            search_note = None
+            if project_only and not callees_list and function_found and has_any_in_graph:
+                expanded = await loop.run_in_executor(
+                    None,
+                    lambda: analyzer.find_callees(function_name, class_name, project_only=False),  # type: ignore[arg-type]
                 )
+                # Strip internal flags from expanded results
+                expanded.pop("_function_found", None)
+                expanded.pop("_has_any_in_graph", None)
+                expanded.pop("_target_qualified_name", None)
+                results = expanded
+                callees_list = results.get("callees", [])
+                ext_count = len(callees_list)
+                search_note = (
+                    f"Project-only search yielded 0 results. "
+                    f"Auto-expanded to include external libraries "
+                    f"({ext_count} external callee{'s' if ext_count != 1 else ''} found)."
+                )
+            total_count = len(callees_list)
+            # Apply truncation if max_results specified
+            if max_results is not None and len(callees_list) > max_results:
+                results["callees"] = callees_list[:max_results]
+            empty_suggestions = None
+            if not function_found:
+                pass  # None → default "check spelling / broaden pattern"
+            elif has_any_in_graph:
+                empty_suggestions = []  # auto-expanded above; no hint needed
             else:
                 empty_suggestions = []  # genuinely calls nothing → no hints
             # Wrap with appropriate metadata
@@ -1832,6 +1874,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_dict = enhanced_result.to_dict()
             if "metadata" in enhanced_dict:
                 output["metadata"] = enhanced_dict["metadata"]
+            if search_note:
+                output["search_note"] = search_note
             return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "get_call_sites":
