@@ -665,22 +665,11 @@ async def list_tools() -> List[Tool]:
                 "are modified (whether by you, external editor, git checkout, build system, or any "
                 "other means) to ensure the index reflects the current state of the codebase.\n\n"
                 "Supports two modes:\n"
-                "- Incremental (default): Analyzes only changed files using dependency tracking\n"
-                "- Full: Re-analyzes all files (use force_full=true)\n\n"
-                "**IMPORTANT:** ALWAYS use incremental mode (default) unless absolutely necessary. "
-                "Incremental refresh is fast (30-300x faster) and reliable. NEVER set force_full=true "
-                "without explicit user permission - it can take 5-10 minutes on large projects "
-                "(5000+ files) vs seconds for incremental.\n\n"
-                "**Workflow guidance for common scenarios:**\n"
-                "- Class/function not found: First try incremental refresh. If still not found, "
-                "the symbol may be in a file not yet indexed (check project configuration) or use "
-                "different qualified name.\n"
-                "- After git checkout: Use incremental refresh (default) - it detects all file "
-                "changes automatically.\n"
-                "- After configuration changes: Only use force_full=true if you modified "
-                "cpp-analyzer-config.json or compile_commands.json.\n"
-                "- Symbol information outdated: Use incremental refresh (default) - sufficient for "
-                "99% of cases.\n\n"
+                "- 'incremental' (default): Analyzes only changed files using dependency tracking\n"
+                "- 'full': Re-analyzes ALL files (5-10 min on large projects). Only use after "
+                "major config changes or with explicit user permission.\n\n"
+                "**IMPORTANT:** ALWAYS use 'incremental' (default) unless absolutely necessary. "
+                "Incremental refresh is 30-300x faster and reliable.\n\n"
                 "**Non-blocking operation:** Refresh runs in the background. This tool returns "
                 "immediately while the refresh continues. Use 'check_system_status' to monitor "
                 "progress. Tools remain available during refresh and will return results based on "
@@ -689,26 +678,16 @@ async def list_tools() -> List[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "incremental": {
-                        "type": "boolean",
+                    "refresh_mode": {
+                        "type": "string",
+                        "enum": ["incremental", "full"],
                         "description": (
-                            "When true (default), performs incremental analysis by detecting "
-                            "changes and re-analyzing only affected files. When false, performs "
-                            "full re-analysis of all files. ALWAYS use true (default) unless "
-                            "force_full is set."
+                            "Refresh mode. 'incremental' (default): detects changes and "
+                            "re-analyzes only affected files. 'full': re-analyzes ALL files "
+                            "(5-10 minutes for 5000+ files). NEVER use 'full' without explicit "
+                            "user permission."
                         ),
-                        "default": True,
-                    },
-                    "force_full": {
-                        "type": "boolean",
-                        "description": (
-                            "CAUTION: Forces full re-analysis of ALL files (5-10 minutes for 5000+ "
-                            "files). NEVER use without explicit user permission. Only needed after "
-                            "major configuration file changes (cpp-analyzer-config.json, "
-                            "compile_commands.json). For all other cases (file changes, git "
-                            "operations, missing symbols), use incremental mode."
-                        ),
-                        "default": False,
+                        "default": "incremental",
                     },
                 },
                 "required": [],
@@ -1526,13 +1505,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
         elif name == "refresh_project":
-            incremental = arguments.get("incremental", True)
-            force_full = arguments.get("force_full", False)
+            refresh_mode = arguments.get("refresh_mode", "incremental")
 
-            # Issue #7: Warn if force_full is used (should be rare)
-            if force_full:
+            # Issue #7: Warn if full mode is used (should be rare)
+            if refresh_mode == "full":
                 diagnostics.warning(
-                    "force_full=true was requested - this will re-analyze ALL files and may "
+                    "refresh_mode='full' was requested - this will re-analyze ALL files and may "
                     "take 5-10 minutes on large projects. Incremental mode is 30-300x faster "
                     "and sufficient for 99% of cases."
                 )
@@ -1550,20 +1528,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                         """Callback to update progress in state manager during refresh"""
                         state_manager.update_progress(progress)
 
-                    # Force full re-analysis overrides incremental setting
-                    if force_full:
-                        diagnostics.info("Starting full refresh (forced)...")
-                        modified_count = await loop.run_in_executor(
-                            None, lambda: analyzer.refresh_if_needed(progress_callback)
-                        )
-                        diagnostics.info(
-                            f"Full refresh complete: re-analyzed {modified_count} files"
-                        )
-                        state_manager.transition_to(AnalyzerState.INDEXED)
-                        return
-
-                    # Incremental analysis using IncrementalAnalyzer
-                    if incremental:
+                    if refresh_mode == "incremental":
                         try:
                             from mcp_server.incremental_analyzer import IncrementalAnalyzer
 
@@ -1602,8 +1567,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                             state_manager.transition_to(AnalyzerState.INDEXED)
                             return
 
-                    # Non-incremental (full) refresh
                     else:
+                        # Full refresh
                         diagnostics.info("Starting full refresh...")
                         modified_count = await loop.run_in_executor(
                             None, lambda: analyzer.refresh_if_needed(progress_callback)
@@ -1621,11 +1586,6 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
 
             # Create background task (non-blocking)
             asyncio.create_task(run_background_refresh())
-
-            # Build response message
-            refresh_mode = (
-                "full (forced)" if force_full else ("incremental" if incremental else "full")
-            )
 
             # Return immediately - refresh continues in background
             return [

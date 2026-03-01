@@ -599,7 +599,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
    - **Plain text** (no regex metacharacters) performs exact match, case-insensitive (e.g., `"View"` matches only "View", not "ViewManager")
    - **Regex patterns** (with `.*+?[]{}()|` etc.) use anchored full-match (e.g., `"View.*"` matches "View", "ViewManager" but not "ListView"; `".*View.*"` matches all containing "View")
 
-5. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
+5. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `refresh_mode="full"` after major config changes or if cache corruption is suspected.
 
 6. **Performance monitoring:** On large projects (1000+ files), use `check_system_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
 
