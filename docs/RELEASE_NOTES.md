@@ -91,12 +91,7 @@ The biggest update yet - a complete rewrite of the caching layer with SQLite for
 - **TROUBLESHOOTING.md** updates: SQLite-specific issues and solutions
 
 **Developer Documentation:**
-- **ANALYSIS_STORAGE_ARCHITECTURE.md** updates (~360 lines): Complete SQLite architecture
-  - Database schema design
-  - FTS5 full-text search implementation
-  - WAL mode for concurrency
-  - Schema migration system
-  - Error handling and recovery
+- SQLite architecture documented in CLAUDE.md (database schema, FTS5, WAL mode, error handling)
   - Performance benchmarks
 
 ### 🔧 Configuration
@@ -180,7 +175,6 @@ python3 scripts/migrate_cache.py --verbose
 
 **New Documentation:**
 - SQLite Migration Guide - Complete guide for migrating to SQLite (see README.md for details)
-- [SQLite Architecture](development/ANALYSIS_STORAGE_ARCHITECTURE.md#sqlite-cache-backend-architecture-v300) - Technical details
 
 **Updated Documentation:**
 - [README.md](../README.md#high-performance-sqlite-cache-new-in-v300) - SQLite cache section
