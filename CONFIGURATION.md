@@ -300,7 +300,6 @@ python3 scripts/diagnose_cache.py
 
 **See Also**:
 - [Troubleshooting](TROUBLESHOOTING.md) - Cache-specific issues
-- [Architecture](docs/development/ANALYSIS_STORAGE_ARCHITECTURE.md) - Technical details
 
 ## Creating a Configuration File
 
