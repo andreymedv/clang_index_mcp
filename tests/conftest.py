@@ -18,7 +18,7 @@ import pytest
 # Set multiprocessing start method to 'spawn' instead of 'fork'
 # This prevents deadlocks when using ProcessPoolExecutor in multi-threaded
 # tests. Python 3.12+ warns about fork() in multi-threaded processes.
-# See: docs/issues/002-test-freeze-concurrent-cache.md
+# Prevents deadlocks with ProcessPoolExecutor (Python 3.12+ fork() warning)
 import multiprocessing
 if multiprocessing.get_start_method(allow_none=True) != 'spawn':
     multiprocessing.set_start_method('spawn', force=True)
