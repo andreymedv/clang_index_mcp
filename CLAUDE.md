@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a Model Context Protocol (MCP) server that provides semantic C++ code analysis using libclang. It allows AI assistants like Claude to understand C++ codebases through symbol indexing, class hierarchies, call graphs, and compile_commands.json integration.
 
 **Key Features:**
-- 18 MCP tools for C++ code analysis (search_classes, search_functions, get_class_info, call graph analysis, type alias tracking, etc.)
+- 17 MCP tools for C++ code analysis (search_classes, search_functions, get_class_info, call graph analysis, type alias tracking, etc.)
 - **Type alias tracking:** Simple and template type aliases (using declarations)
   - Extracts both simple aliases (`using IntPtr = int*`) and template aliases (`template<typename T> using Ptr = std::shared_ptr<T>`)
   - Stores template parameters with kind information (type/non-type) for template aliases
@@ -530,7 +530,7 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ```
 mcp_server/
-├── cpp_mcp_server.py           # MCP server entry point (18 tools, stdio/http/sse)
+├── cpp_mcp_server.py           # MCP server entry point (17 tools, stdio/http/sse)
 ├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing, type alias tracking)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
@@ -601,7 +601,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 5. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `force_full=true` after major config changes or if cache corruption is suspected.
 
-6. **Performance monitoring:** On large projects (1000+ files), use `get_indexing_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
+6. **Performance monitoring:** On large projects (1000+ files), use `check_system_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
 
 7. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 

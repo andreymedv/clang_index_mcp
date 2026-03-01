@@ -440,7 +440,7 @@ class EnhancedQueryResult:
                 "suggestions": [
                     "Broaden pattern (e.g., use '.*' prefix/suffix for partial match)",
                     "Check spelling of symbol name",
-                    "Verify file is indexed (use get_indexing_status)",
+                    "Verify file is indexed (use check_system_status)",
                     "Try search_symbols for unified search across types",
                 ]
             }
@@ -538,7 +538,7 @@ class EnhancedQueryResult:
                 warning = (
                     f"[WARNING]  INCOMPLETE RESULTS: Only {completion:.1f}% of files indexed "
                     f"({indexed:,}/{total:,}). Results may be missing {incomplete_type}. "
-                    f"Use 'get_indexing_status' to check progress or 'wait_for_indexing' "
+                    f"Use 'check_system_status' to check progress or 'wait_for_indexing' "
                     f"to wait for completion."
                 )
             else:
