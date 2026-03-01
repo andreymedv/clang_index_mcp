@@ -23,8 +23,8 @@ Context-efficient C++ code analysis:
 - **get_function_signature** - Get function signatures and parameters
 - **find_in_file** - Search symbols within specific files
 - **get_class_hierarchy** - Get complete inheritance hierarchy for a class (all descendants and ancestors)
-- **find_callers** - Find all functions that call a specific function
-- **find_callees** - Find all functions called by a specific function
+- **get_incoming_calls** - Find all functions that call a specific function
+- **get_outgoing_calls** - Find all functions called by a specific function
 - **get_call_path** - Find call paths from one function to another
 
 **Qualified Names Support** (v10.1):
