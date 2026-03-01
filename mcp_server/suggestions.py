@@ -117,16 +117,16 @@ def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
     return hints
 
 
-def for_find_callers(
+def for_get_incoming_calls(
     function_name: str,
     result_data: Dict[str, Any],
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Generate next-step suggestions for find_callers results.
+    """Generate next-step suggestions for get_incoming_calls results.
 
     Args:
         function_name: The function name that was queried
-        result_data: The full dict returned by find_callers (with 'callers' list)
+        result_data: The full dict returned by get_incoming_calls (with 'callers' list)
         qualified_name: Fully qualified name of the resolved function (preferred for hint)
 
     Returns:
@@ -138,20 +138,21 @@ def for_find_callers(
 
     name_to_use = qualified_name or function_name
     return [
-        f"find_callees('{name_to_use}') — see what this function calls (complements callers view)"
+        f"get_outgoing_calls('{name_to_use}') — see what this function calls "
+        f"(complements incoming calls view)"
     ]
 
 
-def for_find_callees(
+def for_get_outgoing_calls(
     function_name: str,
     result_data: Dict[str, Any],
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Generate next-step suggestions for find_callees results.
+    """Generate next-step suggestions for get_outgoing_calls results.
 
     Args:
         function_name: The function name that was queried
-        result_data: The full dict returned by find_callees (with 'callees' list)
+        result_data: The full dict returned by get_outgoing_calls (with 'callees' list)
         qualified_name: Fully qualified name of the resolved function (preferred for hint)
 
     Returns:
@@ -165,11 +166,11 @@ def for_find_callees(
     return [f"get_call_sites('{name_to_use}') — get exact call locations within the function body"]
 
 
-def for_find_callers_external(
+def for_get_incoming_calls_external(
     function_name: str,
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Suggestion when find_callers finds the function but all callers are external code.
+    """Suggestion when get_incoming_calls finds the function but all callers are external code.
 
     Args:
         function_name: The function name that was queried
@@ -181,15 +182,15 @@ def for_find_callers_external(
     name = qualified_name or function_name
     return [
         f"Function found but all callers are in external code; "
-        f"call find_callers('{name}', project_only=false) to list them"
+        f"call get_incoming_calls('{name}', project_only=false) to list them"
     ]
 
 
-def for_find_callees_external(
+def for_get_outgoing_calls_external(
     function_name: str,
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Suggestion when find_callees finds the function but all callees are external libraries.
+    """Suggestion when get_outgoing_calls finds the function but all callees are external libraries.
 
     Args:
         function_name: The function name that was queried
@@ -201,7 +202,7 @@ def for_find_callees_external(
     name = qualified_name or function_name
     return [
         f"Function found but all callees are in external libraries (stdlib, third-party); "
-        f"call find_callees('{name}', project_only=false) to list them"
+        f"call get_outgoing_calls('{name}', project_only=false) to list them"
     ]
 
 
@@ -211,7 +212,7 @@ def for_get_call_sites_empty(
 ) -> List[str]:
     """Suggestion when get_call_sites returns no call sites.
 
-    Guides the caller to use find_callees to distinguish between 'no body',
+    Guides the caller to use get_outgoing_calls to distinguish between 'no body',
     'leaf function', and 'all callees are external'.
 
     Args:
@@ -224,7 +225,7 @@ def for_get_call_sites_empty(
     name = f"{class_name}::{function_name}" if class_name else function_name
     return [
         f"No call sites found within '{name}'. "
-        f"Call find_callees('{name}') to check why — "
+        f"Call get_outgoing_calls('{name}') to check why — "
         "if it reports 'all callees outside project', "
         "the function calls only external libraries; "
         "use project_only=false to list them."

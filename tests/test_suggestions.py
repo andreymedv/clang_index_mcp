@@ -204,66 +204,68 @@ def test_search_functions_deduplicates_parent_class():
 
 
 # ---------------------------------------------------------------------------
-# for_find_callers
+# for_get_incoming_calls
 # ---------------------------------------------------------------------------
 
 
-def test_find_callers_empty_callers_no_hints():
-    assert suggestions.for_find_callers("doThing", {"callers": []}) == []
+def test_get_incoming_calls_empty_callers_no_hints():
+    assert suggestions.for_get_incoming_calls("doThing", {"callers": []}) == []
 
 
-def test_find_callers_non_empty_callers():
+def test_get_incoming_calls_non_empty_callers():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    hints = suggestions.for_find_callers("doThing", result_data)
+    hints = suggestions.for_get_incoming_calls("doThing", result_data)
     assert len(hints) == 1
-    assert "find_callees('doThing')" in hints[0]
+    assert "get_outgoing_calls('doThing')" in hints[0]
     assert "complements" in hints[0]
 
 
-def test_find_callers_non_dict_result_no_hints():
-    hints = suggestions.for_find_callers("doThing", [])  # type: ignore[arg-type]
+def test_get_incoming_calls_non_dict_result_no_hints():
+    hints = suggestions.for_get_incoming_calls("doThing", [])  # type: ignore[arg-type]
     assert hints == []
 
 
-def test_find_callers_uses_qualified_name_in_hint():
+def test_get_incoming_calls_uses_qualified_name_in_hint():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    hints = suggestions.for_find_callers("build", result_data, qualified_name="NS::Cls::build")
+    hints = suggestions.for_get_incoming_calls(
+        "build", result_data, qualified_name="NS::Cls::build"
+    )
     assert len(hints) == 1
-    assert "find_callees('NS::Cls::build')" in hints[0]
+    assert "get_outgoing_calls('NS::Cls::build')" in hints[0]
     assert "build" not in hints[0].replace("NS::Cls::build", "")
 
 
-def test_find_callers_falls_back_to_function_name_when_no_qualified():
+def test_get_incoming_calls_falls_back_to_function_name_when_no_qualified():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    hints = suggestions.for_find_callers("doThing", result_data, qualified_name=None)
-    assert "find_callees('doThing')" in hints[0]
+    hints = suggestions.for_get_incoming_calls("doThing", result_data, qualified_name=None)
+    assert "get_outgoing_calls('doThing')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
-# for_find_callees
+# for_get_outgoing_calls
 # ---------------------------------------------------------------------------
 
 
-def test_find_callees_empty_callees_no_hints():
-    assert suggestions.for_find_callees("process", {"callees": []}) == []
+def test_get_outgoing_calls_empty_callees_no_hints():
+    assert suggestions.for_get_outgoing_calls("process", {"callees": []}) == []
 
 
-def test_find_callees_non_empty_callees():
+def test_get_outgoing_calls_non_empty_callees():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    hints = suggestions.for_find_callees("process", result_data)
+    hints = suggestions.for_get_outgoing_calls("process", result_data)
     assert len(hints) == 1
     assert "get_call_sites('process')" in hints[0]
     assert "function body" in hints[0]
 
 
-def test_find_callees_non_dict_result_no_hints():
-    hints = suggestions.for_find_callees("process", [])  # type: ignore[arg-type]
+def test_get_outgoing_calls_non_dict_result_no_hints():
+    hints = suggestions.for_get_outgoing_calls("process", [])  # type: ignore[arg-type]
     assert hints == []
 
 
-def test_find_callees_uses_qualified_name_in_hint():
+def test_get_outgoing_calls_uses_qualified_name_in_hint():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    hints = suggestions.for_find_callees(
+    hints = suggestions.for_get_outgoing_calls(
         "builder", result_data, qualified_name="NS::Doc::builder"
     )
     assert len(hints) == 1
@@ -272,9 +274,9 @@ def test_find_callees_uses_qualified_name_in_hint():
     assert "process" not in hints[0]
 
 
-def test_find_callees_falls_back_to_function_name_when_no_qualified():
+def test_get_outgoing_calls_falls_back_to_function_name_when_no_qualified():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    hints = suggestions.for_find_callees("process", result_data, qualified_name=None)
+    hints = suggestions.for_get_outgoing_calls("process", result_data, qualified_name=None)
     assert "get_call_sites('process')" in hints[0]
 
 
@@ -310,49 +312,53 @@ def test_enhanced_result_create_normal_no_next_steps():
 
 
 # ---------------------------------------------------------------------------
-# for_find_callers_external
+# for_get_incoming_calls_external
 # ---------------------------------------------------------------------------
 
 
-def test_find_callers_external_uses_function_name():
-    hints = suggestions.for_find_callers_external("doThing")
+def test_get_incoming_calls_external_uses_function_name():
+    hints = suggestions.for_get_incoming_calls_external("doThing")
     assert len(hints) == 1
-    assert "find_callers('doThing', project_only=false)" in hints[0]
+    assert "get_incoming_calls('doThing', project_only=false)" in hints[0]
     assert "external" in hints[0]
 
 
-def test_find_callers_external_uses_qualified_name():
-    hints = suggestions.for_find_callers_external("build", qualified_name="NS::Cls::build")
+def test_get_incoming_calls_external_uses_qualified_name():
+    hints = suggestions.for_get_incoming_calls_external(
+        "build", qualified_name="NS::Cls::build"
+    )
     assert len(hints) == 1
-    assert "find_callers('NS::Cls::build', project_only=false)" in hints[0]
+    assert "get_incoming_calls('NS::Cls::build', project_only=false)" in hints[0]
 
 
-def test_find_callers_external_falls_back_to_function_name():
-    hints = suggestions.for_find_callers_external("process", qualified_name=None)
-    assert "find_callers('process', project_only=false)" in hints[0]
+def test_get_incoming_calls_external_falls_back_to_function_name():
+    hints = suggestions.for_get_incoming_calls_external("process", qualified_name=None)
+    assert "get_incoming_calls('process', project_only=false)" in hints[0]
 
 
 # ---------------------------------------------------------------------------
-# for_find_callees_external
+# for_get_outgoing_calls_external
 # ---------------------------------------------------------------------------
 
 
-def test_find_callees_external_uses_function_name():
-    hints = suggestions.for_find_callees_external("doThing")
+def test_get_outgoing_calls_external_uses_function_name():
+    hints = suggestions.for_get_outgoing_calls_external("doThing")
     assert len(hints) == 1
-    assert "find_callees('doThing', project_only=false)" in hints[0]
+    assert "get_outgoing_calls('doThing', project_only=false)" in hints[0]
     assert "external" in hints[0]
 
 
-def test_find_callees_external_uses_qualified_name():
-    hints = suggestions.for_find_callees_external("builder", qualified_name="NS::Doc::builder")
+def test_get_outgoing_calls_external_uses_qualified_name():
+    hints = suggestions.for_get_outgoing_calls_external(
+        "builder", qualified_name="NS::Doc::builder"
+    )
     assert len(hints) == 1
-    assert "find_callees('NS::Doc::builder', project_only=false)" in hints[0]
+    assert "get_outgoing_calls('NS::Doc::builder', project_only=false)" in hints[0]
 
 
-def test_find_callees_external_falls_back_to_function_name():
-    hints = suggestions.for_find_callees_external("process", qualified_name=None)
-    assert "find_callees('process', project_only=false)" in hints[0]
+def test_get_outgoing_calls_external_falls_back_to_function_name():
+    hints = suggestions.for_get_outgoing_calls_external("process", qualified_name=None)
+    assert "get_outgoing_calls('process', project_only=false)" in hints[0]
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +370,7 @@ def test_get_call_sites_empty_basic():
     hints = suggestions.for_get_call_sites_empty("doThing")
     assert len(hints) == 1
     assert "doThing" in hints[0]
-    assert "find_callees('doThing')" in hints[0]
+    assert "get_outgoing_calls('doThing')" in hints[0]
     assert "project_only=false" in hints[0]
 
 
@@ -372,13 +378,13 @@ def test_get_call_sites_empty_with_class_name():
     hints = suggestions.for_get_call_sites_empty("builder", class_name="MyClass")
     assert len(hints) == 1
     assert "MyClass::builder" in hints[0]
-    assert "find_callees('MyClass::builder')" in hints[0]
+    assert "get_outgoing_calls('MyClass::builder')" in hints[0]
 
 
 def test_get_call_sites_empty_no_class_name():
     hints = suggestions.for_get_call_sites_empty("process", class_name="")
-    assert "find_callees('process')" in hints[0]
-    assert "::" not in hints[0].split("find_callees")[1].split(")")[0]
+    assert "get_outgoing_calls('process')" in hints[0]
+    assert "::" not in hints[0].split("get_outgoing_calls")[1].split(")")[0]
 
 
 # ---------------------------------------------------------------------------
