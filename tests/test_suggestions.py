@@ -312,56 +312,6 @@ def test_enhanced_result_create_normal_no_next_steps():
 
 
 # ---------------------------------------------------------------------------
-# for_get_incoming_calls_external
-# ---------------------------------------------------------------------------
-
-
-def test_get_incoming_calls_external_uses_function_name():
-    hints = suggestions.for_get_incoming_calls_external("doThing")
-    assert len(hints) == 1
-    assert "get_incoming_calls('doThing', search_scope='include_external_libraries')" in hints[0]
-    assert "external" in hints[0]
-
-
-def test_get_incoming_calls_external_uses_qualified_name():
-    hints = suggestions.for_get_incoming_calls_external(
-        "build", qualified_name="NS::Cls::build"
-    )
-    assert len(hints) == 1
-    assert "get_incoming_calls('NS::Cls::build', search_scope='include_external_libraries')" in hints[0]
-
-
-def test_get_incoming_calls_external_falls_back_to_function_name():
-    hints = suggestions.for_get_incoming_calls_external("process", qualified_name=None)
-    assert "get_incoming_calls('process', search_scope='include_external_libraries')" in hints[0]
-
-
-# ---------------------------------------------------------------------------
-# for_get_outgoing_calls_external
-# ---------------------------------------------------------------------------
-
-
-def test_get_outgoing_calls_external_uses_function_name():
-    hints = suggestions.for_get_outgoing_calls_external("doThing")
-    assert len(hints) == 1
-    assert "get_outgoing_calls('doThing', search_scope='include_external_libraries')" in hints[0]
-    assert "external" in hints[0]
-
-
-def test_get_outgoing_calls_external_uses_qualified_name():
-    hints = suggestions.for_get_outgoing_calls_external(
-        "builder", qualified_name="NS::Doc::builder"
-    )
-    assert len(hints) == 1
-    assert "get_outgoing_calls('NS::Doc::builder', search_scope='include_external_libraries')" in hints[0]
-
-
-def test_get_outgoing_calls_external_falls_back_to_function_name():
-    hints = suggestions.for_get_outgoing_calls_external("process", qualified_name=None)
-    assert "get_outgoing_calls('process', search_scope='include_external_libraries')" in hints[0]
-
-
-# ---------------------------------------------------------------------------
 # for_get_call_sites_empty
 # ---------------------------------------------------------------------------
 

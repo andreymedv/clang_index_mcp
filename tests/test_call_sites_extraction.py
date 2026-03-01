@@ -12,10 +12,13 @@ Tests call site tracking with line-level precision, covering:
 - Template function calls (CS-08)
 """
 
+import json
 import pytest
 from pathlib import Path
 from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.call_graph import CallSite
+from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState
+import mcp_server.cpp_mcp_server as cpp_mcp_server_module
 
 
 @pytest.fixture
@@ -701,6 +704,203 @@ class TestProjectOnlyFlag:
                 assert "usr" not in ext, (
                     f"External callee with qualified_name should not expose raw usr: {ext}"
                 )
+
+
+# =============================================================================
+# Auto-expansion: project_only=True empty → auto-expand to include external
+# =============================================================================
+
+class TestAutoExpansion:
+    """
+    Verify server-side auto-expansion for call graph tools.
+
+    When project_only=True yields 0 results but external callers/callees exist,
+    the MCP handler re-fetches with project_only=False and annotates the response
+    with a search_note field.
+
+    Tests the 4 scenarios for both get_incoming_calls and get_outgoing_calls:
+      1. project_only + empty + external exist → auto-expand, search_note present
+      2. project_only + non-empty             → no auto-expand, no search_note
+      3. project_only=False                   → no auto-expand, no search_note
+      4. project_only + empty + no external   → no auto-expand, no search_note
+    """
+
+    @staticmethod
+    def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
+        from tests.utils.test_helpers import temp_compile_commands
+
+        src_file = tmp_path / "main.cpp"
+        src_file.write_text(source)
+        temp_compile_commands(tmp_path, [
+            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
+        ])
+        az = CppAnalyzer(str(tmp_path))
+        az.index_project()
+        return az
+
+    @staticmethod
+    def _setup_mcp(analyzer):
+        """Patch global MCP server state, return (module, cleanup_fn)."""
+        srv = cpp_mcp_server_module
+        saved = (srv.analyzer, srv.state_manager, srv.analyzer_initialized)
+        sm = AnalyzerStateManager()
+        sm.transition_to(AnalyzerState.INDEXED)
+        srv.analyzer = analyzer
+        srv.state_manager = sm
+        srv.analyzer_initialized = True
+
+        def restore():
+            srv.analyzer, srv.state_manager, srv.analyzer_initialized = saved
+
+        return srv, restore
+
+    # ------------------------------------------------------------------
+    # get_outgoing_calls (find_callees)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_outgoing_auto_expand_external_only(self, tmp_path):
+        """Scenario 1: project_only + empty + external exist → auto-expand."""
+        source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_outgoing_calls", {"function_name": "caller"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" in payload, "Expected search_note for auto-expansion"
+            assert "Auto-expanded" in payload["search_note"]
+            assert len(payload["callees"]) > 0, "Auto-expanded result should have callees"
+            # External callees should be present
+            external = [c for c in payload["callees"] if c.get("is_project") is False]
+            assert external, "Expected external callees after auto-expansion"
+        finally:
+            restore()
+
+    @pytest.mark.asyncio
+    async def test_outgoing_no_expand_when_project_results_exist(self, tmp_path):
+        """Scenario 2: project_only + non-empty → no auto-expand."""
+        source = "void leaf() {}\nvoid caller() { leaf(); }"
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_outgoing_calls", {"function_name": "caller"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" not in payload, "No search_note when project results exist"
+            assert len(payload["callees"]) > 0
+        finally:
+            restore()
+
+    @pytest.mark.asyncio
+    async def test_outgoing_no_expand_when_include_external(self, tmp_path):
+        """Scenario 3: project_only=False → no auto-expand (already includes external)."""
+        source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_outgoing_calls",
+                {"function_name": "caller", "search_scope": "include_external_libraries"},
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" not in payload, "No search_note when scope is external"
+            assert len(payload["callees"]) > 0
+        finally:
+            restore()
+
+    @pytest.mark.asyncio
+    async def test_outgoing_no_expand_genuinely_empty(self, tmp_path):
+        """Scenario 4: project_only + empty + no external → no auto-expand."""
+        source = "void leaf() {}"
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_outgoing_calls", {"function_name": "leaf"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" not in payload, "No search_note when genuinely empty"
+            assert payload["callees"] == []
+        finally:
+            restore()
+
+    # ------------------------------------------------------------------
+    # get_incoming_calls (find_callers)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_incoming_no_expand_when_project_results_exist(self, tmp_path):
+        """Scenario 2: project_only + non-empty → no auto-expand."""
+        source = "void target() {}\nvoid caller() { target(); }"
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_incoming_calls", {"function_name": "target"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" not in payload, "No search_note when project results exist"
+            assert len(payload["callers"]) > 0
+        finally:
+            restore()
+
+    @pytest.mark.asyncio
+    async def test_incoming_no_expand_genuinely_empty(self, tmp_path):
+        """Scenario 4: project_only + empty + no external callers → no auto-expand."""
+        source = "void standalone() {}"
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_incoming_calls", {"function_name": "standalone"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" not in payload, "No search_note when genuinely empty"
+            assert payload["callers"] == []
+        finally:
+            restore()
+
+    @pytest.mark.asyncio
+    async def test_outgoing_auto_expand_no_metadata_suggestions(self, tmp_path):
+        """Auto-expanded results should NOT have metadata.suggestions (replaced by search_note)."""
+        source = '#include <cstdio>\nvoid caller() { printf("hi"); }'
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_outgoing_calls", {"function_name": "caller"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" in payload
+            # Should not have metadata.suggestions (the old hint to retry)
+            metadata = payload.get("metadata", {})
+            assert "suggestions" not in metadata, (
+                "Auto-expanded results should not have metadata.suggestions"
+            )
+        finally:
+            restore()
+
+    @pytest.mark.asyncio
+    async def test_outgoing_function_not_found_no_expand(self, tmp_path):
+        """Function not found: no auto-expand, default 'check spelling' suggestions."""
+        source = "void realFunc() {}"
+        az = self._make_analyzer(tmp_path, source)
+        srv, restore = self._setup_mcp(az)
+        try:
+            result = await srv.call_tool(
+                "get_outgoing_calls", {"function_name": "nonexistent_xyz"}
+            )
+            payload = json.loads(result[0].text)
+            assert "search_note" not in payload, "No search_note for not-found function"
+            assert payload["callees"] == []
+            # Should have default suggestions for "not found"
+            assert "metadata" in payload
+            assert "suggestions" in payload["metadata"]
+        finally:
+            restore()
 
 
 if __name__ == '__main__':
