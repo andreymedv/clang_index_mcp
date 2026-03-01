@@ -254,6 +254,25 @@ analyzer_initialized = False
 # Tool call telemetry logger (enabled via MCP_TOOL_LOGGING=1)
 tool_call_logger = None
 
+# Valid search_scope values
+_VALID_SEARCH_SCOPES = ("project_code_only", "include_external_libraries")
+
+
+def _parse_search_scope(arguments: Dict[str, Any]) -> bool:
+    """Convert search_scope string enum to project_only bool.
+
+    Returns True (project_only) for 'project_code_only' (default),
+    False for 'include_external_libraries'.
+    Raises ValueError for invalid values.
+    """
+    scope: str = arguments.get("search_scope", "project_code_only")
+    if scope not in _VALID_SEARCH_SCOPES:
+        raise ValueError(
+            f"Invalid search_scope '{scope}'. " f"Must be one of: {', '.join(_VALID_SEARCH_SCOPES)}"
+        )
+    return bool(scope == "project_code_only")
+
+
 # MCP Server
 server = Server("cpp-analyzer")
 
@@ -294,10 +313,11 @@ async def list_tools() -> List[Tool]:
                             "namespace='ui' returns only classes in exactly the 'ui' namespace)."
                         ),
                     },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
-                        "default": True,
+                    "search_scope": {
+                        "type": "string",
+                        "enum": ["project_code_only", "include_external_libraries"],
+                        "description": "Controls which files are searched. 'project_code_only' (default) searches only project source files, excluding external dependencies (vcpkg, system headers, third-party). Set to 'include_external_libraries' when user mentions: external, stdlib, third-party, boost, Qt internals, system headers, 'all code', or does not restrict scope.",
+                        "default": "project_code_only",
                     },
                     "file_name": {
                         "type": "string",
@@ -368,10 +388,11 @@ async def list_tools() -> List[Tool]:
                             "namespace='app::Handler' returns only methods of app::Handler class)."
                         ),
                     },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": "When true (default), only searches project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). **Keep true for most use cases** - user questions typically refer to their project code. Only set to false if user explicitly asks about standard library, third-party dependencies, or 'all code including libraries'.",
-                        "default": True,
+                    "search_scope": {
+                        "type": "string",
+                        "enum": ["project_code_only", "include_external_libraries"],
+                        "description": "Controls which files are searched. 'project_code_only' (default) searches only project source files, excluding external dependencies (vcpkg, system headers, third-party). Set to 'include_external_libraries' when user mentions: external, stdlib, third-party, boost, Qt internals, system headers, 'all code', or does not restrict scope.",
+                        "default": "project_code_only",
                     },
                     "class_name": {
                         "type": "string",
@@ -508,10 +529,11 @@ async def list_tools() -> List[Tool]:
                             "symbol types."
                         ),
                     },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": "When true (default), only searches project source files and excludes external dependencies. Set to false to include third-party libraries and system headers.",
-                        "default": True,
+                    "search_scope": {
+                        "type": "string",
+                        "enum": ["project_code_only", "include_external_libraries"],
+                        "description": "Controls which files are searched. 'project_code_only' (default) searches only project source files, excluding external dependencies. Set to 'include_external_libraries' when user mentions: external, stdlib, third-party, boost, Qt internals, system headers, 'all code', or does not restrict scope.",
+                        "default": "project_code_only",
                     },
                     "symbol_types": {
                         "type": "array",
@@ -790,10 +812,11 @@ async def list_tools() -> List[Tool]:
                         ),
                         "minimum": 1,
                     },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": 'When true (default), only returns callers from project source files. Set to false to also include callers from external dependencies (returned as {"qualified_name": "...", "is_project": false} with an approximate name decoded from the symbol USR when no indexed metadata is available).',
-                        "default": True,
+                    "search_scope": {
+                        "type": "string",
+                        "enum": ["project_code_only", "include_external_libraries"],
+                        "description": "Controls which callers are returned. 'project_code_only' (default) returns only callers from project source files. Set to 'include_external_libraries' to also include callers from external dependencies (returned as {\"qualified_name\": \"...\", \"is_project\": false} with an approximate name decoded from the symbol USR when no indexed metadata is available). Set this when user mentions: external, stdlib, third-party, 'all callers', or does not restrict scope.",
+                        "default": "project_code_only",
                     },
                 },
                 "required": ["function_name"],
@@ -849,10 +872,11 @@ async def list_tools() -> List[Tool]:
                         ),
                         "minimum": 1,
                     },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": 'When true (default), only returns callees from project source files, excluding calls to standard library, third-party, or system code. Set to false to include all callees (returned as {"qualified_name": "...", "is_project": false} with an approximate name decoded from the symbol USR when no indexed metadata is available).',
-                        "default": True,
+                    "search_scope": {
+                        "type": "string",
+                        "enum": ["project_code_only", "include_external_libraries"],
+                        "description": "Controls which callees are returned. 'project_code_only' (default) returns only callees from project source files, excluding calls to standard library, third-party, or system code. Set to 'include_external_libraries' to include all callees (returned as {\"qualified_name\": \"...\", \"is_project\": false} with an approximate name decoded from the symbol USR when no indexed metadata is available). Set this when user mentions: external, stdlib, third-party, 'all callees', or does not restrict scope.",
+                        "default": "project_code_only",
                     },
                 },
                 "required": ["function_name"],
@@ -923,10 +947,11 @@ async def list_tools() -> List[Tool]:
                         "enum": ["class", "function", "method"],
                         "description": "Optional: Type of symbol to disambiguate if multiple symbols share the same name. Leave empty to search all symbol types.",
                     },
-                    "project_only": {
-                        "type": "boolean",
-                        "description": "When true (default), only includes project source files and excludes external dependencies (vcpkg, system headers, third-party libraries). Set to false to include all files including dependencies.",
-                        "default": True,
+                    "search_scope": {
+                        "type": "string",
+                        "enum": ["project_code_only", "include_external_libraries"],
+                        "description": "Controls which files are included. 'project_code_only' (default) includes only project source files, excluding external dependencies (vcpkg, system headers, third-party). Set to 'include_external_libraries' to include all files including dependencies. Set this when user mentions: external, stdlib, third-party, 'all files', or does not restrict scope.",
+                        "default": "project_code_only",
                     },
                 },
                 "required": ["symbol_name"],
@@ -1348,7 +1373,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
         loop = asyncio.get_event_loop()
 
         if name == "search_classes":
-            project_only = arguments.get("project_only", True)
+            project_only = _parse_search_scope(arguments)
             pattern = arguments["pattern"]
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
@@ -1376,7 +1401,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_functions":
-            project_only = arguments.get("project_only", True)
+            project_only = _parse_search_scope(arguments)
             class_name = arguments.get("class_name", None)
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
@@ -1453,7 +1478,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
 
         elif name == "search_symbols":
             pattern = arguments["pattern"]
-            project_only = arguments.get("project_only", True)
+            project_only = _parse_search_scope(arguments)
             symbol_types = arguments.get("symbol_types", None)
             namespace = arguments.get("namespace", None)
             max_results = arguments.get("max_results", None)
@@ -1701,7 +1726,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
-            project_only = arguments.get("project_only", True)
+            project_only = _parse_search_scope(arguments)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
@@ -1716,7 +1741,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             # 3-case empty-result logic (internal flags stripped before sending to LLM):
             #   not found            → default "check spelling" suggestions  (None)
             #   found, no callers    → no hints at all                        ([])
-            #   found, ext. callers  → suggest project_only=false             ([...])
+            #   found, ext. callers  → suggest search_scope=include_external   ([...])
             function_found = (
                 results.pop("_function_found", False) if isinstance(results, dict) else False
             )
@@ -1757,7 +1782,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
-            project_only = arguments.get("project_only", True)
+            project_only = _parse_search_scope(arguments)
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
@@ -1772,7 +1797,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             # 3-case empty-result logic (internal flags stripped before sending to LLM):
             #   not found               → default "check spelling" suggestions  (None)
             #   found, no callees       → no hints at all                        ([])
-            #   found, ext. callees     → suggest project_only=false             ([...])
+            #   found, ext. callees     → suggest search_scope=include_external   ([...])
             function_found = (
                 results.pop("_function_found", False) if isinstance(results, dict) else False
             )
@@ -1826,7 +1851,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
         elif name == "get_files_containing_symbol":
             symbol_name = arguments["symbol_name"]
             symbol_kind = arguments.get("symbol_kind")
-            project_only = arguments.get("project_only", True)
+            project_only = _parse_search_scope(arguments)
             result = await analyzer.get_files_containing_symbol(
                 symbol_name, symbol_kind, project_only
             )
