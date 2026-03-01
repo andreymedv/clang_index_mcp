@@ -435,11 +435,11 @@ duration_seconds: 45.2
 
 ### refresh_project
 
-Re-index changed files (incremental).
+Re-index changed files.
 
 **Input:**
 ```yaml
-force_full: false               # Optional: force full re-index
+refresh_mode: incremental       # 'incremental' (default) or 'full'
 ```
 
 **Output:**
