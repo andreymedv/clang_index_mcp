@@ -238,7 +238,7 @@ async def test_query_does_not_timeout_during_long_indexing(large_cpp_project):
     start = time.time()
 
     result = await cpp_mcp_server.call_tool(
-        "get_indexing_status",
+        "check_system_status",
         {}
     )
 
@@ -284,7 +284,7 @@ async def test_wait_for_indexing_blocks_appropriately(large_cpp_project):
 
     # While waiting, we should still be able to check status
     # This proves wait_for_indexing doesn't block the event loop
-    status_result = await cpp_mcp_server.call_tool("get_indexing_status", {})
+    status_result = await cpp_mcp_server.call_tool("check_system_status", {})
     status_data = json.loads(status_result[0].text)
 
     # Should still be indexing
@@ -323,13 +323,13 @@ async def test_state_manager_ready_for_queries_during_indexing(large_cpp_project
 
 
 @pytest.mark.asyncio
-async def test_get_indexing_status_immediately_after_set_project_directory(large_cpp_project):
+async def test_check_system_status_immediately_after_set_project_directory(large_cpp_project):
     """
-    Test for Issue #1: Verify get_indexing_status works immediately after set_project_directory
+    Test for Issue #1: Verify check_system_status works immediately after set_project_directory
 
     This test reproduces the race condition that occurred when:
     1. set_project_directory was called (setting state to INITIALIZING)
-    2. get_indexing_status was called immediately
+    2. check_system_status was called immediately
     3. The query failed because INITIALIZING was not in allowed states
 
     The fix changed the initial state from INITIALIZING to INDEXING,
@@ -347,13 +347,13 @@ async def test_get_indexing_status_immediately_after_set_project_directory(large
     # It transitions to INDEXING state (the fix) before starting background indexing
     state_manager.transition_to(AnalyzerState.INDEXING)
 
-    # CRITICAL TEST: Immediately call get_indexing_status without any delay
-    # This simulates a user calling get_indexing_status right after set_project_directory
+    # CRITICAL TEST: Immediately call check_system_status without any delay
+    # This simulates a user calling check_system_status right after set_project_directory
     # Before the fix, this would fail with "Project directory not set"
-    result = await cpp_mcp_server.call_tool("get_indexing_status", {})
+    result = await cpp_mcp_server.call_tool("check_system_status", {})
 
     # Verify the call succeeded (no exception raised)
-    assert len(result) > 0, "get_indexing_status should return a result"
+    assert len(result) > 0, "check_system_status should return a result"
 
     # Parse the response
     response_text = result[0].text

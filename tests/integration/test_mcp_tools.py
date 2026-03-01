@@ -487,7 +487,7 @@ class TestMCPServerToolsAdditional:
     """Additional tests to cover gaps from removed test_mcp_protocol.py"""
 
     def test_get_server_status(self, temp_project_dir):
-        """Test get_stats (equivalent to get_server_status)"""
+        """Test get_stats (equivalent to check_system_status server info)"""
         (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
 
         analyzer = CppAnalyzer(str(temp_project_dir))

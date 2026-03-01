@@ -682,7 +682,7 @@ async def list_tools() -> List[Tool]:
                 "- Symbol information outdated: Use incremental refresh (default) - sufficient for "
                 "99% of cases.\n\n"
                 "**Non-blocking operation:** Refresh runs in the background. This tool returns "
-                "immediately while the refresh continues. Use 'get_indexing_status' to monitor "
+                "immediately while the refresh continues. Use 'check_system_status' to monitor "
                 "progress. Tools remain available during refresh and will return results based on "
                 "the current cache state."
             ),
@@ -715,13 +715,8 @@ async def list_tools() -> List[Tool]:
             },
         ),
         Tool(
-            name="get_server_status",
-            description="Get diagnostic information about the MCP server state and index statistics. Returns JSON with: analyzer type, enabled features (call_graph, usr_tracking, compile_commands), file counts (parsed, indexed classes/functions). Use to verify server is working, check if indexing is complete, or debug configuration issues.",
-            inputSchema={"type": "object", "properties": {}, "required": []},
-        ),
-        Tool(
-            name="get_indexing_status",
-            description="Get real-time status of project indexing. Returns state (uninitialized/initializing/indexing/indexed/refreshing/error), progress information (files indexed/total, completion percentage, current file, ETA), and whether tools will return complete or partial results. Use this to check if indexing is complete before running queries on large projects, or to monitor indexing progress.",
+            name="check_system_status",
+            description="Get combined server diagnostics and indexing status. Returns JSON with: indexing state (uninitialized/initializing/indexing/indexed/refreshing/error), progress (files indexed/total, completion percentage, current file, ETA), enabled features (call_graph, compile_commands), and index statistics (parsed files, class/function counts). Use to check if indexing is complete, monitor progress, or verify server configuration.",
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
@@ -1052,7 +1047,7 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
             return (
                 False,
                 message
-                + "\n\nTimeout waiting for indexing (30s). Try again later or use 'get_indexing_status'.",
+                + "\n\nTimeout waiting for indexing (30s). Try again later or use 'check_system_status'.",
             )
 
     elif policy == QueryBehaviorPolicy.REJECT:
@@ -1067,7 +1062,7 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
                 f"{indexed:,}/{total:,} files).\n\n"
                 f"Queries are not allowed until indexing completes. Options:\n"
                 f"1. Use 'wait_for_indexing' tool to wait for completion\n"
-                f"2. Check progress with 'get_indexing_status'\n"
+                f"2. Check progress with 'check_system_status'\n"
                 f"3. Set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial to allow partial results\n"
                 f"4. Set CPP_ANALYZER_QUERY_BEHAVIOR=block to auto-wait for completion"
             )
@@ -1332,7 +1327,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                     type="text",
                     text=f"Set project directory to: {project_path}{config_msg}\n"
                     f"Indexing started in background.{auto_refresh_msg}\n"
-                    f"Use 'get_indexing_status' to check progress.\n"
+                    f"Use 'check_system_status' to check progress.\n"
                     f"Tools are available but will return partial results until indexing completes.",
                 )
             ]
@@ -1637,43 +1632,30 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 TextContent(
                     type="text",
                     text=f"Refresh started in background (mode: {refresh_mode}).\n"
-                    f"Use 'get_indexing_status' to check progress.\n"
+                    f"Use 'check_system_status' to check progress.\n"
                     f"Tools will continue to work and return results based on current cache state.",
                 )
             ]
 
-        elif name == "get_server_status":
-            # Determine analyzer type
-            analyzer_type = "python_enhanced"
+        elif name == "check_system_status":
+            # Combined server diagnostics and indexing status
+            status_dict = state_manager.get_status_dict()
 
             ccm = analyzer.compile_commands_manager
-            status = {
-                "analyzer_type": analyzer_type,
-                "call_graph_enabled": True,
-                "usr_tracking_enabled": True,
-                "compile_commands_enabled": ccm.enabled if ccm else False,
-                "compile_commands_path": ccm.compile_commands_path if ccm else None,
-                "compile_commands_cache_enabled": ccm.cache_enabled if ccm else False,
-            }
-
-            # Add analyzer stats from enhanced Python analyzer
-            # Count total symbols, not just unique names
             total_classes = sum(len(infos) for infos in analyzer.class_index.values())
             total_functions = sum(len(infos) for infos in analyzer.function_index.values())
 
-            status.update(
+            status_dict.update(
                 {
+                    "analyzer_type": "python_enhanced",
+                    "call_graph_enabled": True,
+                    "compile_commands_enabled": ccm.enabled if ccm else False,
+                    "compile_commands_path": ccm.compile_commands_path if ccm else None,
                     "parsed_files": len(analyzer.file_index),
                     "indexed_classes": total_classes,
                     "indexed_functions": total_functions,
-                    "project_files": len(analyzer.file_index),
                 }
             )
-            return [TextContent(type="text", text=json.dumps(status, indent=2))]
-
-        elif name == "get_indexing_status":
-            # Get current state and progress from state manager
-            status_dict = state_manager.get_status_dict()
             return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
         elif name == "wait_for_indexing":
@@ -1702,7 +1684,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 return [
                     TextContent(
                         type="text",
-                        text=f"Timeout waiting for indexing (waited {timeout}s). Use 'get_indexing_status' to check progress.",
+                        text=f"Timeout waiting for indexing (waited {timeout}s). Use 'check_system_status' to check progress.",
                     )
                 ]
 
