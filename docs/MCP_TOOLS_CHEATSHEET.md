@@ -34,9 +34,8 @@ Quick reference for C++ code analysis tools. All examples use YAML format for re
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ set_project_directory │ Set project root, start indexing                    │
 │ refresh_project    │ Re-index changed files                                 │
-│ get_indexing_status │ Check indexing progress                               │
+│ check_system_status │ Server health, indexing progress, statistics           │
 │ wait_for_indexing  │ Block until indexing complete                          │
-│ get_server_status  │ Server health and statistics                           │
 │ get_files_containing_symbol │ Files where symbol is defined/used            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -392,20 +391,29 @@ config_used: /home/user/myproject/cpp-analyzer-config.json
 compile_commands: /home/user/myproject/build/compile_commands.json
 ```
 
-### get_indexing_status
+### check_system_status
 
-Check current indexing progress.
+Get combined server diagnostics and indexing progress.
 
 **Input:** None
 
 **Output:**
 ```yaml
-status: indexing                           # "idle", "indexing", "completed"
-files_processed: 450
-files_total: 1250
-percent_complete: 36
-current_file: /path/to/current.cpp
-errors: 3                                  # Files with parse errors
+state: indexing                            # uninitialized/indexing/indexed/refreshing/error
+is_fully_indexed: false
+is_ready_for_queries: true
+progress:
+  total_files: 1250
+  indexed_files: 450
+  completion_percentage: 36.0
+  current_file: /path/to/current.cpp
+analyzer_type: python_enhanced
+call_graph_enabled: true
+compile_commands_enabled: true
+compile_commands_path: /path/to/compile_commands.json
+parsed_files: 450
+indexed_classes: 3420
+indexed_functions: 15600
 ```
 
 ### wait_for_indexing
@@ -441,24 +449,6 @@ files_checked: 1250
 files_changed: 12
 files_reindexed: 15                        # Changed + dependents
 duration_seconds: 2.3
-```
-
-### get_server_status
-
-Get server health and statistics.
-
-**Input:** None
-
-**Output:**
-```yaml
-status: ready
-project_root: /home/user/myproject
-indexed_files: 1250
-classes_indexed: 3420
-functions_indexed: 15600
-index_size_mb: 45.2
-cache_location: /home/user/myproject/.mcp_cache
-uptime_seconds: 3600
 ```
 
 ### get_files_containing_symbol
