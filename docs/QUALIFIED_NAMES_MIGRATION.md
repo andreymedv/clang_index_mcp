@@ -379,7 +379,7 @@ All search methods support these pattern syntaxes:
 - `refresh_project`
 - `get_indexing_status`
 - `wait_for_indexing`
-- `find_callers` / `find_callees`
+- `get_incoming_calls` / `get_outgoing_calls`
 
 ---
 

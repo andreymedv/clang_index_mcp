@@ -2,7 +2,7 @@
 Integration tests for Phase 3.1 MCP tools.
 
 Tests the MCP tool layer to ensure proper integration with call site tracking:
-- find_callers tool with call_sites response
+- get_incoming_calls tool with call_sites response
 - get_call_sites tool
 - Backward compatibility
 - Response format validation
@@ -31,8 +31,8 @@ def indexed_analyzer(phase3_fixtures_dir):
     return analyzer
 
 
-class TestFindCallersToolIntegration:
-    """Test find_callers MCP tool with Phase 3.1 enhancements."""
+class TestGetIncomingCallsToolIntegration:
+    """Test get_incoming_calls MCP tool with Phase 3.1 enhancements."""
 
     def test_find_callers_returns_dictionary(self, indexed_analyzer):
         """Test that find_callers returns a dictionary (not list)."""
@@ -179,10 +179,10 @@ class TestGetCallSitesTool:
 
 
 class TestComplementaryTools:
-    """Test that find_callers and get_call_sites are complementary."""
+    """Test that get_incoming_calls and get_call_sites are complementary."""
 
-    def test_find_callers_backward_get_call_sites_forward(self, indexed_analyzer):
-        """Test that find_callers shows WHO calls (backward), get_call_sites shows WHAT is called (forward)."""
+    def test_get_incoming_calls_backward_get_call_sites_forward(self, indexed_analyzer):
+        """Test that get_incoming_calls shows WHO calls (backward), get_call_sites shows WHAT is called (forward)."""
 
         # Get functions that call helper (backward analysis)
         callers_result = indexed_analyzer.find_callers("helper")
