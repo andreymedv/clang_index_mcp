@@ -40,7 +40,7 @@ def find_and_configure_libclang():
     3. System-installed libraries (prefer system over bundled)
     4. Bundled libraries (fallback)
 
-    See: docs/issues/003-macos-libclang-discovery.md
+    See: docs/MACOS_LIBCLANG_DISCOVERY.md
     """
     import platform
     import glob
