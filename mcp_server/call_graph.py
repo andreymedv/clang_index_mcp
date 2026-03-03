@@ -7,26 +7,48 @@ from .symbol_info import SymbolInfo
 class CallSite:
     """Represents a single call site with location information."""
 
-    __slots__ = ("caller_usr", "callee_usr", "file", "line", "column")
+    __slots__ = (
+        "caller_usr",
+        "callee_usr",
+        "file",
+        "line",
+        "column",
+        "display_name",
+        "template_project_types",
+    )
 
     def __init__(
-        self, caller_usr: str, callee_usr: str, file: str, line: int, column: Optional[int] = None
+        self,
+        caller_usr: str,
+        callee_usr: str,
+        file: str,
+        line: int,
+        column: Optional[int] = None,
+        display_name: Optional[str] = None,
+        template_project_types: Optional[str] = None,
     ):
         self.caller_usr = caller_usr
         self.callee_usr = callee_usr
         self.file = file
         self.line = line
         self.column = column
+        self.display_name = display_name
+        self.template_project_types = template_project_types
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
-        return {
+        result = {
             "caller_usr": self.caller_usr,
             "callee_usr": self.callee_usr,
             "file": self.file,
             "line": self.line,
             "column": self.column,
         }
+        if self.display_name:
+            result["display_name"] = self.display_name
+        if self.template_project_types:
+            result["template_project_types"] = self.template_project_types
+        return result
 
     def __eq__(self, other):
         if not isinstance(other, CallSite):
@@ -80,6 +102,8 @@ class CallGraphAnalyzer:
         line: Optional[int] = None,
         column: Optional[int] = None,
         store_call_site: bool = True,
+        display_name: Optional[str] = None,
+        template_project_types: Optional[str] = None,
     ):
         """
         Add a function call relationship with optional location information.
@@ -93,6 +117,8 @@ class CallGraphAnalyzer:
             store_call_site: If True, store CallSite in memory (default).
                            Set to False when main process saves directly to SQLite
                            to avoid memory accumulation (~1.9 GB for large projects).
+            display_name: Specialized display name (e.g. "std::make_shared<Sensor>")
+            template_project_types: JSON array of project types in template args
         """
         if caller_usr and callee_usr:
             # Phase 4: Task 4.3 - Removed in-memory call_graph and reverse_call_graph
@@ -102,7 +128,15 @@ class CallGraphAnalyzer:
             # Phase 4: Only store in memory if store_call_site=True
             # Main process should set store_call_site=False and save directly to SQLite
             if store_call_site and file and line:
-                call_site = CallSite(caller_usr, callee_usr, file, line, column)
+                call_site = CallSite(
+                    caller_usr,
+                    callee_usr,
+                    file,
+                    line,
+                    column,
+                    display_name,
+                    template_project_types,
+                )
                 self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
     def clear(self):
@@ -154,7 +188,8 @@ class CallGraphAnalyzer:
         Restore call sites from database-loaded dictionaries.
 
         Args:
-            call_sites_data: List of dicts with keys: caller_usr, callee_usr, file, line, column
+            call_sites_data: List of dicts with keys: caller_usr, callee_usr, file, line, column,
+                            display_name (optional), template_project_types (optional)
         """
         for cs_dict in call_sites_data:
             call_site = CallSite(
@@ -163,6 +198,8 @@ class CallGraphAnalyzer:
                 file=cs_dict["file"],
                 line=cs_dict["line"],
                 column=cs_dict.get("column"),
+                display_name=cs_dict.get("display_name"),
+                template_project_types=cs_dict.get("template_project_types"),
             )
             self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
@@ -311,6 +348,8 @@ class CallGraphAnalyzer:
                         file=cs_dict["file"],
                         line=cs_dict["line"],
                         column=cs_dict.get("column"),
+                        display_name=cs_dict.get("display_name"),
+                        template_project_types=cs_dict.get("template_project_types"),
                     )
                     # Avoid duplicates (current session may have same call sites)
                     if call_site not in current_session:
@@ -347,6 +386,8 @@ class CallGraphAnalyzer:
                         file=cs_dict["file"],
                         line=cs_dict["line"],
                         column=cs_dict.get("column"),
+                        display_name=cs_dict.get("display_name"),
+                        template_project_types=cs_dict.get("template_project_types"),
                     )
                     # Avoid duplicates (current session may have same call sites)
                     if call_site not in current_session:
