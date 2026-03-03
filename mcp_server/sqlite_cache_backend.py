@@ -38,7 +38,7 @@ class SqliteCacheBackend:
     complexity, since the cache can be regenerated from source files.
     """
 
-    CURRENT_SCHEMA_VERSION = "16.0"  # Must match version in schema.sql
+    CURRENT_SCHEMA_VERSION = "17.0"  # Must match version in schema.sql
 
     def __init__(self, db_path: Path, skip_schema_recreation: bool = False):
         """
@@ -2006,6 +2006,8 @@ class SqliteCacheBackend:
                     cs["file"],
                     cs["line"],
                     cs.get("column"),
+                    cs.get("display_name"),
+                    cs.get("template_project_types"),
                     current_time,
                 )
                 for cs in call_sites
@@ -2016,8 +2018,9 @@ class SqliteCacheBackend:
                 self._conn.executemany(
                     """
                     INSERT INTO call_sites (
-                        caller_usr, callee_usr, file, line, column, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        caller_usr, callee_usr, file, line, column,
+                        display_name, template_project_types, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     values,
                 )
@@ -2043,7 +2046,8 @@ class SqliteCacheBackend:
 
             cursor = self._conn.execute(
                 """
-                SELECT callee_usr, file, line, column
+                SELECT callee_usr, file, line, column,
+                       display_name, template_project_types
                 FROM call_sites
                 WHERE caller_usr = ?
                 ORDER BY file, line
@@ -2057,6 +2061,8 @@ class SqliteCacheBackend:
                     "file": row["file"],
                     "line": row["line"],
                     "column": row["column"],
+                    "display_name": row["display_name"],
+                    "template_project_types": row["template_project_types"],
                 }
                 for row in cursor.fetchall()
             ]
@@ -2080,7 +2086,8 @@ class SqliteCacheBackend:
 
             cursor = self._conn.execute(
                 """
-                SELECT caller_usr, file, line, column
+                SELECT caller_usr, file, line, column,
+                       display_name, template_project_types
                 FROM call_sites
                 WHERE callee_usr = ?
                 ORDER BY file, line
@@ -2094,12 +2101,62 @@ class SqliteCacheBackend:
                     "file": row["file"],
                     "line": row["line"],
                     "column": row["column"],
+                    "display_name": row["display_name"],
+                    "template_project_types": row["template_project_types"],
                 }
                 for row in cursor.fetchall()
             ]
 
         except Exception as e:
             diagnostics.error(f"Failed to get call sites for callee {callee_usr}: {e}")
+            return []
+
+    def get_template_mediated_call_sites(
+        self, caller_usrs: List[str], callee_usr: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get call sites between specific callers and a callee that have template metadata.
+
+        Args:
+            caller_usrs: List of caller USRs
+            callee_usr: USR of the called function
+
+        Returns:
+            List of call site dicts with template_project_types set
+        """
+        if not caller_usrs:
+            return []
+        try:
+            self._ensure_connected()
+            placeholders = ",".join("?" for _ in caller_usrs)
+            cursor = self._conn.execute(
+                f"""
+                SELECT caller_usr, callee_usr, file, line, column,
+                       display_name, template_project_types
+                FROM call_sites
+                WHERE caller_usr IN ({placeholders})
+                  AND callee_usr = ?
+                  AND template_project_types IS NOT NULL
+                ORDER BY file, line
+                """,
+                (*caller_usrs, callee_usr),
+            )
+            return [
+                {
+                    "caller_usr": row["caller_usr"],
+                    "callee_usr": row["callee_usr"],
+                    "file": row["file"],
+                    "line": row["line"],
+                    "column": row["column"],
+                    "display_name": row["display_name"],
+                    "template_project_types": row["template_project_types"],
+                }
+                for row in cursor.fetchall()
+            ]
+        except Exception as e:
+            diagnostics.error(
+                f"Failed to get template-mediated call sites for callee {callee_usr}: {e}"
+            )
             return []
 
     def delete_call_sites_by_file(self, file_path: str) -> int:
