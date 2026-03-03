@@ -736,6 +736,52 @@ class CppAnalyzer:
         # Use FileScanner's logic to check if it's a project file
         return self.file_scanner.is_project_file(file_path)
 
+    def _extract_template_call_info(self, referenced, called_usr: str):
+        """Extract display_name and project-type template args from a template call.
+
+        When code calls e.g. ``std::make_shared<Sensor>(args)``, libclang's
+        ``referenced.get_template_argument_type(i)`` returns the concrete type
+        (``Sensor``).  If any of those types belong to a project file we record
+        them so that query-time filtering can surface the call even under
+        ``project_only=True``.
+
+        Args:
+            referenced: The libclang Cursor for the referenced (callee) function.
+            called_usr: The canonical template USR (after y6j mapping).
+
+        Returns:
+            (display_name, template_project_types_json) where both are str,
+            or (None, None) if no project types found in template args.
+        """
+        try:
+            num_args = referenced.get_num_template_arguments()
+            if num_args <= 0:
+                return (None, None)
+
+            project_types = []
+            all_type_names = []
+            for idx in range(num_args):
+                arg_type = referenced.get_template_argument_type(idx)
+                if arg_type is None or arg_type.spelling == "":
+                    continue
+                type_name = arg_type.spelling
+                all_type_names.append(type_name)
+                # Check if the type's declaration is in a project file
+                decl = arg_type.get_declaration()
+                if decl and decl.location and decl.location.file:
+                    if self._is_project_file(decl.location.file.name):
+                        project_types.append(type_name)
+
+            if not project_types:
+                return (None, None)
+
+            # Build display name: base_name<Type1, Type2>
+            base_name = _usr_to_display_name(called_usr)
+            display_name = f"{base_name}<{', '.join(all_type_names)}>"
+            return (display_name, json.dumps(project_types))
+        except Exception:
+            return (None, None)
+
     def _calculate_compile_commands_hash(self):
         """
         Calculate and store MD5 hash of compile_commands.json file.
@@ -1047,7 +1093,28 @@ class CppAnalyzer:
                         f"First call format: {calls_buffer[0] if calls_buffer else 'empty'}"
                     )
             for call_info in calls_buffer:
-                if len(call_info) == 5:
+                if len(call_info) == 7:
+                    # v17.0 format: (caller_usr, callee_usr, file, line, column,
+                    #                display_name, template_project_types)
+                    (
+                        caller_usr,
+                        called_usr,
+                        call_file,
+                        call_line,
+                        call_column,
+                        disp_name,
+                        tmpl_types,
+                    ) = call_info
+                    self.call_graph_analyzer.add_call(
+                        caller_usr,
+                        called_usr,
+                        call_file,
+                        call_line,
+                        call_column,
+                        display_name=disp_name,
+                        template_project_types=tmpl_types,
+                    )
+                elif len(call_info) == 5:
                     # Phase 3 format: (caller_usr, callee_usr, file, line, column)
                     caller_usr, called_usr, call_file, call_line, call_column = call_info
                     self.call_graph_analyzer.add_call(
@@ -2747,11 +2814,20 @@ class CppAnalyzer:
                 # definition, enabling successful lookups.
                 from clang import cindex
 
+                # Extract template arg info BEFORE y6j mapping erases specialization
+                display_name = None
+                template_project_types = None
+
                 try:
                     template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(referenced)
                     if template_cursor and not template_cursor.kind.is_invalid():
                         template_usr = template_cursor.get_usr()
                         if template_usr:
+                            # Extract template info using the instantiation cursor
+                            # (before we lose it to canonical mapping)
+                            display_name, template_project_types = self._extract_template_call_info(
+                                referenced, template_usr
+                            )
                             # Use canonical template USR instead of instantiation USR
                             called_usr = template_usr
                 except Exception:
@@ -2765,8 +2841,17 @@ class CppAnalyzer:
                 call_column = location.column if location.column else None
 
                 # Collect call relationship with location in thread-local buffer
+                # 7-tuple: includes template metadata for template-mediated calls
                 calls_buffer.append(
-                    (parent_function_usr, called_usr, call_file, call_line, call_column)
+                    (
+                        parent_function_usr,
+                        called_usr,
+                        call_file,
+                        call_line,
+                        call_column,
+                        display_name,
+                        template_project_types,
+                    )
                 )
 
         # Recurse into children (always, to traverse entire AST)
@@ -5230,6 +5315,37 @@ class CppAnalyzer:
                 )
         return None
 
+    def _get_template_mediated_info(
+        self, target_usrs: set, callee_usr: str
+    ) -> Optional[Dict[str, Any]]:
+        """Check if a callee has template-mediated project type relevance.
+
+        When an external template function (e.g. std::make_shared) is called with a
+        project type as a template argument, this returns a result dict that surfaces
+        the call even when project_only=True.
+
+        Returns None if no project-type template args are found.
+        """
+        backend = getattr(self.cache_manager, "backend", None)
+        if backend is None or not hasattr(backend, "get_template_mediated_call_sites"):
+            return None
+        rows = backend.get_template_mediated_call_sites(list(target_usrs), callee_usr)
+        if not rows:
+            return None
+        # Use the first row's metadata (all rows share the same callee)
+        row = rows[0]
+        display_name = row.get("display_name") or _usr_to_display_name(callee_usr)
+        try:
+            project_types = json.loads(row["template_project_types"])
+        except (json.JSONDecodeError, TypeError):
+            project_types = []
+        return {
+            "qualified_name": display_name,
+            "is_project": False,
+            "is_template_mediated": True,
+            "template_types": project_types,
+        }
+
     def find_callers(
         self,
         function_name: str,
@@ -5399,17 +5515,37 @@ class CppAnalyzer:
                 # Get target function info
                 if call_site.callee_usr in self.usr_index:
                     target_info = self.usr_index[call_site.callee_usr]
-                    call_sites_list.append(
-                        {
-                            "target": target_info.name,
-                            "target_signature": target_info.signature,
-                            "target_file": target_info.file,
-                            "target_kind": target_info.kind,
-                            "file": call_site.file,
-                            "line": call_site.line,
-                            "column": call_site.column,
-                        }
-                    )
+                    entry = {
+                        "target": target_info.name,
+                        "target_signature": target_info.signature,
+                        "target_file": target_info.file,
+                        "target_kind": target_info.kind,
+                        "file": call_site.file,
+                        "line": call_site.line,
+                        "column": call_site.column,
+                    }
+                    # Use display_name if available (template-specialized name)
+                    if call_site.display_name:
+                        entry["target"] = call_site.display_name
+                    call_sites_list.append(entry)
+                else:
+                    # External callee — surface if template-mediated
+                    if call_site.display_name and call_site.template_project_types:
+                        try:
+                            tmpl_types = json.loads(call_site.template_project_types)
+                        except (json.JSONDecodeError, TypeError):
+                            tmpl_types = []
+                        call_sites_list.append(
+                            {
+                                "target": call_site.display_name,
+                                "target_kind": "function",
+                                "file": call_site.file,
+                                "line": call_site.line,
+                                "column": call_site.column,
+                                "is_template_mediated": True,
+                                "template_types": tmpl_types,
+                            }
+                        )
 
         # Sort by file, then line
         call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
@@ -5476,17 +5612,27 @@ class CppAnalyzer:
                             }
                         )
                     )
-                elif not project_only:
-                    rich = self._lookup_symbol_info(callee_usr)
-                    if rich is not None:
-                        callees_list.append(rich)
+                elif project_only:
+                    # Check for template-mediated project relevance
+                    tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
+                    if tmpl_info:
+                        callees_list.append(tmpl_info)
+                else:
+                    # project_only=False: prefer display_name for template calls
+                    tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
+                    if tmpl_info:
+                        callees_list.append(tmpl_info)
                     else:
-                        callees_list.append(
-                            {
-                                "qualified_name": _usr_to_display_name(callee_usr),
-                                "is_project": False,
-                            }
-                        )
+                        rich = self._lookup_symbol_info(callee_usr)
+                        if rich is not None:
+                            callees_list.append(rich)
+                        else:
+                            callees_list.append(
+                                {
+                                    "qualified_name": _usr_to_display_name(callee_usr),
+                                    "is_project": False,
+                                }
+                            )
 
         # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
         #   _function_found          — True if the function name resolved to at least one USR

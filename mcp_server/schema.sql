@@ -1,6 +1,7 @@
 -- SQLite Schema for C++ Symbol Cache
--- Version: 16.0
+-- Version: 17.0
 -- Optimized for fast symbol lookups with FTS5 full-text search
+-- Changelog v17.0: Template-mediated call tracking (display_name, template_project_types columns in call_sites)
 -- Changelog v16.0: Human-readable function signatures (forces re-index to regenerate cached signatures)
 -- Changelog v15.0: Fixed type_aliases unique constraint to allow multiple macro-generated aliases at same location
 -- Changelog v14.0: Added virtual/abstract method indicators (is_virtual, is_pure_virtual, is_const, is_static) for LLM Integration (Phase 5)
@@ -161,7 +162,7 @@ CREATE TABLE IF NOT EXISTS cache_metadata (
 
 -- Initial metadata
 INSERT OR IGNORE INTO cache_metadata (key, value, updated_at) VALUES
-    ('version', '"16.0"', julianday('now')),
+    ('version', '"17.0"', julianday('now')),
     ('include_dependencies', 'false', julianday('now')),
     ('indexed_file_count', '0', julianday('now')),
     ('last_vacuum', '0', julianday('now'));
@@ -222,6 +223,8 @@ CREATE TABLE IF NOT EXISTS call_sites (
     file TEXT NOT NULL,                    -- Source file containing call
     line INTEGER NOT NULL,                 -- Line number of call
     column INTEGER,                        -- Column number (optional)
+    display_name TEXT,                     -- Specialized display name (e.g. "std::make_shared<Sensor>")
+    template_project_types TEXT,           -- JSON array of project types in template args (e.g. '["Sensor"]')
     created_at REAL NOT NULL,              -- When call site was indexed
     FOREIGN KEY (caller_usr) REFERENCES symbols(usr) ON DELETE CASCADE,
     FOREIGN KEY (callee_usr) REFERENCES symbols(usr) ON DELETE CASCADE

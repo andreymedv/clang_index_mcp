@@ -299,6 +299,14 @@ make ie                         # install-editable
 - **Implementation:** See mcp_server/call_graph.py (queries), sqlite_cache_backend.py (storage)
 - **Deprecated:** get_call_statistics() methods (not used, would require expensive SQLite queries)
 
+**13. Template-Mediated Call Tracking (Schema v17.0)**
+- **Problem:** Calls like `std::make_shared<ProjectClass>(args)` were invisible in find_callees with `project_only=True` because the callee is an external template function
+- **Solution:** At parse time, extract template argument types from `cursor.referenced.get_template_argument_type(i)` and check if any resolve to project files
+- **Storage:** Two new columns in call_sites table: `display_name` (e.g. "std::make_shared<Sensor>") and `template_project_types` (JSON array of project type names)
+- **Query-time:** `_get_template_mediated_info()` helper queries SQLite for template metadata; find_callees/get_call_sites surface these calls with `is_template_mediated: True` flag
+- **Scope:** Free function templates only (make_shared, make_unique). Container member methods (vector::push_back) are Phase 2 follow-up
+- **Implementation:** cpp_analyzer.py:`_extract_template_call_info()`, sqlite_cache_backend.py:`get_template_mediated_call_sites()`
+
 ### Data Flow
 
 **Indexing Flow:**
@@ -607,7 +615,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 8. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
-9. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 14.0** includes virtual method indicators (is_virtual, is_pure_virtual, is_const, is_static), type_aliases table with template_params support, documentation fields (brief, doc_comment), and call_sites table for line-level call graph tracking.
+9. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 17.0** includes virtual method indicators (is_virtual, is_pure_virtual, is_const, is_static), type_aliases table with template_params support, documentation fields (brief, doc_comment), call_sites table for line-level call graph tracking, and template-mediated call metadata (display_name, template_project_types).
 
 10. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
