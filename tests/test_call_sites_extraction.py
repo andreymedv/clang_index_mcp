@@ -903,5 +903,189 @@ class TestAutoExpansion:
             restore()
 
 
+# =============================================================================
+# Template-mediated call tracking (cplusplus_mcp-fcd)
+# =============================================================================
+
+class TestTemplateMediated:
+    """
+    Verify that calls to external template functions (e.g. std::make_shared<ProjectClass>)
+    are surfaced in find_callees / get_call_sites when a project type appears as a
+    template argument.
+
+    Uses a dedicated fixture with make_shared<Sensor>, make_unique<Widget>,
+    make_shared<int>, and direct new Sensor.
+    """
+
+    @staticmethod
+    def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
+        from tests.utils.test_helpers import temp_compile_commands
+
+        src_file = tmp_path / "main.cpp"
+        src_file.write_text(source)
+        temp_compile_commands(tmp_path, [
+            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
+        ])
+        az = CppAnalyzer(str(tmp_path))
+        az.index_project()
+        return az
+
+    TEMPLATE_MEDIATED_SOURCE = """\
+#include <memory>
+
+class Sensor {
+public:
+    void read() {}
+    Sensor() {}
+    explicit Sensor(int id) : id_(id) {}
+private:
+    int id_ = 0;
+};
+
+class Widget {
+public:
+    void draw() {}
+};
+
+void factory_shared() {
+    auto s = std::make_shared<Sensor>(42);
+    s->read();
+}
+
+void factory_unique() {
+    auto w = std::make_unique<Widget>();
+    w->draw();
+}
+
+void factory_primitive() {
+    auto p = std::make_shared<int>(42);
+}
+
+void factory_direct() {
+    std::unique_ptr<Sensor> p(new Sensor());
+    p->read();
+}
+"""
+
+    def test_make_shared_project_only_true(self, tmp_path):
+        """make_shared<Sensor> should be visible with project_only=True."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        result = az.find_callees("factory_shared", project_only=True)
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        # Should contain a make_shared entry with Sensor in the name
+        make_shared_entries = [n for n in callee_names if "make_shared" in n and "Sensor" in n]
+        assert make_shared_entries, (
+            f"make_shared<Sensor> should be visible with project_only=True, "
+            f"got callees: {callee_names}"
+        )
+
+    def test_make_shared_display_name(self, tmp_path):
+        """The qualified_name for make_shared<Sensor> should include the template arg."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        result = az.find_callees("factory_shared", project_only=True)
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        # Find the make_shared entry and verify it includes Sensor
+        make_shared = [n for n in callee_names if "make_shared" in n]
+        assert any("Sensor" in n for n in make_shared), (
+            f"make_shared display name should include 'Sensor', got: {make_shared}"
+        )
+
+    def test_make_shared_is_template_mediated_flag(self, tmp_path):
+        """Template-mediated callees should have is_project=False, is_template_mediated=True."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        result = az.find_callees("factory_shared", project_only=True)
+        tmpl_entries = [c for c in result["callees"]
+                        if c.get("is_template_mediated") is True]
+        assert tmpl_entries, (
+            f"Expected at least one template-mediated callee, "
+            f"got: {result['callees']}"
+        )
+        for entry in tmpl_entries:
+            assert entry.get("is_project") is False
+            assert "template_types" in entry
+            assert isinstance(entry["template_types"], list)
+
+    def test_make_unique_project_only_true(self, tmp_path):
+        """make_unique<Widget> should also be visible with project_only=True."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        result = az.find_callees("factory_unique", project_only=True)
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        make_unique_entries = [n for n in callee_names if "make_unique" in n and "Widget" in n]
+        assert make_unique_entries, (
+            f"make_unique<Widget> should be visible with project_only=True, "
+            f"got callees: {callee_names}"
+        )
+
+    def test_primitive_template_arg_excluded(self, tmp_path):
+        """make_shared<int> should NOT be visible with project_only=True (int is not a project type)."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        result = az.find_callees("factory_primitive", project_only=True)
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        # No make_shared entry should appear since int is not a project type
+        make_shared_entries = [n for n in callee_names if "make_shared" in n]
+        assert not make_shared_entries, (
+            f"make_shared<int> should NOT be visible with project_only=True, "
+            f"got callees: {callee_names}"
+        )
+
+    def test_project_only_false_uses_display_name(self, tmp_path):
+        """With project_only=False, template calls should use specialized display name."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        result = az.find_callees("factory_shared", project_only=False)
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        # Should have a specialized name, not just "make_shared"
+        make_shared = [n for n in callee_names if "make_shared" in n]
+        assert make_shared, f"make_shared should appear in callees: {callee_names}"
+        # At least one should have the specialized name with Sensor
+        assert any("Sensor" in n for n in make_shared), (
+            f"Expected specialized name with 'Sensor', got: {make_shared}"
+        )
+
+    def test_y6j_regression(self, tmp_path):
+        """Project template calls should still work correctly after template-mediated changes."""
+        source = """\
+template<typename T>
+T identity(T x) { return x; }
+
+void caller() {
+    int a = identity(42);
+    double b = identity(3.14);
+}
+"""
+        az = self._make_analyzer(tmp_path, source)
+        # find_callees should find identity() as a project function
+        result = az.find_callees("caller", project_only=True)
+        callee_names = [c["qualified_name"] for c in result["callees"]]
+        assert any("identity" in n for n in callee_names), (
+            f"Project template function 'identity' should appear in callees: {callee_names}"
+        )
+
+    def test_get_call_sites_includes_template_mediated(self, tmp_path):
+        """get_call_sites should include template-mediated calls."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        call_sites = az.get_call_sites("factory_shared")
+        targets = [cs["target"] for cs in call_sites]
+        # Should include make_shared with Sensor in name
+        make_shared_targets = [t for t in targets if "make_shared" in t and "Sensor" in t]
+        assert make_shared_targets, (
+            f"get_call_sites should include template-mediated make_shared<Sensor>, "
+            f"got targets: {targets}"
+        )
+
+    def test_workflow_find_callees_to_get_call_sites(self, tmp_path):
+        """Cross-tool chaining: find_callees result → get_call_sites."""
+        az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
+        # Step 1: find_callees for factory_shared
+        callees_result = az.find_callees("factory_shared", project_only=True)
+        assert callees_result["callees"], "factory_shared should have callees"
+        # Step 2: get_call_sites should also work
+        call_sites = az.get_call_sites("factory_shared")
+        assert call_sites, "factory_shared should have call sites"
+        # Both should reference make_shared or Sensor
+        callee_names = [c["qualified_name"] for c in callees_result["callees"]]
+        site_targets = [cs["target"] for cs in call_sites]
+        assert callee_names or site_targets, "At least one tool should return results"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
