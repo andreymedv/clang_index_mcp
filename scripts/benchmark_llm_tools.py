@@ -149,6 +149,144 @@ remember that patterns are anchored (matched against full name).
 When you find what you need, provide a concise answer summarizing the results.\
 """
 
+# Schema B queries: same NL text, mapped to Schema B expected_tools
+QUERIES_SCHEMA_B: list[dict[str, Any]] = [
+    # Category A: Baseline
+    {
+        "id": "A-01",
+        "category": "baseline",
+        "text": "Find the IEventListener class and show its methods",
+        "expected_tools": ["search_codebase", "get_class_info"],
+    },
+    {
+        "id": "A-02",
+        "category": "baseline",
+        "text": "What classes derive from ReporterBase?",
+        "expected_tools": ["search_codebase", "get_class_hierarchy"],
+    },
+    {
+        "id": "A-03",
+        "category": "baseline",
+        "text": ("List all functions defined in catch_session.cpp"),
+        "expected_tools": ["search_codebase"],
+    },
+    # Category B: Qualified name edge cases
+    {
+        "id": "B-01",
+        "category": "qualified_names",
+        "text": ("Get detailed info about the class " "Catch::Matchers::MatcherUntypedBase"),
+        "expected_tools": ["get_class_info"],
+    },
+    {
+        "id": "B-02",
+        "category": "qualified_names",
+        "text": ("Find the GeneratorWrapper class in the " "Catch::Generators namespace"),
+        "expected_tools": ["search_codebase"],
+    },
+    {
+        "id": "B-03",
+        "category": "qualified_names",
+        "text": ("Find all classes in the Catch::Benchmark::Detail namespace"),
+        "expected_tools": ["search_codebase"],
+    },
+    # Category C: Signature/prototype confusion
+    {
+        "id": "C-01",
+        "category": "signature_confusion",
+        "text": ("Find the function void assertionEnded" "(AssertionStats const&)"),
+        "expected_tools": ["search_codebase"],
+    },
+    {
+        "id": "C-02",
+        "category": "signature_confusion",
+        "text": "Where is the method bool match(T const& arg) defined?",
+        "expected_tools": ["search_codebase"],
+    },
+    {
+        "id": "C-03",
+        "category": "signature_confusion",
+        "text": ("Find the function that takes an IConfig reference " "and returns ExecutionPlan"),
+        "expected_tools": ["search_codebase"],
+    },
+    # Category D: Regex pattern issues
+    {
+        "id": "D-01",
+        "category": "regex_patterns",
+        "text": "Find all classes whose name ends with Reporter",
+        "expected_tools": ["search_codebase"],
+    },
+    {
+        "id": "D-02",
+        "category": "regex_patterns",
+        "text": (
+            "Find all interface classes (names starting with I " "followed by uppercase letter)"
+        ),
+        "expected_tools": ["search_codebase"],
+    },
+    {
+        "id": "D-03",
+        "category": "regex_patterns",
+        "text": ("Find all functions containing 'benchmark' in their " "name (case-insensitive)"),
+        "expected_tools": ["search_codebase"],
+    },
+    # Category E: Multi-tool workflows
+    {
+        "id": "E-01",
+        "category": "multi_tool",
+        "text": (
+            "Show me the full class hierarchy from IEventListener "
+            "down to ConsoleReporter, including intermediate classes"
+        ),
+        "expected_tools": [
+            "search_codebase",
+            "get_class_info",
+            "get_class_hierarchy",
+        ],
+    },
+    {
+        "id": "E-02",
+        "category": "multi_tool",
+        "text": (
+            "Find all concrete matcher classes and show what " "MatcherBase they inherit from"
+        ),
+        "expected_tools": ["search_codebase", "get_class_hierarchy"],
+    },
+    {
+        "id": "E-03",
+        "category": "multi_tool",
+        "text": ("Find all places in the codebase that call the " "assertionEnded method"),
+        "expected_tools": ["search_codebase", "find_usage_sites"],
+    },
+]
+
+SYSTEM_PROMPT_SCHEMA_B = """\
+You are a C++ code analysis assistant. You have access to MCP tools that can
+search and analyze an indexed C++ codebase (the Catch2 testing framework).
+
+IMPORTANT: The project is already indexed. Do NOT call set_project_directory.
+Go directly to answering the question using search and query tools.
+
+Available tools:
+- search_codebase: Search for classes, functions, or all symbols by pattern.
+  Use target_type to narrow results. Use output_detail_level to control size.
+- get_class_info: Get full class details (methods, bases, derived).
+- get_class_hierarchy: Get complete inheritance tree.
+- get_functions_called_by: Find what a function calls (outgoing).
+  Use return_format to choose between definitions and call locations.
+- find_usage_sites: Find what calls a function (incoming/callers).
+- trace_execution_path: Find call paths between two functions.
+- find_in_file: Search symbols within a specific file.
+- get_type_alias_info: Resolve type aliases.
+- check_system_status: Check indexing status and system_state.
+- refresh_project: Re-scan for file changes.
+
+Use tools to answer the user's question. Be precise with tool arguments --
+use class/function names, not signatures. For regex patterns, remember that
+patterns are anchored (matched against full name).
+
+When you find what you need, provide a concise answer summarizing the results.\
+"""
+
 SETUP_PROMPT = """\
 You are a C++ code analysis assistant. Call set_project_directory with the \
 path "{project_path}" to index the project. Say "Done" when complete.\
@@ -261,6 +399,7 @@ def extract_record(
     query: dict[str, Any],
     response: dict[str, Any],
     wall_time: float,
+    schema: str = "A",
 ) -> dict[str, Any]:
     """Extract a benchmark record from the LM Studio v1 API response."""
     tool_calls: list[dict[str, Any]] = []
@@ -311,6 +450,7 @@ def extract_record(
 
     return {
         "source": "benchmark",
+        "schema": schema,
         "model_id": model,
         "query_id": query["id"],
         "query_category": query["category"],
@@ -340,6 +480,7 @@ class BenchmarkRunner:
     max_tokens: int = 8192
     temperature: float = 0
     output_path: str = "benchmark_results.jsonl"
+    schema: str = "A"
     _interrupted: bool = field(default=False, init=False, repr=False)
 
     def _write_record(self, record: dict[str, Any]) -> None:
@@ -385,22 +526,24 @@ class BenchmarkRunner:
 
     def _run_single(self, model: str, query: dict[str, Any]) -> dict[str, Any]:
         """Run a single (model, query) pair."""
+        prompt = SYSTEM_PROMPT_SCHEMA_B if self.schema == "B" else SYSTEM_PROMPT
         start = time.time()
         try:
             response = self.client.chat(
                 model=model,
                 user_input=query["text"],
-                system_prompt=SYSTEM_PROMPT,
+                system_prompt=prompt,
                 mcp_url=self.mcp_url,
                 max_output_tokens=self.max_tokens,
                 temperature=self.temperature,
             )
             wall_time = time.time() - start
-            return extract_record(model, query, response, wall_time)
+            return extract_record(model, query, response, wall_time, schema=self.schema)
         except urllib.error.URLError as e:
             wall_time = time.time() - start
             return {
                 "source": "benchmark",
+                "schema": self.schema,
                 "model_id": model,
                 "query_id": query["id"],
                 "query_category": query["category"],
@@ -418,6 +561,7 @@ class BenchmarkRunner:
             wall_time = time.time() - start
             return {
                 "source": "benchmark",
+                "schema": self.schema,
                 "model_id": model,
                 "query_id": query["id"],
                 "query_category": query["category"],
@@ -604,6 +748,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Query LM Studio and list available chat models",
     )
+    parser.add_argument(
+        "--schema",
+        choices=["A", "B"],
+        default="A",
+        help="Tool schema version: A (17 tools, default) or B (11 consolidated tools)",
+    )
     return parser
 
 
@@ -628,14 +778,17 @@ def main() -> None:
     else:
         models = list(DEFAULT_CHAT_MODELS)
 
-    # Resolve queries
-    queries = filter_queries(QUERIES, args.queries, args.categories)
+    # Resolve queries (use Schema B set if --schema B)
+    schema = args.schema
+    base_queries = QUERIES_SCHEMA_B if schema == "B" else QUERIES
+    queries = filter_queries(base_queries, args.queries, args.categories)
     if not queries:
         print("No queries match the specified filters.")
         sys.exit(1)
 
     # --dry-run
     if args.dry_run:
+        print(f"Schema: {schema}")
         cmd_dry_run(models, queries)
         return
 
@@ -679,11 +832,13 @@ def main() -> None:
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         output_path=args.output,
+        schema=schema,
     )
 
     # Register interrupt handler
     signal.signal(signal.SIGINT, runner.handle_interrupt)
 
+    print(f"Schema: {schema} ({'11 consolidated' if schema == 'B' else '17 specialized'} tools)")
     print(f"Benchmark: {len(models)} models x {len(queries)} queries")
     print(f"Output: {args.output}")
     print(f"LM Studio: {args.lm_url}")
