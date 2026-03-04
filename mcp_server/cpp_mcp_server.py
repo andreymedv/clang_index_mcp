@@ -257,6 +257,9 @@ tool_call_logger = None
 # Valid search_scope values
 _VALID_SEARCH_SCOPES = ("project_code_only", "include_external_libraries")
 
+# Tool schema selection: "A" (default, 17 tools) or "B" (consolidated, 11 tools)
+_TOOL_SCHEMA = os.environ.get("TOOL_SCHEMA", "A").upper()
+
 
 def _parse_search_scope(arguments: Dict[str, Any]) -> bool:
     """Convert search_scope string enum to project_only bool.
@@ -279,6 +282,10 @@ server = Server("cpp-analyzer")
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
+    if _TOOL_SCHEMA == "B":
+        from mcp_server.consolidated_tools import list_tools_b
+
+        return list_tools_b()
     return [
         Tool(
             name="search_classes",
@@ -1151,6 +1158,12 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    if _TOOL_SCHEMA == "B":
+        from mcp_server.consolidated_tools import handle_tool_call_b
+
+        result = await handle_tool_call_b(name, arguments)
+        _try_log_tool_call(name, arguments, result)
+        return result
     result = await _handle_tool_call(name, arguments)
     _try_log_tool_call(name, arguments, result)
     return result
