@@ -557,6 +557,24 @@ class BenchmarkRunner:
                 "wall_time_seconds": round(wall_time, 2),
                 "error": f"connection_error: {e}",
             }
+        except (TimeoutError, OSError) as e:
+            wall_time = time.time() - start
+            return {
+                "source": "benchmark",
+                "schema": self.schema,
+                "model_id": model,
+                "query_id": query["id"],
+                "query_category": query["category"],
+                "query_text": query["text"],
+                "expected_tools": query["expected_tools"],
+                "tool_calls": [],
+                "total_tool_calls": 0,
+                "empty_result_count": 0,
+                "final_answer": "",
+                "stats": {},
+                "wall_time_seconds": round(wall_time, 2),
+                "error": f"timeout_error: {e}",
+            }
         except json.JSONDecodeError as e:
             wall_time = time.time() - start
             return {
