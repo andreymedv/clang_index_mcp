@@ -91,8 +91,13 @@ def classify_failures(record: dict[str, Any]) -> list[str]:
         args = tc.get("arguments", {})
         tool = tc.get("tool", "")
 
-        # Check search tools for pattern issues
-        if tool in ("search_classes", "search_functions", "search_symbols"):
+        # Check search tools for pattern issues (both Schema A and B names)
+        if tool in (
+            "search_classes",
+            "search_functions",
+            "search_symbols",
+            "search_codebase",
+        ):
             pattern = args.get("pattern", "")
             if not pattern and not args.get("file_name"):
                 patterns.append("empty_pattern")
@@ -591,6 +596,11 @@ def main() -> None:
         metavar="SUBSTR",
         help="Filter argument dump to model matching substring",
     )
+    parser.add_argument(
+        "--schema",
+        choices=["A", "B"],
+        help="Filter results to specific schema version (A or B)",
+    )
     args = parser.parse_args()
 
     records = load_records(args.input)
@@ -598,7 +608,27 @@ def main() -> None:
         print(f"No records found in {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Loaded {len(records)} records from {args.input}", file=sys.stderr)
+    # Filter by schema version if specified
+    if args.schema:
+        records = [r for r in records if r.get("schema", "A") == args.schema]
+        if not records:
+            print(
+                f"No records for schema {args.schema} in {args.input}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    schema_label = ""
+    schemas_found = {r.get("schema", "A") for r in records}
+    if len(schemas_found) > 1:
+        schema_label = f" (schemas: {', '.join(sorted(schemas_found))})"
+    elif schemas_found != {"A"}:
+        schema_label = f" (schema: {schemas_found.pop()})"
+
+    print(
+        f"Loaded {len(records)} records from {args.input}{schema_label}",
+        file=sys.stderr,
+    )
 
     sections = args.sections or ALL_SECTIONS
 
