@@ -335,7 +335,7 @@ class TestMCPHandlerResponseFormat:
     async def test_get_call_sites_returns_dict_not_list(self, setup_mcp_server):
         """get_call_sites MCP handler must return a dict with 'call_sites' key."""
         srv = setup_mcp_server
-        result = await srv.call_tool("get_call_sites", {"function_name": "single_caller"})
+        result = await srv._handle_tool_call("get_call_sites", {"function_name": "single_caller"})
 
         assert len(result) == 1, "Should return exactly one TextContent"
         payload = json.loads(result[0].text)
@@ -349,7 +349,7 @@ class TestMCPHandlerResponseFormat:
     async def test_get_call_sites_empty_has_metadata(self, setup_mcp_server):
         """get_call_sites with no results should include metadata with suggestions."""
         srv = setup_mcp_server
-        result = await srv.call_tool(
+        result = await srv._handle_tool_call(
             "get_call_sites", {"function_name": "nonexistent_function_xyz"}
         )
 
@@ -364,7 +364,7 @@ class TestMCPHandlerResponseFormat:
     async def test_get_call_path_returns_dict_not_list(self, setup_mcp_server):
         """get_call_path MCP handler must return a dict with 'paths' key."""
         srv = setup_mcp_server
-        result = await srv.call_tool(
+        result = await srv._handle_tool_call(
             "get_call_path",
             {"from_function": "single_caller", "to_function": "nonexistent_xyz"},
         )
@@ -381,7 +381,7 @@ class TestMCPHandlerResponseFormat:
     async def test_get_call_path_empty_has_metadata(self, setup_mcp_server):
         """get_call_path with no paths found should include metadata with suggestions."""
         srv = setup_mcp_server
-        result = await srv.call_tool(
+        result = await srv._handle_tool_call(
             "get_call_path",
             {"from_function": "nonexistent_a", "to_function": "nonexistent_b"},
         )
