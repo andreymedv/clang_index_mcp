@@ -257,9 +257,6 @@ tool_call_logger = None
 # Valid search_scope values
 _VALID_SEARCH_SCOPES = ("project_code_only", "include_external_libraries")
 
-# Tool schema selection: "A" (default, 17 tools) or "B" (consolidated, 11 tools)
-_TOOL_SCHEMA = os.environ.get("TOOL_SCHEMA", "A").upper()
-
 
 def _parse_search_scope(arguments: Dict[str, Any]) -> bool:
     """Convert search_scope string enum to project_only bool.
@@ -282,686 +279,9 @@ server = Server("cpp-analyzer")
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
-    if _TOOL_SCHEMA == "B":
-        from mcp_server.consolidated_tools import list_tools_b
+    from mcp_server.consolidated_tools import list_tools_b
 
-        return list_tools_b()
-    return [
-        Tool(
-            name="search_classes",
-            description="Search for C++ class and struct definitions by name pattern. **Use this when**: user wants to find/locate a class, find where it's defined, or search by partial name. **Don't use** get_class_info (which needs exact name and returns full structure, not location).\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: qualified_name (fully qualified with namespaces, e.g. 'app::ui::View'), namespace (namespace portion, e.g. 'app::ui'), kind (CLASS_DECL/STRUCT_DECL), file, line, is_project, base_classes (present by default; omit with include_base_classes=false), template_kind (null for non-templates; 'class_template'/'partial_specialization'/'full_specialization' for templates), template_parameters, specialization_of (qualified name of primary template, for specializations), start_line, end_line (complete line range), header_file (if declared in header), header_start_line, header_end_line, brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null). Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Supports regex patterns.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side instead of making more tool calls: e.g., to find only structs, filter by `kind='STRUCT_DECL'`. To find base classes, check `base_classes` array (or use get_class_info for full inheritance info). To find templates, filter by `template_kind != null`. To find specializations, filter by `template_kind in ('full_specialization', 'partial_specialization')`.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": (
-                            'Class/struct name to search for. **Empty string "" matches ALL classes** - '
-                            'useful with file_name filter (e.g., pattern="", file_name="network.h" '
-                            "returns all classes in that file).\n\n"
-                            "**C++ Note**: Unlike Java, C++ has NO enforced naming convention linking class "
-                            "names to file names. A class 'UserManager' could be in user_manager.h, users.h, "
-                            "or any file. Always search by class name first, then check the 'file' field in "
-                            "results.\n\n"
-                            "**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n"
-                            "1. **Unqualified (no ::)**: Matches class in any namespace\n"
-                            "   - Example: 'Handler' → matches global::Handler, app::ui::Handler, "
-                            "legacy::ui::Handler\n\n"
-                            "2. **Qualified Suffix (with ::)**: Component-based suffix matching\n"
-                            "   - Example: 'ui::Handler' → matches app::ui::Handler, legacy::ui::Handler\n"
-                            "   - Example: 'app::ui::Handler' → matches only app::ui::Handler\n"
-                            "   - Note: Does NOT match 'myui::Handler' (requires component boundary)\n\n"
-                            "3. **Exact Global Match (leading ::)**: Matches only global namespace\n"
-                            "   - Example: '::Handler' → matches only global::Handler (not app::ui::Handler)\n\n"
-                            "4. **Regex (with metacharacters)**: Full regex matching\n"
-                            "   - Example: 'app::.*::Handler' → matches app::ui::Handler, app::core::Handler\n"
-                            "   - Example: '.*Manager.*' → matches anything containing 'Manager'\n\n"
-                            "**Tip**: Use the 'namespace' parameter for exact namespace filtering (e.g., "
-                            "namespace='ui' returns only classes in exactly the 'ui' namespace)."
-                        ),
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": "Controls which files are searched. 'project_code_only' (default) searches only project source files, excluding external dependencies (vcpkg, system headers, third-party). Set to 'include_external_libraries' when user mentions: external, stdlib, third-party, boost, Qt internals, system headers, 'all code', or does not restrict scope.",
-                        "default": "project_code_only",
-                    },
-                    "file_name": {
-                        "type": "string",
-                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'network.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Filter results to classes in the specified namespace. **Supports "
-                            "partial namespace matching** at :: boundaries (case-sensitive). "
-                            "'builders' matches 'myapp::builders', 'app' matches 'myapp::app',"
-                            "'app::ui' returns classes in any namespace ending with '::app::ui'. "
-                            "'' (empty string) returns only global namespace classes. "
-                            "**Use this to disambiguate** when multiple namespaces have the same class name."
-                        ),
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": (
-                            "Optional: Maximum number of results to return. Use this to limit large result "
-                            "sets. When specified, response includes metadata with 'returned' and "
-                            "'total_matches' counts for pagination awareness."
-                        ),
-                        "minimum": 1,
-                    },
-                    "include_base_classes": {
-                        "type": "boolean",
-                        "description": (
-                            "When true (default), each result includes a base_classes list showing "
-                            "direct parent classes. Set to false to reduce response size when inheritance "
-                            "info is not needed (e.g., when only searching for class locations)."
-                        ),
-                        "default": True,
-                    },
-                },
-                "required": ["pattern"],
-            },
-        ),
-        Tool(
-            name="search_functions",
-            description="Search for C++ functions and methods by name pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns list with: prototype (full C++ declaration, e.g. 'public virtual void app::Handler::process(int) const = 0' — encodes access, qualifiers, return type, qualified name, params in one readable string), qualified_name (for tool chaining, e.g. 'app::Database::save'), namespace, kind (FUNCTION_DECL/CXX_METHOD/CONSTRUCTOR/DESTRUCTOR), parent_class, is_project, template_kind, template_parameters, specialization_of, location objects (declaration/definition with file/line/start_line/end_line), brief, doc_comment. Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. Searches both standalone functions and class methods. Supports regex patterns.\n\n**POST-FILTERING TIP:** The prototype field makes filtering intuitive: scan for 'virtual', 'const', '= 0', 'static' in prototype to identify method kinds. Use `signature_pattern` to filter by parameter types or return types (e.g., signature_pattern='std::string' finds functions taking or returning std::string — matches against the prototype string). Add `include_attributes=true` to get a machine-filterable `attributes` list (['virtual', 'const', 'definition', etc.]) for programmatic filtering without string parsing.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": (
-                            'Function/method name to search for. **Empty string "" matches ALL functions** - '
-                            'useful with file_name filter (e.g., pattern="", file_name="network.cpp" '
-                            "returns all functions in that file).\n\n"
-                            "**C++ Note**: Unlike Java, C++ has NO enforced naming convention. Functions can "
-                            "be declared/defined in any file, not necessarily matching their name or class.\n\n"
-                            "**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n"
-                            "1. **Unqualified (no ::)**: Matches function/method in any namespace or class\n"
-                            "   - Example: 'process' → matches global::process(), app::process(), "
-                            "Handler::process()\n\n"
-                            "2. **Qualified Suffix (with ::)**: Component-based suffix matching\n"
-                            "   - Example: 'Handler::process' → matches app::Handler::process, "
-                            "legacy::Handler::process\n"
-                            "   - Example: 'app::Handler::process' → matches only app::Handler::process\n"
-                            "   - Works for namespaces: 'app::init' → matches functions in app namespace\n\n"
-                            "3. **Exact Global Match (leading ::)**: Matches only global namespace functions\n"
-                            "   - Example: '::main' → matches only global::main (not app::main)\n\n"
-                            "4. **Regex (with metacharacters)**: Full regex matching\n"
-                            "   - Example: 'get.*' → matches getValue, getData, getConfig\n"
-                            "   - Example: '.*Test.*' → matches anything containing 'Test'\n\n"
-                            "**Tip**: Use the 'namespace' parameter for exact namespace/class filtering (e.g., "
-                            "namespace='app::Handler' returns only methods of app::Handler class)."
-                        ),
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": "Controls which files are searched. 'project_code_only' (default) searches only project source files, excluding external dependencies (vcpkg, system headers, third-party). Set to 'include_external_libraries' when user mentions: external, stdlib, third-party, boost, Qt internals, system headers, 'all code', or does not restrict scope.",
-                        "default": "project_code_only",
-                    },
-                    "class_name": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Only populate if user specifically mentions a class (e.g., 'find "
-                            "process method in Handler class'). Limits search to only methods belonging to "
-                            "this specific class. **Leave empty** (which is typical) to search all functions "
-                            "and methods across the codebase."
-                        ),
-                    },
-                    "file_name": {
-                        "type": "string",
-                        "description": "Optional: Filter results to only symbols defined in files matching this name. Works with any file type (.h, .cpp, .cc, etc.). Accepts multiple formats: absolute path, relative to project root, or filename only (e.g., 'network.h', 'utils.cpp'). Uses 'endswith' matching, so partial paths work if they uniquely identify the file.",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Filter results to functions/methods in the specified namespace. "
-                            "**Supports partial namespace matching** at :: boundaries (case-sensitive). "
-                            "For methods, matches namespace + class. "
-                            "'Handler' matches 'app::Handler', 'app' matches 'myapp::app', "
-                            "'app::Handler' matches 'org::app::Handler'. "
-                            "'' (empty string) returns only global namespace functions. "
-                            "**Use this to disambiguate** when multiple namespaces have the same function."
-                        ),
-                    },
-                    "signature_pattern": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Filter to functions whose prototype contains this substring "
-                            "(case-insensitive). Matches against the full prototype string which includes "
-                            "access modifier, qualifiers, return type, qualified name, and parameters. "
-                            "Examples: 'std::string' finds functions with std::string in params or "
-                            "return type; 'const' finds const-qualified methods; 'void' finds "
-                            "void-returning functions; 'virtual' finds virtual methods. "
-                            "This is plain substring match — special characters like *, &, <, > are matched literally."
-                        ),
-                    },
-                    "include_attributes": {
-                        "type": "boolean",
-                        "description": (
-                            "Optional (default false): When true, include a machine-filterable 'attributes' "
-                            "list in each result (e.g. ['virtual', 'const', 'definition']). "
-                            "Useful for programmatic filtering without parsing the prototype string. "
-                            "The prototype field already encodes all this information visually; "
-                            "set this to true only when you need reliable attribute-based filtering."
-                        ),
-                        "default": False,
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": (
-                            "Optional: Maximum number of results to return. Use this to limit large result "
-                            "sets. When specified, response includes metadata with 'returned' and "
-                            "'total_matches' counts for pagination awareness."
-                        ),
-                        "minimum": 1,
-                    },
-                },
-                "required": ["pattern"],
-            },
-        ),
-        Tool(
-            name="get_class_info",
-            description="Get comprehensive information about a specific class: methods, base classes, direct derived classes, location, documentation, and virtual/abstract indicators. **Use this when**: user wants to see class methods, API, or inheritance neighborhood. **Requires exact class name** - if you don't know exact name, use search_classes first.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: name, kind, base_classes, derived_classes (direct project-only subclasses — each with name, qualified_name, kind, location), methods (sorted by line, each with prototype, access, location, template_kind, is_virtual, is_pure_virtual, is_const, is_static, is_definition, brief, doc_comment), is_project, template_kind (null for non-templates), location objects (declaration/definition), brief, doc_comment. Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments.\n\n**AMBIGUITY HANDLING:** If multiple classes have the same simple name (e.g., 'SomeClass' exists in both 'ns1::SomeClass' and 'ns2::SomeClass'), returns an ambiguity response: {error, is_ambiguous: true, matches: [{name, qualified_name, namespace, kind, file, line}], suggestion}. Use a qualified name to disambiguate.\n\n**EDGE CASES:**\n- `methods` array: May be empty for pure data classes or forward declarations.\n- `derived_classes`: Only includes DIRECT (one-level) subclasses from project files. For all descendants, use get_class_hierarchy.\n\n**POST-FILTERING TIP:** Methods include rich metadata. Filter client-side: e.g., to find abstract interface methods, filter by `is_pure_virtual=true`. To find public API only, filter by `access='public'`. To find implementations (not declarations), filter by `is_definition=true`.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "class_name": {
-                        "type": "string",
-                        "description": "Exact name of the class to analyze (case-sensitive, must match exactly)",
-                    }
-                },
-                "required": ["class_name"],
-            },
-        ),
-        Tool(
-            name="get_function_signature",
-            description="Get formatted signature strings for function(s) with the exact name specified. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a list of human-readable signature strings showing return type, function name with parameter types and names, and class scope qualifier (e.g., 'void ClassName::functionName(int x, const std::string &y)' or 'double functionName(double z)'). Includes return types, parameter names (when available from source), and const/noexcept qualifiers. If multiple overloads exist, returns all of them. Use this to quickly see full function signatures. Returns formatted strings only, not structured metadata - use search_functions if you need file locations, line numbers, or complete metadata.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "function_name": {
-                        "type": "string",
-                        "description": "Exact name of the function/method to look up (case-sensitive). Will return signature strings for all overloads if multiple exist.",
-                    },
-                    "class_name": {
-                        "type": "string",
-                        "description": "If specified, only returns method signatures from this specific class, ignoring standalone functions and methods from other classes. Leave empty to get signatures for all matching functions across the codebase.",
-                    },
-                },
-                "required": ["function_name"],
-            },
-        ),
-        Tool(
-            name="get_type_alias_info",
-            description="Get comprehensive type alias information for a C++ type. Resolves type aliases (using/typedef) bidirectionally and detects ambiguous type names. **Use this when**: user wants to know if a type is an alias, find the real type behind an alias, or find all aliases for a canonical type.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\n**Pattern Matching** (same as search_classes):\n- Unqualified: 'Widget' → matches Widget in any namespace\n- Qualified: 'ui::Widget' → component-based suffix matching\n- Exact: '::Widget' → matches only global namespace\n\n**Returns** (success case): canonical_type (the real type name), qualified_name (fully qualified canonical type), namespace, file (where canonical type is defined), line, input_was_alias (true if input was an alias), is_ambiguous (false), aliases (array of all aliases pointing to this type, each with name, qualified_name, file, line).\n\n**Returns** (ambiguous case): error message, is_ambiguous (true), matches (array of all matching types with canonical_type, qualified_name, namespace, file, line), suggestion ('Use qualified name').\n\n**Returns** (not found): error message, canonical_type (null), aliases (empty array).\n\n**Example 1** - Query canonical type:\n  Input: 'ui::Widget'\n  Output: canonical_type='ui::Widget', aliases=[{name='WidgetAlias', file='types.h', line=42}], input_was_alias=false\n\n**Example 2** - Query alias:\n  Input: 'WidgetAlias'\n  Output: canonical_type='ui::Widget', aliases=[{name='WidgetAlias'}, {name='WPtr'}], input_was_alias=true\n\n**Example 3** - Ambiguous:\n  Input: 'Widget' (exists in multiple namespaces)\n  Output: error='Ambiguous type name', is_ambiguous=true, matches=[{qualified_name='Widget'}, {qualified_name='ui::Widget'}]",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "type_name": {
-                        "type": "string",
-                        "description": "Type name to query (unqualified, partially qualified, or fully qualified). Examples: 'Widget', 'ui::Widget', '::ui::Widget'",
-                    }
-                },
-                "required": ["type_name"],
-            },
-        ),
-        Tool(
-            name="search_symbols",
-            description="Unified search across multiple C++ symbol types (classes, structs, functions, methods) using a single pattern. **IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns a dictionary with two keys: 'classes' (array of class/struct results) and 'functions' (array of function/method results). Each result includes name, qualified_name (fully qualified e.g. 'ns::Class'), namespace, kind, file location, line number, template_kind (null for non-templates; set to kind of template for templates and specializations), complete line ranges (start_line, end_line), header location (header_file, header_start_line, header_end_line), brief (first line of documentation or null), doc_comment (full documentation comment up to 4000 chars or null), and other metadata. Documentation extracted from Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments. This is a convenient alternative to calling search_classes and search_functions separately. Use symbol_types to filter which categories are populated.\n\n**POST-FILTERING TIP:** Results include full metadata. Filter client-side: e.g., to find only implementations, filter functions by `is_definition=true`. To find only structs in classes array, filter by `kind='STRUCT_DECL'`. To find virtual methods, filter functions by `is_virtual=true`.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": (
-                            'Symbol name pattern to search for. **Empty string "" matches ALL symbols** of '
-                            "the specified types - useful for listing all classes or functions in a file.\n\n"
-                            "**C++ Note**: C++ has NO enforced naming conventions. Symbols can be in any file, "
-                            "regardless of their name.\n\n"
-                            "**Pattern Matching Modes** (case-insensitive, validated in testing):\n\n"
-                            "1. **Unqualified (no ::)**: Matches symbol in any namespace or class\n"
-                            "   - Example: 'Config' → matches global::Config, app::Config, Handler::Config\n\n"
-                            "2. **Qualified Suffix (with ::)**: Component-based suffix matching\n"
-                            "   - Example: 'app::Config' → matches app::Config, legacy::app::Config\n"
-                            "   - Works for classes and methods: 'Handler::process' → matches methods too\n\n"
-                            "3. **Exact Global Match (leading ::)**: Matches only global namespace\n"
-                            "   - Example: '::Config' → matches only global::Config\n\n"
-                            "4. **Regex (with metacharacters)**: Full regex matching\n"
-                            "   - Example: '.*Config.*' → matches anything containing 'Config'\n"
-                            "   - Example: 'get.*|set.*' → matches all getters and setters\n\n"
-                            "**Tip**: Use the 'namespace' parameter for exact namespace filtering across all "
-                            "symbol types."
-                        ),
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": "Controls which files are searched. 'project_code_only' (default) searches only project source files, excluding external dependencies. Set to 'include_external_libraries' when user mentions: external, stdlib, third-party, boost, Qt internals, system headers, 'all code', or does not restrict scope.",
-                        "default": "project_code_only",
-                    },
-                    "symbol_types": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "enum": ["class", "struct", "function", "method"],
-                        },
-                        "description": "Filter results to specific symbol types. Options: 'class' (class definitions), 'struct' (struct definitions), 'function' (standalone functions), 'method' (class member functions). If omitted, both 'classes' and 'functions' arrays will be populated.",
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Filter results to symbols in the specified namespace. "
-                            "**Supports partial namespace matching** at :: boundaries (case-sensitive). "
-                            "For methods, matches namespace + class. "
-                            "'Handler' matches 'app::Handler', 'app' matches 'myapp::app'. "
-                            "'' (empty string) returns only global namespace symbols. "
-                            "**Use this to disambiguate** when multiple namespaces have the same symbol."
-                        ),
-                    },
-                    "signature_pattern": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Filter to functions whose signature contains this substring "
-                            "(case-insensitive). Only applies to function/method results, not classes. "
-                            "Matches against the full human-readable signature. "
-                            "Examples: 'std::string' finds functions with std::string in params or "
-                            "return type; 'void' finds void-returning functions. This is plain "
-                            "substring match — special characters like *, &, <, > are matched literally."
-                        ),
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": (
-                            "Optional: Maximum number of results to return (across all symbol types). "
-                            "Use this to limit large result sets. When specified, response includes "
-                            "metadata with 'returned' and 'total_matches' counts for pagination awareness."
-                        ),
-                        "minimum": 1,
-                    },
-                },
-                "required": ["pattern"],
-            },
-        ),
-        Tool(
-            name="find_in_file",
-            description=(
-                "Search for C++ symbols (classes, functions, methods) within a specific source file "
-                "or files matching a glob pattern.\n\n"
-                "**IMPORTANT:** If called during indexing, results will be incomplete. Check response "
-                "metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\n"
-                "**RESPONSE FORMAT:** Returns dict with:\n"
-                "- `results`: Array of matching symbols\n"
-                "- `matched_files`: Files that were searched (useful for glob patterns)\n"
-                "- `suggestions`: Similar file paths when no match found (helps fix typos)\n"
-                "- `message`: Human-readable status message\n\n"
-                "**GLOB PATTERN SUPPORT:** Use glob patterns to search across multiple files:\n"
-                "- `**/tests/**/*.cpp` - all .cpp files under any tests directory\n"
-                "- `src/*.h` - all headers directly in src/\n"
-                "- `**/handler*` - files containing 'handler' in any path\n\n"
-                "**SUGGESTIONS:** When file not found, response includes `suggestions` array with "
-                "similar file paths to help correct typos or find the right file."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": (
-                            "Path to file(s) to search. **Supported formats:**\n\n"
-                            "1. **Absolute path:** `/full/path/to/file.cpp`\n"
-                            "2. **Relative path:** `src/main.cpp` (from project root)\n"
-                            "3. **Filename only:** `main.cpp` (matches any file with this name)\n"
-                            "4. **Glob pattern:** `**/tests/**/*.cpp`, `src/*.h`\n\n"
-                            "**Examples:**\n"
-                            "- `handler.cpp` - exact file\n"
-                            "- `**/tests/**/*.cpp` - all test files\n"
-                            "- `src/core/*.h` - headers in core directory\n\n"
-                            "If no match found, `suggestions` array will contain similar paths."
-                        ),
-                    },
-                    "pattern": {
-                        "type": "string",
-                        "description": (
-                            "Symbol name pattern to search for within the file(s). "
-                            '**Empty string "" matches ALL symbols** - useful for listing all '
-                            "classes/functions in a file.\n\n"
-                            "**Pattern matching modes** (case-insensitive):\n"
-                            "1. **Unqualified** (no ::): matches symbol in any namespace\n"
-                            "2. **Qualified suffix**: 'ns::Symbol' - component-based suffix match\n"
-                            "3. **Exact match**: '::Symbol' - global namespace only (leading ::)\n"
-                            "4. **Regex**: uses regex with metacharacters\n\n"
-                            "**Examples:** 'Handler', 'ui::Handler', '::Handler', '.*Manager.*'"
-                        ),
-                    },
-                },
-                "required": ["file_path", "pattern"],
-            },
-        ),
-        Tool(
-            name="set_project_directory",
-            description="**REQUIRED FIRST STEP**: Initialize the analyzer with your C++ project directory. Must be called before any other tools. Indexes all C++ source/header files (.cpp, .h, .hpp, etc.) in the directory and subdirectories, parsing with libclang to build searchable database of classes, functions, and relationships.\n\nSupports incremental analysis: If a valid cache exists and auto_refresh=true (default), will automatically detect and re-analyze only changed files. Different config_file paths create separate cache directories, enabling multi-configuration workflows.\n\nWARNING: Indexing large projects takes time. Can be called multiple times to switch projects (reinitializes each time). Returns count of indexed files.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "project_path": {
-                        "type": "string",
-                        "description": "Absolute path to the root directory of your C++ project. Must be a valid, existing directory. All subsequent analysis operations will be performed on this project.",
-                    },
-                    "config_file": {
-                        "type": "string",
-                        "description": "Optional: Path to configuration file (.cpp-analyzer-config.json). When provided, creates a unique cache for this project+config combination, enabling multiple configurations for the same source directory.",
-                    },
-                    "auto_refresh": {
-                        "type": "boolean",
-                        "description": "When true (default), automatically performs incremental analysis on cache load to detect and re-analyze changed files. Set to false to skip automatic refresh and use cached data as-is.",
-                        "default": True,
-                    },
-                },
-                "required": ["project_path"],
-            },
-        ),
-        Tool(
-            name="refresh_project",
-            description=(
-                "Manually refresh the project index to detect and re-parse files that have been "
-                "modified, added, or deleted since the last index. The analyzer does NOT "
-                "automatically detect file changes - you must call this tool whenever source files "
-                "are modified (whether by you, external editor, git checkout, build system, or any "
-                "other means) to ensure the index reflects the current state of the codebase.\n\n"
-                "Supports two modes:\n"
-                "- 'incremental' (default): Analyzes only changed files using dependency tracking\n"
-                "- 'full': Re-analyzes ALL files (5-10 min on large projects). Only use after "
-                "major config changes or with explicit user permission.\n\n"
-                "**IMPORTANT:** ALWAYS use 'incremental' (default) unless absolutely necessary. "
-                "Incremental refresh is 30-300x faster and reliable.\n\n"
-                "**Non-blocking operation:** Refresh runs in the background. This tool returns "
-                "immediately while the refresh continues. Use 'check_system_status' to monitor "
-                "progress. Tools remain available during refresh and will return results based on "
-                "the current cache state."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "refresh_mode": {
-                        "type": "string",
-                        "enum": ["incremental", "full"],
-                        "description": (
-                            "Refresh mode. 'incremental' (default): detects changes and "
-                            "re-analyzes only affected files. 'full': re-analyzes ALL files "
-                            "(5-10 minutes for 5000+ files). NEVER use 'full' without explicit "
-                            "user permission."
-                        ),
-                        "default": "incremental",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="check_system_status",
-            description="Get combined server diagnostics and indexing status. Returns JSON with: indexing state (uninitialized/initializing/indexing/indexed/refreshing/error), progress (files indexed/total, completion percentage, current file, ETA), enabled features (call_graph, compile_commands), and index statistics (parsed files, class/function counts). Use to check if indexing is complete, monitor progress, or verify server configuration.",
-            inputSchema={"type": "object", "properties": {}, "required": []},
-        ),
-        Tool(
-            name="wait_for_indexing",
-            description="Block until indexing completes or timeout is reached. Use this when you need complete results and want to wait for indexing to finish. Returns success when indexing completes, or timeout error if it takes too long. Useful after set_project_directory on large projects to ensure queries return complete data.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "timeout": {
-                        "type": "number",
-                        "description": "Maximum time to wait in seconds (default: 60.0). Set higher for large projects.",
-                        "default": 60.0,
-                    }
-                },
-                "required": [],
-            },
-        ),
-        Tool(
-            name="get_class_hierarchy",
-            description="Get the complete inheritance graph for a C++ class as a flat adjacency list. BFS from the queried class explores ALL edges in both directions (upward to ancestors, downward to descendants) from every discovered node, returning the entire connected component. Diamond inheritance and multiple inheritance are handled cleanly — no duplicated nodes. **Use this when** user asks for: 'all subclasses/descendants of X', 'all classes inheriting from X', 'complete inheritance tree', 'full hierarchy of X', 'what does X inherit from (all levels)'. **Note:** get_class_info already returns direct base/derived classes — use get_class_hierarchy for full transitive closure.\n\nReturns: {queried_class: qualified name of the queried class, classes: flat dict keyed by qualified name where each entry has {name, qualified_name, kind, is_project, base_classes: [qualified names], derived_classes: [qualified names]}}. Unresolvable base classes (external libs, template-dependent types) are included with is_unresolved or is_dependent_type flags. If not found, returns {'error': 'Class <name> not found'}.\n\n**CAPS:** Result is limited to max_nodes (default 200) nodes and optionally max_depth BFS levels. When capped, response includes truncated=true and nodes_returned. Increase max_nodes or set max_depth to control scope.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "class_name": {
-                        "type": "string",
-                        "description": "Name of the class to analyze. The result will show this class's complete inheritance hierarchy in both directions (ancestors and descendants).",
-                    },
-                    "max_nodes": {
-                        "type": "integer",
-                        "description": "Maximum number of nodes to include in the result (default 200). Prevents response explosion for widely-used base classes like QObject or std::exception. Set higher if you need the full hierarchy of a large class family.",
-                        "default": 200,
-                    },
-                    "max_depth": {
-                        "type": "integer",
-                        "description": "Maximum BFS depth from the queried class (default: unlimited). Depth 0 = queried class only, depth 1 = direct parents/children, depth 2 = grandparents/grandchildren, etc. Useful when you only need nearby relatives.",
-                    },
-                },
-                "required": ["class_name"],
-            },
-        ),
-        Tool(
-            name="get_incoming_calls",
-            description=(
-                "Find all functions that call the specified function. Shows INCOMING references — "
-                "what code depends on this function.\n\n"
-                "**DIRECTION: INCOMING (callers → target)**\n\n"
-                "**USE THIS WHEN:**\n"
-                "- User asks 'what calls X?', 'where is X invoked?', 'who calls X?', "
-                "'show callers of X', 'find usages of X'\n"
-                "- Impact analysis: what code depends on this function?\n"
-                "- Refactoring: what breaks if I change this function?\n\n"
-                "**DO NOT USE THIS WHEN (use get_outgoing_calls or get_call_sites instead):**\n"
-                "- User asks 'what does X call?', 'show calls inside X'\n"
-                "- You want to see what functions X depends on\n\n"
-                "**Returns:**\n"
-                "- callers: List of caller function info (name, kind, file, line where caller is defined, "
-                "signature, parent_class, is_project, start_line, end_line)\n"
-                "- call_sites: Array of EXACT call locations with file, line, column where each call occurs, "
-                "plus caller name/signature for context\n"
-                "- total_call_sites: Count of all call sites found\n\n"
-                "The call_sites array provides LINE-LEVEL PRECISION - exact file:line:column where the "
-                "target function is called.\n\n"
-                "**Example:**\n"
-                "  get_incoming_calls('processData') → returns all functions that CALL processData, "
-                "with exact locations of each call"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "function_name": {
-                        "type": "string",
-                        "description": (
-                            "Name of the TARGET function you want to find callers for - "
-                            "the function being called by other code."
-                        ),
-                    },
-                    "class_name": {
-                        "type": "string",
-                        "description": "If the target is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
-                        "default": "",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": (
-                            "Optional: Maximum number of caller results to return. Use this to limit large "
-                            "result sets. When specified, response includes metadata with 'returned' and "
-                            "'total_matches' counts for pagination awareness."
-                        ),
-                        "minimum": 1,
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": "Controls which callers are returned. 'project_code_only' (default) returns only callers from project source files. Set to 'include_external_libraries' to also include callers from external dependencies (returned as {\"qualified_name\": \"...\", \"is_project\": false} with an approximate name decoded from the symbol USR when no indexed metadata is available). Set this when user mentions: external, stdlib, third-party, 'all callers', or does not restrict scope.",
-                        "default": "project_code_only",
-                    },
-                },
-                "required": ["function_name"],
-            },
-        ),
-        Tool(
-            name="get_outgoing_calls",
-            description=(
-                "Find all functions that are called BY the specified function. Shows OUTGOING "
-                "dependencies — what other code this function relies on.\n\n"
-                "**DIRECTION: OUTGOING (source → called functions)**\n\n"
-                "**USE THIS WHEN:**\n"
-                "- User asks 'what does X call?', 'what functions does X invoke?', "
-                "'show dependencies of X'\n"
-                "- Understanding what a function depends on\n"
-                "- Analyzing code flow or execution paths\n\n"
-                "**DO NOT USE THIS WHEN (use get_incoming_calls instead):**\n"
-                "- User asks 'what calls X?', 'where is X invoked?'\n"
-                "- You want to find code that depends ON this function\n\n"
-                "**Returns:** List of callee functions with: name, kind, file, line (where callee is DEFINED), "
-                "signature, parent_class, is_project, start_line, end_line, header_file info.\n\n"
-                "**LIMITATION:** The line numbers indicate where each CALLEE IS DEFINED, not where it's called "
-                "within the source function. For exact call site locations, use get_call_sites instead.\n\n"
-                "**DIFFERENCE FROM get_call_sites:**\n"
-                "- Both show what X calls (outgoing direction)\n"
-                "- get_outgoing_calls: Returns where called functions are DEFINED\n"
-                "- get_call_sites: Returns exact CALL LOCATIONS within X's body\n\n"
-                "**Example:**\n"
-                "  get_outgoing_calls('processData') → returns list of functions that processData calls, "
-                "with each function's definition location"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "function_name": {
-                        "type": "string",
-                        "description": (
-                            "Name of the SOURCE function to analyze - the function doing the calling. "
-                            "Returns what this function calls, not what calls it."
-                        ),
-                    },
-                    "class_name": {
-                        "type": "string",
-                        "description": "If the source is a class method, specify the class name here to disambiguate between methods with the same name in different classes. Leave empty to search across both standalone functions and all class methods with the given name.",
-                        "default": "",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": (
-                            "Optional: Maximum number of callee results to return. Use this to limit large "
-                            "result sets. When specified, response includes metadata with 'returned' and "
-                            "'total_matches' counts for pagination awareness."
-                        ),
-                        "minimum": 1,
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": "Controls which callees are returned. 'project_code_only' (default) returns only callees from project source files, excluding calls to standard library, third-party, or system code. Set to 'include_external_libraries' to include all callees (returned as {\"qualified_name\": \"...\", \"is_project\": false} with an approximate name decoded from the symbol USR when no indexed metadata is available). Set this when user mentions: external, stdlib, third-party, 'all callees', or does not restrict scope.",
-                        "default": "project_code_only",
-                    },
-                },
-                "required": ["function_name"],
-            },
-        ),
-        Tool(
-            name="get_call_sites",
-            description=(
-                "**DIRECTION: OUTGOING** - Shows what calls are made WITHIN a function's body, "
-                "NOT where the function itself is called.\n\n"
-                "**USE THIS WHEN:**\n"
-                "- User asks 'what does X call?', 'show calls inside X', 'what functions does X invoke?'\n"
-                "- You need exact file:line:column for call statements within a function body\n"
-                "- You want to understand a function's dependencies with precise locations\n\n"
-                "**DO NOT USE THIS WHEN (use get_incoming_calls instead):**\n"
-                "- User asks 'what calls X?', 'where is X invoked?', 'show callers of X', "
-                "'what invokes X?', 'places where X is called'\n"
-                "- You want to find code that DEPENDS ON a function\n\n"
-                "**DIFFERENCE FROM get_outgoing_calls:**\n"
-                "- Both show what X calls (outgoing/forward direction)\n"
-                "- get_outgoing_calls: Returns callee DEFINITIONS (where called functions are defined)\n"
-                "- get_call_sites: Returns CALL LOCATIONS (exact file:line:column of each call "
-                "statement within X's body)\n\n"
-                "**Returns** array of call sites, each with:\n"
-                "- target: Name of called function\n"
-                "- target_signature: Full signature of called function\n"
-                "- file: Source file containing the call\n"
-                "- line: Exact line number of call\n"
-                "- column: Column position of call\n"
-                "- target_file: File where called function is defined\n\n"
-                "**Example:**\n"
-                "  get_call_sites('processData') → returns all function calls made INSIDE "
-                "processData's body\n"
-                "  get_incoming_calls('processData') → returns all places WHERE processData is called"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "function_name": {
-                        "type": "string",
-                        "description": (
-                            "Name of the SOURCE function to analyze - the function whose BODY "
-                            "you want to examine for outgoing calls. NOT the function you're "
-                            "looking for callers of (use get_incoming_calls for that)."
-                        ),
-                    },
-                    "class_name": {
-                        "type": "string",
-                        "description": "If the source is a class method, specify the class name to disambiguate. Leave empty for standalone functions.",
-                        "default": "",
-                    },
-                },
-                "required": ["function_name"],
-            },
-        ),
-        Tool(
-            name="get_files_containing_symbol",
-            description="Get list of all files that contain references to or define a symbol. **Phase 1: LLM Integration** - Enables targeted code search by narrowing down which files to examine. Returns the file paths where the symbol is defined and referenced, enabling efficient integration with filesystem and ripgrep MCP tools.\n\n**Use this when**: You need to find all files that use a class or function, want to perform targeted grep searches, or need to understand symbol usage scope across the project.\n\n**IMPORTANT:** If called during indexing, results will be incomplete. Check response metadata 'status' field. Use 'wait_for_indexing' first if you need guaranteed complete results.\n\nReturns: symbol name, kind, list of file paths (sorted), and total reference count. File list includes definition file, header file (if separate), and files that reference/call the symbol.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "symbol_name": {
-                        "type": "string",
-                        "description": "Name of the symbol (class, function, method) to find references for. Must be exact name (case-sensitive).",
-                    },
-                    "symbol_kind": {
-                        "type": "string",
-                        "enum": ["class", "function", "method"],
-                        "description": "Optional: Type of symbol to disambiguate if multiple symbols share the same name. Leave empty to search all symbol types.",
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": "Controls which files are included. 'project_code_only' (default) includes only project source files, excluding external dependencies (vcpkg, system headers, third-party). Set to 'include_external_libraries' to include all files including dependencies. Set this when user mentions: external, stdlib, third-party, 'all files', or does not restrict scope.",
-                        "default": "project_code_only",
-                    },
-                },
-                "required": ["symbol_name"],
-            },
-        ),
-        Tool(
-            name="get_call_path",
-            description="Find execution paths through the call graph from a starting function to a target function using BFS. A call path is a sequence of function calls connecting two functions (e.g., main -> init -> setup -> loadConfig). Returns ALL possible paths up to max_depth, showing intermediate function chains.\n\nWARNING: In highly connected codebases, can return hundreds/thousands of paths. Use max_depth conservatively. Returns empty array if no path exists within max_depth.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "from_function": {
-                        "type": "string",
-                        "description": "Name of the starting/source function (where the execution path begins)",
-                    },
-                    "to_function": {
-                        "type": "string",
-                        "description": "Name of the target/destination function (where the execution path should end)",
-                    },
-                    "max_depth": {
-                        "type": "integer",
-                        "description": "Maximum number of intermediate function calls to search through (default: 10). Higher values find longer paths but exponentially increase computation time and result count in highly connected graphs. Keep this low (5-15) for large codebases.",
-                        "default": 10,
-                    },
-                },
-                "required": ["from_function", "to_function"],
-            },
-        ),
-    ]
+    return list_tools_b()
 
 
 def check_query_policy(tool_name: str) -> tuple[bool, str]:
@@ -1013,13 +333,13 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
             message = (
                 f"Query blocked: Indexing in progress ({completion:.1f}% complete, "
                 f"{indexed:,}/{total:,} files). Waiting for indexing to complete...\n\n"
-                f"Use 'wait_for_indexing' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial "
+                f"Use 'sync_project' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial "
                 f"to allow queries during indexing."
             )
         else:
             message = (
                 "Query blocked: Indexing in progress. Waiting for completion...\n\n"
-                "Use 'wait_for_indexing' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial."
+                "Use 'sync_project' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial."
             )
 
         # Wait for indexing with a reasonable timeout (30 seconds)
@@ -1033,7 +353,7 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
             return (
                 False,
                 message
-                + "\n\nTimeout waiting for indexing (30s). Try again later or use 'check_system_status'.",
+                + "\n\nTimeout waiting for indexing (30s). Try again later or use 'sync_project'.",
             )
 
     elif policy == QueryBehaviorPolicy.REJECT:
@@ -1047,15 +367,15 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
                 f"ERROR: Query rejected - indexing in progress ({completion:.1f}% complete, "
                 f"{indexed:,}/{total:,} files).\n\n"
                 f"Queries are not allowed until indexing completes. Options:\n"
-                f"1. Use 'wait_for_indexing' tool to wait for completion\n"
-                f"2. Check progress with 'check_system_status'\n"
+                f"1. Use 'sync_project' tool to wait for completion\n"
+                f"2. Check progress with 'sync_project'\n"
                 f"3. Set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial to allow partial results\n"
                 f"4. Set CPP_ANALYZER_QUERY_BEHAVIOR=block to auto-wait for completion"
             )
         else:
             message = (
                 "ERROR: Query rejected - indexing in progress.\n\n"
-                "Use 'wait_for_indexing' or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial/block."
+                "Use 'sync_project' or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial/block."
             )
         return (False, message)
 
@@ -1158,13 +478,9 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    if _TOOL_SCHEMA == "B":
-        from mcp_server.consolidated_tools import handle_tool_call_b
+    from mcp_server.consolidated_tools import handle_tool_call_b
 
-        result = await handle_tool_call_b(name, arguments)
-        _try_log_tool_call(name, arguments, result)
-        return result
-    result = await _handle_tool_call(name, arguments)
+    result = await handle_tool_call_b(name, arguments)
     _try_log_tool_call(name, arguments, result)
     return result
 
@@ -1319,7 +635,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                     type="text",
                     text=f"Set project directory to: {project_path}{config_msg}\n"
                     f"Indexing started in background.{auto_refresh_msg}\n"
-                    f"Use 'check_system_status' to check progress.\n"
+                    f"Use 'sync_project' to check progress.\n"
                     f"Tools are available but will return partial results until indexing completes.",
                 )
             ]
@@ -1340,7 +656,6 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             "search_classes",
             "search_functions",
             "get_class_info",
-            "get_function_signature",
             "get_type_alias_info",
             "search_symbols",
             "find_in_file",
@@ -1436,19 +751,6 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             )
             if result and "error" not in (result or {}):
                 enhanced_result.next_steps = suggestions.for_get_class_info(result)
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-
-        elif name == "get_function_signature":
-            function_name = arguments["function_name"]
-            class_name = arguments.get("class_name", None)
-            # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
-                None, lambda: analyzer.get_function_signature(function_name, class_name)
-            )
-            # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                results, state_manager, "get_function_signature"
-            )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "get_type_alias_info":
@@ -1605,7 +907,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 TextContent(
                     type="text",
                     text=f"Refresh started in background (mode: {refresh_mode}).\n"
-                    f"Use 'check_system_status' to check progress.\n"
+                    f"Use 'sync_project' to check progress.\n"
                     f"Tools will continue to work and return results based on current cache state.",
                 )
             ]
@@ -1632,13 +934,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
         elif name == "wait_for_indexing":
-            # Wait for indexing to complete with timeout
+            # Internal handler - used by sync_project and tests
             timeout = arguments.get("timeout", 60.0)
 
             if state_manager.is_fully_indexed():
                 return [TextContent(type="text", text="Indexing already complete.")]
 
-            # Wait for indexed event asynchronously to avoid blocking event loop
             completed = await loop.run_in_executor(
                 None, lambda: state_manager.wait_for_indexed(timeout)
             )
@@ -1657,7 +958,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 return [
                     TextContent(
                         type="text",
-                        text=f"Timeout waiting for indexing (waited {timeout}s). Use 'check_system_status' to check progress.",
+                        text=f"Timeout waiting for indexing (waited {timeout}s). Use 'sync_project' to check progress.",
                     )
                 ]
 
@@ -1846,15 +1147,6 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                     "suggestions": suggestions.for_get_call_sites_empty(function_name, class_name),
                 }
             return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
-
-        elif name == "get_files_containing_symbol":
-            symbol_name = arguments["symbol_name"]
-            symbol_kind = arguments.get("symbol_kind")
-            project_only = _parse_search_scope(arguments)
-            result = await analyzer.get_files_containing_symbol(
-                symbol_name, symbol_kind, project_only
-            )
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "get_call_path":
             from_function = arguments["from_function"]
