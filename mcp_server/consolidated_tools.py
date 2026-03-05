@@ -1,45 +1,44 @@
 #!/usr/bin/env python3
-"""Schema B: Consolidated tool definitions for small LLM benchmarking.
+"""Consolidated MCP tool definitions.
 
-Provides 11 tools (vs 17 in Schema A) to test whether fewer tools with
-enum-based parameters improve small LLM tool selection accuracy.
+Provides the public tool surface for the C++ analyzer MCP server.
+Each consolidated tool maps to one or more internal handlers.
 
-Activated via TOOL_SCHEMA=B environment variable.
-
-Tool mapping (Schema B → Schema A):
-  set_project_directory   → passthrough
-  check_system_status     → passthrough + system_state enum
-  refresh_project         → passthrough
-  search_codebase         → search_classes / search_functions / search_symbols
-  find_in_file            → passthrough
-  get_class_info          → passthrough
-  get_class_hierarchy     → passthrough
-  get_type_alias_info     → passthrough
+Tool mapping (public → internal):
+  set_project            → set_project_directory + wait_for_indexing (sync wait)
+  sync_project           → check_system_status + refresh_project
+  search_codebase        → search_classes / search_functions / search_symbols
+  find_in_file           → passthrough
+  get_class_info         → passthrough
+  get_class_hierarchy    → passthrough
+  get_type_alias_info    → passthrough
   get_functions_called_by → get_outgoing_calls / get_call_sites
-  find_usage_sites        → get_incoming_calls
-  trace_execution_path    → get_call_path
+  find_usage_sites       → get_incoming_calls
+  trace_execution_path   → get_call_path
 """
 
 import json
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict, List, Optional
 
 from mcp.types import Tool, TextContent
 
 # ---------------------------------------------------------------
-# Passthrough: Schema B name → Schema A name (no translation)
+# Passthrough: tools delegated to internal handlers without translation
 # ---------------------------------------------------------------
 _PASSTHROUGH_MAP = {
-    "set_project_directory": "set_project_directory",
-    "refresh_project": "refresh_project",
     "find_in_file": "find_in_file",
     "get_class_info": "get_class_info",
     "get_class_hierarchy": "get_class_hierarchy",
     "get_type_alias_info": "get_type_alias_info",
 }
 
-# Schema B-only params that must not be forwarded to Schema A
-_SEARCH_B_PARAMS = {"target_type", "output_detail_level"}
-_CALLGRAPH_B_PARAMS = {"return_format"}
+# Default sync timeout for set_project (seconds)
+_DEFAULT_SYNC_TIMEOUT = 30
+
+# Consolidated params that must not be forwarded to internal handlers
+_SEARCH_CONSOLIDATED_PARAMS = {"target_type", "output_detail_level"}
+_CALLGRAPH_CONSOLIDATED_PARAMS = {"return_format"}
 
 # Fields to strip at each output_detail_level
 _DOC_FIELDS = {"brief", "doc_comment"}
@@ -70,11 +69,10 @@ _SYSTEM_STATE_MAP = {
     "error": "error",
 }
 
-# All Schema B tool names (for validation)
-SCHEMA_B_TOOL_NAMES = [
-    "set_project_directory",
-    "check_system_status",
-    "refresh_project",
+# All public tool names (for validation)
+TOOL_NAMES = [
+    "set_project",
+    "sync_project",
     "search_codebase",
     "find_in_file",
     "get_class_info",
@@ -154,19 +152,21 @@ def _add_system_state(result: List[TextContent]) -> List[TextContent]:
 
 
 def list_tools_b() -> List[Tool]:
-    """Return Schema B tool definitions (11 consolidated tools)."""
+    """Return consolidated tool definitions (10 tools)."""
     return [
         Tool(
-            name="set_project_directory",
+            name="set_project",
             description=(
                 "REQUIRED FIRST STEP: Set the C++ project directory to analyze. "
                 "Must be called before any other tools. Indexes all C++ files "
-                "using libclang. Supports incremental analysis on re-runs."
+                "using libclang. Waits synchronously for indexing to complete "
+                "(up to sync_timeout seconds). Returns status 'ready' when "
+                "indexing finishes, or 'indexing_in_progress' if timeout exceeded."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "project_path": {
+                    "path": {
                         "type": "string",
                         "description": "Absolute path to C++ project root directory.",
                     },
@@ -174,37 +174,26 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "description": "Optional: Path to cpp-analyzer-config.json.",
                     },
-                    "auto_refresh": {
-                        "type": "boolean",
-                        "description": "Auto-detect changes on cache load (default: true).",
-                        "default": True,
+                    "sync_timeout": {
+                        "type": "number",
+                        "description": (
+                            "Max seconds to wait for indexing to complete "
+                            "(default: 30). Set higher for large projects."
+                        ),
+                        "default": 30,
                     },
                 },
-                "required": ["project_path"],
+                "required": ["path"],
             },
         ),
         Tool(
-            name="check_system_status",
+            name="sync_project",
             description=(
-                "Get server status, indexing progress, and index statistics. "
-                "Returns system_state enum: 'ready' (indexed, safe to query), "
-                "'not_ready' (initializing/indexing, results incomplete), "
-                "'partially_ready' (refreshing, cached results available), "
-                "'error'. Always check system_state before querying if you "
-                "get empty results."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        Tool(
-            name="refresh_project",
-            description=(
-                "Re-scan project for file changes and re-index affected files. "
-                "Call after source files are modified. 'incremental' (default) "
-                "is 30-300x faster. Only use 'full' if cache seems corrupted."
+                "Check project status or refresh the index. "
+                "Without arguments: returns current status (system_state enum: "
+                "'ready', 'not_ready', 'partially_ready', 'error'). "
+                "With refresh_mode: triggers incremental or full re-indexing "
+                "of changed files. Use after source files are modified."
             ),
             inputSchema={
                 "type": "object",
@@ -213,10 +202,11 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "enum": ["incremental", "full"],
                         "description": (
-                            "'incremental' (default): only changed files. "
-                            "'full': re-index everything."
+                            "If provided, triggers a refresh. "
+                            "'incremental' (default): only changed files (30-300x faster). "
+                            "'full': re-index everything (use if cache seems corrupted). "
+                            "Omit to just check status."
                         ),
-                        "default": "incremental",
                     },
                 },
                 "required": [],
@@ -528,16 +518,18 @@ def list_tools_b() -> List[Tool]:
 
 
 async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    """Dispatch Schema B tool calls, delegating to Schema A handlers."""
+    """Dispatch consolidated tool calls, delegating to internal handlers."""
     from mcp_server.cpp_mcp_server import _handle_tool_call
 
     # Passthrough tools — delegate directly with same name and args
     if name in _PASSTHROUGH_MAP:
         return await _handle_tool_call(_PASSTHROUGH_MAP[name], arguments)
 
-    if name == "check_system_status":
-        result = await _handle_tool_call("check_system_status", arguments)
-        return _add_system_state(result)
+    if name == "set_project":
+        return await _handle_set_project(arguments)
+
+    if name == "sync_project":
+        return await _handle_sync_project(arguments)
 
     if name == "search_codebase":
         return await _handle_search_codebase(arguments)
@@ -551,7 +543,86 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
     if name == "trace_execution_path":
         return await _handle_trace_execution_path(arguments)
 
-    return [TextContent(type="text", text=f"Error: Unknown Schema B tool '{name}'")]
+    return [TextContent(type="text", text=f"Error: Unknown tool '{name}'")]
+
+
+async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Handle set_project: set directory + synchronous wait for indexing."""
+    from mcp_server.cpp_mcp_server import _handle_tool_call
+
+    # Map 'path' → 'project_path' for internal handler
+    internal_args: Dict[str, Any] = {
+        "project_path": arguments["path"],
+    }
+    if "config_file" in arguments:
+        internal_args["config_file"] = arguments["config_file"]
+
+    # Step 1: Set project directory (starts background indexing)
+    await _handle_tool_call("set_project_directory", internal_args)
+
+    # Step 2: Determine sync timeout
+    sync_timeout = _resolve_sync_timeout(arguments.get("sync_timeout"))
+
+    # Step 3: Wait for indexing to complete (synchronous fast-path)
+    await _handle_tool_call("wait_for_indexing", {"timeout": sync_timeout})
+
+    # Step 4: Build response with status
+    status_result = await _handle_tool_call("check_system_status", {})
+    status_result = _add_system_state(status_result)
+
+    try:
+        status_data = json.loads(status_result[0].text)
+        system_state = status_data.get("system_state", "not_ready")
+    except (json.JSONDecodeError, IndexError, AttributeError):
+        system_state = "not_ready"
+
+    response = {
+        "project_path": arguments["path"],
+        "status": "ready" if system_state == "ready" else "indexing_in_progress",
+    }
+
+    # Add stats if ready
+    if system_state == "ready":
+        try:
+            response["indexed_classes"] = status_data.get("indexed_classes", 0)
+            response["indexed_functions"] = status_data.get("indexed_functions", 0)
+            response["parsed_files"] = status_data.get("parsed_files", 0)
+        except (TypeError, KeyError):
+            pass
+
+    return [TextContent(type="text", text=json.dumps(response, indent=2))]
+
+
+async def _handle_sync_project(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Handle sync_project: status check or refresh trigger."""
+    from mcp_server.cpp_mcp_server import _handle_tool_call
+
+    refresh_mode = arguments.get("refresh_mode")
+
+    if refresh_mode is not None:
+        # Trigger refresh
+        await _handle_tool_call("refresh_project", {"refresh_mode": refresh_mode})
+
+        # Wait briefly for completion
+        sync_timeout = _resolve_sync_timeout(None)
+        await _handle_tool_call("wait_for_indexing", {"timeout": sync_timeout})
+
+    # Always return current status
+    result = await _handle_tool_call("check_system_status", {})
+    return _add_system_state(result)
+
+
+def _resolve_sync_timeout(param_value: Optional[float]) -> float:
+    """Resolve sync timeout: param > env var > default."""
+    if param_value is not None:
+        return float(param_value)
+    env_val = os.environ.get("CPP_ANALYZER_SYNC_TIMEOUT")
+    if env_val is not None:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return float(_DEFAULT_SYNC_TIMEOUT)
 
 
 async def _handle_search_codebase(
@@ -563,8 +634,8 @@ async def _handle_search_codebase(
     target_type = arguments.get("target_type", "all_symbol_types")
     detail_level = arguments.get("output_detail_level", "locations_and_metadata")
 
-    # Forward only Schema A params
-    schema_a_args = {k: v for k, v in arguments.items() if k not in _SEARCH_B_PARAMS}
+    # Forward only internal params
+    schema_a_args = {k: v for k, v in arguments.items() if k not in _SEARCH_CONSOLIDATED_PARAMS}
 
     if target_type == "classes_and_structs_only":
         result = await _handle_tool_call("search_classes", schema_a_args)
@@ -593,7 +664,7 @@ async def _handle_get_functions_called_by(
         return await _handle_tool_call("get_call_sites", call_sites_args)
 
     # Route to get_outgoing_calls (strip Schema B-only params)
-    schema_a_args = {k: v for k, v in arguments.items() if k not in _CALLGRAPH_B_PARAMS}
+    schema_a_args = {k: v for k, v in arguments.items() if k not in _CALLGRAPH_CONSOLIDATED_PARAMS}
     result = await _handle_tool_call("get_outgoing_calls", schema_a_args)
 
     # For summary format, strip location/doc fields for compact output

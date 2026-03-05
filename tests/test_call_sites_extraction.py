@@ -765,7 +765,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_outgoing_calls", {"function_name": "caller"}
             )
             payload = json.loads(result[0].text)
@@ -785,7 +785,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_outgoing_calls", {"function_name": "caller"}
             )
             payload = json.loads(result[0].text)
@@ -801,7 +801,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_outgoing_calls",
                 {"function_name": "caller", "search_scope": "include_external_libraries"},
             )
@@ -818,7 +818,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_outgoing_calls", {"function_name": "leaf"}
             )
             payload = json.loads(result[0].text)
@@ -838,7 +838,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_incoming_calls", {"function_name": "target"}
             )
             payload = json.loads(result[0].text)
@@ -854,7 +854,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_incoming_calls", {"function_name": "standalone"}
             )
             payload = json.loads(result[0].text)
@@ -870,7 +870,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_outgoing_calls", {"function_name": "caller"}
             )
             payload = json.loads(result[0].text)
@@ -890,7 +890,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv.call_tool(
+            result = await srv._handle_tool_call(
                 "get_outgoing_calls", {"function_name": "nonexistent_xyz"}
             )
             payload = json.loads(result[0].text)

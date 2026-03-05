@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a Model Context Protocol (MCP) server that provides semantic C++ code analysis using libclang. It allows AI assistants like Claude to understand C++ codebases through symbol indexing, class hierarchies, call graphs, and compile_commands.json integration.
 
 **Key Features:**
-- 17 MCP tools for C++ code analysis (search_classes, search_functions, get_class_info, call graph analysis, type alias tracking, etc.)
+- 10 consolidated MCP tools for C++ code analysis (search_codebase, get_class_info, get_class_hierarchy, call graph analysis, type alias tracking, etc.)
 - **Type alias tracking:** Simple and template type aliases (using declarations)
   - Extracts both simple aliases (`using IntPtr = int*`) and template aliases (`template<typename T> using Ptr = std::shared_ptr<T>`)
   - Stores template parameters with kind information (type/non-type) for template aliases
@@ -165,7 +165,7 @@ make ie                         # install-editable
 └───────────────────┬────────────────────────────┘
                     │ MCP Protocol (stdio/http/sse)
 ┌───────────────────▼────────────────────────────┐
-│       cpp_mcp_server.py (18 MCP Tools)         │
+│       cpp_mcp_server.py (10 MCP Tools)         │
 │  Entry point, tool definitions, validation     │
 └───────────────────┬────────────────────────────┘
                     │
@@ -310,7 +310,7 @@ make ie                         # install-editable
 ### Data Flow
 
 **Indexing Flow:**
-1. `set_project_directory()` called via MCP tool
+1. `set_project()` called via MCP tool
 2. CompileCommandsManager loads compile_commands.json (if enabled)
 3. FileScanner discovers all C++ files in project
 4. Files filtered by config (exclude_directories, exclude_patterns)
@@ -336,7 +336,7 @@ make ie                         # install-editable
 7. JSON results returned via MCP TextContent
 
 **Incremental Refresh Flow:**
-1. `refresh_project()` called
+1. `sync_project(refresh_mode="incremental")` called
 2. ChangeScanner detects file changes (MD5 hashing)
 3. CompileCommandsDiffer detects compile_commands.json changes
 4. DependencyGraph identifies affected files (transitive header deps)
@@ -538,7 +538,7 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ```
 mcp_server/
-├── cpp_mcp_server.py           # MCP server entry point (17 tools, stdio/http/sse)
+├── cpp_mcp_server.py           # MCP server entry point (10 tools, stdio/http/sse)
 ├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing, type alias tracking)
 ├── cache_manager.py            # Cache coordination layer
 ├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
@@ -607,9 +607,9 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
    - **Plain text** (no regex metacharacters) performs exact match, case-insensitive (e.g., `"View"` matches only "View", not "ViewManager")
    - **Regex patterns** (with `.*+?[]{}()|` etc.) use anchored full-match (e.g., `"View.*"` matches "View", "ViewManager" but not "ListView"; `".*View.*"` matches all containing "View")
 
-5. **Incremental analysis is automatic:** When using `refresh_project`, the analyzer intelligently detects changes. Only use `refresh_mode="full"` after major config changes or if cache corruption is suspected.
+5. **Incremental analysis is automatic:** When using `sync_project(refresh_mode="incremental")`, the analyzer intelligently detects changes. Only use `refresh_mode="full"` after major config changes or if cache corruption is suspected.
 
-6. **Performance monitoring:** On large projects (1000+ files), use `check_system_status` to monitor progress. Use `wait_for_indexing` before queries to ensure complete results.
+6. **Performance monitoring:** On large projects (1000+ files), use `sync_project` to monitor progress. The `set_project` tool waits synchronously for indexing to complete (default 30s timeout).
 
 7. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 

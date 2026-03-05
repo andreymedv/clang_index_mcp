@@ -107,7 +107,7 @@ async def test_query_during_background_indexing(large_cpp_project):
 
     # Send a query while indexing is in progress
     # This should NOT block or timeout - it should return partial results
-    result = await cpp_mcp_server.call_tool(
+    result = await cpp_mcp_server._handle_tool_call(
         "search_classes",
         {"pattern": "Module.*", "search_scope": "project_code_only"}
     )
@@ -136,7 +136,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     assert state_manager.state == AnalyzerState.INDEXED, "Should be indexed"
 
     # Now query again - should get complete results
-    result2 = await cpp_mcp_server.call_tool(
+    result2 = await cpp_mcp_server._handle_tool_call(
         "search_classes",
         {"pattern": "Module.*", "search_scope": "project_code_only"}
     )
@@ -185,10 +185,10 @@ async def test_multiple_concurrent_queries_during_indexing(large_cpp_project):
 
     # Launch multiple queries concurrently
     query_tasks = [
-        cpp_mcp_server.call_tool("search_classes", {"pattern": "Module.*"}),
-        cpp_mcp_server.call_tool("search_functions", {"pattern": "calculate.*"}),
-        cpp_mcp_server.call_tool("search_classes", {"pattern": "Helper.*"}),
-        cpp_mcp_server.call_tool("search_functions", {"pattern": "process.*"}),
+        cpp_mcp_server._handle_tool_call("search_classes", {"pattern": "Module.*"}),
+        cpp_mcp_server._handle_tool_call("search_functions", {"pattern": "calculate.*"}),
+        cpp_mcp_server._handle_tool_call("search_classes", {"pattern": "Helper.*"}),
+        cpp_mcp_server._handle_tool_call("search_functions", {"pattern": "process.*"}),
     ]
 
     # All queries should complete without blocking each other
@@ -238,7 +238,7 @@ async def test_query_does_not_timeout_during_long_indexing(large_cpp_project):
     start = time.time()
 
     result = await cpp_mcp_server.call_tool(
-        "check_system_status",
+        "sync_project",
         {}
     )
 
@@ -277,14 +277,14 @@ async def test_wait_for_indexing_blocks_appropriately(large_cpp_project):
 
     await asyncio.sleep(0.1)
 
-    # Call wait_for_indexing with a long timeout
+    # Wait for indexing using internal handler
     wait_task = asyncio.create_task(
-        cpp_mcp_server.call_tool("wait_for_indexing", {"timeout": 30.0})
+        cpp_mcp_server._handle_tool_call("wait_for_indexing", {"timeout": 30.0})
     )
 
     # While waiting, we should still be able to check status
     # This proves wait_for_indexing doesn't block the event loop
-    status_result = await cpp_mcp_server.call_tool("check_system_status", {})
+    status_result = await cpp_mcp_server._handle_tool_call("check_system_status", {})
     status_data = json.loads(status_result[0].text)
 
     # Should still be indexing
@@ -347,10 +347,10 @@ async def test_check_system_status_immediately_after_set_project_directory(large
     # It transitions to INDEXING state (the fix) before starting background indexing
     state_manager.transition_to(AnalyzerState.INDEXING)
 
-    # CRITICAL TEST: Immediately call check_system_status without any delay
-    # This simulates a user calling check_system_status right after set_project_directory
+    # CRITICAL TEST: Immediately call sync_project without any delay
+    # This simulates a user calling sync_project right after set_project
     # Before the fix, this would fail with "Project directory not set"
-    result = await cpp_mcp_server.call_tool("check_system_status", {})
+    result = await cpp_mcp_server.call_tool("sync_project", {})
 
     # Verify the call succeeded (no exception raised)
     assert len(result) > 0, "check_system_status should return a result"
