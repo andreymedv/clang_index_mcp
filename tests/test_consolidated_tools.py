@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Tests for Schema B consolidated tools facade.
+"""Tests for consolidated tools facade.
 
 Tests tool list validation, parameter routing, detail filtering,
-system state injection, and schema switching via env var.
+and system state injection.
 """
 
 import json
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mcp_server"))
 from mcp.types import TextContent
 
 from mcp_server.consolidated_tools import (
-    SCHEMA_B_TOOL_NAMES,
+    TOOL_NAMES,
     _add_system_state,
     _filter_detail_level,
     _strip_from_data,
@@ -33,7 +33,7 @@ from mcp_server.consolidated_tools import (
 
 
 def _tc(data: Any) -> list[TextContent]:
-    """Wrap data as List[TextContent] (simulates Schema A handler output)."""
+    """Wrap data as List[TextContent] (simulates internal handler output)."""
     return [TextContent(type="text", text=json.dumps(data, indent=2))]
 
 
@@ -48,16 +48,16 @@ def _parse_tc(result: list[TextContent]) -> Any:
 
 
 class TestListToolsB:
-    """Verify list_tools_b returns correct Schema B tool definitions."""
+    """Verify list_tools_b returns correct consolidated tool definitions."""
 
-    def test_exactly_11_tools(self) -> None:
+    def test_exactly_10_tools(self) -> None:
         tools = list_tools_b()
-        assert len(tools) == 11
+        assert len(tools) == 10
 
     def test_tool_names(self) -> None:
         tools = list_tools_b()
         names = [t.name for t in tools]
-        assert sorted(names) == sorted(SCHEMA_B_TOOL_NAMES)
+        assert sorted(names) == sorted(TOOL_NAMES)
 
     def test_all_tools_have_schemas(self) -> None:
         tools = list_tools_b()
@@ -113,11 +113,11 @@ class TestListToolsB:
             "target_function",
         }
 
-    def test_no_schema_a_only_tools_present(self) -> None:
-        """Schema A tools removed from Schema B should not appear."""
+    def test_no_internal_only_tools_present(self) -> None:
+        """Internal-only tools should not appear in consolidated tool list."""
         tools = list_tools_b()
         names = {t.name for t in tools}
-        schema_a_only = {
+        internal_only = {
             "search_classes",
             "search_functions",
             "search_symbols",
@@ -128,8 +128,11 @@ class TestListToolsB:
             "get_function_signature",
             "wait_for_indexing",
             "get_files_containing_symbol",
+            "set_project_directory",
+            "check_system_status",
+            "refresh_project",
         }
-        assert names.isdisjoint(schema_a_only)
+        assert names.isdisjoint(internal_only)
 
 
 # ---------------------------------------------------------------
@@ -316,13 +319,13 @@ class TestAddSystemState:
 
 
 # ---------------------------------------------------------------
-# Handler routing tests (mocked Schema A dispatcher)
+# Handler routing tests (mocked internal dispatcher)
 # ---------------------------------------------------------------
 
 
 @pytest.fixture
 def mock_handle_tool_call():
-    """Mock _handle_tool_call to capture Schema A calls."""
+    """Mock _handle_tool_call to capture internal calls."""
     with patch("mcp_server.consolidated_tools._handle_tool_call") as mock:
         # Since it's used inside the module via lazy import, we need to
         # patch it at the call site in each handler. Patch at module level.
@@ -330,14 +333,12 @@ def mock_handle_tool_call():
 
 
 class TestHandleToolCallBRouting:
-    """Test that handle_tool_call_b routes to correct Schema A handlers."""
+    """Test that handle_tool_call_b routes to correct internal handlers."""
 
     @pytest.mark.asyncio
     async def test_passthrough_tools(self) -> None:
-        """Passthrough tools delegate to Schema A with same name/args."""
+        """Passthrough tools delegate to internal with same name/args."""
         passthrough = [
-            "set_project_directory",
-            "refresh_project",
             "find_in_file",
             "get_class_info",
             "get_class_hierarchy",
@@ -354,14 +355,14 @@ class TestHandleToolCallBRouting:
                 mock.assert_called_once_with(tool_name, args)
 
     @pytest.mark.asyncio
-    async def test_check_system_status_adds_state(self) -> None:
-        """check_system_status adds system_state to response."""
+    async def test_sync_project_status_adds_state(self) -> None:
+        """sync_project (no args) returns status with system_state."""
         with patch(
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
             return_value=_tc({"indexing_state": "indexed", "parsed_files": 42}),
         ):
-            result = await handle_tool_call_b("check_system_status", {})
+            result = await handle_tool_call_b("sync_project", {})
             parsed = _parse_tc(result)
             assert parsed["system_state"] == "ready"
             assert parsed["parsed_files"] == 42
@@ -374,7 +375,7 @@ class TestHandleToolCallBRouting:
 
 
 class TestSearchCodebaseRouting:
-    """Test search_codebase routing to Schema A search tools."""
+    """Test search_codebase routing to internal search tools."""
 
     @pytest.mark.asyncio
     async def test_classes_routes_to_search_classes(self) -> None:
@@ -438,7 +439,7 @@ class TestSearchCodebaseRouting:
 
     @pytest.mark.asyncio
     async def test_schema_b_params_not_forwarded(self) -> None:
-        """target_type and output_detail_level should not be in Schema A args."""
+        """target_type and output_detail_level should not be in internal args."""
         with patch(
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
@@ -612,7 +613,7 @@ class TestGetFunctionsCalledByRouting:
 
     @pytest.mark.asyncio
     async def test_return_format_not_forwarded(self) -> None:
-        """return_format is Schema B only, must not appear in Schema A args."""
+        """return_format is consolidated only, must not appear in internal args."""
         with patch(
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
@@ -694,28 +695,114 @@ class TestTraceExecutionPathRouting:
 # ---------------------------------------------------------------
 
 
-class TestSchemaSwitching:
-    """Test TOOL_SCHEMA env var integration."""
+class TestSetProjectRouting:
+    """Test set_project → set_project_directory + wait_for_indexing."""
 
-    def test_schema_b_module_imports(self) -> None:
+    @pytest.mark.asyncio
+    async def test_set_project_calls_internal_handlers(self) -> None:
+        """set_project should call set_project_directory then wait then status."""
+        calls: list[tuple[str, Any]] = []
+
+        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+            calls.append((name, args))
+            if name == "check_system_status":
+                return _tc({"indexing_state": "indexed", "parsed_files": 10,
+                             "indexed_classes": 5, "indexed_functions": 20})
+            return _tc({"result": "ok"})
+
+        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+            result = await handle_tool_call_b("set_project", {"path": "/tmp/proj"})
+            parsed = _parse_tc(result)
+            assert parsed["status"] == "ready"
+            assert parsed["project_path"] == "/tmp/proj"
+            # Should have called: set_project_directory, wait_for_indexing, check_system_status
+            call_names = [c[0] for c in calls]
+            assert "set_project_directory" in call_names
+            assert "wait_for_indexing" in call_names
+            assert "check_system_status" in call_names
+
+    @pytest.mark.asyncio
+    async def test_set_project_maps_path_param(self) -> None:
+        """set_project 'path' param maps to 'project_path' internally."""
+        captured_args: dict[str, Any] = {}
+
+        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+            if name == "set_project_directory":
+                captured_args.update(args)
+            if name == "check_system_status":
+                return _tc({"indexing_state": "indexed"})
+            return _tc({"result": "ok"})
+
+        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+            await handle_tool_call_b("set_project", {"path": "/tmp/proj", "config_file": "/c.json"})
+            assert captured_args["project_path"] == "/tmp/proj"
+            assert captured_args["config_file"] == "/c.json"
+
+    @pytest.mark.asyncio
+    async def test_set_project_indexing_in_progress(self) -> None:
+        """set_project returns indexing_in_progress when not ready."""
+        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+            if name == "check_system_status":
+                return _tc({"indexing_state": "indexing", "parsed_files": 5})
+            return _tc({"result": "ok"})
+
+        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+            result = await handle_tool_call_b("set_project", {"path": "/tmp/proj"})
+            parsed = _parse_tc(result)
+            assert parsed["status"] == "indexing_in_progress"
+
+
+class TestSyncProjectRouting:
+    """Test sync_project routing: status-only vs refresh."""
+
+    @pytest.mark.asyncio
+    async def test_sync_project_no_args_returns_status(self) -> None:
+        """sync_project with no args returns current status."""
+        with patch(
+            "mcp_server.cpp_mcp_server._handle_tool_call",
+            new_callable=AsyncMock,
+            return_value=_tc({"indexing_state": "indexed", "parsed_files": 100}),
+        ) as mock:
+            result = await handle_tool_call_b("sync_project", {})
+            parsed = _parse_tc(result)
+            assert parsed["system_state"] == "ready"
+            # Should only call check_system_status (no refresh)
+            call_names = [c[0][0] for c in mock.call_args_list]
+            assert "check_system_status" in call_names
+            assert "refresh_project" not in call_names
+
+    @pytest.mark.asyncio
+    async def test_sync_project_with_refresh_mode(self) -> None:
+        """sync_project with refresh_mode triggers refresh then status."""
+        calls: list[str] = []
+
+        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+            calls.append(name)
+            if name == "check_system_status":
+                return _tc({"indexing_state": "indexed", "parsed_files": 100})
+            return _tc({"result": "ok"})
+
+        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+            result = await handle_tool_call_b(
+                "sync_project", {"refresh_mode": "incremental"}
+            )
+            parsed = _parse_tc(result)
+            assert parsed["system_state"] == "ready"
+            assert "refresh_project" in calls
+            assert "wait_for_indexing" in calls
+
+
+class TestModuleImports:
+    """Test that consolidated_tools module is importable."""
+
+    def test_module_imports(self) -> None:
         """consolidated_tools module should be importable."""
         from mcp_server.consolidated_tools import (
-            SCHEMA_B_TOOL_NAMES,
+            TOOL_NAMES,
             handle_tool_call_b,
             list_tools_b,
         )
 
         assert callable(list_tools_b)
         assert callable(handle_tool_call_b)  # type: ignore[arg-type]
-        assert len(SCHEMA_B_TOOL_NAMES) == 11
-
-    def test_tool_schema_env_var_read(self) -> None:
-        """cpp_mcp_server reads TOOL_SCHEMA env var."""
-        # Re-import to check the variable exists
-        import importlib
-
-        import mcp_server.cpp_mcp_server as mod
-
-        assert hasattr(mod, "_TOOL_SCHEMA")
-        # Default should be "A"
-        assert mod._TOOL_SCHEMA in ("A", "B")
+        assert len(TOOL_NAMES) == 10

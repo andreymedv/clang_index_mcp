@@ -538,13 +538,12 @@ class EnhancedQueryResult:
                 warning = (
                     f"[WARNING]  INCOMPLETE RESULTS: Only {completion:.1f}% of files indexed "
                     f"({indexed:,}/{total:,}). Results may be missing {incomplete_type}. "
-                    f"Use 'check_system_status' to check progress or 'wait_for_indexing' "
-                    f"to wait for completion."
+                    f"Use 'sync_project' to check progress or wait for completion."
                 )
             else:
                 warning = (
                     "[WARNING]  INCOMPLETE RESULTS: Indexing in progress. "
-                    "Results may be incomplete. Use 'wait_for_indexing' to wait for completion."
+                    "Results may be incomplete. Use 'sync_project' to wait for completion."
                 )
 
             # Create metadata
