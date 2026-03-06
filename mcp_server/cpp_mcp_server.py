@@ -42,6 +42,15 @@ def find_and_configure_libclang():
 
     See: docs/MACOS_LIBCLANG_DISCOVERY.md
     """
+    # Guard: if libclang is already loaded, no need to reconfigure.
+    # This handles the double-import case where the module is first loaded as
+    # __main__ (via python -m) and then reimported under its package name
+    # (from mcp_server.cpp_mcp_server import ...).  The second import would
+    # otherwise call Config.set_library_file() after Config.loaded is True,
+    # raising "library file must be set before ...".
+    if Config.loaded:
+        return True
+
     import platform
     import glob
     import shutil
@@ -1298,4 +1307,9 @@ Examples:
 
 
 if __name__ == "__main__":
+    # Register this module under its package name so that
+    # `from mcp_server.cpp_mcp_server import X` reuses it instead of
+    # reimporting and re-running module-level code (which would fail
+    # because Config.set_library_file() cannot be called twice).
+    sys.modules.setdefault("mcp_server.cpp_mcp_server", sys.modules[__name__])
     asyncio.run(main())
