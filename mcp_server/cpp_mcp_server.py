@@ -610,7 +610,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                         analyzer_initialized = True
 
                         diagnostics.info(
-                            "Server ready (loaded from cache) - use 'refresh_project' to detect file changes"
+                            "Server ready (loaded from cache) - use sync_project with refresh_mode to detect file changes"
                         )
                         return
 
