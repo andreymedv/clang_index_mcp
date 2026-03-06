@@ -42,6 +42,15 @@ def find_and_configure_libclang():
 
     See: docs/MACOS_LIBCLANG_DISCOVERY.md
     """
+    # Guard: if libclang is already loaded, no need to reconfigure.
+    # This handles the double-import case where the module is first loaded as
+    # __main__ (via python -m) and then reimported under its package name
+    # (from mcp_server.cpp_mcp_server import ...).  The second import would
+    # otherwise call Config.set_library_file() after Config.loaded is True,
+    # raising "library file must be set before ...".
+    if Config.loaded:
+        return True
+
     import platform
     import glob
     import shutil
@@ -601,7 +610,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                         analyzer_initialized = True
 
                         diagnostics.info(
-                            "Server ready (loaded from cache) - use 'refresh_project' to detect file changes"
+                            "Server ready (loaded from cache) - use sync_project with refresh_mode to detect file changes"
                         )
                         return
 
@@ -1169,7 +1178,14 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except Exception as e:
-        return [TextContent(type="text", text=f"Error: {str(e)}")]
+        return [
+            TextContent(
+                type="text",
+                text=f"Internal error: {str(e)}\n\n"
+                "This is a server-side issue, not a user error. "
+                "Try restarting the MCP server.",
+            )
+        ]
 
 
 async def main():
@@ -1298,4 +1314,9 @@ Examples:
 
 
 if __name__ == "__main__":
+    # Register this module under its package name so that
+    # `from mcp_server.cpp_mcp_server import X` reuses it instead of
+    # reimporting and re-running module-level code (which would fail
+    # because Config.set_library_file() cannot be called twice).
+    sys.modules.setdefault("mcp_server.cpp_mcp_server", sys.modules[__name__])
     asyncio.run(main())
