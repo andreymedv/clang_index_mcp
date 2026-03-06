@@ -285,7 +285,7 @@ class TestAddSystemState:
     """Test system_state enum injection for check_system_status."""
 
     @pytest.mark.parametrize(
-        "indexing_state,expected_state",
+        "state,expected_state",
         [
             ("uninitialized", "not_ready"),
             ("initializing", "not_ready"),
@@ -295,20 +295,20 @@ class TestAddSystemState:
             ("error", "error"),
         ],
     )
-    def test_state_mapping(self, indexing_state: str, expected_state: str) -> None:
-        data = {"indexing_state": indexing_state, "parsed_files": 100}
+    def test_state_mapping(self, state: str, expected_state: str) -> None:
+        data = {"state": state, "parsed_files": 100}
         result = _add_system_state(_tc(data))
         parsed = _parse_tc(result)
         assert parsed["system_state"] == expected_state
         assert parsed["parsed_files"] == 100  # original data preserved
 
     def test_unknown_state_defaults_to_not_ready(self) -> None:
-        data = {"indexing_state": "some_unknown_state"}
+        data = {"state": "some_unknown_state"}
         result = _add_system_state(_tc(data))
         parsed = _parse_tc(result)
         assert parsed["system_state"] == "not_ready"
 
-    def test_missing_indexing_state(self) -> None:
+    def test_missing_state(self) -> None:
         data = {"parsed_files": 50}
         result = _add_system_state(_tc(data))
         parsed = _parse_tc(result)
@@ -360,7 +360,7 @@ class TestHandleToolCallBRouting:
         with patch(
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
-            return_value=_tc({"indexing_state": "indexed", "parsed_files": 42}),
+            return_value=_tc({"state": "indexed", "parsed_files": 42}),
         ):
             result = await handle_tool_call_b("sync_project", {})
             parsed = _parse_tc(result)
@@ -706,7 +706,7 @@ class TestSetProjectRouting:
         async def mock_handle(name: str, args: Any) -> list[TextContent]:
             calls.append((name, args))
             if name == "check_system_status":
-                return _tc({"indexing_state": "indexed", "parsed_files": 10,
+                return _tc({"state": "indexed", "parsed_files": 10,
                              "indexed_classes": 5, "indexed_functions": 20})
             return _tc({"result": "ok"})
 
@@ -730,7 +730,7 @@ class TestSetProjectRouting:
             if name == "set_project_directory":
                 captured_args.update(args)
             if name == "check_system_status":
-                return _tc({"indexing_state": "indexed"})
+                return _tc({"state": "indexed"})
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
@@ -743,7 +743,7 @@ class TestSetProjectRouting:
         """set_project returns indexing_in_progress when not ready."""
         async def mock_handle(name: str, args: Any) -> list[TextContent]:
             if name == "check_system_status":
-                return _tc({"indexing_state": "indexing", "parsed_files": 5})
+                return _tc({"state": "indexing", "parsed_files": 5})
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
@@ -761,7 +761,7 @@ class TestSyncProjectRouting:
         with patch(
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
-            return_value=_tc({"indexing_state": "indexed", "parsed_files": 100}),
+            return_value=_tc({"state": "indexed", "parsed_files": 100}),
         ) as mock:
             result = await handle_tool_call_b("sync_project", {})
             parsed = _parse_tc(result)
@@ -779,7 +779,7 @@ class TestSyncProjectRouting:
         async def mock_handle(name: str, args: Any) -> list[TextContent]:
             calls.append(name)
             if name == "check_system_status":
-                return _tc({"indexing_state": "indexed", "parsed_files": 100})
+                return _tc({"state": "indexed", "parsed_files": 100})
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
