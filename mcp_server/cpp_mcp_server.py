@@ -1178,7 +1178,14 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except Exception as e:
-        return [TextContent(type="text", text=f"Error: {str(e)}")]
+        return [
+            TextContent(
+                type="text",
+                text=f"Internal error: {str(e)}\n\n"
+                "This is a server-side issue, not a user error. "
+                "Try restarting the MCP server.",
+            )
+        ]
 
 
 async def main():
