@@ -59,7 +59,7 @@ _LOCATION_FIELDS = {
     "specialization_of",
 }
 
-# System state mapping from indexing_state → simplified enum
+# System state mapping from state → simplified enum
 _SYSTEM_STATE_MAP = {
     "uninitialized": "not_ready",
     "initializing": "not_ready",
@@ -141,7 +141,7 @@ def _add_system_state(result: List[TextContent]) -> List[TextContent]:
     except (json.JSONDecodeError, IndexError, AttributeError):
         return result
 
-    indexing_state = data.get("indexing_state", "uninitialized")
+    indexing_state = data.get("state", "uninitialized")
     data["system_state"] = _SYSTEM_STATE_MAP.get(indexing_state, "not_ready")
     return [TextContent(type="text", text=json.dumps(data, indent=2))]
 
