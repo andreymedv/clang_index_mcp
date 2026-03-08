@@ -1,0 +1,469 @@
+# Canned MCP tool responses for mock server.
+#
+# Each entry has:
+#   tool: tool name
+#   match: argument matchers (exact, contains, regex)
+#   default: true  (fallback for this tool when no match found)
+#   response: the JSON response to return
+#
+# Matching priority: specific matches first, then default.
+
+responses:
+  # -----------------------------------------------------------------
+  # set_project
+  # -----------------------------------------------------------------
+  - tool: set_project
+    default: true
+    response:
+      project_path: "/path/to/project"
+      status: "ready"
+      indexed_classes: 42
+      indexed_functions: 187
+      parsed_files: 28
+
+  # -----------------------------------------------------------------
+  # sync_project
+  # -----------------------------------------------------------------
+  - tool: sync_project
+    default: true
+    response:
+      state: "indexed"
+      system_state: "ready"
+      parsed_files: 28
+      indexed_classes: 42
+      indexed_functions: 187
+
+  # -----------------------------------------------------------------
+  # search_codebase
+  # -----------------------------------------------------------------
+
+  # Search for Manager classes
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Manager"
+      target_type: "classes_and_structs_only"
+    response:
+      results:
+        - qualified_name: "app::DataManager"
+          kind: "class"
+          prototype: "class DataManager : public BaseService"
+          file: "src/data_manager.h"
+          line: 15
+        - qualified_name: "app::CacheManager"
+          kind: "class"
+          prototype: "class CacheManager"
+          file: "src/cache_manager.h"
+          line: 8
+        - qualified_name: "app::ui::WindowManager"
+          kind: "class"
+          prototype: "class WindowManager : public Singleton<WindowManager>"
+          file: "src/ui/window_manager.h"
+          line: 22
+      next_steps:
+        - "get_class_info('DataManager') -- explore class details"
+        - "get_class_hierarchy('DataManager') -- see inheritance tree"
+
+  # Search for Manager pattern (all symbol types)
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Manager"
+    response:
+      results:
+        - qualified_name: "app::DataManager"
+          kind: "class"
+          prototype: "class DataManager : public BaseService"
+          file: "src/data_manager.h"
+          line: 15
+        - qualified_name: "app::CacheManager"
+          kind: "class"
+          prototype: "class CacheManager"
+          file: "src/cache_manager.h"
+          line: 8
+        - qualified_name: "app::DataManager::initialize"
+          kind: "method"
+          prototype: "bool DataManager::initialize(const Config &config)"
+          file: "src/data_manager.cpp"
+          line: 45
+      next_steps:
+        - "get_class_info('DataManager') -- explore class details"
+
+  # Search for Widget
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Widget"
+    response:
+      results:
+        - qualified_name: "app::ui::Widget"
+          kind: "class"
+          prototype: "class Widget : public EventHandler"
+          file: "src/ui/widget.h"
+          line: 18
+        - qualified_name: "app::ui::ButtonWidget"
+          kind: "class"
+          prototype: "class ButtonWidget : public Widget"
+          file: "src/ui/button_widget.h"
+          line: 12
+        - qualified_name: "app::ui::TextWidget"
+          kind: "class"
+          prototype: "class TextWidget : public Widget"
+          file: "src/ui/text_widget.h"
+          line: 10
+      next_steps:
+        - "get_class_info('Widget') -- explore base class"
+        - "get_class_hierarchy('Widget') -- see full inheritance tree"
+
+  # Search for functions with "process"
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "process"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "app::DataManager::processEvent"
+          kind: "method"
+          prototype: "void DataManager::processEvent(const Event &event)"
+          file: "src/data_manager.cpp"
+          line: 78
+        - qualified_name: "app::processInput"
+          kind: "function"
+          prototype: "bool processInput(int argc, char **argv)"
+          file: "src/main.cpp"
+          line: 15
+      next_steps:
+        - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
+        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+
+  # Empty search result (for testing empty-result hints)
+  - tool: search_codebase
+    match:
+      pattern: "NonExistentSymbol12345"
+    response:
+      results: []
+      next_steps:
+        - "Try a broader pattern like '.*Partial.*' to find similar symbols"
+        - "Use find_in_file to search within a specific file"
+
+  # Search for functions by file
+  - tool: search_codebase
+    match:
+      file_name:
+        contains: "main.cpp"
+    response:
+      results:
+        - qualified_name: "main"
+          kind: "function"
+          prototype: "int main(int argc, char **argv)"
+          file: "src/main.cpp"
+          line: 25
+        - qualified_name: "app::processInput"
+          kind: "function"
+          prototype: "bool processInput(int argc, char **argv)"
+          file: "src/main.cpp"
+          line: 15
+        - qualified_name: "app::initializeApp"
+          kind: "function"
+          prototype: "void initializeApp()"
+          file: "src/main.cpp"
+          line: 8
+
+  # Default search response
+  - tool: search_codebase
+    default: true
+    response:
+      results:
+        - qualified_name: "app::ui::Widget"
+          kind: "class"
+          prototype: "class Widget : public EventHandler"
+          file: "src/ui/widget.h"
+          line: 18
+      next_steps:
+        - "Refine your search with target_type or file_name filters"
+
+  # -----------------------------------------------------------------
+  # get_class_info
+  # -----------------------------------------------------------------
+
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "DataManager"
+    response:
+      qualified_name: "app::DataManager"
+      kind: "class"
+      prototype: "class DataManager : public BaseService"
+      file: "src/data_manager.h"
+      line: 15
+      base_classes:
+        - "app::BaseService"
+      derived_classes:
+        - "app::CachedDataManager"
+      methods:
+        - qualified_name: "app::DataManager::initialize"
+          prototype: "bool DataManager::initialize(const Config &config)"
+          attributes: ["virtual"]
+        - qualified_name: "app::DataManager::processEvent"
+          prototype: "void DataManager::processEvent(const Event &event)"
+          attributes: ["virtual"]
+        - qualified_name: "app::DataManager::shutdown"
+          prototype: "void DataManager::shutdown()"
+          attributes: ["virtual"]
+        - qualified_name: "app::DataManager::getData"
+          prototype: "const Data &DataManager::getData() const"
+          attributes: ["const"]
+      next_steps:
+        - "get_class_info('BaseService') -- explore base class"
+        - "get_class_hierarchy('DataManager') -- full inheritance tree"
+        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Widget"
+    response:
+      qualified_name: "app::ui::Widget"
+      kind: "class"
+      prototype: "class Widget : public EventHandler"
+      file: "src/ui/widget.h"
+      line: 18
+      base_classes:
+        - "app::EventHandler"
+      derived_classes:
+        - "app::ui::ButtonWidget"
+        - "app::ui::TextWidget"
+        - "app::ui::ContainerWidget"
+      methods:
+        - qualified_name: "app::ui::Widget::render"
+          prototype: "void Widget::render(Canvas &canvas)"
+          attributes: ["pure_virtual"]
+        - qualified_name: "app::ui::Widget::handleEvent"
+          prototype: "bool Widget::handleEvent(const Event &event)"
+          attributes: ["virtual"]
+        - qualified_name: "app::ui::Widget::resize"
+          prototype: "void Widget::resize(int w, int h)"
+          attributes: ["virtual"]
+      next_steps:
+        - "get_class_info('EventHandler') -- explore base class"
+        - "get_class_hierarchy('Widget') -- full inheritance tree"
+        - "search_codebase('render', target_type='functions_and_methods_only') -- find implementations"
+
+  - tool: get_class_info
+    default: true
+    response:
+      error: "Class not found. Use search_codebase to find the correct name."
+
+  # -----------------------------------------------------------------
+  # get_class_hierarchy
+  # -----------------------------------------------------------------
+
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "Widget"
+    response:
+      root: "app::EventHandler"
+      nodes:
+        - name: "app::EventHandler"
+          children: ["app::ui::Widget"]
+        - name: "app::ui::Widget"
+          children: ["app::ui::ButtonWidget", "app::ui::TextWidget", "app::ui::ContainerWidget"]
+        - name: "app::ui::ButtonWidget"
+          children: []
+        - name: "app::ui::TextWidget"
+          children: []
+        - name: "app::ui::ContainerWidget"
+          children: ["app::ui::ScrollableContainer"]
+        - name: "app::ui::ScrollableContainer"
+          children: []
+
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "DataManager"
+    response:
+      root: "app::BaseService"
+      nodes:
+        - name: "app::BaseService"
+          children: ["app::DataManager", "app::NetworkManager"]
+        - name: "app::DataManager"
+          children: ["app::CachedDataManager"]
+        - name: "app::NetworkManager"
+          children: []
+        - name: "app::CachedDataManager"
+          children: []
+
+  - tool: get_class_hierarchy
+    default: true
+    response:
+      error: "Class not found in hierarchy. Use search_codebase to find the correct name."
+
+  # -----------------------------------------------------------------
+  # find_in_file
+  # -----------------------------------------------------------------
+
+  - tool: find_in_file
+    match:
+      file_path:
+        contains: "data_manager"
+    response:
+      results:
+        - qualified_name: "app::DataManager"
+          kind: "class"
+          line: 15
+        - qualified_name: "app::DataManager::initialize"
+          kind: "method"
+          line: 20
+        - qualified_name: "app::DataManager::processEvent"
+          kind: "method"
+          line: 25
+        - qualified_name: "app::DataManager::shutdown"
+          kind: "method"
+          line: 30
+
+  - tool: find_in_file
+    default: true
+    response:
+      results: []
+
+  # -----------------------------------------------------------------
+  # get_type_alias_info
+  # -----------------------------------------------------------------
+
+  - tool: get_type_alias_info
+    match:
+      type_name:
+        contains: "StringPtr"
+    response:
+      alias_name: "StringPtr"
+      canonical_type: "std::shared_ptr<std::string>"
+      file: "src/types.h"
+      line: 8
+      related_aliases:
+        - name: "ConstStringPtr"
+          canonical_type: "std::shared_ptr<const std::string>"
+
+  - tool: get_type_alias_info
+    default: true
+    response:
+      error: "Type alias not found. Try search_codebase to find type names."
+
+  # -----------------------------------------------------------------
+  # get_functions_called_by (outgoing calls)
+  # -----------------------------------------------------------------
+
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "processEvent"
+    response:
+      function: "app::DataManager::processEvent"
+      callees:
+        - qualified_name: "app::EventValidator::validate"
+          prototype: "bool EventValidator::validate(const Event &)"
+          file: "src/event_validator.h"
+          line: 22
+        - qualified_name: "app::DataManager::getData"
+          prototype: "const Data &DataManager::getData() const"
+          file: "src/data_manager.h"
+          line: 45
+        - qualified_name: "app::Logger::log"
+          prototype: "void Logger::log(LogLevel, const std::string &)"
+          file: "src/logger.h"
+          line: 15
+      next_steps:
+        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+        - "get_functions_called_by('validate', class_name='EventValidator') -- go deeper"
+
+  - tool: get_functions_called_by
+    match:
+      function_name: "main"
+    response:
+      function: "main"
+      callees:
+        - qualified_name: "app::initializeApp"
+          prototype: "void initializeApp()"
+          file: "src/main.cpp"
+          line: 8
+        - qualified_name: "app::DataManager::initialize"
+          prototype: "bool DataManager::initialize(const Config &)"
+          file: "src/data_manager.h"
+          line: 20
+        - qualified_name: "app::ui::Application::run"
+          prototype: "int Application::run()"
+          file: "src/ui/application.h"
+          line: 30
+
+  - tool: get_functions_called_by
+    default: true
+    response:
+      function: "unknown"
+      callees: []
+      next_steps:
+        - "Use search_codebase to find the correct function name"
+
+  # -----------------------------------------------------------------
+  # find_usage_sites (incoming calls / callers)
+  # -----------------------------------------------------------------
+
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "processEvent"
+    response:
+      function: "app::DataManager::processEvent"
+      callers:
+        - qualified_name: "app::EventLoop::dispatch"
+          prototype: "void EventLoop::dispatch()"
+          file: "src/event_loop.cpp"
+          line: 55
+          call_sites:
+            - file: "src/event_loop.cpp"
+              line: 62
+              column: 12
+        - qualified_name: "app::TestRunner::runTest"
+          prototype: "void TestRunner::runTest(const TestCase &)"
+          file: "tests/test_runner.cpp"
+          line: 30
+          call_sites:
+            - file: "tests/test_runner.cpp"
+              line: 42
+              column: 8
+      next_steps:
+        - "get_functions_called_by('dispatch', class_name='EventLoop') -- trace upstream"
+
+  - tool: find_usage_sites
+    default: true
+    response:
+      function: "unknown"
+      callers: []
+      next_steps:
+        - "Use search_codebase to find the correct function name"
+
+  # -----------------------------------------------------------------
+  # trace_execution_path
+  # -----------------------------------------------------------------
+
+  - tool: trace_execution_path
+    match:
+      source_function: "main"
+      target_function:
+        contains: "processEvent"
+    response:
+      source: "main"
+      target: "app::DataManager::processEvent"
+      paths:
+        - ["main", "app::initializeApp", "app::EventLoop::start", "app::EventLoop::dispatch", "app::DataManager::processEvent"]
+      path_count: 1
+
+  - tool: trace_execution_path
+    default: true
+    response:
+      source: "unknown"
+      target: "unknown"
+      paths: []
+      path_count: 0
+      next_steps:
+        - "Use search_codebase to verify both function names exist"
