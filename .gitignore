@@ -40,3 +40,12 @@ tests/pytest.log
 
 # Benchmark results (contains local paths and model-specific data)
 benchmark_results.jsonl
+
+# Mock server optimization runs (ephemeral test output)
+tools/mock_server/optimization_runs/
+
+# Mock server test results
+mock_test_results.json
+
+# Tool definition backups (created by optimize.py)
+mcp_server/consolidated_tools.py.bak
