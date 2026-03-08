@@ -146,10 +146,47 @@ Results are saved as JSON with per-step evaluation:
 }
 ```
 
+## Failure Explanation Mode
+
+When `--explain-failures` is enabled, the runner stops at the first mismatch
+in each scenario and asks the LLM to explain its reasoning:
+
+```bash
+python tools/mock_server/runner.py \
+  --scenarios tools/mock_server/scenarios/basic.yaml \
+  --explain-failures
+```
+
+The question is tailored to the failure type:
+
+| Failure | Question asked |
+|---------|---------------|
+| No tool called | "Why did you not call any tool?" |
+| Wrong tool | "Why did you choose X instead of Y?" |
+| Missing parameter | "Why did you omit parameter Z?" |
+| Wrong parameter value | "Why did you pass Z=actual instead of expected?" |
+| Unexpected parameter | "Why did you include parameter Z?" |
+
+The LLM's explanation is saved in the output JSON under
+`steps[i].llm_explanation` for failed steps. This provides actionable
+signal for improving tool descriptions.
+
+Example output:
+```json
+{
+  "step": 1,
+  "expected_tool": "find_usage_sites",
+  "actual_tool": "get_functions_called_by",
+  "tool_match": false,
+  "llm_explanation": "I chose get_functions_called_by because the description says 'find all functions called BY' which matched the query pattern..."
+}
+```
+
 ## Iteration Workflow
 
 1. Run scenarios → review results JSON
 2. Identify failing scenarios (wrong tool or wrong params)
-3. Adjust tool descriptions in `consolidated_tools.py`
-4. Re-run → compare pass rates
-5. When satisfied, apply changes to real MCP server and validate with real project
+3. Run with `--explain-failures` to understand why the LLM made wrong choices
+4. Adjust tool descriptions in `consolidated_tools.py`
+5. Re-run → compare pass rates
+6. When satisfied, apply changes to real MCP server and validate with real project
