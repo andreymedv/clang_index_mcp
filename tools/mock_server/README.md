@@ -216,57 +216,43 @@ Example output:
 }
 ```
 
-## Automated Optimization Loop
+## Optimization Loop (Claude Code-driven)
 
-`optimize.py` automates the test→analyze→fix→retest workflow:
+`optimize.py` is a helper that runs tests and produces compact failure reports.
+The analysis and fix steps are done by **Claude Code** (switch to Haiku for
+cost efficiency via `/model`). No external API keys needed.
 
-```bash
-# Full automated loop (requires ANTHROPIC_API_KEY)
-python tools/mock_server/optimize.py --model qwen3-4b
-
-# From existing test results
-python tools/mock_server/optimize.py --from-results mock_test_results.json
-
-# Manual mode: prints Claude prompt, you apply suggestions yourself
-python tools/mock_server/optimize.py --from-results results.json --manual
-
-# Apply saved suggestions
-python tools/mock_server/optimize.py --apply-suggestions suggestions.json
-
-# Multiple iterations
-python tools/mock_server/optimize.py --max-iterations 3 --model qwen3-4b
-
-# Dry run: show what would change
-python tools/mock_server/optimize.py --from-results results.json --dry-run
-```
-
-### How it works
-
-1. **Run tests** — executes all scenarios via `runner.py` with `--explain-failures`
-2. **Analyze failures** — extracts patterns (wrong tool, wrong params, missing calls)
-3. **Generate suggestions** — sends failure patterns + current tool definitions to
-   Claude API, which returns precise find-and-replace edits for `consolidated_tools.py`
-4. **Apply fixes** — applies suggestions with backup (`.py.bak`)
-5. **Re-run tests** — verifies improvement, auto-reverts if regressions detected
-6. **Report** — shows before/after comparison with fixed/broken scenarios
-
-Results are saved per-iteration in `optimization_runs/iteration_NN/`.
-
-### Manual workflow (no API key needed)
+### Commands
 
 ```bash
-# Step 1: Run tests
-python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml \
-  --explain-failures --output results.json
+# Run all scenarios, produce compact failure report
+python tools/mock_server/optimize.py run --model qwen3-4b
 
-# Step 2: Generate prompt for manual Claude analysis
-python tools/mock_server/optimize.py --from-results results.json --manual
+# Run with LLM self-explanations (more detail, slower)
+python tools/mock_server/optimize.py run --model qwen3-4b --explain-failures
 
-# Step 3: Copy prompt → paste into Claude → save response as suggestions.json
+# Analyze existing results file
+python tools/mock_server/optimize.py analyze results.json
 
-# Step 4: Apply suggestions
-python tools/mock_server/optimize.py --apply-suggestions suggestions.json
+# Compare before/after results
+python tools/mock_server/optimize.py compare before.json after.json
 
-# Step 5: Re-run tests to verify
-python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml
+# Apply suggestions from JSON file
+python tools/mock_server/optimize.py apply suggestions.json [--dry-run]
+
+# Restore consolidated_tools.py from backup
+python tools/mock_server/optimize.py restore
 ```
+
+### Workflow
+
+1. Claude Code runs `optimize.py run --model qwen3-4b` → reads compact report
+2. Claude Code analyzes failures and directly edits `consolidated_tools.py`
+3. Claude Code runs `optimize.py run --model qwen3-4b` → verifies improvement
+4. Claude Code runs `optimize.py compare before.json after.json` → measures delta
+5. Repeat until satisfied
+
+### Token efficiency
+
+The compact report is designed to be ~500-1000 tokens, minimizing Claude Code
+context usage. Switch to Haiku (`/model`) for routine iteration cycles.
