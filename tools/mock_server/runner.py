@@ -212,6 +212,116 @@ def _check_param(assertion: Dict[str, Any], actual: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Failure explanation
+# ---------------------------------------------------------------------------
+
+
+def _build_explanation_prompt(
+    step_eval: Dict[str, Any],
+    recorded_call: Optional[Dict[str, Any]],
+) -> str:
+    """Build a targeted question asking the LLM to explain its tool choice.
+
+    Generates different questions based on failure type:
+    - No tool call at all
+    - Wrong tool selected
+    - Right tool, wrong parameters (per-param detail)
+    """
+    # Case 1: LLM didn't call any tool
+    if recorded_call is None:
+        expected = step_eval["expected_tool"]
+        return (
+            "You did not call any tool. The expected action was to call "
+            f"'{expected}'. Explain why you chose not to use any tool. "
+            "What in the tool descriptions made you decide against calling one?"
+        )
+
+    actual_tool = recorded_call["tool"]
+    actual_args = recorded_call["arguments"]
+    expected_tool = step_eval["expected_tool"]
+
+    # Case 2: Wrong tool
+    if not step_eval["tool_match"]:
+        return (
+            f"You called '{actual_tool}' but the expected tool was "
+            f"'{expected_tool}'. Explain your reasoning: what in the "
+            f"description of '{actual_tool}' made it seem like the right "
+            f"choice? What about '{expected_tool}' made you not choose it?"
+        )
+
+    # Case 3: Right tool, wrong parameters
+    issues: List[str] = []
+    for param_name, assertion in step_eval.get("param_assertions", {}).items():
+        if assertion["pass"]:
+            continue
+
+        expected_desc = assertion["expected"]
+        actual_val = assertion["actual"]
+
+        if expected_desc == "absent":
+            # LLM passed a parameter that shouldn't be there
+            issues.append(
+                f"- You passed parameter '{param_name}' = {actual_val!r}, "
+                f"but this parameter was not expected. "
+                f"Why did you include '{param_name}'?"
+            )
+        elif actual_val is None:
+            # LLM omitted a required parameter
+            issues.append(
+                f"- You did not pass parameter '{param_name}' "
+                f"(expected: {expected_desc}). "
+                f"Why did you omit '{param_name}'?"
+            )
+        else:
+            # LLM passed wrong value
+            issues.append(
+                f"- Parameter '{param_name}': you passed {actual_val!r} "
+                f"but expected was {expected_desc}. "
+                f"Why did you choose this value?"
+            )
+
+    if not issues:
+        return (
+            f"You called '{actual_tool}' with arguments {actual_args}. "
+            "Explain why you chose these specific parameter values."
+        )
+
+    issues_text = "\n".join(issues)
+    return (
+        f"You called '{actual_tool}' (correct tool) but with "
+        f"unexpected parameters:\n{issues_text}\n\n"
+        "Analyze the tool description and your reasoning. "
+        "What led you to these parameter choices?"
+    )
+
+
+def _request_explanation(
+    client: OpenAIClient,
+    model: str,
+    messages: List[Dict[str, Any]],
+    explanation_prompt: str,
+    temperature: float = 0,
+    max_tokens: int = 2048,
+) -> Optional[str]:
+    """Ask the LLM to explain its tool choice. Returns explanation text."""
+    explain_messages = list(messages)
+    explain_messages.append({"role": "user", "content": explanation_prompt})
+
+    try:
+        response = client.chat_completion(
+            model=model,
+            messages=explain_messages,
+            tools=[],  # No tools — force text response
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        choice = response.get("choices", [{}])[0]
+        return choice.get("message", {}).get("content", "")
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Tool-call mediation loop
 # ---------------------------------------------------------------------------
 
@@ -226,8 +336,14 @@ def run_scenario(
     max_turns: int = 10,
     temperature: float = 0,
     max_tokens: int = 4096,
+    explain_failures: bool = False,
 ) -> Dict[str, Any]:
     """Run a single scenario through the LLM tool-call mediation loop.
+
+    Args:
+        explain_failures: If True, on first mismatch stop the scenario and
+            ask the LLM to explain its reasoning. The explanation is included
+            in the result under step_results[i]["llm_explanation"].
 
     Returns a result dict with step-by-step evaluation.
     """
@@ -236,10 +352,13 @@ def run_scenario(
         {"role": "user", "content": scenario["query"]},
     ]
 
+    expected_steps = scenario.get("expected_steps", [])
     recorded_calls: List[Dict[str, Any]] = []
+    step_results: List[Dict[str, Any]] = []
     start_time = time.time()
     error: Optional[str] = None
     final_answer = ""
+    stopped_for_explanation = False
 
     for turn in range(max_turns):
         try:
@@ -265,6 +384,27 @@ def run_scenario(
         if not tool_calls:
             # LLM responded with text — conversation done
             final_answer = message.get("content", "") or ""
+
+            # Check if LLM should have called a tool but didn't
+            if explain_failures and len(recorded_calls) < len(expected_steps):
+                step_idx = len(recorded_calls)
+                step_eval = {
+                    "step": step_idx + 1,
+                    "expected_tool": expected_steps[step_idx]["tool"],
+                    "actual_tool": None,
+                    "tool_match": False,
+                    "param_assertions": {},
+                    "params_pass": False,
+                    "missing": True,
+                }
+                prompt = _build_explanation_prompt(step_eval, None)
+                explanation = _request_explanation(
+                    client, model, messages, prompt,
+                    temperature=temperature, max_tokens=2048,
+                )
+                step_eval["llm_explanation"] = explanation
+                step_results.append(step_eval)
+                stopped_for_explanation = True
             break
 
         # Append assistant message with tool calls
@@ -279,9 +419,8 @@ def run_scenario(
             except json.JSONDecodeError:
                 tool_args = {}
 
-            recorded_calls.append(
-                {"tool": tool_name, "arguments": tool_args}
-            )
+            call_record = {"tool": tool_name, "arguments": tool_args}
+            recorded_calls.append(call_record)
 
             # Get canned response
             canned = store.match(tool_name, tool_args)
@@ -296,6 +435,28 @@ def run_scenario(
                 }
             )
 
+            # Inline evaluation for explain_failures mode
+            step_idx = len(recorded_calls) - 1
+            if explain_failures and step_idx < len(expected_steps):
+                step_eval = evaluate_step(
+                    expected_steps[step_idx], tool_name, tool_args,
+                )
+                step_eval["step"] = step_idx + 1
+                if not step_eval["tool_match"] or not step_eval["params_pass"]:
+                    prompt = _build_explanation_prompt(step_eval, call_record)
+                    explanation = _request_explanation(
+                        client, model, messages, prompt,
+                        temperature=temperature, max_tokens=2048,
+                    )
+                    step_eval["llm_explanation"] = explanation
+                    step_results.append(step_eval)
+                    stopped_for_explanation = True
+                    break
+                step_results.append(step_eval)
+
+        if stopped_for_explanation:
+            break
+
         if finish_reason == "length":
             error = "max_tokens_exceeded"
             break
@@ -304,30 +465,55 @@ def run_scenario(
 
     wall_time = time.time() - start_time
 
-    # Evaluate steps
-    expected_steps = scenario.get("expected_steps", [])
-    step_results = []
-    for i, expected_step in enumerate(expected_steps):
-        if i < len(recorded_calls):
-            step_result = evaluate_step(
-                expected_step,
-                recorded_calls[i]["tool"],
-                recorded_calls[i]["arguments"],
-            )
-            step_result["step"] = i + 1
-            step_results.append(step_result)
-        else:
-            step_results.append(
-                {
-                    "step": i + 1,
-                    "expected_tool": expected_step["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "missing": True,
-                }
-            )
+    # Post-hoc evaluation (only for steps not already evaluated inline)
+    if not explain_failures:
+        for i, expected_step in enumerate(expected_steps):
+            if i < len(recorded_calls):
+                step_result = evaluate_step(
+                    expected_step,
+                    recorded_calls[i]["tool"],
+                    recorded_calls[i]["arguments"],
+                )
+                step_result["step"] = i + 1
+                step_results.append(step_result)
+            else:
+                step_results.append(
+                    {
+                        "step": i + 1,
+                        "expected_tool": expected_step["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "missing": True,
+                    }
+                )
+    else:
+        # In explain mode, add remaining missing steps (not yet evaluated)
+        evaluated_count = len(step_results)
+        for i in range(evaluated_count, len(expected_steps)):
+            if not stopped_for_explanation:
+                if i < len(recorded_calls):
+                    step_result = evaluate_step(
+                        expected_steps[i],
+                        recorded_calls[i]["tool"],
+                        recorded_calls[i]["arguments"],
+                    )
+                    step_result["step"] = i + 1
+                    step_results.append(step_result)
+                else:
+                    step_results.append(
+                        {
+                            "step": i + 1,
+                            "expected_tool": expected_steps[i]["tool"],
+                            "actual_tool": None,
+                            "tool_match": False,
+                            "param_assertions": {},
+                            "params_pass": False,
+                            "missing": True,
+                            "skipped": True,
+                        }
+                    )
 
     # Overall pass: all expected steps matched
     overall_pass = (
@@ -495,6 +681,15 @@ def main() -> None:
         action="store_true",
         help="List available models from LM Studio",
     )
+    parser.add_argument(
+        "--explain-failures",
+        action="store_true",
+        help=(
+            "On first mismatch, stop the scenario and ask the LLM "
+            "to explain its reasoning. Adds 'llm_explanation' field "
+            "to failed steps in the output."
+        ),
+    )
     args = parser.parse_args()
 
     client = OpenAIClient(
@@ -573,6 +768,8 @@ def main() -> None:
     print(f"Scenarios: {len(scenarios)} from {args.scenarios}")
     print(f"Fixtures: {args.fixtures}")
     print(f"Output: {args.output}")
+    if args.explain_failures:
+        print("Explain failures: ON")
     print()
 
     results: List[Dict[str, Any]] = []
@@ -591,6 +788,7 @@ def main() -> None:
             system_prompt=SYSTEM_PROMPT,
             temperature=args.temperature,
             max_tokens=args.max_tokens,
+            explain_failures=args.explain_failures,
         )
         results.append(result)
 
@@ -599,6 +797,15 @@ def main() -> None:
         print(f"  {status} | Tools: {tools_used} | {result['wall_time_seconds']}s")
         if result["error"]:
             print(f"  ERROR: {result['error']}")
+        if args.explain_failures and not result["overall_pass"]:
+            for step in result["steps"]:
+                explanation = step.get("llm_explanation")
+                if explanation:
+                    # Show first 200 chars of explanation in console
+                    short = explanation[:200].replace("\n", " ")
+                    if len(explanation) > 200:
+                        short += "..."
+                    print(f"  EXPLAIN: {short}")
 
     # Export
     export_results(
