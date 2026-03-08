@@ -14,6 +14,7 @@ tool descriptions, response formats, and next-step hints.
 | `scenarios/basic.yaml` | 1-step test scenarios |
 | `scenarios/multi_step.yaml` | 2-3 step chained scenarios |
 | `scenarios/edge_cases.yaml` | Edge cases (empty results, direction confusion) |
+| `optimize.py` | Automated test→analyze→fix→retest loop |
 
 ## Quick Start
 
@@ -215,11 +216,43 @@ Example output:
 }
 ```
 
-## Iteration Workflow
+## Optimization Loop (Claude Code-driven)
 
-1. Run scenarios → review results JSON
-2. Identify failing scenarios (wrong tool or wrong params)
-3. Run with `--explain-failures` to understand why the LLM made wrong choices
-4. Adjust tool descriptions in `consolidated_tools.py`
-5. Re-run → compare pass rates
-6. When satisfied, apply changes to real MCP server and validate with real project
+`optimize.py` is a helper that runs tests and produces compact failure reports.
+The analysis and fix steps are done by **Claude Code** (switch to Haiku for
+cost efficiency via `/model`). No external API keys needed.
+
+### Commands
+
+```bash
+# Run all scenarios, produce compact failure report
+python tools/mock_server/optimize.py run --model qwen3-4b
+
+# Run with LLM self-explanations (more detail, slower)
+python tools/mock_server/optimize.py run --model qwen3-4b --explain-failures
+
+# Analyze existing results file
+python tools/mock_server/optimize.py analyze results.json
+
+# Compare before/after results
+python tools/mock_server/optimize.py compare before.json after.json
+
+# Apply suggestions from JSON file
+python tools/mock_server/optimize.py apply suggestions.json [--dry-run]
+
+# Restore consolidated_tools.py from backup
+python tools/mock_server/optimize.py restore
+```
+
+### Workflow
+
+1. Claude Code runs `optimize.py run --model qwen3-4b` → reads compact report
+2. Claude Code analyzes failures and directly edits `consolidated_tools.py`
+3. Claude Code runs `optimize.py run --model qwen3-4b` → verifies improvement
+4. Claude Code runs `optimize.py compare before.json after.json` → measures delta
+5. Repeat until satisfied
+
+### Token efficiency
+
+The compact report is designed to be ~500-1000 tokens, minimizing Claude Code
+context usage. Switch to Haiku (`/model`) for routine iteration cycles.
