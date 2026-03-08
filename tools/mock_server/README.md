@@ -14,6 +14,7 @@ tool descriptions, response formats, and next-step hints.
 | `scenarios/basic.yaml` | 1-step test scenarios |
 | `scenarios/multi_step.yaml` | 2-3 step chained scenarios |
 | `scenarios/edge_cases.yaml` | Edge cases (empty results, direction confusion) |
+| `optimize.py` | Automated test→analyze→fix→retest loop |
 
 ## Quick Start
 
@@ -215,11 +216,57 @@ Example output:
 }
 ```
 
-## Iteration Workflow
+## Automated Optimization Loop
 
-1. Run scenarios → review results JSON
-2. Identify failing scenarios (wrong tool or wrong params)
-3. Run with `--explain-failures` to understand why the LLM made wrong choices
-4. Adjust tool descriptions in `consolidated_tools.py`
-5. Re-run → compare pass rates
-6. When satisfied, apply changes to real MCP server and validate with real project
+`optimize.py` automates the test→analyze→fix→retest workflow:
+
+```bash
+# Full automated loop (requires ANTHROPIC_API_KEY)
+python tools/mock_server/optimize.py --model qwen3-4b
+
+# From existing test results
+python tools/mock_server/optimize.py --from-results mock_test_results.json
+
+# Manual mode: prints Claude prompt, you apply suggestions yourself
+python tools/mock_server/optimize.py --from-results results.json --manual
+
+# Apply saved suggestions
+python tools/mock_server/optimize.py --apply-suggestions suggestions.json
+
+# Multiple iterations
+python tools/mock_server/optimize.py --max-iterations 3 --model qwen3-4b
+
+# Dry run: show what would change
+python tools/mock_server/optimize.py --from-results results.json --dry-run
+```
+
+### How it works
+
+1. **Run tests** — executes all scenarios via `runner.py` with `--explain-failures`
+2. **Analyze failures** — extracts patterns (wrong tool, wrong params, missing calls)
+3. **Generate suggestions** — sends failure patterns + current tool definitions to
+   Claude API, which returns precise find-and-replace edits for `consolidated_tools.py`
+4. **Apply fixes** — applies suggestions with backup (`.py.bak`)
+5. **Re-run tests** — verifies improvement, auto-reverts if regressions detected
+6. **Report** — shows before/after comparison with fixed/broken scenarios
+
+Results are saved per-iteration in `optimization_runs/iteration_NN/`.
+
+### Manual workflow (no API key needed)
+
+```bash
+# Step 1: Run tests
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml \
+  --explain-failures --output results.json
+
+# Step 2: Generate prompt for manual Claude analysis
+python tools/mock_server/optimize.py --from-results results.json --manual
+
+# Step 3: Copy prompt → paste into Claude → save response as suggestions.json
+
+# Step 4: Apply suggestions
+python tools/mock_server/optimize.py --apply-suggestions suggestions.json
+
+# Step 5: Re-run tests to verify
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml
+```
