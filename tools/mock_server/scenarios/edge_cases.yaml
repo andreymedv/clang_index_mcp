@@ -1,0 +1,114 @@
+# Edge case scenarios: empty results, direction confusion, ambiguous queries.
+
+scenarios:
+  # -----------------------------------------------------------------
+  # Category H: Empty results handling
+  # -----------------------------------------------------------------
+
+  - id: "H-01"
+    category: "empty_results"
+    query: "Find the NonExistentSymbol12345 class"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "NonExistentSymbol12345"
+
+  # -----------------------------------------------------------------
+  # Category I: Direction confusion (callers vs callees)
+  # -----------------------------------------------------------------
+
+  - id: "I-01"
+    category: "direction"
+    query: "What functions are called BY processEvent?"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "I-02"
+    category: "direction"
+    query: "What calls processEvent? Show me the callers."
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "I-03"
+    category: "direction"
+    query: "Where is processEvent used in the codebase?"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "I-04"
+    category: "direction"
+    query: "Show the dependencies of processEvent — what does it depend on?"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  # -----------------------------------------------------------------
+  # Category J: Tool selection ambiguity
+  # -----------------------------------------------------------------
+
+  - id: "J-01"
+    category: "ambiguity"
+    query: "Tell me about the DataManager class"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "DataManager"
+
+  - id: "J-02"
+    category: "ambiguity"
+    query: "How is the Widget class hierarchy organized?"
+    expected_steps:
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "Widget"
+
+  # -----------------------------------------------------------------
+  # Category K: Method with class_name parameter
+  # -----------------------------------------------------------------
+
+  - id: "K-01"
+    category: "method_class"
+    query: "What does the DataManager::processEvent method call?"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+          class_name:
+            type: contains
+            value: "DataManager"
+
+  - id: "K-02"
+    category: "method_class"
+    query: "Find all callers of DataManager::processEvent"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+          class_name:
+            type: contains
+            value: "DataManager"
