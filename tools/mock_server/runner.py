@@ -123,10 +123,40 @@ class OpenAIClient:
 
 
 def load_scenarios(path: str | Path) -> List[Dict[str, Any]]:
-    """Load test scenarios from YAML."""
+    """Load test scenarios from YAML.
+
+    Supports both single-query and multi-query scenarios:
+      - query: "single query"        → 1 scenario
+      - queries: ["q1", "q2", "q3"]  → 3 scenarios (same expected_steps)
+
+    Multi-query scenarios are expanded into separate entries with
+    scenario_id suffixed by /1, /2, etc. and a query_variant index.
+    """
     with open(path) as f:
         data = yaml.safe_load(f)
-    return data.get("scenarios", [])
+
+    raw = data.get("scenarios", [])
+    expanded: List[Dict[str, Any]] = []
+
+    for scenario in raw:
+        queries = scenario.get("queries")
+        if queries and isinstance(queries, list):
+            for idx, q in enumerate(queries):
+                variant = dict(scenario)
+                variant["query"] = q
+                variant["query_variant"] = idx + 1
+                variant["query_variant_total"] = len(queries)
+                variant["base_id"] = scenario["id"]
+                variant["id"] = f"{scenario['id']}/{idx + 1}"
+                variant.pop("queries", None)
+                expanded.append(variant)
+        else:
+            scenario.setdefault("query_variant", 0)
+            scenario.setdefault("query_variant_total", 1)
+            scenario.setdefault("base_id", scenario["id"])
+            expanded.append(scenario)
+
+    return expanded
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +552,7 @@ def run_scenario(
         and error is None
     )
 
-    return {
+    result: Dict[str, Any] = {
         "scenario_id": scenario["id"],
         "category": scenario.get("category", ""),
         "query": scenario["query"],
@@ -534,6 +564,14 @@ def run_scenario(
         "wall_time_seconds": round(wall_time, 2),
         "error": error,
     }
+
+    # Include query variant metadata if present
+    if scenario.get("query_variant"):
+        result["base_scenario_id"] = scenario.get("base_id", scenario["id"])
+        result["query_variant"] = scenario["query_variant"]
+        result["query_variant_total"] = scenario.get("query_variant_total", 1)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -724,7 +762,13 @@ def main() -> None:
     if args.dry_run:
         print(f"Scenarios ({len(scenarios)}):")
         for s in scenarios:
-            print(f"  [{s['id']}] ({s.get('category', '')}) {s['query'][:70]}")
+            variant_tag = ""
+            if s.get("query_variant"):
+                variant_tag = f" [variant {s['query_variant']}/{s['query_variant_total']}]"
+            print(
+                f"  [{s['id']}] ({s.get('category', '')}){variant_tag} "
+                f"{s['query'][:70]}"
+            )
         return
 
     # Resolve model
@@ -821,6 +865,30 @@ def main() -> None:
     total = len(results)
     print(f"\n{'=' * 50}")
     print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%)")
+
+    # Per-base-scenario variant summary (only if multi-query scenarios exist)
+    has_variants = any(r.get("query_variant") for r in results)
+    if has_variants:
+        from collections import OrderedDict
+
+        base_groups: Dict[str, List[Dict[str, Any]]] = OrderedDict()
+        for r in results:
+            base_id = r.get("base_scenario_id", r["scenario_id"])
+            base_groups.setdefault(base_id, []).append(r)
+
+        print("\nPer-scenario robustness:")
+        for base_id, group in base_groups.items():
+            if len(group) <= 1:
+                continue
+            group_passed = sum(1 for r in group if r["overall_pass"])
+            group_total = len(group)
+            pct = group_passed / group_total * 100
+            bar = "+" * group_passed + "-" * (group_total - group_passed)
+            print(f"  {base_id}: {group_passed}/{group_total} ({pct:.0f}%) [{bar}]")
+            for r in group:
+                if not r["overall_pass"]:
+                    print(f"    FAIL: {r['query'][:70]}")
+
     print(f"Output: {args.output}")
 
 
