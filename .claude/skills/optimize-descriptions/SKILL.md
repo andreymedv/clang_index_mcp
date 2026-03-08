@@ -1,6 +1,7 @@
 ---
 name: optimize-descriptions
 description: Run tool description optimization loop — test LLM tool selection against mock scenarios, analyze failures, improve descriptions, verify improvement
+model: Haiku
 ---
 
 # Tool Description Optimization Skill
