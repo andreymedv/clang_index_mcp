@@ -79,6 +79,39 @@ scenarios:
             value: "classes_and_structs_only"
 ```
 
+### Multi-query scenarios (robustness testing)
+
+Use `queries` (plural) instead of `query` to test multiple phrasings
+of the same intent against the same expected tool calls:
+
+```yaml
+scenarios:
+  - id: "I-incoming"
+    category: "direction"
+    queries:
+      - "What calls processEvent?"
+      - "Find all callers of processEvent"
+      - "Where is processEvent used?"
+      - "Who invokes processEvent?"
+      - "Show me the usage sites of processEvent"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+```
+
+Each query variant runs as a separate test (`I-incoming/1`, `I-incoming/2`, etc.)
+with per-variant pass/fail and a per-scenario robustness summary:
+
+```
+Per-scenario robustness:
+  I-outgoing: 4/5 (80%) [++++-]
+    FAIL: Show me what processEvent invokes
+  I-incoming: 5/5 (100%) [+++++]
+```
+
 ### Parameter assertion types
 
 | Type | Description |

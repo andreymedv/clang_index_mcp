@@ -17,11 +17,17 @@ scenarios:
 
   # -----------------------------------------------------------------
   # Category I: Direction confusion (callers vs callees)
+  # Multi-query: test robustness to different phrasings
   # -----------------------------------------------------------------
 
-  - id: "I-01"
+  - id: "I-outgoing"
     category: "direction"
-    query: "What functions are called BY processEvent?"
+    queries:
+      - "What functions are called BY processEvent?"
+      - "Show the dependencies of processEvent — what does it depend on?"
+      - "What does processEvent call internally?"
+      - "List the outgoing calls from processEvent"
+      - "Show me what processEvent invokes"
     expected_steps:
       - tool: get_functions_called_by
         params:
@@ -29,31 +35,16 @@ scenarios:
             type: contains
             value: "processEvent"
 
-  - id: "I-02"
+  - id: "I-incoming"
     category: "direction"
-    query: "What calls processEvent? Show me the callers."
+    queries:
+      - "What calls processEvent? Show me the callers."
+      - "Where is processEvent used in the codebase?"
+      - "Find all callers of processEvent"
+      - "Who invokes processEvent?"
+      - "Show me the usage sites of processEvent"
     expected_steps:
       - tool: find_usage_sites
-        params:
-          function_name:
-            type: contains
-            value: "processEvent"
-
-  - id: "I-03"
-    category: "direction"
-    query: "Where is processEvent used in the codebase?"
-    expected_steps:
-      - tool: find_usage_sites
-        params:
-          function_name:
-            type: contains
-            value: "processEvent"
-
-  - id: "I-04"
-    category: "direction"
-    query: "Show the dependencies of processEvent — what does it depend on?"
-    expected_steps:
-      - tool: get_functions_called_by
         params:
           function_name:
             type: contains
