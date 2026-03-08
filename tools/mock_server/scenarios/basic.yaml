@@ -1,0 +1,124 @@
+# Basic 1-step test scenarios for tool selection evaluation.
+#
+# Each scenario tests whether the LLM picks the correct tool
+# and passes reasonable parameters.
+#
+# Parameter assertions:
+#   type: exact   — must match exactly (case-insensitive)
+#   type: contains — must contain substring
+#   type: regex   — must match regex
+#   type: any     — any non-null value is OK
+#   type: one_of  — must be one of the listed values
+#   type: absent  — parameter must NOT be present
+
+scenarios:
+  # -----------------------------------------------------------------
+  # Category A: Basic search (1-step)
+  # -----------------------------------------------------------------
+
+  - id: "A-01"
+    category: "search"
+    query: "Find all classes with 'Manager' in their name"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Manager"
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
+
+  - id: "A-02"
+    category: "search"
+    query: "Search for the Widget class"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Widget"
+
+  - id: "A-03"
+    category: "search"
+    query: "Find all functions that contain 'process' in their name"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "process"
+          target_type:
+            type: exact
+            value: "functions_and_methods_only"
+
+  - id: "A-04"
+    category: "search"
+    query: "List all symbols defined in main.cpp"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          file_name:
+            type: contains
+            value: "main.cpp"
+
+  # -----------------------------------------------------------------
+  # Category B: Class info (1-step)
+  # -----------------------------------------------------------------
+
+  - id: "B-01"
+    category: "class_info"
+    query: "Show me details of the DataManager class — its methods and base classes"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "DataManager"
+
+  - id: "B-02"
+    category: "class_info"
+    query: "What is the inheritance hierarchy of Widget?"
+    expected_steps:
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "Widget"
+
+  # -----------------------------------------------------------------
+  # Category C: Call graph (1-step)
+  # -----------------------------------------------------------------
+
+  - id: "C-01"
+    category: "call_graph"
+    query: "What functions does processEvent call?"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "C-02"
+    category: "call_graph"
+    query: "Find all callers of processEvent"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "C-03"
+    category: "call_graph"
+    query: "Trace the execution path from main to processEvent"
+    expected_steps:
+      - tool: trace_execution_path
+        params:
+          source_function:
+            type: contains
+            value: "main"
+          target_function:
+            type: contains
+            value: "processEvent"

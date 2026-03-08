@@ -1,0 +1,118 @@
+# Multi-step scenarios testing tool chaining and next-step hint following.
+#
+# These scenarios verify that the LLM can:
+# 1. Pick the correct first tool
+# 2. Interpret the tool response (including next_steps hints)
+# 3. Pick the correct follow-up tool with correct parameters
+
+scenarios:
+  # -----------------------------------------------------------------
+  # Category D: Search → Class info (2-step)
+  # -----------------------------------------------------------------
+
+  - id: "D-01"
+    category: "multi_step"
+    query: "Find the DataManager class and show me all its methods"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "DataManager"
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "DataManager"
+
+  - id: "D-02"
+    category: "multi_step"
+    query: "Find classes with Manager in the name, then show me the full inheritance tree of DataManager"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Manager"
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "DataManager"
+
+  # -----------------------------------------------------------------
+  # Category E: Search → Call graph (2-step)
+  # -----------------------------------------------------------------
+
+  - id: "E-01"
+    category: "multi_step"
+    query: "Find the processEvent function and show what it calls"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "processEvent"
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "E-02"
+    category: "multi_step"
+    query: "Find the processEvent function and show all its callers"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "processEvent"
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  # -----------------------------------------------------------------
+  # Category F: Class info → Hierarchy (2-step)
+  # -----------------------------------------------------------------
+
+  - id: "F-01"
+    category: "multi_step"
+    query: "Show me the Widget class details, then its full inheritance tree"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "Widget"
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "Widget"
+
+  # -----------------------------------------------------------------
+  # Category G: 3-step chains
+  # -----------------------------------------------------------------
+
+  - id: "G-01"
+    category: "multi_step_3"
+    query: "Find the Widget class, show me its details, then trace the inheritance tree"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Widget"
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "Widget"
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "Widget"
