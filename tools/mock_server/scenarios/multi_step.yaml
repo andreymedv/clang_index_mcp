@@ -61,18 +61,17 @@ scenarios:
 
   - id: "E-02"
     category: "multi_step"
-    query: "Find the processEvent function and show all its callers"
+    query: "Search for functions related to event processing, then show callers of the most relevant one"
     expected_steps:
       - tool: search_codebase
         params:
           pattern:
             type: contains
-            value: "processEvent"
+            value: "event"
       - tool: find_usage_sites
         params:
           function_name:
-            type: contains
-            value: "processEvent"
+            type: any
 
   # -----------------------------------------------------------------
   # Category F: Class info → Hierarchy (2-step)

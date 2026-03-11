@@ -56,7 +56,7 @@ scenarios:
 
   - id: "J-01"
     category: "ambiguity"
-    query: "Tell me about the DataManager class"
+    query: "Show me the methods and base classes of DataManager"
     expected_steps:
       - tool: get_class_info
         params:
