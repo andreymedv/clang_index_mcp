@@ -93,9 +93,18 @@ def run_tests(
     token: str,
     explain_failures: bool = True,
     extra_args: Optional[List[str]] = None,
+    scenario_files_override: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Run test scenarios via runner.py and return parsed results."""
-    scenario_files = sorted(Path(scenarios_dir).glob("*.yaml"))
+    """Run test scenarios via runner.py and return parsed results.
+
+    Args:
+        scenario_files_override: If provided, run these specific YAML files
+            instead of globbing scenarios_dir.
+    """
+    if scenario_files_override:
+        scenario_files = [Path(f) for f in scenario_files_override]
+    else:
+        scenario_files = sorted(Path(scenarios_dir).glob("*.yaml"))
     if not scenario_files:
         print(f"  No scenario files found in {scenarios_dir}")
         return {"summary": {"total": 0, "passed": 0, "failed": 0, "pass_rate": 0}}
@@ -117,6 +126,13 @@ def run_tests(
             cmd.append("--explain-failures")
         if extra_args:
             cmd.extend(extra_args)
+
+        # Remove stale output before each scenario file to prevent
+        # re-reading old results when runner.py fails without writing.
+        try:
+            os.remove(output_path)
+        except FileNotFoundError:
+            pass
 
         print(f"  Running: {sf.name}...")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -165,9 +181,13 @@ def extract_failure_patterns(report: Dict[str, Any]) -> List[FailurePattern]:
         if result.get("overall_pass"):
             continue
 
+        has_step_failure = False
+
         for step in result.get("steps", []):
             if step.get("tool_match") and step.get("params_pass"):
                 continue
+
+            has_step_failure = True
 
             if step.get("missing"):
                 failure_type = "missing_call"
@@ -211,6 +231,25 @@ def extract_failure_patterns(report: Dict[str, Any]) -> List[FailurePattern]:
                 actual_tool=step.get("actual_tool"),
                 param_issues=param_issues if failure_type == "wrong_param" else [],
                 llm_explanation=step.get("llm_explanation"),
+            )
+            patterns.append(pattern)
+
+        # Capture overall errors (e.g., max_turns_exceeded) when all steps
+        # individually passed but the scenario still failed.
+        error = result.get("error")
+        if not has_step_failure and error:
+            total_calls = result.get("total_tool_calls", 0)
+            pattern = FailurePattern(
+                scenario_id=result.get("scenario_id", ""),
+                category=result.get("category", ""),
+                query=result.get("query", ""),
+                failure_type="runaway_loop",
+                expected_tool=f"(completed in {len(result.get('steps', []))} steps)",
+                actual_tool=f"{total_calls} calls ({error})",
+                llm_explanation=(
+                    f"LLM made {total_calls} tool calls before hitting the limit. "
+                    f"Expected steps all passed but LLM kept calling tools."
+                ),
             )
             patterns.append(pattern)
 
@@ -425,6 +464,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     results_path = str(out / f"results_{timestamp}.json")
 
+    scenario_files = getattr(args, "scenarios_files", None)
     print("Running test scenarios...")
     report = run_tests(
         model=args.model,
@@ -433,6 +473,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         lm_url=args.lm_url,
         token=args.token,
         explain_failures=args.explain_failures,
+        scenario_files_override=scenario_files,
     )
 
     print(f"\nResults saved: {results_path}")
@@ -525,6 +566,13 @@ def main() -> None:
         type=str,
         default=str(DEFAULT_OUTPUT_DIR),
         help=f"Output directory (default: {DEFAULT_OUTPUT_DIR})",
+    )
+    p_run.add_argument(
+        "--scenarios-files",
+        nargs="+",
+        type=str,
+        default=None,
+        help="Run specific scenario YAML files (overrides --scenarios-dir)",
     )
     p_run.set_defaults(func=cmd_run)
 
