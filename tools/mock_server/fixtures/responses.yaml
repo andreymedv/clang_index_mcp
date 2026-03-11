@@ -137,6 +137,28 @@ responses:
         - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
         - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
 
+  # Search for functions with "event"
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "event"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "app::DataManager::processEvent"
+          kind: "method"
+          prototype: "void DataManager::processEvent(const Event &event)"
+          file: "src/data_manager.cpp"
+          line: 78
+        - qualified_name: "app::ui::Widget::handleEvent"
+          kind: "method"
+          prototype: "bool Widget::handleEvent(const Event &event)"
+          file: "src/ui/widget.h"
+          line: 22
+      next_steps:
+        - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
+        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+
   # Empty search result (for testing empty-result hints)
   - tool: search_codebase
     match:
@@ -303,6 +325,22 @@ responses:
   # -----------------------------------------------------------------
   # find_in_file
   # -----------------------------------------------------------------
+
+  - tool: find_in_file
+    match:
+      file_path:
+        contains: "main.cpp"
+    response:
+      results:
+        - qualified_name: "main"
+          kind: "function"
+          line: 25
+        - qualified_name: "app::processInput"
+          kind: "function"
+          line: 15
+        - qualified_name: "app::initializeApp"
+          kind: "function"
+          line: 8
 
   - tool: find_in_file
     match:
