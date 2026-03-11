@@ -53,12 +53,12 @@ scenarios:
             value: "functions_and_methods_only"
 
   - id: "A-04"
-    category: "search"
+    category: "file_search"
     query: "List all symbols defined in main.cpp"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_in_file
         params:
-          file_name:
+          file_path:
             type: contains
             value: "main.cpp"
 

@@ -1,0 +1,56 @@
+# Probe scenarios for root cause: "used" / "usage" ambiguity
+# between search_codebase (find references) and find_usage_sites (find callers).
+#
+# Tests whether the LLM consistently picks find_usage_sites when
+# the query implies call-site analysis with various phrasings of "used".
+
+scenarios:
+  - id: "P1-01"
+    category: "probe"
+    query: "Where in the project is processEvent being used?"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "P1-02"
+    category: "probe"
+    query: "Show me all the places that use processEvent"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "P1-03"
+    category: "probe"
+    query: "Which parts of the code rely on processEvent?"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "P1-04"
+    category: "probe"
+    query: "I want to see everywhere processEvent is referenced"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
+
+  - id: "P1-05"
+    category: "probe"
+    query: "Find all code that depends on the processEvent function"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "processEvent"
