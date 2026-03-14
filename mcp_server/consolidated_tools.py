@@ -223,6 +223,11 @@ def list_tools_b() -> List[Tool]:
                 "- 'ui::Widget' — matches namespace suffix\n"
                 "- '.*Manager.*' — regex, matches containing 'Manager'\n"
                 "- '' (empty) — matches ALL symbols (use with file_name)\n\n"
+                "Filtering by location:\n"
+                "- file_name: restrict to a directory, file prefix, or path "
+                "(e.g. 'tests/', 'detail_')\n"
+                "- namespace: restrict to a C++ namespace "
+                "(e.g. 'core', 'utils')\n\n"
                 "Returns qualified_name, kind, and more based on detail level."
             ),
             inputSchema={
