@@ -26,7 +26,6 @@ from mcp_server.consolidated_tools import (
     list_tools_b,
 )
 
-
 # ---------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------
@@ -72,9 +71,9 @@ class TestListToolsB:
             assert tool.description
             assert len(tool.description) > 10
 
-    def test_search_codebase_has_target_type_enum(self) -> None:
+    def test_find_symbols_by_pattern_has_target_type_enum(self) -> None:
         tools = list_tools_b()
-        search = [t for t in tools if t.name == "search_codebase"][0]
+        search = [t for t in tools if t.name == "find_symbols_by_pattern"][0]
         props = search.inputSchema["properties"]
         assert "target_type" in props
         assert set(props["target_type"]["enum"]) == {
@@ -83,9 +82,9 @@ class TestListToolsB:
             "all_symbol_types",
         }
 
-    def test_search_codebase_has_detail_level_enum(self) -> None:
+    def test_find_symbols_by_pattern_has_detail_level_enum(self) -> None:
         tools = list_tools_b()
-        search = [t for t in tools if t.name == "search_codebase"][0]
+        search = [t for t in tools if t.name == "find_symbols_by_pattern"][0]
         props = search.inputSchema["properties"]
         assert "output_detail_level" in props
         assert set(props["output_detail_level"]["enum"]) == {
@@ -144,11 +143,7 @@ class TestFilterDetailLevel:
     """Test output_detail_level filtering logic."""
 
     def test_full_details_no_filtering(self) -> None:
-        data = {
-            "results": [
-                {"qualified_name": "Foo", "file": "f.cpp", "brief": "A class"}
-            ]
-        }
+        data = {"results": [{"qualified_name": "Foo", "file": "f.cpp", "brief": "A class"}]}
         result = _filter_detail_level(_tc(data), "full_details_with_docs")
         parsed = _parse_tc(result)
         assert parsed["results"][0]["brief"] == "A class"
@@ -205,12 +200,8 @@ class TestFilterDetailLevel:
     def test_filters_classes_and_functions_keys(self) -> None:
         """search_symbols format: {classes: [...], functions: [...]}."""
         data = {
-            "classes": [
-                {"qualified_name": "A", "brief": "cls", "file": "a.h"}
-            ],
-            "functions": [
-                {"qualified_name": "f", "brief": "fn", "file": "b.cpp"}
-            ],
+            "classes": [{"qualified_name": "A", "brief": "cls", "file": "a.h"}],
+            "functions": [{"qualified_name": "f", "brief": "fn", "file": "b.cpp"}],
         }
         result = _filter_detail_level(_tc(data), "locations_and_metadata")
         parsed = _parse_tc(result)
@@ -375,7 +366,7 @@ class TestHandleToolCallBRouting:
 
 
 class TestSearchCodebaseRouting:
-    """Test search_codebase routing to internal search tools."""
+    """Test find_symbols_by_pattern routing to internal search tools."""
 
     @pytest.mark.asyncio
     async def test_classes_routes_to_search_classes(self) -> None:
@@ -385,7 +376,7 @@ class TestSearchCodebaseRouting:
             return_value=_tc({"results": []}),
         ) as mock:
             await handle_tool_call_b(
-                "search_codebase",
+                "find_symbols_by_pattern",
                 {
                     "pattern": "Foo",
                     "target_type": "classes_and_structs_only",
@@ -406,7 +397,7 @@ class TestSearchCodebaseRouting:
             return_value=_tc({"results": []}),
         ) as mock:
             await handle_tool_call_b(
-                "search_codebase",
+                "find_symbols_by_pattern",
                 {
                     "pattern": "bar",
                     "target_type": "functions_and_methods_only",
@@ -422,7 +413,7 @@ class TestSearchCodebaseRouting:
             return_value=_tc({"classes": [], "functions": []}),
         ) as mock:
             await handle_tool_call_b(
-                "search_codebase",
+                "find_symbols_by_pattern",
                 {"pattern": "X", "target_type": "all_symbol_types"},
             )
             assert mock.call_args[0][0] == "search_symbols"
@@ -434,7 +425,7 @@ class TestSearchCodebaseRouting:
             new_callable=AsyncMock,
             return_value=_tc({"classes": [], "functions": []}),
         ) as mock:
-            await handle_tool_call_b("search_codebase", {"pattern": "X"})
+            await handle_tool_call_b("find_symbols_by_pattern", {"pattern": "X"})
             assert mock.call_args[0][0] == "search_symbols"
 
     @pytest.mark.asyncio
@@ -446,7 +437,7 @@ class TestSearchCodebaseRouting:
             return_value=_tc({"results": []}),
         ) as mock:
             await handle_tool_call_b(
-                "search_codebase",
+                "find_symbols_by_pattern",
                 {
                     "pattern": "X",
                     "target_type": "classes_and_structs_only",
@@ -480,7 +471,7 @@ class TestSearchCodebaseRouting:
             return_value=_tc(raw_data),
         ):
             result = await handle_tool_call_b(
-                "search_codebase",
+                "find_symbols_by_pattern",
                 {
                     "pattern": "Foo",
                     "target_type": "classes_and_structs_only",
@@ -502,9 +493,7 @@ class TestGetFunctionsCalledByRouting:
         with patch(
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
-            return_value=_tc(
-                {"callees": [{"qualified_name": "f", "file": "a.cpp"}]}
-            ),
+            return_value=_tc({"callees": [{"qualified_name": "f", "file": "a.cpp"}]}),
         ) as mock:
             await handle_tool_call_b(
                 "get_functions_called_by",
@@ -552,11 +541,7 @@ class TestGetFunctionsCalledByRouting:
             "mcp_server.cpp_mcp_server._handle_tool_call",
             new_callable=AsyncMock,
             return_value=_tc(
-                {
-                    "callees": [
-                        {"qualified_name": "f", "file": "a.cpp", "brief": "doc"}
-                    ]
-                }
+                {"callees": [{"qualified_name": "f", "file": "a.cpp", "brief": "doc"}]}
             ),
         ) as mock:
             result = await handle_tool_call_b(
@@ -706,8 +691,14 @@ class TestSetProjectRouting:
         async def mock_handle(name: str, args: Any) -> list[TextContent]:
             calls.append((name, args))
             if name == "check_system_status":
-                return _tc({"state": "indexed", "parsed_files": 10,
-                             "indexed_classes": 5, "indexed_functions": 20})
+                return _tc(
+                    {
+                        "state": "indexed",
+                        "parsed_files": 10,
+                        "indexed_classes": 5,
+                        "indexed_functions": 20,
+                    }
+                )
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
@@ -741,6 +732,7 @@ class TestSetProjectRouting:
     @pytest.mark.asyncio
     async def test_set_project_indexing_in_progress(self) -> None:
         """set_project returns indexing_in_progress when not ready."""
+
         async def mock_handle(name: str, args: Any) -> list[TextContent]:
             if name == "check_system_status":
                 return _tc({"state": "indexing", "parsed_files": 5})
@@ -783,9 +775,7 @@ class TestSyncProjectRouting:
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
-            result = await handle_tool_call_b(
-                "sync_project", {"refresh_mode": "incremental"}
-            )
+            result = await handle_tool_call_b("sync_project", {"refresh_mode": "incremental"})
             parsed = _parse_tc(result)
             assert parsed["system_state"] == "ready"
             assert "refresh_project" in calls

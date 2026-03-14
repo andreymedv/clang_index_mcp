@@ -23,8 +23,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import requests
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -43,18 +41,43 @@ MODEL_READY_POLL = 3        # seconds between polls
 # LM Studio helpers
 # ---------------------------------------------------------------------------
 
-def get_loaded_models(lm_url: str) -> list[str]:
-    """Return list of currently loaded model IDs."""
+def get_loaded_models() -> list[str]:
+    """Return list of currently loaded model IDs via `lms ps`."""
     try:
-        r = requests.get(f"{lm_url}/v1/models", timeout=5)
-        r.raise_for_status()
-        return [m["id"] for m in r.json().get("data", [])]
-    except Exception:
+        result = subprocess.run(
+            ["lms", "ps"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+        lines = result.stdout.strip().splitlines()
+        # lms ps output: first line is header, subsequent lines are models
+        # e.g.: "  qwen3-8b-mlx  ..."  or just the model id per line
+        models = []
+        for line in lines[1:]:  # skip header
+            line = line.strip()
+            if line:
+                # first whitespace-separated token is the model identifier
+                model_id = line.split()[0]
+                models.append(model_id)
+        return models
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
 
 
-def load_model(model_id: str, lm_url: str, timeout: int = MODEL_READY_TIMEOUT) -> bool:
-    """Load model via lms CLI and wait until it appears in /v1/models."""
+def unload_all_models() -> None:
+    """Unload all loaded models via `lms unload --all`."""
+    try:
+        subprocess.run(
+            ["lms", "unload", "--all"],
+            check=False, capture_output=True, text=True, timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
+def load_model(model_id: str, timeout: int = MODEL_READY_TIMEOUT) -> bool:
+    """Load model via lms CLI and wait until it appears in `lms ps`."""
     print(f"  Loading {model_id}...", flush=True)
     try:
         subprocess.run(
@@ -70,7 +93,7 @@ def load_model(model_id: str, lm_url: str, timeout: int = MODEL_READY_TIMEOUT) -
 
     deadline = time.time() + timeout
     while time.time() < deadline:
-        models = get_loaded_models(lm_url)
+        models = get_loaded_models()
         if any(model_id in m or m in model_id for m in models):
             print(f"  Ready: {models[0] if models else model_id}", flush=True)
             return True
@@ -80,20 +103,9 @@ def load_model(model_id: str, lm_url: str, timeout: int = MODEL_READY_TIMEOUT) -
     return False
 
 
-def unload_model(model_id: str) -> None:
-    """Unload model via lms CLI."""
-    try:
-        subprocess.run(
-            ["lms", "unload", model_id, "--yes"],
-            check=False, capture_output=True, text=True,
-        )
-    except FileNotFoundError:
-        pass
-
-
-def resolve_model_id(model_arg: str, lm_url: str) -> str:
-    """Return the actual model ID from /v1/models matching model_arg."""
-    models = get_loaded_models(lm_url)
+def resolve_model_id(model_arg: str) -> str:
+    """Return the actual model ID from `lms ps` matching model_arg."""
+    models = get_loaded_models()
     for m in models:
         if model_arg in m or m in model_arg:
             return m
@@ -280,6 +292,13 @@ def main() -> None:
     summaries = []
     start_total = time.time()
 
+    # Clear VRAM before starting: unload any previously loaded models
+    if not args.no_load:
+        print("Clearing VRAM: unloading all models before benchmark...")
+        unload_all_models()
+        time.sleep(2)
+        print()
+
     for model_arg in args.models:
         print(f"{'='*50}")
         print(f"Model: {model_arg}")
@@ -287,15 +306,15 @@ def main() -> None:
 
         # Load model
         if not args.no_load:
-            ok = load_model(model_arg, args.lm_url)
+            ok = load_model(model_arg)
             if not ok:
                 print(f"  SKIP: could not load {model_arg}")
                 continue
         else:
             print(f"  Skipping load (--no-load)")
 
-        # Resolve actual model ID from server
-        actual_id = resolve_model_id(model_arg, args.lm_url)
+        # Resolve actual model ID from lms ps
+        actual_id = resolve_model_id(model_arg)
         output_path = output_dir / f"{safe_filename(model_arg)}.json"
 
         print(f"  Running {len(scenario_files)} scenario file(s)...")
@@ -320,7 +339,7 @@ def main() -> None:
         # Unload model
         if not args.no_unload and not args.no_load:
             print(f"  Unloading {model_arg}...")
-            unload_model(model_arg)
+            unload_all_models()
             time.sleep(2)  # brief pause before next model
 
     # Write cross-model summary

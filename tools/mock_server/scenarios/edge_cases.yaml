@@ -9,7 +9,7 @@ scenarios:
     category: "empty_results"
     query: "Find the NonExistentSymbol12345 class"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains

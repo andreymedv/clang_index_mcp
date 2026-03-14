@@ -20,7 +20,7 @@ scenarios:
     category: "search"
     query: "Find all classes with 'Manager' in their name"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -33,7 +33,7 @@ scenarios:
     category: "search"
     query: "Search for the Widget class"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -43,7 +43,7 @@ scenarios:
     category: "search"
     query: "Find all functions that contain 'process' in their name"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains

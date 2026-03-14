@@ -14,7 +14,7 @@ scenarios:
     category: "multi_step"
     query: "Find the DataManager class and show me all its methods"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -29,7 +29,7 @@ scenarios:
     category: "multi_step"
     query: "Find classes with Manager in the name, then show me the full inheritance tree of DataManager"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -48,7 +48,7 @@ scenarios:
     category: "multi_step"
     query: "Find the processEvent function and show what it calls"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -63,7 +63,7 @@ scenarios:
     category: "multi_step"
     query: "Search for functions related to event processing, then show callers of the most relevant one"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -100,7 +100,7 @@ scenarios:
     category: "multi_step_3"
     query: "Find the Widget class, show me its details, then trace the inheritance tree"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
