@@ -9,21 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a Model Context Protocol (MCP) server that provides semantic C++ code analysis using libclang. It allows AI assistants like Claude to understand C++ codebases through symbol indexing, class hierarchies, call graphs, and compile_commands.json integration.
 
 **Key Features:**
-- 10 consolidated MCP tools for C++ code analysis (search_codebase, get_class_info, get_class_hierarchy, call graph analysis, type alias tracking, etc.)
-- **Type alias tracking:** Simple and template type aliases (using declarations)
-  - Extracts both simple aliases (`using IntPtr = int*`) and template aliases (`template<typename T> using Ptr = std::shared_ptr<T>`)
-  - Stores template parameters with kind information (type/non-type) for template aliases
-  - MCP tool `get_type_alias_info` returns alias details including template parameters
-- **Documentation extraction (Phase 2):** Extract brief and full documentation comments from C++ code
-  - Supports Doxygen (///, /** */), JavaDoc, and Qt-style (/*!) comments
-  - Returns documentation in MCP tool responses for LLM consumption
-- **Virtual/abstract method indicators (Phase 5):** Distinguish virtual methods, pure virtual interfaces, and implementations
-  - `is_virtual`: True for virtual methods (overrideable)
-  - `is_pure_virtual`: True for pure virtual methods (= 0, abstract interface)
-  - `is_const`: True for const-qualified methods
-  - `is_static`: True for static methods/functions
-  - `is_definition`: True if has body/implementation (helps distinguish declarations from definitions)
-  - Enables LLMs to identify abstract interfaces and find implementations in derived classes
+- 10 consolidated MCP tools for C++ code analysis (find_symbols_by_pattern, get_class_info, get_class_hierarchy, call graph analysis, type alias tracking, etc.)
+- **Type alias tracking:** `get_type_alias_info` — simple + template aliases with template params
+- **Documentation extraction:** `brief`/`doc_comment` fields from Doxygen/JavaDoc/Qt comments
+- **Method indicators:** `is_virtual`, `is_pure_virtual`, `is_const`, `is_static`, `is_definition`
 - Incremental analysis with intelligent change detection (30-300x faster re-indexing)
 - SQLite-backed symbol cache with FTS5 full-text search
 - Multi-process parallel parsing with GIL bypass for 6-7x speedup
@@ -53,7 +42,7 @@ python scripts/test_installation.py
 
 ### Testing
 ```bash
-make test                       # Run all tests with pytest
+make test                       # Run all tests with pytest (never run multiple pytest processes simultaneously — SQLite cache conflicts)
 make test-coverage              # Run tests with coverage report (htmlcov/)
 make test-compile-commands      # Run compile_commands integration tests (tests/test_runner.py)
 make test-installation          # Test installation and basic functionality
@@ -269,79 +258,12 @@ make ie                         # install-editable
 - Only traverses AST nodes from project files and files with active call tracking
 - See cpp_analyzer.py:_process_cursor() early exit optimization (line ~946-954)
 
-**11. SQLite Connection-Level PRAGMA Optimization (2026-01-02)**
-- **Critical Separation:** PRAGMA statements moved from schema.sql to dedicated `_set_connection_pragmas()` method
-- **Problem Solved:** Worker processes with `skip_schema_recreation=True` were hitting early return in `_init_database()` and missing SQLite optimizations, causing >8x performance degradation
-- **Architecture:** PRAGMAs are connection-level settings (not schema definitions), must be applied to EVERY connection
-- **Applied PRAGMAs:**
-  - `journal_mode = WAL` - Write-Ahead Logging for concurrent multi-process access
-  - `synchronous = NORMAL` - Balance safety and speed (safe for WAL mode)
-  - `cache_size = -64000` - 64MB cache per connection (vs 2MB default)
-  - `temp_store = MEMORY` - Keep temp tables in RAM (vs disk)
-  - `mmap_size = 268435456` - 256MB memory-mapped I/O (vs 0 default)
-- **Performance Impact:** Restored analysis speed to ~3.5 files/sec (from ~0.4 files/sec in buggy version)
-- **Implementation:** Called from `_connect()` after connection establishment, applies to main + all workers
-- See mcp_server/sqlite_cache_backend.py:_set_connection_pragmas(), mcp_server/schema.sql (documentation)
+**11. SQLite PRAGMAs:** Applied per-connection in `_set_connection_pragmas()` (WAL, 64MB cache, 256MB mmap). CRITICAL: must be applied to every connection — workers with `skip_schema_recreation=True` bypassed schema init and missed PRAGMAs (>8x perf regression). See `sqlite_cache_backend.py:_set_connection_pragmas()`.
 
-**12. Phase 4 Memory Optimization: Lazy Call Graph Loading (2026-01-02)**
-- **Problem:** In-memory call_graph and reverse_call_graph dicts consumed ~2 GB for large projects
-  - `call_graph`: caller USR → Set[callee USRs] (~1.23 GB)
-  - `reverse_call_graph`: callee USR → Set[caller USRs] (~752 MB)
-- **Solution:** Removed in-memory dicts, all call graph data now stored ONLY in SQLite
-  - Task 4.1: Stream call sites to SQLite during indexing (no in-memory accumulation)
-  - Task 4.3: Query SQLite directly for find_callers()/find_callees() (no in-memory cache)
-- **Architecture:**
-  - Workers extract call sites during parsing, return to main process
-  - Main process streams call sites directly to SQLite (store_call_sites=False flag)
-  - find_callers()/find_callees() query call_sites table on-demand
-  - Current session call_sites kept in memory temporarily, cleared after SQLite save
-- **Memory Savings:** ~3.9 GB total (Task 4.1: ~1.9 GB + Task 4.3: ~2 GB)
-- **Implementation:** See mcp_server/call_graph.py (queries), sqlite_cache_backend.py (storage)
-- **Deprecated:** get_call_statistics() methods (not used, would require expensive SQLite queries)
+**12. Call Graph in SQLite only:** No in-memory call_graph dicts (was ~2 GB RAM). Workers stream call_sites directly to SQLite; find_callers/find_callees query on-demand. See `mcp_server/call_graph.py`.
 
-**13. Template-Mediated Call Tracking (Schema v17.0)**
-- **Problem:** Calls like `std::make_shared<ProjectClass>(args)` were invisible in find_callees with `project_only=True` because the callee is an external template function
-- **Solution:** At parse time, extract template argument types from `cursor.referenced.get_template_argument_type(i)` and check if any resolve to project files
-- **Storage:** Two new columns in call_sites table: `display_name` (e.g. "std::make_shared<Sensor>") and `template_project_types` (JSON array of project type names)
-- **Query-time:** `_get_template_mediated_info()` helper queries SQLite for template metadata; find_callees/get_call_sites surface these calls with `is_template_mediated: True` flag
-- **Scope:** Free function templates only (make_shared, make_unique). Container member methods (vector::push_back) are Phase 2 follow-up
-- **Implementation:** cpp_analyzer.py:`_extract_template_call_info()`, sqlite_cache_backend.py:`get_template_mediated_call_sites()`
+**13. Template-Mediated Calls:** `std::make_shared<T>()` tracked via template arg type extraction at parse time. `is_template_mediated: True` flag in find_callees results. See `_extract_template_call_info()`.
 
-### Data Flow
-
-**Indexing Flow:**
-1. `set_project()` called via MCP tool
-2. CompileCommandsManager loads compile_commands.json (if enabled)
-3. FileScanner discovers all C++ files in project
-4. Files filtered by config (exclude_directories, exclude_patterns)
-5. Parallel parsing with ProcessPoolExecutor (or ThreadPoolExecutor)
-6. For each file:
-   - CompileCommandsManager provides compilation args
-   - libclang parses file → TranslationUnit (AST)
-   - Error diagnostics extracted; non-fatal errors logged but processing continues
-   - AST traversal extracts symbols (classes, functions, methods) from partial AST
-   - HeaderTracker deduplicates header processing
-   - Symbols stored in SQLite cache (with error_message if errors present)
-7. Indexes built: class_index, function_index, file_index, usr_index
-8. Call sites extracted and streamed directly to SQLite (Phase 4: no in-memory accumulation)
-9. Cache metadata and header tracking state saved (once at end)
-
-**Query Flow:**
-1. MCP tool called (e.g., search_classes, find_callers)
-2. CppAnalyzer checks indexing state
-3. For symbol searches: SearchEngine queries SQLite FTS5 indexes
-4. For call graph queries: CallGraphAnalyzer queries call_sites table directly (Phase 4: no in-memory cache)
-5. Regex matching on symbol names (if pattern provided)
-6. Results filtered (project_only flag, file filters)
-7. JSON results returned via MCP TextContent
-
-**Incremental Refresh Flow:**
-1. `sync_project(refresh_mode="incremental")` called
-2. ChangeScanner detects file changes (MD5 hashing)
-3. CompileCommandsDiffer detects compile_commands.json changes
-4. DependencyGraph identifies affected files (transitive header deps)
-5. Only affected files re-parsed
-6. Cache updated incrementally
 
 ### Critical Code Locations
 
@@ -353,7 +275,7 @@ make ie                         # install-editable
 - **Virtual Method Extraction (Phase 5):** mcp_server/cpp_analyzer.py:_process_cursor() (cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
 - **Parallel Worker:** mcp_server/cpp_analyzer.py:72-131 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
 - **Call Graph Analysis (Phase 4):** mcp_server/call_graph.py (SQLite-only queries, no in-memory dicts)
-- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v14.0 with is_virtual, is_pure_virtual, is_const, is_static columns for method indicators)
+- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v17.0 — see schema.sql for current column list)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
 - **Incremental Logic:** mcp_server/incremental_analyzer.py
 - **Compile Commands:** mcp_server/compile_commands_manager.py
@@ -517,69 +439,6 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 - Implementation details
 - Debugging tips
 
-## Testing Strategy
-
-**Integration tests:** `tests/test_analyzer_integration.py`
-- End-to-end analyzer functionality
-- Real libclang parsing with sample C++ code
-- Fixture-based with `tmp_path` for isolated testing
-
-**Compile commands tests:** `tests/test_compile_commands_manager.py`
-- Unit tests for compile_commands.json parsing
-- Cache invalidation logic
-- Test runner: `tests/test_runner.py` (also runnable as script)
-
-**Test fixtures:** `tests/fixtures/sample_project/`
-- Example C++ code for testing
-
-**Coverage:** `make test-coverage` generates htmlcov/ report
-
-## File Organization
-
-```
-mcp_server/
-├── cpp_mcp_server.py           # MCP server entry point (10 tools, stdio/http/sse)
-├── cpp_analyzer.py             # Core analyzer (indexing, querying, parallel parsing, type alias tracking)
-├── cache_manager.py            # Cache coordination layer
-├── sqlite_cache_backend.py     # SQLite FTS5 backend implementation
-├── schema.sql                  # SQLite schema with FTS5 indexes (version 12.0)
-├── schema_migrations.py        # Schema migrations (deprecated, for legacy support only)
-├── compile_commands_manager.py # compile_commands.json parsing & caching
-├── incremental_analyzer.py     # Incremental analysis orchestration
-├── change_scanner.py           # File change detection (MD5 hashing)
-├── compile_commands_differ.py  # Compilation flag change detection
-├── dependency_graph.py         # Header dependency tracking
-├── header_tracker.py           # Header deduplication (first-win)
-├── call_graph.py               # Function call graph analysis
-├── search_engine.py            # Symbol search (regex, filters)
-├── file_scanner.py             # File discovery
-├── symbol_info.py              # SymbolInfo data structure
-├── project_identity.py         # Project identity (source_dir, config) → cache dir
-├── state_manager.py            # Indexing state tracking
-├── error_tracking.py           # Parse error tracking
-├── regex_validator.py          # User regex validation
-├── argument_sanitizer.py       # Argument sanitization (security)
-├── diagnostics.py              # Logging and diagnostics
-├── http_server.py              # HTTP/SSE transport layer
-└── migrations/                 # SQL migrations (deprecated, kept for tests only)
-
-scripts/
-├── download_libclang.py             # Downloads libclang binaries
-├── test_installation.py             # Installation verification
-├── test_mcp_console.py              # Manual MCP server testing with real codebase
-├── test_interrupt_cleanup.py        # Test subprocess cleanup on Ctrl-C interrupt
-├── fix_corrupted_cache.py           # Diagnose and fix corrupted SQLite cache
-├── profile_analysis.py              # Performance profiling
-├── diagnose_gil.py                  # GIL bottleneck detection
-├── cache_stats.py                   # Cache statistics viewer
-├── diagnose_cache.py                # Cache health diagnostics
-├── diagnose_parse_errors.py         # Parse error diagnostics (libclang options testing)
-├── test_compile_commands_lookup.py  # compile_commands.json lookup testing
-└── view_parse_errors.py             # View centralized parse error log
-
-examples/
-└── compile_commands_example/   # Example CMake project with compile_commands.json
-```
 
 ## libclang Setup
 
