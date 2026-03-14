@@ -110,11 +110,7 @@ class OpenAIClient:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
         models = data.get("data", [])
-        return [
-            m["id"]
-            for m in models
-            if not m.get("id", "").startswith("text-embedding-")
-        ]
+        return [m["id"] for m in models if not m.get("id", "").startswith("text-embedding-")]
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +363,7 @@ def run_scenario(
     temperature: float = 0,
     max_tokens: int = 4096,
     explain_failures: bool = False,
+    verbose_messages: bool = False,
 ) -> Dict[str, Any]:
     """Run a single scenario through the LLM tool-call mediation loop.
 
@@ -391,6 +388,10 @@ def run_scenario(
     stopped_for_explanation = False
 
     for turn in range(max_turns):
+        if verbose_messages:
+            print(f"\n--- Turn {turn + 1}: messages sent to LLM ---")
+            print(json.dumps(messages, indent=2, ensure_ascii=False))
+            print("--- end messages ---\n")
         try:
             response = client.chat_completion(
                 model=model,
@@ -429,8 +430,12 @@ def run_scenario(
                 }
                 prompt = _build_explanation_prompt(step_eval, None)
                 explanation = _request_explanation(
-                    client, model, messages, prompt,
-                    temperature=temperature, max_tokens=2048,
+                    client,
+                    model,
+                    messages,
+                    prompt,
+                    temperature=temperature,
+                    max_tokens=2048,
                 )
                 step_eval["llm_explanation"] = explanation
                 step_results.append(step_eval)
@@ -469,14 +474,20 @@ def run_scenario(
             step_idx = len(recorded_calls) - 1
             if explain_failures and step_idx < len(expected_steps):
                 step_eval = evaluate_step(
-                    expected_steps[step_idx], tool_name, tool_args,
+                    expected_steps[step_idx],
+                    tool_name,
+                    tool_args,
                 )
                 step_eval["step"] = step_idx + 1
                 if not step_eval["tool_match"] or not step_eval["params_pass"]:
                     prompt = _build_explanation_prompt(step_eval, call_record)
                     explanation = _request_explanation(
-                        client, model, messages, prompt,
-                        temperature=temperature, max_tokens=2048,
+                        client,
+                        model,
+                        messages,
+                        prompt,
+                        temperature=temperature,
+                        max_tokens=2048,
                     )
                     step_eval["llm_explanation"] = explanation
                     step_results.append(step_eval)
@@ -728,6 +739,14 @@ def main() -> None:
             "to failed steps in the output."
         ),
     )
+    parser.add_argument(
+        "--verbose-messages",
+        action="store_true",
+        help=(
+            "Print the exact messages array sent to the LLM before each API call. "
+            "Useful for debugging context presentation issues (e.g. call_chain step-2 failures)."
+        ),
+    )
     args = parser.parse_args()
 
     client = OpenAIClient(
@@ -765,10 +784,7 @@ def main() -> None:
             variant_tag = ""
             if s.get("query_variant"):
                 variant_tag = f" [variant {s['query_variant']}/{s['query_variant_total']}]"
-            print(
-                f"  [{s['id']}] ({s.get('category', '')}){variant_tag} "
-                f"{s['query'][:70]}"
-            )
+            print(f"  [{s['id']}] ({s.get('category', '')}){variant_tag} " f"{s['query'][:70]}")
         return
 
     # Resolve model
@@ -823,6 +839,8 @@ def main() -> None:
     print(f"Output: {args.output}")
     if args.explain_failures:
         print("Explain failures: ON")
+    if args.verbose_messages:
+        print("Verbose messages: ON (printing messages array each turn)")
     print()
 
     results: List[Dict[str, Any]] = []
@@ -842,6 +860,7 @@ def main() -> None:
             temperature=args.temperature,
             max_tokens=args.max_tokens,
             explain_failures=args.explain_failures,
+            verbose_messages=args.verbose_messages,
         )
         results.append(result)
 

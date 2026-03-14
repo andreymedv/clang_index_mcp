@@ -25,11 +25,11 @@ scenarios:
   - id: "L-01"
     category: "module_discovery"
     queries:
-      - "List all classes defined in the CoreDOM module"
-      - "What classes are in the DOM module?"
-      - "Show me the class inventory of CoreDOM"
+      - "List all classes in files under the CoreDOM/ directory"
+      - "Find classes defined in files matching DOM_*.h"
+      - "Show classes from files in the CoreDOM/ folder"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           target_type:
             type: exact
@@ -42,7 +42,7 @@ scenarios:
     category: "module_discovery"
     query: "Find all functions in files starting with TBL_"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           target_type:
             type: exact
@@ -81,7 +81,7 @@ scenarios:
       - "List classes belonging to namespace DOM"
       - "Show me classes under the DOM:: namespace"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           target_type:
             type: exact
@@ -99,7 +99,7 @@ scenarios:
     category: "cross_type_search"
     query: "Find functions related to Element in the CoreCSS module"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -112,7 +112,7 @@ scenarios:
     category: "cross_type_search"
     query: "How is ApplyStyle used with DOM elements? Find the function first, then show me its callers"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -204,7 +204,7 @@ scenarios:
       - "Show me the code responsible for applying styles"
       - "What functions exist for styling elements?"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -236,11 +236,11 @@ scenarios:
   - id: "P-01"
     category: "test_discovery"
     queries:
-      - "Find test classes for the DOM module"
-      - "What test fixtures exist for DOM testing?"
+      - "Find classes in files under CoreDOM/Tests/"
+      - "Find classes whose file names contain 'Test' in the DOM area"
       - "Show me test classes in CoreDOM/Tests/"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           target_type:
             type: exact
@@ -253,7 +253,7 @@ scenarios:
     category: "test_discovery"
     query: "Find the DocumentBuilder test helper class"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -311,7 +311,7 @@ scenarios:
           class_name:
             type: contains
             value: "Document"
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
@@ -329,7 +329,7 @@ scenarios:
       - "Find classes in DOM_ files"
       - "List classes from files starting with DOM_"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           target_type:
             type: exact
@@ -342,7 +342,7 @@ scenarios:
     category: "prefix_filter"
     query: "Search for functions with 'Merge' in their name within TBL_ files"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
