@@ -28,13 +28,24 @@ from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 
 logger = logging.getLogger("mock_mcp_server")
 
-DEFAULT_FIXTURES = Path(__file__).parent / "fixtures" / "responses.yaml"
+DEFAULT_FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _load_fixtures(fixtures_path: str | Path | None = None) -> FixtureStore:
+    """Load fixtures from a file or directory (all *.yaml)."""
+    path = Path(fixtures_path) if fixtures_path else DEFAULT_FIXTURES_DIR
+    store = FixtureStore()
+    if path.is_dir():
+        for ff in sorted(path.glob("*.yaml")):
+            store.load(ff)
+    else:
+        store.load(path)
+    return store
 
 
 def create_server(fixtures_path: str | Path | None = None) -> Server:
     """Create a mock MCP server with canned responses."""
-    fixtures_path = fixtures_path or DEFAULT_FIXTURES
-    store = FixtureStore().load(fixtures_path)
+    store = _load_fixtures(fixtures_path)
     tools = list_tools_b()
 
     app = Server("cpp-analyzer-mock")
@@ -112,7 +123,7 @@ def main() -> None:
         "--fixtures",
         type=str,
         default=None,
-        help=f"Path to fixtures YAML (default: {DEFAULT_FIXTURES})",
+        help="Path to fixtures YAML file or directory (default: fixtures/)",
     )
     parser.add_argument(
         "--debug",

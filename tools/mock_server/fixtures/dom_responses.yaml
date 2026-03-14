@@ -1,0 +1,1057 @@
+# Canned MCP tool responses for HTML Tree codebase model.
+#
+# Codebase model:
+#   CoreTree/Public/Tree_*.h, CoreTree/Private/Tree_*Impl.*, CoreTree/Tests/Tree_*Tests.cpp
+#   CoreCSS/Public/CSS_*.h, CoreCSS/Private/CSS_*.cpp
+#   EditorUI/Public/UI_*.h, EditorUI/Private/UI_*.cpp
+#   TableEngine/Public/TBL_*.h, TableEngine/Private/TBL_*.cpp
+#   TestUtils/ItemBuilder.h, TestUtils/AssertionHelpers.h
+
+responses:
+  # =================================================================
+  # set_project / sync_project (defaults)
+  # =================================================================
+
+  - tool: set_project
+    default: true
+    response:
+      project_path: "/path/to/html-engine"
+      status: "ready"
+      indexed_classes: 156
+      indexed_functions: 892
+      parsed_files: 347
+
+  - tool: sync_project
+    default: true
+    response:
+      state: "indexed"
+      system_state: "ready"
+      parsed_files: 347
+      indexed_classes: 156
+      indexed_functions: 892
+
+  # =================================================================
+  # search_codebase
+  # =================================================================
+
+  # --- L-01 / R-01: Classes in Tree module (by file_name containing "Tree") ---
+  - tool: search_codebase
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
+        contains: "Tree"
+    response:
+      results:
+        - qualified_name: "Tree::Item"
+          kind: "class"
+          prototype: "class Item : public Node"
+          file: "CoreTree/Public/Tree_Document.h"
+          line: 24
+        - qualified_name: "Tree::Leaf"
+          kind: "class"
+          prototype: "class Leaf : public Node"
+          file: "CoreTree/Public/Tree_Element.h"
+          line: 18
+        - qualified_name: "Tree::Node"
+          kind: "class"
+          prototype: "class Node"
+          file: "CoreTree/Public/Tree_Node.h"
+          line: 12
+        - qualified_name: "Tree::TextNode"
+          kind: "class"
+          prototype: "class TextNode : public Node"
+          file: "CoreTree/Public/Tree_TextNode.h"
+          line: 10
+        - qualified_name: "Tree::Attribute"
+          kind: "class"
+          prototype: "class Attribute"
+          file: "CoreTree/Public/Tree_Attribute.h"
+          line: 8
+        - qualified_name: "Tree::ItemImpl"
+          kind: "class"
+          prototype: "class ItemImpl"
+          file: "CoreTree/Private/Tree_ItemImpl.h"
+          line: 15
+      next_steps:
+        - "get_class_info('Item') -- explore Item class details"
+        - "get_class_hierarchy('Node') -- see full Tree inheritance tree"
+        - "get_class_info('Leaf') -- explore Leaf class details"
+
+  # --- L-01 variant: Classes in Tree namespace ---
+  - tool: search_codebase
+    match:
+      target_type: "classes_and_structs_only"
+      namespace:
+        contains: "Tree"
+    response:
+      results:
+        - qualified_name: "Tree::Item"
+          kind: "class"
+          prototype: "class Item : public Node"
+          file: "CoreTree/Public/Tree_Document.h"
+          line: 24
+        - qualified_name: "Tree::Leaf"
+          kind: "class"
+          prototype: "class Leaf : public Node"
+          file: "CoreTree/Public/Tree_Element.h"
+          line: 18
+        - qualified_name: "Tree::Node"
+          kind: "class"
+          prototype: "class Node"
+          file: "CoreTree/Public/Tree_Node.h"
+          line: 12
+        - qualified_name: "Tree::TextNode"
+          kind: "class"
+          prototype: "class TextNode : public Node"
+          file: "CoreTree/Public/Tree_TextNode.h"
+          line: 10
+        - qualified_name: "Tree::Attribute"
+          kind: "class"
+          prototype: "class Attribute"
+          file: "CoreTree/Public/Tree_Attribute.h"
+          line: 8
+      next_steps:
+        - "get_class_info('Item') -- explore Item class"
+        - "get_class_hierarchy('Node') -- see Tree inheritance tree"
+
+  # --- L-02: Functions in TBL_ files ---
+  - tool: search_codebase
+    match:
+      target_type: "functions_and_methods_only"
+      file_name:
+        contains: "TBL_"
+    response:
+      results:
+        - qualified_name: "TBL::TableProcessor::addRow"
+          kind: "method"
+          prototype: "void TableProcessor::addRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 32
+        - qualified_name: "TBL::TableProcessor::removeRow"
+          kind: "method"
+          prototype: "void TableProcessor::removeRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 35
+        - qualified_name: "TBL::CellMerger::mergeCells"
+          kind: "method"
+          prototype: "void CellMerger::mergeCells(CellRange range)"
+          file: "TableEngine/Public/TBL_CellMerger.h"
+          line: 18
+        - qualified_name: "TBL::SpanCalculator::recalculate"
+          kind: "method"
+          prototype: "void SpanCalculator::recalculate(Table &table)"
+          file: "TableEngine/Public/TBL_SpanCalculator.h"
+          line: 22
+        - qualified_name: "MergeTableCells"
+          kind: "function"
+          prototype: "void MergeTableCells(Tree::Leaf &table, CellRange range)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 45
+        - qualified_name: "RecalculateSpans"
+          kind: "function"
+          prototype: "void RecalculateSpans(Tree::Leaf &table)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 52
+      next_steps:
+        - "get_class_info('TableProcessor') -- explore TableProcessor class"
+        - "get_functions_called_by('MergeTableCells') -- see what MergeTableCells does"
+
+  # --- M-01: Leaf-related functions in CSS module ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Leaf"
+      file_name:
+        contains: "CSS"
+    response:
+      results:
+        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
+          kind: "method"
+          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 28
+        - qualified_name: "CSS::CascadeEngine::getElementProperties"
+          kind: "method"
+          prototype: "PropertyMap CascadeEngine::getElementProperties(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_CascadeEngine.h"
+          line: 35
+        - qualified_name: "CollectElementStyles"
+          kind: "function"
+          prototype: "std::vector<ComputedStyle> CollectElementStyles(const Tree::Leaf &root)"
+          file: "CoreCSS/Public/CSS_Utilities.h"
+          line: 62
+      next_steps:
+        - "get_functions_called_by('resolveElementStyle', class_name='StyleResolver') -- see implementation details"
+        - "find_usage_sites('CollectElementStyles') -- find where this is used"
+
+  # --- M-02 step 1 / O-01: Search for ApplyStyle ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "ApplyStyle"
+    response:
+      results:
+        - qualified_name: "ApplyStyle"
+          kind: "function"
+          prototype: "void ApplyStyle(Tree::Leaf &elem, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 38
+        - qualified_name: "ApplyStyleRecursive"
+          kind: "function"
+          prototype: "void ApplyStyleRecursive(Tree::Node &root, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 45
+      next_steps:
+        - "find_usage_sites('ApplyStyle') -- find all callers"
+        - "get_functions_called_by('ApplyStyle') -- see implementation details"
+
+  # --- O-01: Style-related functions ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Style"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "ApplyStyle"
+          kind: "function"
+          prototype: "void ApplyStyle(Tree::Leaf &elem, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 38
+        - qualified_name: "ApplyStyleRecursive"
+          kind: "function"
+          prototype: "void ApplyStyleRecursive(Tree::Node &root, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 45
+        - qualified_name: "ResolveInheritedStyle"
+          kind: "function"
+          prototype: "OptionalStyle ResolveInheritedStyle(const Tree::Node &node)"
+          file: "CoreCSS/Public/CSS_Inheritance.h"
+          line: 22
+        - qualified_name: "CSS::StyleResolver::resolveStyle"
+          kind: "method"
+          prototype: "ComputedStyle StyleResolver::resolveStyle(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 25
+        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
+          kind: "method"
+          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 28
+      next_steps:
+        - "find_usage_sites('ApplyStyle') -- see where styles are applied"
+        - "get_functions_called_by('ResolveInheritedStyle') -- trace inheritance resolution"
+
+  # --- P-01: Test classes (file_name contains "Test") ---
+  - tool: search_codebase
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
+        contains: "Test"
+    response:
+      results:
+        - qualified_name: "ItemTestFixture"
+          kind: "class"
+          prototype: "class ItemTestFixture : public ::testing::Test"
+          file: "CoreTree/Tests/Tree_DocumentTests.cpp"
+          line: 18
+        - qualified_name: "LeafTestFixture"
+          kind: "class"
+          prototype: "class LeafTestFixture : public ::testing::Test"
+          file: "CoreTree/Tests/Tree_ElementTests.cpp"
+          line: 15
+        - qualified_name: "StyleResolverTestFixture"
+          kind: "class"
+          prototype: "class StyleResolverTestFixture : public ::testing::Test"
+          file: "CoreCSS/Tests/CSS_StyleResolverTests.cpp"
+          line: 12
+        - qualified_name: "TableOperationsFixture"
+          kind: "class"
+          prototype: "class TableOperationsFixture : public ::testing::Test"
+          file: "TableEngine/Tests/TBL_OperationsTests.cpp"
+          line: 20
+      next_steps:
+        - "get_class_info('ItemTestFixture') -- see test fixture setup"
+        - "find_in_file('CoreTree/Tests/Tree_DocumentTests.cpp', '') -- see all test functions"
+
+  # --- P-02: ItemBuilder search ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "ItemBuilder"
+    response:
+      results:
+        - qualified_name: "TestUtils::ItemBuilder"
+          kind: "class"
+          prototype: "class ItemBuilder"
+          file: "TestUtils/ItemBuilder.h"
+          line: 12
+        - qualified_name: "TestUtils::ItemBuilder::build"
+          kind: "method"
+          prototype: "Tree::ItemPtr ItemBuilder::build()"
+          file: "TestUtils/ItemBuilder.h"
+          line: 45
+        - qualified_name: "TestUtils::ItemBuilder::withSection"
+          kind: "method"
+          prototype: "ItemBuilder &ItemBuilder::withSection(const std::string &text)"
+          file: "TestUtils/ItemBuilder.h"
+          line: 28
+        - qualified_name: "TestUtils::ItemBuilder::withGrid"
+          kind: "method"
+          prototype: "ItemBuilder &ItemBuilder::withGrid(int rows, int cols)"
+          file: "TestUtils/ItemBuilder.h"
+          line: 35
+      next_steps:
+        - "get_class_info('ItemBuilder') -- see full builder API"
+        - "find_usage_sites('build', class_name='ItemBuilder') -- see how builder is used in tests"
+
+  # --- Q-03 step 2: Search for ItemImpl ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "ItemImpl"
+    response:
+      results:
+        - qualified_name: "Tree::ItemImpl"
+          kind: "class"
+          prototype: "class ItemImpl"
+          file: "CoreTree/Private/Tree_ItemImpl.h"
+          line: 15
+        - qualified_name: "Tree::ItemImpl::ItemImpl"
+          kind: "method"
+          prototype: "ItemImpl::ItemImpl()"
+          file: "CoreTree/Private/Tree_ItemImpl.cpp"
+          line: 8
+      next_steps:
+        - "get_class_info('ItemImpl') -- see implementation details"
+        - "find_in_file('CoreTree/Private/Tree_ItemImpl.h', '') -- see all members"
+
+  # --- Q-01: INodeVisitor search ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "INodeVisitor"
+    response:
+      results:
+        - qualified_name: "Tree::INodeVisitor"
+          kind: "class"
+          prototype: "class INodeVisitor"
+          file: "CoreTree/Public/Tree_INodeVisitor.h"
+          line: 10
+        - qualified_name: "CSS::StyleVisitor"
+          kind: "class"
+          prototype: "class StyleVisitor : public Tree::INodeVisitor"
+          file: "CoreCSS/Public/CSS_StyleVisitor.h"
+          line: 14
+        - qualified_name: "Tree::ExportVisitor"
+          kind: "class"
+          prototype: "class ExportVisitor : public INodeVisitor"
+          file: "CoreTree/Public/Tree_ExportVisitor.h"
+          line: 12
+      next_steps:
+        - "get_class_hierarchy('INodeVisitor') -- see full implementation tree"
+        - "get_class_info('INodeVisitor') -- see interface methods"
+
+  # --- R-02: Merge functions in TBL_ files ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Merge"
+      target_type: "functions_and_methods_only"
+      file_name:
+        contains: "TBL_"
+    response:
+      results:
+        - qualified_name: "TBL::CellMerger::mergeCells"
+          kind: "method"
+          prototype: "void CellMerger::mergeCells(CellRange range)"
+          file: "TableEngine/Public/TBL_CellMerger.h"
+          line: 18
+        - qualified_name: "MergeTableCells"
+          kind: "function"
+          prototype: "void MergeTableCells(Tree::Leaf &table, CellRange range)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 45
+        - qualified_name: "TBL::CellMerger::unmerge"
+          kind: "method"
+          prototype: "void CellMerger::unmerge(CellRange range)"
+          file: "TableEngine/Public/TBL_CellMerger.h"
+          line: 22
+      next_steps:
+        - "get_functions_called_by('MergeTableCells') -- see implementation"
+        - "find_usage_sites('mergeCells', class_name='CellMerger') -- find callers"
+
+  # --- Default search response ---
+  - tool: search_codebase
+    default: true
+    response:
+      results:
+        - qualified_name: "Tree::Item"
+          kind: "class"
+          prototype: "class Item : public Node"
+          file: "CoreTree/Public/Tree_Document.h"
+          line: 24
+      next_steps:
+        - "Refine your search with target_type, file_name, or namespace filters"
+
+  # =================================================================
+  # find_in_file
+  # =================================================================
+
+  # --- L-03: Symbols in Tree_Document.h ---
+  - tool: find_in_file
+    match:
+      file_path:
+        contains: "Tree_Document"
+    response:
+      results:
+        - qualified_name: "Tree::Item"
+          kind: "class"
+          line: 24
+        - qualified_name: "Tree::Item::createElement"
+          kind: "method"
+          line: 32
+          prototype: "LeafPtr Item::createElement(const std::string &tag)"
+        - qualified_name: "Tree::Item::createTextNode"
+          kind: "method"
+          line: 38
+          prototype: "TextNodePtr Item::createTextNode(const std::string &text)"
+        - qualified_name: "Tree::Item::appendChild"
+          kind: "method"
+          line: 44
+          prototype: "void Item::appendChild(NodePtr child)"
+        - qualified_name: "Tree::Item::getElementById"
+          kind: "method"
+          line: 50
+          prototype: "LeafPtr Item::getElementById(const std::string &id)"
+        - qualified_name: "Tree::Item::getElementsByTagName"
+          kind: "method"
+          line: 56
+          prototype: "std::vector<LeafPtr> Item::getElementsByTagName(const std::string &tag)"
+        - qualified_name: "Tree::Item::getDocumentElement"
+          kind: "method"
+          line: 62
+          prototype: "LeafPtr Item::getDocumentElement() const"
+      next_steps:
+        - "get_class_info('Item') -- see base classes and full details"
+        - "get_functions_called_by('createElement', class_name='Item') -- trace implementation"
+
+  # --- P-03: Symbols in Tree_DocumentTests.cpp ---
+  - tool: find_in_file
+    match:
+      file_path:
+        contains: "Tree_DocumentTests"
+    response:
+      results:
+        - qualified_name: "ItemTestFixture"
+          kind: "class"
+          line: 18
+        - qualified_name: "ItemTestFixture::SetUp"
+          kind: "method"
+          line: 22
+          prototype: "void ItemTestFixture::SetUp()"
+        - qualified_name: "ItemTestFixture::createSampleDocument"
+          kind: "method"
+          line: 28
+          prototype: "Tree::ItemPtr ItemTestFixture::createSampleDocument()"
+        - qualified_name: "TEST_F_CreateElement"
+          kind: "function"
+          line: 45
+          prototype: "TEST_F(ItemTestFixture, CreateElement)"
+        - qualified_name: "TEST_F_AppendChild"
+          kind: "function"
+          line: 62
+          prototype: "TEST_F(ItemTestFixture, AppendChild)"
+        - qualified_name: "TEST_F_GetElementById"
+          kind: "function"
+          line: 78
+          prototype: "TEST_F(ItemTestFixture, GetElementById)"
+      next_steps:
+        - "get_class_info('ItemTestFixture') -- see fixture details"
+        - "find_usage_sites('createSampleDocument') -- see reuse of helper"
+
+  - tool: find_in_file
+    default: true
+    response:
+      results: []
+
+  # =================================================================
+  # get_class_info
+  # =================================================================
+
+  # --- Item (mentions ItemImpl for PIMPL discovery) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Item"
+    response:
+      qualified_name: "Tree::Item"
+      kind: "class"
+      prototype: "class Item : public Node"
+      file: "CoreTree/Public/Tree_Document.h"
+      line: 24
+      base_classes:
+        - "Tree::Node"
+      derived_classes: []
+      methods:
+        - qualified_name: "Tree::Item::createElement"
+          prototype: "LeafPtr Item::createElement(const std::string &tag)"
+          attributes: []
+        - qualified_name: "Tree::Item::createTextNode"
+          prototype: "TextNodePtr Item::createTextNode(const std::string &text)"
+          attributes: []
+        - qualified_name: "Tree::Item::appendChild"
+          prototype: "void Item::appendChild(NodePtr child)"
+          attributes: ["virtual"]
+        - qualified_name: "Tree::Item::getElementById"
+          prototype: "LeafPtr Item::getElementById(const std::string &id)"
+          attributes: ["const"]
+        - qualified_name: "Tree::Item::getElementsByTagName"
+          prototype: "std::vector<LeafPtr> Item::getElementsByTagName(const std::string &tag)"
+          attributes: ["const"]
+        - qualified_name: "Tree::Item::getDocumentElement"
+          prototype: "LeafPtr Item::getDocumentElement() const"
+          attributes: ["const"]
+      notes: "Uses PIMPL pattern. Implementation in Tree::ItemImpl (CoreTree/Private/Tree_ItemImpl.h)."
+      next_steps:
+        - "get_class_hierarchy('Item') -- see inheritance tree"
+        - "search_codebase('ItemImpl') -- find PIMPL implementation class"
+        - "get_functions_called_by('createElement', class_name='Item') -- trace factory method"
+
+  # --- Leaf ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Leaf"
+    response:
+      qualified_name: "Tree::Leaf"
+      kind: "class"
+      prototype: "class Leaf : public Node"
+      file: "CoreTree/Public/Tree_Element.h"
+      line: 18
+      base_classes:
+        - "Tree::Node"
+      derived_classes: []
+      methods:
+        - qualified_name: "Tree::Leaf::setAttribute"
+          prototype: "void Leaf::setAttribute(const std::string &name, const std::string &value)"
+          attributes: []
+        - qualified_name: "Tree::Leaf::getAttribute"
+          prototype: "std::optional<std::string> Leaf::getAttribute(const std::string &name) const"
+          attributes: ["const"]
+        - qualified_name: "Tree::Leaf::appendChild"
+          prototype: "void Leaf::appendChild(NodePtr child)"
+          attributes: ["virtual"]
+        - qualified_name: "Tree::Leaf::removeChild"
+          prototype: "void Leaf::removeChild(NodePtr child)"
+          attributes: ["virtual"]
+        - qualified_name: "Tree::Leaf::getTagName"
+          prototype: "const std::string &Leaf::getTagName() const"
+          attributes: ["const"]
+        - qualified_name: "Tree::Leaf::getChildren"
+          prototype: "const std::vector<NodePtr> &Leaf::getChildren() const"
+          attributes: ["const"]
+        - qualified_name: "Tree::Leaf::getComputedStyle"
+          prototype: "OptionalStyle Leaf::getComputedStyle() const"
+          attributes: ["const"]
+      next_steps:
+        - "get_class_hierarchy('Leaf') -- see inheritance tree"
+        - "find_usage_sites('setAttribute', class_name='Leaf') -- see how attributes are set"
+
+  # --- StyleResolver ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "StyleResolver"
+    response:
+      qualified_name: "CSS::StyleResolver"
+      kind: "class"
+      prototype: "class StyleResolver"
+      file: "CoreCSS/Public/CSS_StyleResolver.h"
+      line: 15
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "CSS::StyleResolver::resolveStyle"
+          prototype: "ComputedStyle StyleResolver::resolveStyle(const Tree::Leaf &elem)"
+          attributes: []
+        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
+          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const Tree::Leaf &elem)"
+          attributes: []
+        - qualified_name: "CSS::StyleResolver::resolveInheritedProperties"
+          prototype: "PropertyMap StyleResolver::resolveInheritedProperties(const Tree::Node &node)"
+          attributes: ["const"]
+        - qualified_name: "CSS::StyleResolver::getCascadedProperties"
+          prototype: "PropertyMap StyleResolver::getCascadedProperties(const Tree::Leaf &elem)"
+          attributes: ["const"]
+      next_steps:
+        - "find_usage_sites('resolveStyle', class_name='StyleResolver') -- find callers"
+        - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- see implementation"
+
+  # --- INodeVisitor (interface with pure virtuals) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "INodeVisitor"
+    response:
+      qualified_name: "Tree::INodeVisitor"
+      kind: "class"
+      prototype: "class INodeVisitor"
+      file: "CoreTree/Public/Tree_INodeVisitor.h"
+      line: 10
+      base_classes: []
+      derived_classes:
+        - "CSS::StyleVisitor"
+        - "Tree::ExportVisitor"
+        - "Tree::ValidationVisitor"
+      methods:
+        - qualified_name: "Tree::INodeVisitor::visitElement"
+          prototype: "void INodeVisitor::visitElement(Leaf &elem)"
+          attributes: ["pure_virtual"]
+        - qualified_name: "Tree::INodeVisitor::visitTextNode"
+          prototype: "void INodeVisitor::visitTextNode(TextNode &text)"
+          attributes: ["pure_virtual"]
+        - qualified_name: "Tree::INodeVisitor::visitDocument"
+          prototype: "void INodeVisitor::visitDocument(Item &doc)"
+          attributes: ["pure_virtual"]
+      next_steps:
+        - "get_class_hierarchy('INodeVisitor') -- see all implementations"
+        - "get_class_info('StyleVisitor') -- see CSS visitor implementation"
+        - "get_class_info('ExportVisitor') -- see export visitor implementation"
+
+  # --- Table (for O-02) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Table"
+    response:
+      qualified_name: "TBL::TableProcessor"
+      kind: "class"
+      prototype: "class TableProcessor"
+      file: "TableEngine/Public/TBL_TableProcessor.h"
+      line: 18
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "TBL::TableProcessor::addRow"
+          prototype: "void TableProcessor::addRow(int index)"
+          attributes: []
+        - qualified_name: "TBL::TableProcessor::removeRow"
+          prototype: "void TableProcessor::removeRow(int index)"
+          attributes: []
+        - qualified_name: "TBL::TableProcessor::addColumn"
+          prototype: "void TableProcessor::addColumn(int index)"
+          attributes: []
+        - qualified_name: "TBL::TableProcessor::getCell"
+          prototype: "Tree::LeafPtr TableProcessor::getCell(int row, int col)"
+          attributes: ["const"]
+        - qualified_name: "TBL::TableProcessor::setTableElement"
+          prototype: "void TableProcessor::setTableElement(Tree::LeafPtr tableElem)"
+          attributes: []
+      next_steps:
+        - "find_usage_sites('addRow', class_name='TableProcessor') -- see how rows are added"
+        - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
+
+  # --- ItemBuilder (for P-02 follow-up) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "ItemBuilder"
+    response:
+      qualified_name: "TestUtils::ItemBuilder"
+      kind: "class"
+      prototype: "class ItemBuilder"
+      file: "TestUtils/ItemBuilder.h"
+      line: 12
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "TestUtils::ItemBuilder::withSection"
+          prototype: "ItemBuilder &ItemBuilder::withSection(const std::string &text)"
+          attributes: []
+        - qualified_name: "TestUtils::ItemBuilder::withGrid"
+          prototype: "ItemBuilder &ItemBuilder::withGrid(int rows, int cols)"
+          attributes: []
+        - qualified_name: "TestUtils::ItemBuilder::withTitle"
+          prototype: "ItemBuilder &ItemBuilder::withTitle(int level, const std::string &text)"
+          attributes: []
+        - qualified_name: "TestUtils::ItemBuilder::build"
+          prototype: "Tree::ItemPtr ItemBuilder::build()"
+          attributes: []
+      next_steps:
+        - "find_usage_sites('build', class_name='ItemBuilder') -- see usage in tests"
+
+  - tool: get_class_info
+    default: true
+    response:
+      error: "Class not found. Use search_codebase to find the correct name."
+
+  # =================================================================
+  # get_class_hierarchy
+  # =================================================================
+
+  # --- INodeVisitor hierarchy ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "INodeVisitor"
+    response:
+      root: "Tree::INodeVisitor"
+      nodes:
+        - name: "Tree::INodeVisitor"
+          children: ["CSS::StyleVisitor", "Tree::ExportVisitor", "Tree::ValidationVisitor"]
+        - name: "CSS::StyleVisitor"
+          children: []
+        - name: "Tree::ExportVisitor"
+          children: ["Tree::HtmlExportVisitor", "Tree::MarkdownExportVisitor"]
+        - name: "Tree::ValidationVisitor"
+          children: []
+        - name: "Tree::HtmlExportVisitor"
+          children: []
+        - name: "Tree::MarkdownExportVisitor"
+          children: []
+
+  # --- Node hierarchy ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "Node"
+    response:
+      root: "Tree::Node"
+      nodes:
+        - name: "Tree::Node"
+          children: ["Tree::Item", "Tree::Leaf", "Tree::TextNode"]
+        - name: "Tree::Item"
+          children: []
+        - name: "Tree::Leaf"
+          children: []
+        - name: "Tree::TextNode"
+          children: []
+
+  - tool: get_class_hierarchy
+    default: true
+    response:
+      error: "Class not found in hierarchy. Use search_codebase to find the correct name."
+
+  # =================================================================
+  # get_functions_called_by
+  # =================================================================
+
+  # --- L-04: Leaf::setAttribute callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "setAttribute"
+      class_name:
+        contains: "Leaf"
+    response:
+      function: "Tree::Leaf::setAttribute"
+      callees:
+        - qualified_name: "Tree::Attribute::Attribute"
+          prototype: "Attribute::Attribute(const std::string &name, const std::string &value)"
+          file: "CoreTree/Public/Tree_Attribute.h"
+          line: 12
+        - qualified_name: "Tree::Leaf::invalidateStyle"
+          prototype: "void Leaf::invalidateStyle()"
+          file: "CoreTree/Private/Tree_ElementImpl.cpp"
+          line: 85
+        - qualified_name: "Tree::Node::notifyModification"
+          prototype: "void Node::notifyModification()"
+          file: "CoreTree/Private/Tree_Node.cpp"
+          line: 120
+      next_steps:
+        - "find_usage_sites('setAttribute', class_name='Leaf') -- find callers"
+        - "get_functions_called_by('invalidateStyle', class_name='Leaf') -- go deeper"
+
+  # --- N-01 step 1: ResolveInheritedStyle callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "ResolveInheritedStyle"
+    response:
+      function: "ResolveInheritedStyle"
+      callees:
+        - qualified_name: "Tree::Node::getParentNode"
+          prototype: "NodePtr Node::getParentNode() const"
+          file: "CoreTree/Public/Tree_Node.h"
+          line: 28
+        - qualified_name: "GetComputedStyle"
+          prototype: "OptionalStyle GetComputedStyle(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_Queries.h"
+          line: 18
+        - qualified_name: "CSS::CascadeEngine::mergeProperties"
+          prototype: "ComputedStyle CascadeEngine::mergeProperties(const ComputedStyle &parent, const ComputedStyle &local)"
+          file: "CoreCSS/Public/CSS_CascadeEngine.h"
+          line: 42
+      next_steps:
+        - "get_functions_called_by('GetComputedStyle') -- go deeper into style computation"
+        - "find_usage_sites('ResolveInheritedStyle') -- find callers"
+
+  # --- N-01 step 2: GetComputedStyle callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "GetComputedStyle"
+    response:
+      function: "GetComputedStyle"
+      callees:
+        - qualified_name: "CSS::StyleResolver::resolveStyle"
+          prototype: "ComputedStyle StyleResolver::resolveStyle(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 25
+        - qualified_name: "CSS::CascadeEngine::getElementProperties"
+          prototype: "PropertyMap CascadeEngine::getElementProperties(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_CascadeEngine.h"
+          line: 35
+        - qualified_name: "Tree::Leaf::getAttribute"
+          prototype: "std::optional<std::string> Leaf::getAttribute(const std::string &name) const"
+          file: "CoreTree/Public/Tree_Element.h"
+          line: 25
+      next_steps:
+        - "find_usage_sites('GetComputedStyle') -- who calls this?"
+        - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- deeper into resolver"
+
+  # --- N-03 step 1: HandleKeyPress callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "HandleKeyPress"
+    response:
+      function: "UI::CommandHandler::HandleKeyPress"
+      callees:
+        - qualified_name: "UI::CommandHandler::findBinding"
+          prototype: "std::optional<Command> CommandHandler::findBinding(KeyCode key)"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 45
+        - qualified_name: "UI::CommandHandler::executeCommand"
+          prototype: "void CommandHandler::executeCommand(const Command &cmd)"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 78
+        - qualified_name: "UI::SelectionManager::getSelection"
+          prototype: "Selection SelectionManager::getSelection() const"
+          file: "EditorUI/Public/UI_SelectionManager.h"
+          line: 22
+      next_steps:
+        - "find_usage_sites('HandleKeyPress') -- find callers"
+        - "get_functions_called_by('executeCommand', class_name='CommandHandler') -- trace command execution"
+
+  - tool: get_functions_called_by
+    default: true
+    response:
+      function: "unknown"
+      callees: []
+      next_steps:
+        - "Use search_codebase to find the correct function name"
+
+  # =================================================================
+  # find_usage_sites
+  # =================================================================
+
+  # --- M-02 step 2 / O-01 follow-up: ApplyStyle callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "ApplyStyle"
+    response:
+      function: "ApplyStyle"
+      callers:
+        - qualified_name: "CSS::StyleResolver::applyResolvedStyles"
+          prototype: "void StyleResolver::applyResolvedStyles(Tree::Item &doc)"
+          file: "CoreCSS/Private/CSS_StyleResolver.cpp"
+          line: 92
+          call_sites:
+            - file: "CoreCSS/Private/CSS_StyleResolver.cpp"
+              line: 108
+              column: 12
+        - qualified_name: "UI::EditorWidget::reformatDocument"
+          prototype: "void EditorWidget::reformatDocument()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 145
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 162
+              column: 8
+      next_steps:
+        - "get_functions_called_by('applyResolvedStyles', class_name='StyleResolver') -- trace full flow"
+
+  # --- M-03 step 2: StyleResolver::resolveStyle callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "resolveStyle"
+    response:
+      function: "CSS::StyleResolver::resolveStyle"
+      callers:
+        - qualified_name: "GetComputedStyle"
+          prototype: "OptionalStyle GetComputedStyle(const Tree::Leaf &elem)"
+          file: "CoreCSS/Public/CSS_Queries.h"
+          line: 18
+          call_sites:
+            - file: "CoreCSS/Private/CSS_Queries.cpp"
+              line: 25
+              column: 16
+        - qualified_name: "UI::EditorWidget::updateElementStyle"
+          prototype: "void EditorWidget::updateElementStyle(Tree::LeafPtr elem)"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 178
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 192
+              column: 12
+        - qualified_name: "CSS::StyleVisitor::visitElement"
+          prototype: "void StyleVisitor::visitElement(Tree::Leaf &elem)"
+          file: "CoreCSS/Private/CSS_StyleVisitor.cpp"
+          line: 30
+          call_sites:
+            - file: "CoreCSS/Private/CSS_StyleVisitor.cpp"
+              line: 38
+              column: 8
+      next_steps:
+        - "get_functions_called_by('GetComputedStyle') -- trace style query chain"
+
+  # --- N-02 step 1: MergeTableCells callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "MergeTableCells"
+    response:
+      function: "MergeTableCells"
+      callers:
+        - qualified_name: "RecalculateSpans"
+          prototype: "void RecalculateSpans(Tree::Leaf &table)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 52
+          call_sites:
+            - file: "TableEngine/Private/TBL_Operations.cpp"
+              line: 68
+              column: 8
+        - qualified_name: "UI::CommandHandler::executeMergeCells"
+          prototype: "void CommandHandler::executeMergeCells()"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 112
+          call_sites:
+            - file: "EditorUI/Private/UI_CommandHandler.cpp"
+              line: 128
+              column: 12
+      next_steps:
+        - "find_usage_sites('RecalculateSpans') -- who triggers recalculation?"
+        - "get_functions_called_by('MergeTableCells') -- see internal implementation"
+
+  # --- N-02 step 2: RecalculateSpans callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "RecalculateSpans"
+    response:
+      function: "RecalculateSpans"
+      callers:
+        - qualified_name: "TBL::TableProcessor::addRow"
+          prototype: "void TableProcessor::addRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 32
+          call_sites:
+            - file: "TableEngine/Private/TBL_TableProcessor.cpp"
+              line: 55
+              column: 4
+        - qualified_name: "TBL::TableProcessor::removeRow"
+          prototype: "void TableProcessor::removeRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 35
+          call_sites:
+            - file: "TableEngine/Private/TBL_TableProcessor.cpp"
+              line: 72
+              column: 4
+      next_steps:
+        - "get_class_info('TableProcessor') -- see all table operations"
+
+  # --- N-03 step 2: HandleKeyPress callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "HandleKeyPress"
+    response:
+      function: "UI::CommandHandler::HandleKeyPress"
+      callers:
+        - qualified_name: "UI::EditorWidget::keyPressEvent"
+          prototype: "void EditorWidget::keyPressEvent(QKeyEvent *event)"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 88
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 95
+              column: 8
+      next_steps:
+        - "get_functions_called_by('keyPressEvent', class_name='EditorWidget') -- trace Qt event handling"
+
+  # --- O-02 step 2: TableProcessor::addRow callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "addRow"
+    response:
+      function: "TBL::TableProcessor::addRow"
+      callers:
+        - qualified_name: "UI::CommandHandler::executeInsertRow"
+          prototype: "void CommandHandler::executeInsertRow()"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 135
+          call_sites:
+            - file: "EditorUI/Private/UI_CommandHandler.cpp"
+              line: 148
+              column: 8
+        - qualified_name: "ItemTestFixture::createSampleItem"
+          prototype: "void ItemTestFixture::createSampleItem()"
+          file: "CoreTree/Tests/Tree_DocumentTests.cpp"
+          line: 35
+          call_sites:
+            - file: "CoreTree/Tests/Tree_DocumentTests.cpp"
+              line: 42
+              column: 12
+      next_steps:
+        - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
+
+  - tool: find_usage_sites
+    default: true
+    response:
+      function: "unknown"
+      callers: []
+      next_steps:
+        - "Use search_codebase to find the correct function name"
+
+  # =================================================================
+  # get_type_alias_info
+  # =================================================================
+
+  - tool: get_type_alias_info
+    match:
+      type_name:
+        contains: "LeafPtr"
+    response:
+      alias_name: "LeafPtr"
+      canonical_type: "std::shared_ptr<Tree::Leaf>"
+      file: "CoreTree/Public/Tree_Types.h"
+      line: 8
+      related_aliases:
+        - name: "NodePtr"
+          canonical_type: "std::shared_ptr<Tree::Node>"
+        - name: "TextNodePtr"
+          canonical_type: "std::shared_ptr<Tree::TextNode>"
+
+  - tool: get_type_alias_info
+    default: true
+    response:
+      error: "Type alias not found. Try search_codebase to find type names."
+
+  # =================================================================
+  # trace_execution_path (default only)
+  # =================================================================
+
+  - tool: trace_execution_path
+    default: true
+    response:
+      source: "unknown"
+      target: "unknown"
+      paths: []
+      path_count: 0
+      next_steps:
+        - "Use search_codebase to verify both function names exist"

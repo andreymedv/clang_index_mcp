@@ -1,0 +1,355 @@
+# Real-world workflow scenarios for HTML Tree C++ codebase.
+#
+# Tests realistic developer queries when working with a large C++ codebase
+# organized into modules with file-prefix conventions, heavy use of
+# namespaces, inheritance, PIMPL, free functions, and visitor patterns.
+#
+# Codebase model:
+#   CoreTree/      (Tree_* files)  — Tree::Item, Tree::Leaf, Tree::Node
+#   CoreCSS/      (CSS_* files)  — CSS::StyleResolver, CSS::CascadeEngine
+#   EditorUI/     (UI_* files)   — UI::EditorWidget, UI::CommandHandler
+#   TableEngine/  (TBL_* files)  — TBL::TableProcessor, TBL::CellMerger
+#   TestUtils/                    — ItemBuilder, assertion helpers
+#
+# Interfaces: INodeVisitor, IDocumentExporter, IStyleProvider
+# PIMPL: Tree::Item → Tree::ItemImpl
+# Free functions: ApplyStyle, MergeTableCells, ResolveInheritedStyle
+# Type aliases: LeafPtr, NodeVariant, OptionalStyle
+
+scenarios:
+  # =================================================================
+  # Category L: Module-scoped symbol discovery
+  # Workflow: documentation bottom-up — enumerate module contents
+  # =================================================================
+
+  - id: "L-01"
+    category: "module_discovery"
+    queries:
+      - "List all classes defined in the CoreTree module"
+      - "What classes are in the Tree module?"
+      - "Show me the class inventory of CoreTree"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
+          file_name:
+            type: contains
+            value: "Tree"
+
+  - id: "L-02"
+    category: "module_discovery"
+    query: "Find all functions in files starting with TBL_"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          target_type:
+            type: exact
+            value: "functions_and_methods_only"
+          file_name:
+            type: contains
+            value: "TBL_"
+
+  - id: "L-03"
+    category: "module_discovery"
+    query: "What symbols are defined in Tree_Document.h?"
+    expected_steps:
+      - tool: find_in_file
+        params:
+          file_path:
+            type: contains
+            value: "Tree_Document"
+
+  - id: "L-04"
+    category: "module_discovery"
+    query: "What functions does Tree::Leaf::setAttribute call?"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "setAttribute"
+          class_name:
+            type: contains
+            value: "Leaf"
+
+  - id: "L-05"
+    category: "module_discovery"
+    queries:
+      - "Find all classes in the Tree namespace"
+      - "List classes belonging to namespace Tree"
+      - "Show me classes under the Tree:: namespace"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
+          namespace:
+            type: contains
+            value: "Tree"
+
+  # =================================================================
+  # Category M: Cross-type search
+  # Workflow: "where do we work with TypeA + TypeB?"
+  # =================================================================
+
+  - id: "M-01"
+    category: "cross_type_search"
+    query: "Find functions related to Leaf in the CoreCSS module"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Leaf"
+          file_name:
+            type: contains
+            value: "CSS"
+
+  - id: "M-02"
+    category: "cross_type_search"
+    query: "How is ApplyStyle used with Tree elements? Find the function first, then show me its callers"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "ApplyStyle"
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "ApplyStyle"
+
+  - id: "M-03"
+    category: "cross_type_search"
+    query: "What methods does CSS::StyleResolver have? Then show me who calls resolveStyle"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "StyleResolver"
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "resolveStyle"
+
+  # =================================================================
+  # Category N: Call chain traversal
+  # Workflow: trace logic through call graph (depth 2)
+  # =================================================================
+
+  - id: "N-01"
+    category: "call_chain"
+    queries:
+      - "What does ResolveInheritedStyle call? Then drill down into GetComputedStyle"
+      - "Show callees of ResolveInheritedStyle, then go deeper into GetComputedStyle"
+      - "Trace calls from ResolveInheritedStyle, then what does GetComputedStyle call?"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "ResolveInheritedStyle"
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "GetComputedStyle"
+
+  - id: "N-02"
+    category: "call_chain"
+    query: "Who calls MergeTableCells? Then find who calls RecalculateSpans"
+    expected_steps:
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "MergeTableCells"
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "RecalculateSpans"
+
+  - id: "N-03"
+    category: "call_chain"
+    query: "What does HandleKeyPress call? Then find all callers of HandleKeyPress"
+    expected_steps:
+      - tool: get_functions_called_by
+        params:
+          function_name:
+            type: contains
+            value: "HandleKeyPress"
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "HandleKeyPress"
+
+  # =================================================================
+  # Category O: "How to do X?" — finding existing patterns
+  # Workflow: developer asks abstract question, LLM must pick search tool
+  # =================================================================
+
+  - id: "O-01"
+    category: "how_to"
+    queries:
+      - "How do we apply CSS styles to elements in this codebase?"
+      - "Find functions that handle style application to Tree elements"
+      - "Show me the code responsible for applying styles"
+      - "What functions exist for styling elements?"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Style"
+          target_type:
+            type: exact
+            value: "functions_and_methods_only"
+
+  - id: "O-02"
+    category: "how_to"
+    query: "How is Tree::Table used? Get its class info, then find callers of addRow"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "Table"
+      - tool: find_usage_sites
+        params:
+          function_name:
+            type: contains
+            value: "addRow"
+
+  # =================================================================
+  # Category P: Test code discovery
+  # Workflow: find existing tests and helpers for reuse
+  # =================================================================
+
+  - id: "P-01"
+    category: "test_discovery"
+    queries:
+      - "Find test classes for the Tree module"
+      - "What test fixtures exist for Tree testing?"
+      - "Show me test classes in CoreTree/Tests/"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
+          file_name:
+            type: contains
+            value: "Test"
+
+  - id: "P-02"
+    category: "test_discovery"
+    query: "Find the ItemBuilder test helper class"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "ItemBuilder"
+
+  - id: "P-03"
+    category: "test_discovery"
+    query: "Show all test functions in Tree_DocumentTests.cpp"
+    expected_steps:
+      - tool: find_in_file
+        params:
+          file_path:
+            type: contains
+            value: "Tree_DocumentTests"
+
+  # =================================================================
+  # Category Q: Interface → Implementation navigation
+  # Workflow: find abstract class, then discover implementations
+  # =================================================================
+
+  - id: "Q-01"
+    category: "interface_impl"
+    queries:
+      - "What classes implement the INodeVisitor interface?"
+      - "Find all concrete implementations of INodeVisitor"
+      - "Show me the class hierarchy of INodeVisitor — what derives from it?"
+    expected_steps:
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "INodeVisitor"
+
+  - id: "Q-02"
+    category: "interface_impl"
+    query: "Show me the INodeVisitor interface details, then its full implementation tree"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "INodeVisitor"
+      - tool: get_class_hierarchy
+        params:
+          class_name:
+            type: contains
+            value: "INodeVisitor"
+
+  - id: "Q-03"
+    category: "interface_impl"
+    query: "Show me the Item class details, then find its PIMPL implementation class"
+    expected_steps:
+      - tool: get_class_info
+        params:
+          class_name:
+            type: contains
+            value: "Item"
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "ItemImpl"
+
+  # =================================================================
+  # Category R: File prefix filtering
+  # Workflow: module-aware searches using file naming conventions
+  # =================================================================
+
+  - id: "R-01"
+    category: "prefix_filter"
+    queries:
+      - "Show all classes in files with Tree_ prefix"
+      - "Find classes in Tree_ files"
+      - "List classes from files starting with Tree_"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
+          file_name:
+            type: contains
+            value: "Tree_"
+
+  - id: "R-02"
+    category: "prefix_filter"
+    query: "Search for functions with 'Merge' in their name within TBL_ files"
+    expected_steps:
+      - tool: search_codebase
+        params:
+          pattern:
+            type: contains
+            value: "Merge"
+          target_type:
+            type: exact
+            value: "functions_and_methods_only"
+          file_name:
+            type: contains
+            value: "TBL_"
