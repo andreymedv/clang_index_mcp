@@ -33,7 +33,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 from mcp_server.consolidated_tools import list_tools_b  # noqa: E402
 from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 
-DEFAULT_FIXTURES = Path(__file__).parent / "fixtures" / "responses.yaml"
+DEFAULT_FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DEFAULT_SCENARIOS = Path(__file__).parent / "scenarios" / "basic.yaml"
 
 
@@ -660,8 +660,8 @@ def main() -> None:
     parser.add_argument(
         "--fixtures",
         type=str,
-        default=str(DEFAULT_FIXTURES),
-        help=f"Fixtures YAML file (default: {DEFAULT_FIXTURES})",
+        default=str(DEFAULT_FIXTURES_DIR),
+        help="Fixtures YAML file or directory (default: fixtures/)",
     )
     parser.add_argument(
         "--model",
@@ -792,7 +792,16 @@ def main() -> None:
         model = available_models[0]
 
     # Load fixtures and tools
-    store = FixtureStore().load(args.fixtures)
+    store = FixtureStore()
+    fixtures_path = Path(args.fixtures)
+    if fixtures_path.is_dir():
+        fixture_files = sorted(fixtures_path.glob("*.yaml"))
+        for ff in fixture_files:
+            store.load(ff)
+        fixtures_label = f"{len(fixture_files)} files from {args.fixtures}"
+    else:
+        store.load(args.fixtures)
+        fixtures_label = args.fixtures
     openai_tools = mcp_tools_to_openai(list_tools_b())
 
     # Interrupt handler
@@ -810,7 +819,7 @@ def main() -> None:
     # Run
     print(f"Model: {model}")
     print(f"Scenarios: {len(scenarios)} from {args.scenarios}")
-    print(f"Fixtures: {args.fixtures}")
+    print(f"Fixtures: {fixtures_label}")
     print(f"Output: {args.output}")
     if args.explain_failures:
         print("Explain failures: ON")
@@ -857,7 +866,7 @@ def main() -> None:
         model=model,
         output_path=args.output,
         scenarios_file=args.scenarios,
-        fixtures_file=args.fixtures,
+        fixtures_file=fixtures_label,
     )
 
     # Summary

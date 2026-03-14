@@ -1,0 +1,1057 @@
+# Canned MCP tool responses for HTML DOM codebase model.
+#
+# Codebase model:
+#   CoreDOM/Public/DOM_*.h, CoreDOM/Private/DOM_*Impl.*, CoreDOM/Tests/DOM_*Tests.cpp
+#   CoreCSS/Public/CSS_*.h, CoreCSS/Private/CSS_*.cpp
+#   EditorUI/Public/UI_*.h, EditorUI/Private/UI_*.cpp
+#   TableEngine/Public/TBL_*.h, TableEngine/Private/TBL_*.cpp
+#   TestUtils/DocumentBuilder.h, TestUtils/AssertionHelpers.h
+
+responses:
+  # =================================================================
+  # set_project / sync_project (defaults)
+  # =================================================================
+
+  - tool: set_project
+    default: true
+    response:
+      project_path: "/path/to/html-engine"
+      status: "ready"
+      indexed_classes: 156
+      indexed_functions: 892
+      parsed_files: 347
+
+  - tool: sync_project
+    default: true
+    response:
+      state: "indexed"
+      system_state: "ready"
+      parsed_files: 347
+      indexed_classes: 156
+      indexed_functions: 892
+
+  # =================================================================
+  # search_codebase
+  # =================================================================
+
+  # --- L-01 / R-01: Classes in DOM module (by file_name containing "DOM") ---
+  - tool: search_codebase
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
+        contains: "DOM"
+    response:
+      results:
+        - qualified_name: "DOM::Document"
+          kind: "class"
+          prototype: "class Document : public Node"
+          file: "CoreDOM/Public/DOM_Document.h"
+          line: 24
+        - qualified_name: "DOM::Element"
+          kind: "class"
+          prototype: "class Element : public Node"
+          file: "CoreDOM/Public/DOM_Element.h"
+          line: 18
+        - qualified_name: "DOM::Node"
+          kind: "class"
+          prototype: "class Node"
+          file: "CoreDOM/Public/DOM_Node.h"
+          line: 12
+        - qualified_name: "DOM::TextNode"
+          kind: "class"
+          prototype: "class TextNode : public Node"
+          file: "CoreDOM/Public/DOM_TextNode.h"
+          line: 10
+        - qualified_name: "DOM::Attribute"
+          kind: "class"
+          prototype: "class Attribute"
+          file: "CoreDOM/Public/DOM_Attribute.h"
+          line: 8
+        - qualified_name: "DOM::DocumentImpl"
+          kind: "class"
+          prototype: "class DocumentImpl"
+          file: "CoreDOM/Private/DOM_DocumentImpl.h"
+          line: 15
+      next_steps:
+        - "get_class_info('Document') -- explore Document class details"
+        - "get_class_hierarchy('Node') -- see full DOM inheritance tree"
+        - "get_class_info('Element') -- explore Element class details"
+
+  # --- L-01 variant: Classes in DOM namespace ---
+  - tool: search_codebase
+    match:
+      target_type: "classes_and_structs_only"
+      namespace:
+        contains: "DOM"
+    response:
+      results:
+        - qualified_name: "DOM::Document"
+          kind: "class"
+          prototype: "class Document : public Node"
+          file: "CoreDOM/Public/DOM_Document.h"
+          line: 24
+        - qualified_name: "DOM::Element"
+          kind: "class"
+          prototype: "class Element : public Node"
+          file: "CoreDOM/Public/DOM_Element.h"
+          line: 18
+        - qualified_name: "DOM::Node"
+          kind: "class"
+          prototype: "class Node"
+          file: "CoreDOM/Public/DOM_Node.h"
+          line: 12
+        - qualified_name: "DOM::TextNode"
+          kind: "class"
+          prototype: "class TextNode : public Node"
+          file: "CoreDOM/Public/DOM_TextNode.h"
+          line: 10
+        - qualified_name: "DOM::Attribute"
+          kind: "class"
+          prototype: "class Attribute"
+          file: "CoreDOM/Public/DOM_Attribute.h"
+          line: 8
+      next_steps:
+        - "get_class_info('Document') -- explore Document class"
+        - "get_class_hierarchy('Node') -- see DOM inheritance tree"
+
+  # --- L-02: Functions in TBL_ files ---
+  - tool: search_codebase
+    match:
+      target_type: "functions_and_methods_only"
+      file_name:
+        contains: "TBL_"
+    response:
+      results:
+        - qualified_name: "TBL::TableProcessor::addRow"
+          kind: "method"
+          prototype: "void TableProcessor::addRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 32
+        - qualified_name: "TBL::TableProcessor::removeRow"
+          kind: "method"
+          prototype: "void TableProcessor::removeRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 35
+        - qualified_name: "TBL::CellMerger::mergeCells"
+          kind: "method"
+          prototype: "void CellMerger::mergeCells(CellRange range)"
+          file: "TableEngine/Public/TBL_CellMerger.h"
+          line: 18
+        - qualified_name: "TBL::SpanCalculator::recalculate"
+          kind: "method"
+          prototype: "void SpanCalculator::recalculate(Table &table)"
+          file: "TableEngine/Public/TBL_SpanCalculator.h"
+          line: 22
+        - qualified_name: "MergeTableCells"
+          kind: "function"
+          prototype: "void MergeTableCells(DOM::Element &table, CellRange range)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 45
+        - qualified_name: "RecalculateSpans"
+          kind: "function"
+          prototype: "void RecalculateSpans(DOM::Element &table)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 52
+      next_steps:
+        - "get_class_info('TableProcessor') -- explore TableProcessor class"
+        - "get_functions_called_by('MergeTableCells') -- see what MergeTableCells does"
+
+  # --- M-01: Element-related functions in CSS module ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Element"
+      file_name:
+        contains: "CSS"
+    response:
+      results:
+        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
+          kind: "method"
+          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 28
+        - qualified_name: "CSS::CascadeEngine::getElementProperties"
+          kind: "method"
+          prototype: "PropertyMap CascadeEngine::getElementProperties(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_CascadeEngine.h"
+          line: 35
+        - qualified_name: "CollectElementStyles"
+          kind: "function"
+          prototype: "std::vector<ComputedStyle> CollectElementStyles(const DOM::Element &root)"
+          file: "CoreCSS/Public/CSS_Utilities.h"
+          line: 62
+      next_steps:
+        - "get_functions_called_by('resolveElementStyle', class_name='StyleResolver') -- see implementation details"
+        - "find_usage_sites('CollectElementStyles') -- find where this is used"
+
+  # --- M-02 step 1 / O-01: Search for ApplyStyle ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "ApplyStyle"
+    response:
+      results:
+        - qualified_name: "ApplyStyle"
+          kind: "function"
+          prototype: "void ApplyStyle(DOM::Element &elem, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 38
+        - qualified_name: "ApplyStyleRecursive"
+          kind: "function"
+          prototype: "void ApplyStyleRecursive(DOM::Node &root, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 45
+      next_steps:
+        - "find_usage_sites('ApplyStyle') -- find all callers"
+        - "get_functions_called_by('ApplyStyle') -- see implementation details"
+
+  # --- O-01: Style-related functions ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Style"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "ApplyStyle"
+          kind: "function"
+          prototype: "void ApplyStyle(DOM::Element &elem, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 38
+        - qualified_name: "ApplyStyleRecursive"
+          kind: "function"
+          prototype: "void ApplyStyleRecursive(DOM::Node &root, const CSS::ComputedStyle &style)"
+          file: "CoreCSS/Public/CSS_Operations.h"
+          line: 45
+        - qualified_name: "ResolveInheritedStyle"
+          kind: "function"
+          prototype: "OptionalStyle ResolveInheritedStyle(const DOM::Node &node)"
+          file: "CoreCSS/Public/CSS_Inheritance.h"
+          line: 22
+        - qualified_name: "CSS::StyleResolver::resolveStyle"
+          kind: "method"
+          prototype: "ComputedStyle StyleResolver::resolveStyle(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 25
+        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
+          kind: "method"
+          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 28
+      next_steps:
+        - "find_usage_sites('ApplyStyle') -- see where styles are applied"
+        - "get_functions_called_by('ResolveInheritedStyle') -- trace inheritance resolution"
+
+  # --- P-01: Test classes (file_name contains "Test") ---
+  - tool: search_codebase
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
+        contains: "Test"
+    response:
+      results:
+        - qualified_name: "DocumentTestFixture"
+          kind: "class"
+          prototype: "class DocumentTestFixture : public ::testing::Test"
+          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+          line: 18
+        - qualified_name: "ElementTestFixture"
+          kind: "class"
+          prototype: "class ElementTestFixture : public ::testing::Test"
+          file: "CoreDOM/Tests/DOM_ElementTests.cpp"
+          line: 15
+        - qualified_name: "StyleResolverTestFixture"
+          kind: "class"
+          prototype: "class StyleResolverTestFixture : public ::testing::Test"
+          file: "CoreCSS/Tests/CSS_StyleResolverTests.cpp"
+          line: 12
+        - qualified_name: "TableOperationsFixture"
+          kind: "class"
+          prototype: "class TableOperationsFixture : public ::testing::Test"
+          file: "TableEngine/Tests/TBL_OperationsTests.cpp"
+          line: 20
+      next_steps:
+        - "get_class_info('DocumentTestFixture') -- see test fixture setup"
+        - "find_in_file('CoreDOM/Tests/DOM_DocumentTests.cpp', '') -- see all test functions"
+
+  # --- P-02: DocumentBuilder search ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "DocumentBuilder"
+    response:
+      results:
+        - qualified_name: "TestUtils::DocumentBuilder"
+          kind: "class"
+          prototype: "class DocumentBuilder"
+          file: "TestUtils/DocumentBuilder.h"
+          line: 12
+        - qualified_name: "TestUtils::DocumentBuilder::build"
+          kind: "method"
+          prototype: "DOM::DocumentPtr DocumentBuilder::build()"
+          file: "TestUtils/DocumentBuilder.h"
+          line: 45
+        - qualified_name: "TestUtils::DocumentBuilder::withParagraph"
+          kind: "method"
+          prototype: "DocumentBuilder &DocumentBuilder::withParagraph(const std::string &text)"
+          file: "TestUtils/DocumentBuilder.h"
+          line: 28
+        - qualified_name: "TestUtils::DocumentBuilder::withTable"
+          kind: "method"
+          prototype: "DocumentBuilder &DocumentBuilder::withTable(int rows, int cols)"
+          file: "TestUtils/DocumentBuilder.h"
+          line: 35
+      next_steps:
+        - "get_class_info('DocumentBuilder') -- see full builder API"
+        - "find_usage_sites('build', class_name='DocumentBuilder') -- see how builder is used in tests"
+
+  # --- Q-03 step 2: Search for DocumentImpl ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "DocumentImpl"
+    response:
+      results:
+        - qualified_name: "DOM::DocumentImpl"
+          kind: "class"
+          prototype: "class DocumentImpl"
+          file: "CoreDOM/Private/DOM_DocumentImpl.h"
+          line: 15
+        - qualified_name: "DOM::DocumentImpl::DocumentImpl"
+          kind: "method"
+          prototype: "DocumentImpl::DocumentImpl()"
+          file: "CoreDOM/Private/DOM_DocumentImpl.cpp"
+          line: 8
+      next_steps:
+        - "get_class_info('DocumentImpl') -- see implementation details"
+        - "find_in_file('CoreDOM/Private/DOM_DocumentImpl.h', '') -- see all members"
+
+  # --- Q-01: INodeVisitor search ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "INodeVisitor"
+    response:
+      results:
+        - qualified_name: "DOM::INodeVisitor"
+          kind: "class"
+          prototype: "class INodeVisitor"
+          file: "CoreDOM/Public/DOM_INodeVisitor.h"
+          line: 10
+        - qualified_name: "CSS::StyleVisitor"
+          kind: "class"
+          prototype: "class StyleVisitor : public DOM::INodeVisitor"
+          file: "CoreCSS/Public/CSS_StyleVisitor.h"
+          line: 14
+        - qualified_name: "DOM::ExportVisitor"
+          kind: "class"
+          prototype: "class ExportVisitor : public INodeVisitor"
+          file: "CoreDOM/Public/DOM_ExportVisitor.h"
+          line: 12
+      next_steps:
+        - "get_class_hierarchy('INodeVisitor') -- see full implementation tree"
+        - "get_class_info('INodeVisitor') -- see interface methods"
+
+  # --- R-02: Merge functions in TBL_ files ---
+  - tool: search_codebase
+    match:
+      pattern:
+        contains: "Merge"
+      target_type: "functions_and_methods_only"
+      file_name:
+        contains: "TBL_"
+    response:
+      results:
+        - qualified_name: "TBL::CellMerger::mergeCells"
+          kind: "method"
+          prototype: "void CellMerger::mergeCells(CellRange range)"
+          file: "TableEngine/Public/TBL_CellMerger.h"
+          line: 18
+        - qualified_name: "MergeTableCells"
+          kind: "function"
+          prototype: "void MergeTableCells(DOM::Element &table, CellRange range)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 45
+        - qualified_name: "TBL::CellMerger::unmerge"
+          kind: "method"
+          prototype: "void CellMerger::unmerge(CellRange range)"
+          file: "TableEngine/Public/TBL_CellMerger.h"
+          line: 22
+      next_steps:
+        - "get_functions_called_by('MergeTableCells') -- see implementation"
+        - "find_usage_sites('mergeCells', class_name='CellMerger') -- find callers"
+
+  # --- Default search response ---
+  - tool: search_codebase
+    default: true
+    response:
+      results:
+        - qualified_name: "DOM::Document"
+          kind: "class"
+          prototype: "class Document : public Node"
+          file: "CoreDOM/Public/DOM_Document.h"
+          line: 24
+      next_steps:
+        - "Refine your search with target_type, file_name, or namespace filters"
+
+  # =================================================================
+  # find_in_file
+  # =================================================================
+
+  # --- L-03: Symbols in DOM_Document.h ---
+  - tool: find_in_file
+    match:
+      file_path:
+        contains: "DOM_Document"
+    response:
+      results:
+        - qualified_name: "DOM::Document"
+          kind: "class"
+          line: 24
+        - qualified_name: "DOM::Document::createElement"
+          kind: "method"
+          line: 32
+          prototype: "ElementPtr Document::createElement(const std::string &tag)"
+        - qualified_name: "DOM::Document::createTextNode"
+          kind: "method"
+          line: 38
+          prototype: "TextNodePtr Document::createTextNode(const std::string &text)"
+        - qualified_name: "DOM::Document::appendChild"
+          kind: "method"
+          line: 44
+          prototype: "void Document::appendChild(NodePtr child)"
+        - qualified_name: "DOM::Document::getElementById"
+          kind: "method"
+          line: 50
+          prototype: "ElementPtr Document::getElementById(const std::string &id)"
+        - qualified_name: "DOM::Document::getElementsByTagName"
+          kind: "method"
+          line: 56
+          prototype: "std::vector<ElementPtr> Document::getElementsByTagName(const std::string &tag)"
+        - qualified_name: "DOM::Document::getDocumentElement"
+          kind: "method"
+          line: 62
+          prototype: "ElementPtr Document::getDocumentElement() const"
+      next_steps:
+        - "get_class_info('Document') -- see base classes and full details"
+        - "get_functions_called_by('createElement', class_name='Document') -- trace implementation"
+
+  # --- P-03: Symbols in DOM_DocumentTests.cpp ---
+  - tool: find_in_file
+    match:
+      file_path:
+        contains: "DOM_DocumentTests"
+    response:
+      results:
+        - qualified_name: "DocumentTestFixture"
+          kind: "class"
+          line: 18
+        - qualified_name: "DocumentTestFixture::SetUp"
+          kind: "method"
+          line: 22
+          prototype: "void DocumentTestFixture::SetUp()"
+        - qualified_name: "DocumentTestFixture::createSampleDocument"
+          kind: "method"
+          line: 28
+          prototype: "DOM::DocumentPtr DocumentTestFixture::createSampleDocument()"
+        - qualified_name: "TEST_F_CreateElement"
+          kind: "function"
+          line: 45
+          prototype: "TEST_F(DocumentTestFixture, CreateElement)"
+        - qualified_name: "TEST_F_AppendChild"
+          kind: "function"
+          line: 62
+          prototype: "TEST_F(DocumentTestFixture, AppendChild)"
+        - qualified_name: "TEST_F_GetElementById"
+          kind: "function"
+          line: 78
+          prototype: "TEST_F(DocumentTestFixture, GetElementById)"
+      next_steps:
+        - "get_class_info('DocumentTestFixture') -- see fixture details"
+        - "find_usage_sites('createSampleDocument') -- see reuse of helper"
+
+  - tool: find_in_file
+    default: true
+    response:
+      results: []
+
+  # =================================================================
+  # get_class_info
+  # =================================================================
+
+  # --- Document (mentions DocumentImpl for PIMPL discovery) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Document"
+    response:
+      qualified_name: "DOM::Document"
+      kind: "class"
+      prototype: "class Document : public Node"
+      file: "CoreDOM/Public/DOM_Document.h"
+      line: 24
+      base_classes:
+        - "DOM::Node"
+      derived_classes: []
+      methods:
+        - qualified_name: "DOM::Document::createElement"
+          prototype: "ElementPtr Document::createElement(const std::string &tag)"
+          attributes: []
+        - qualified_name: "DOM::Document::createTextNode"
+          prototype: "TextNodePtr Document::createTextNode(const std::string &text)"
+          attributes: []
+        - qualified_name: "DOM::Document::appendChild"
+          prototype: "void Document::appendChild(NodePtr child)"
+          attributes: ["virtual"]
+        - qualified_name: "DOM::Document::getElementById"
+          prototype: "ElementPtr Document::getElementById(const std::string &id)"
+          attributes: ["const"]
+        - qualified_name: "DOM::Document::getElementsByTagName"
+          prototype: "std::vector<ElementPtr> Document::getElementsByTagName(const std::string &tag)"
+          attributes: ["const"]
+        - qualified_name: "DOM::Document::getDocumentElement"
+          prototype: "ElementPtr Document::getDocumentElement() const"
+          attributes: ["const"]
+      notes: "Uses PIMPL pattern. Implementation in DOM::DocumentImpl (CoreDOM/Private/DOM_DocumentImpl.h)."
+      next_steps:
+        - "get_class_hierarchy('Document') -- see inheritance tree"
+        - "search_codebase('DocumentImpl') -- find PIMPL implementation class"
+        - "get_functions_called_by('createElement', class_name='Document') -- trace factory method"
+
+  # --- Element ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Element"
+    response:
+      qualified_name: "DOM::Element"
+      kind: "class"
+      prototype: "class Element : public Node"
+      file: "CoreDOM/Public/DOM_Element.h"
+      line: 18
+      base_classes:
+        - "DOM::Node"
+      derived_classes: []
+      methods:
+        - qualified_name: "DOM::Element::setAttribute"
+          prototype: "void Element::setAttribute(const std::string &name, const std::string &value)"
+          attributes: []
+        - qualified_name: "DOM::Element::getAttribute"
+          prototype: "std::optional<std::string> Element::getAttribute(const std::string &name) const"
+          attributes: ["const"]
+        - qualified_name: "DOM::Element::appendChild"
+          prototype: "void Element::appendChild(NodePtr child)"
+          attributes: ["virtual"]
+        - qualified_name: "DOM::Element::removeChild"
+          prototype: "void Element::removeChild(NodePtr child)"
+          attributes: ["virtual"]
+        - qualified_name: "DOM::Element::getTagName"
+          prototype: "const std::string &Element::getTagName() const"
+          attributes: ["const"]
+        - qualified_name: "DOM::Element::getChildren"
+          prototype: "const std::vector<NodePtr> &Element::getChildren() const"
+          attributes: ["const"]
+        - qualified_name: "DOM::Element::getComputedStyle"
+          prototype: "OptionalStyle Element::getComputedStyle() const"
+          attributes: ["const"]
+      next_steps:
+        - "get_class_hierarchy('Element') -- see inheritance tree"
+        - "find_usage_sites('setAttribute', class_name='Element') -- see how attributes are set"
+
+  # --- StyleResolver ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "StyleResolver"
+    response:
+      qualified_name: "CSS::StyleResolver"
+      kind: "class"
+      prototype: "class StyleResolver"
+      file: "CoreCSS/Public/CSS_StyleResolver.h"
+      line: 15
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "CSS::StyleResolver::resolveStyle"
+          prototype: "ComputedStyle StyleResolver::resolveStyle(const DOM::Element &elem)"
+          attributes: []
+        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
+          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const DOM::Element &elem)"
+          attributes: []
+        - qualified_name: "CSS::StyleResolver::resolveInheritedProperties"
+          prototype: "PropertyMap StyleResolver::resolveInheritedProperties(const DOM::Node &node)"
+          attributes: ["const"]
+        - qualified_name: "CSS::StyleResolver::getCascadedProperties"
+          prototype: "PropertyMap StyleResolver::getCascadedProperties(const DOM::Element &elem)"
+          attributes: ["const"]
+      next_steps:
+        - "find_usage_sites('resolveStyle', class_name='StyleResolver') -- find callers"
+        - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- see implementation"
+
+  # --- INodeVisitor (interface with pure virtuals) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "INodeVisitor"
+    response:
+      qualified_name: "DOM::INodeVisitor"
+      kind: "class"
+      prototype: "class INodeVisitor"
+      file: "CoreDOM/Public/DOM_INodeVisitor.h"
+      line: 10
+      base_classes: []
+      derived_classes:
+        - "CSS::StyleVisitor"
+        - "DOM::ExportVisitor"
+        - "DOM::ValidationVisitor"
+      methods:
+        - qualified_name: "DOM::INodeVisitor::visitElement"
+          prototype: "void INodeVisitor::visitElement(Element &elem)"
+          attributes: ["pure_virtual"]
+        - qualified_name: "DOM::INodeVisitor::visitTextNode"
+          prototype: "void INodeVisitor::visitTextNode(TextNode &text)"
+          attributes: ["pure_virtual"]
+        - qualified_name: "DOM::INodeVisitor::visitDocument"
+          prototype: "void INodeVisitor::visitDocument(Document &doc)"
+          attributes: ["pure_virtual"]
+      next_steps:
+        - "get_class_hierarchy('INodeVisitor') -- see all implementations"
+        - "get_class_info('StyleVisitor') -- see CSS visitor implementation"
+        - "get_class_info('ExportVisitor') -- see export visitor implementation"
+
+  # --- Table (for O-02) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "Table"
+    response:
+      qualified_name: "TBL::TableProcessor"
+      kind: "class"
+      prototype: "class TableProcessor"
+      file: "TableEngine/Public/TBL_TableProcessor.h"
+      line: 18
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "TBL::TableProcessor::addRow"
+          prototype: "void TableProcessor::addRow(int index)"
+          attributes: []
+        - qualified_name: "TBL::TableProcessor::removeRow"
+          prototype: "void TableProcessor::removeRow(int index)"
+          attributes: []
+        - qualified_name: "TBL::TableProcessor::addColumn"
+          prototype: "void TableProcessor::addColumn(int index)"
+          attributes: []
+        - qualified_name: "TBL::TableProcessor::getCell"
+          prototype: "DOM::ElementPtr TableProcessor::getCell(int row, int col)"
+          attributes: ["const"]
+        - qualified_name: "TBL::TableProcessor::setTableElement"
+          prototype: "void TableProcessor::setTableElement(DOM::ElementPtr tableElem)"
+          attributes: []
+      next_steps:
+        - "find_usage_sites('addRow', class_name='TableProcessor') -- see how rows are added"
+        - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
+
+  # --- DocumentBuilder (for P-02 follow-up) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "DocumentBuilder"
+    response:
+      qualified_name: "TestUtils::DocumentBuilder"
+      kind: "class"
+      prototype: "class DocumentBuilder"
+      file: "TestUtils/DocumentBuilder.h"
+      line: 12
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "TestUtils::DocumentBuilder::withParagraph"
+          prototype: "DocumentBuilder &DocumentBuilder::withParagraph(const std::string &text)"
+          attributes: []
+        - qualified_name: "TestUtils::DocumentBuilder::withTable"
+          prototype: "DocumentBuilder &DocumentBuilder::withTable(int rows, int cols)"
+          attributes: []
+        - qualified_name: "TestUtils::DocumentBuilder::withHeading"
+          prototype: "DocumentBuilder &DocumentBuilder::withHeading(int level, const std::string &text)"
+          attributes: []
+        - qualified_name: "TestUtils::DocumentBuilder::build"
+          prototype: "DOM::DocumentPtr DocumentBuilder::build()"
+          attributes: []
+      next_steps:
+        - "find_usage_sites('build', class_name='DocumentBuilder') -- see usage in tests"
+
+  - tool: get_class_info
+    default: true
+    response:
+      error: "Class not found. Use search_codebase to find the correct name."
+
+  # =================================================================
+  # get_class_hierarchy
+  # =================================================================
+
+  # --- INodeVisitor hierarchy ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "INodeVisitor"
+    response:
+      root: "DOM::INodeVisitor"
+      nodes:
+        - name: "DOM::INodeVisitor"
+          children: ["CSS::StyleVisitor", "DOM::ExportVisitor", "DOM::ValidationVisitor"]
+        - name: "CSS::StyleVisitor"
+          children: []
+        - name: "DOM::ExportVisitor"
+          children: ["DOM::HtmlExportVisitor", "DOM::MarkdownExportVisitor"]
+        - name: "DOM::ValidationVisitor"
+          children: []
+        - name: "DOM::HtmlExportVisitor"
+          children: []
+        - name: "DOM::MarkdownExportVisitor"
+          children: []
+
+  # --- Node hierarchy ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "Node"
+    response:
+      root: "DOM::Node"
+      nodes:
+        - name: "DOM::Node"
+          children: ["DOM::Document", "DOM::Element", "DOM::TextNode"]
+        - name: "DOM::Document"
+          children: []
+        - name: "DOM::Element"
+          children: []
+        - name: "DOM::TextNode"
+          children: []
+
+  - tool: get_class_hierarchy
+    default: true
+    response:
+      error: "Class not found in hierarchy. Use search_codebase to find the correct name."
+
+  # =================================================================
+  # get_functions_called_by
+  # =================================================================
+
+  # --- L-04: Element::setAttribute callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "setAttribute"
+      class_name:
+        contains: "Element"
+    response:
+      function: "DOM::Element::setAttribute"
+      callees:
+        - qualified_name: "DOM::Attribute::Attribute"
+          prototype: "Attribute::Attribute(const std::string &name, const std::string &value)"
+          file: "CoreDOM/Public/DOM_Attribute.h"
+          line: 12
+        - qualified_name: "DOM::Element::invalidateStyle"
+          prototype: "void Element::invalidateStyle()"
+          file: "CoreDOM/Private/DOM_ElementImpl.cpp"
+          line: 85
+        - qualified_name: "DOM::Node::notifyModification"
+          prototype: "void Node::notifyModification()"
+          file: "CoreDOM/Private/DOM_Node.cpp"
+          line: 120
+      next_steps:
+        - "find_usage_sites('setAttribute', class_name='Element') -- find callers"
+        - "get_functions_called_by('invalidateStyle', class_name='Element') -- go deeper"
+
+  # --- N-01 step 1: ResolveInheritedStyle callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "ResolveInheritedStyle"
+    response:
+      function: "ResolveInheritedStyle"
+      callees:
+        - qualified_name: "DOM::Node::getParentNode"
+          prototype: "NodePtr Node::getParentNode() const"
+          file: "CoreDOM/Public/DOM_Node.h"
+          line: 28
+        - qualified_name: "GetComputedStyle"
+          prototype: "OptionalStyle GetComputedStyle(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_Queries.h"
+          line: 18
+        - qualified_name: "CSS::CascadeEngine::mergeProperties"
+          prototype: "ComputedStyle CascadeEngine::mergeProperties(const ComputedStyle &parent, const ComputedStyle &local)"
+          file: "CoreCSS/Public/CSS_CascadeEngine.h"
+          line: 42
+      next_steps:
+        - "get_functions_called_by('GetComputedStyle') -- go deeper into style computation"
+        - "find_usage_sites('ResolveInheritedStyle') -- find callers"
+
+  # --- N-01 step 2: GetComputedStyle callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "GetComputedStyle"
+    response:
+      function: "GetComputedStyle"
+      callees:
+        - qualified_name: "CSS::StyleResolver::resolveStyle"
+          prototype: "ComputedStyle StyleResolver::resolveStyle(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 25
+        - qualified_name: "CSS::CascadeEngine::getElementProperties"
+          prototype: "PropertyMap CascadeEngine::getElementProperties(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_CascadeEngine.h"
+          line: 35
+        - qualified_name: "DOM::Element::getAttribute"
+          prototype: "std::optional<std::string> Element::getAttribute(const std::string &name) const"
+          file: "CoreDOM/Public/DOM_Element.h"
+          line: 25
+      next_steps:
+        - "find_usage_sites('GetComputedStyle') -- who calls this?"
+        - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- deeper into resolver"
+
+  # --- N-03 step 1: HandleKeyPress callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "HandleKeyPress"
+    response:
+      function: "UI::CommandHandler::HandleKeyPress"
+      callees:
+        - qualified_name: "UI::CommandHandler::findBinding"
+          prototype: "std::optional<Command> CommandHandler::findBinding(KeyCode key)"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 45
+        - qualified_name: "UI::CommandHandler::executeCommand"
+          prototype: "void CommandHandler::executeCommand(const Command &cmd)"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 78
+        - qualified_name: "UI::SelectionManager::getSelection"
+          prototype: "Selection SelectionManager::getSelection() const"
+          file: "EditorUI/Public/UI_SelectionManager.h"
+          line: 22
+      next_steps:
+        - "find_usage_sites('HandleKeyPress') -- find callers"
+        - "get_functions_called_by('executeCommand', class_name='CommandHandler') -- trace command execution"
+
+  - tool: get_functions_called_by
+    default: true
+    response:
+      function: "unknown"
+      callees: []
+      next_steps:
+        - "Use search_codebase to find the correct function name"
+
+  # =================================================================
+  # find_usage_sites
+  # =================================================================
+
+  # --- M-02 step 2 / O-01 follow-up: ApplyStyle callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "ApplyStyle"
+    response:
+      function: "ApplyStyle"
+      callers:
+        - qualified_name: "CSS::StyleResolver::applyResolvedStyles"
+          prototype: "void StyleResolver::applyResolvedStyles(DOM::Document &doc)"
+          file: "CoreCSS/Private/CSS_StyleResolver.cpp"
+          line: 92
+          call_sites:
+            - file: "CoreCSS/Private/CSS_StyleResolver.cpp"
+              line: 108
+              column: 12
+        - qualified_name: "UI::EditorWidget::reformatDocument"
+          prototype: "void EditorWidget::reformatDocument()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 145
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 162
+              column: 8
+      next_steps:
+        - "get_functions_called_by('applyResolvedStyles', class_name='StyleResolver') -- trace full flow"
+
+  # --- M-03 step 2: StyleResolver::resolveStyle callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "resolveStyle"
+    response:
+      function: "CSS::StyleResolver::resolveStyle"
+      callers:
+        - qualified_name: "GetComputedStyle"
+          prototype: "OptionalStyle GetComputedStyle(const DOM::Element &elem)"
+          file: "CoreCSS/Public/CSS_Queries.h"
+          line: 18
+          call_sites:
+            - file: "CoreCSS/Private/CSS_Queries.cpp"
+              line: 25
+              column: 16
+        - qualified_name: "UI::EditorWidget::updateElementStyle"
+          prototype: "void EditorWidget::updateElementStyle(DOM::ElementPtr elem)"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 178
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 192
+              column: 12
+        - qualified_name: "CSS::StyleVisitor::visitElement"
+          prototype: "void StyleVisitor::visitElement(DOM::Element &elem)"
+          file: "CoreCSS/Private/CSS_StyleVisitor.cpp"
+          line: 30
+          call_sites:
+            - file: "CoreCSS/Private/CSS_StyleVisitor.cpp"
+              line: 38
+              column: 8
+      next_steps:
+        - "get_functions_called_by('GetComputedStyle') -- trace style query chain"
+
+  # --- N-02 step 1: MergeTableCells callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "MergeTableCells"
+    response:
+      function: "MergeTableCells"
+      callers:
+        - qualified_name: "RecalculateSpans"
+          prototype: "void RecalculateSpans(DOM::Element &table)"
+          file: "TableEngine/Public/TBL_Operations.h"
+          line: 52
+          call_sites:
+            - file: "TableEngine/Private/TBL_Operations.cpp"
+              line: 68
+              column: 8
+        - qualified_name: "UI::CommandHandler::executeMergeCells"
+          prototype: "void CommandHandler::executeMergeCells()"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 112
+          call_sites:
+            - file: "EditorUI/Private/UI_CommandHandler.cpp"
+              line: 128
+              column: 12
+      next_steps:
+        - "find_usage_sites('RecalculateSpans') -- who triggers recalculation?"
+        - "get_functions_called_by('MergeTableCells') -- see internal implementation"
+
+  # --- N-02 step 2: RecalculateSpans callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "RecalculateSpans"
+    response:
+      function: "RecalculateSpans"
+      callers:
+        - qualified_name: "TBL::TableProcessor::addRow"
+          prototype: "void TableProcessor::addRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 32
+          call_sites:
+            - file: "TableEngine/Private/TBL_TableProcessor.cpp"
+              line: 55
+              column: 4
+        - qualified_name: "TBL::TableProcessor::removeRow"
+          prototype: "void TableProcessor::removeRow(int index)"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 35
+          call_sites:
+            - file: "TableEngine/Private/TBL_TableProcessor.cpp"
+              line: 72
+              column: 4
+      next_steps:
+        - "get_class_info('TableProcessor') -- see all table operations"
+
+  # --- N-03 step 2: HandleKeyPress callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "HandleKeyPress"
+    response:
+      function: "UI::CommandHandler::HandleKeyPress"
+      callers:
+        - qualified_name: "UI::EditorWidget::keyPressEvent"
+          prototype: "void EditorWidget::keyPressEvent(QKeyEvent *event)"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 88
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 95
+              column: 8
+      next_steps:
+        - "get_functions_called_by('keyPressEvent', class_name='EditorWidget') -- trace Qt event handling"
+
+  # --- O-02 step 2: TableProcessor::addRow callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "addRow"
+    response:
+      function: "TBL::TableProcessor::addRow"
+      callers:
+        - qualified_name: "UI::CommandHandler::executeInsertRow"
+          prototype: "void CommandHandler::executeInsertRow()"
+          file: "EditorUI/Private/UI_CommandHandler.cpp"
+          line: 135
+          call_sites:
+            - file: "EditorUI/Private/UI_CommandHandler.cpp"
+              line: 148
+              column: 8
+        - qualified_name: "DocumentTestFixture::createSampleTable"
+          prototype: "void DocumentTestFixture::createSampleTable()"
+          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+          line: 35
+          call_sites:
+            - file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+              line: 42
+              column: 12
+      next_steps:
+        - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
+
+  - tool: find_usage_sites
+    default: true
+    response:
+      function: "unknown"
+      callers: []
+      next_steps:
+        - "Use search_codebase to find the correct function name"
+
+  # =================================================================
+  # get_type_alias_info
+  # =================================================================
+
+  - tool: get_type_alias_info
+    match:
+      type_name:
+        contains: "ElementPtr"
+    response:
+      alias_name: "ElementPtr"
+      canonical_type: "std::shared_ptr<DOM::Element>"
+      file: "CoreDOM/Public/DOM_Types.h"
+      line: 8
+      related_aliases:
+        - name: "NodePtr"
+          canonical_type: "std::shared_ptr<DOM::Node>"
+        - name: "TextNodePtr"
+          canonical_type: "std::shared_ptr<DOM::TextNode>"
+
+  - tool: get_type_alias_info
+    default: true
+    response:
+      error: "Type alias not found. Try search_codebase to find type names."
+
+  # =================================================================
+  # trace_execution_path (default only)
+  # =================================================================
+
+  - tool: trace_execution_path
+    default: true
+    response:
+      source: "unknown"
+      target: "unknown"
+      paths: []
+      path_count: 0
+      next_steps:
+        - "Use search_codebase to verify both function names exist"
