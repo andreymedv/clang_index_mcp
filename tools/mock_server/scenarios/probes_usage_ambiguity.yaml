@@ -1,5 +1,5 @@
 # Probe scenarios for root cause: "used" / "usage" ambiguity
-# between search_codebase (find references) and find_usage_sites (find callers).
+# between find_symbols_by_pattern (find references) and find_usage_sites (find callers).
 #
 # Tests whether the LLM consistently picks find_usage_sites when
 # the query implies call-site analysis with various phrasings of "used".

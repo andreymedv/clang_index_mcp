@@ -34,11 +34,11 @@ responses:
       indexed_functions: 187
 
   # -----------------------------------------------------------------
-  # search_codebase
+  # find_symbols_by_pattern
   # -----------------------------------------------------------------
 
   # Search for Manager classes
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "Manager"
@@ -65,7 +65,7 @@ responses:
         - "get_class_hierarchy('DataManager') -- see inheritance tree"
 
   # Search for Manager pattern (all symbol types)
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "Manager"
@@ -90,7 +90,7 @@ responses:
         - "get_class_info('DataManager') -- explore class details"
 
   # Search for Widget
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "Widget"
@@ -116,7 +116,7 @@ responses:
         - "get_class_hierarchy('Widget') -- see full inheritance tree"
 
   # Search for functions with "process"
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "process"
@@ -138,7 +138,7 @@ responses:
         - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
 
   # Search for functions with "event"
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "event"
@@ -160,7 +160,7 @@ responses:
         - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
 
   # Empty search result (for testing empty-result hints)
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern: "NonExistentSymbol12345"
     response:
@@ -170,7 +170,7 @@ responses:
         - "Use find_in_file to search within a specific file"
 
   # Search for functions by file
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       file_name:
         contains: "main.cpp"
@@ -193,7 +193,7 @@ responses:
           line: 8
 
   # Default search response
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     default: true
     response:
       results:
@@ -270,12 +270,12 @@ responses:
       next_steps:
         - "get_class_info('EventHandler') -- explore base class"
         - "get_class_hierarchy('Widget') -- full inheritance tree"
-        - "search_codebase('render', target_type='functions_and_methods_only') -- find implementations"
+        - "find_symbols_by_pattern('render', target_type='functions_and_methods_only') -- find implementations"
 
   - tool: get_class_info
     default: true
     response:
-      error: "Class not found. Use search_codebase to find the correct name."
+      error: "Class not found. Use find_symbols_by_pattern to find the correct name."
 
   # -----------------------------------------------------------------
   # get_class_hierarchy
@@ -320,7 +320,7 @@ responses:
   - tool: get_class_hierarchy
     default: true
     response:
-      error: "Class not found in hierarchy. Use search_codebase to find the correct name."
+      error: "Class not found in hierarchy. Use find_symbols_by_pattern to find the correct name."
 
   # -----------------------------------------------------------------
   # find_in_file
@@ -386,7 +386,7 @@ responses:
   - tool: get_type_alias_info
     default: true
     response:
-      error: "Type alias not found. Try search_codebase to find type names."
+      error: "Type alias not found. Try find_symbols_by_pattern to find type names."
 
   # -----------------------------------------------------------------
   # get_functions_called_by (outgoing calls)
@@ -440,7 +440,7 @@ responses:
       function: "unknown"
       callees: []
       next_steps:
-        - "Use search_codebase to find the correct function name"
+        - "Use find_symbols_by_pattern to find the correct function name"
 
   # -----------------------------------------------------------------
   # find_usage_sites (incoming calls / callers)
@@ -478,7 +478,7 @@ responses:
       function: "unknown"
       callers: []
       next_steps:
-        - "Use search_codebase to find the correct function name"
+        - "Use find_symbols_by_pattern to find the correct function name"
 
   # -----------------------------------------------------------------
   # trace_execution_path
@@ -504,4 +504,4 @@ responses:
       paths: []
       path_count: 0
       next_steps:
-        - "Use search_codebase to verify both function names exist"
+        - "Use find_symbols_by_pattern to verify both function names exist"

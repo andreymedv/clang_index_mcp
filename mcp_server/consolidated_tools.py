@@ -7,7 +7,7 @@ Each consolidated tool maps to one or more internal handlers.
 Tool mapping (public → internal):
   set_project            → set_project_directory + wait_for_indexing (sync wait)
   sync_project           → check_system_status + refresh_project
-  search_codebase        → search_classes / search_functions / search_symbols
+  find_symbols_by_pattern → search_classes / search_functions / search_symbols
   find_in_file           → passthrough
   get_class_info         → passthrough
   get_class_hierarchy    → passthrough
@@ -73,7 +73,7 @@ _SYSTEM_STATE_MAP = {
 TOOL_NAMES = [
     "set_project",
     "sync_project",
-    "search_codebase",
+    "find_symbols_by_pattern",
     "find_in_file",
     "get_class_info",
     "get_class_hierarchy",
@@ -213,16 +213,20 @@ def list_tools_b() -> List[Tool]:
             },
         ),
         Tool(
-            name="search_codebase",
+            name="find_symbols_by_pattern",
             description=(
-                "Search for C++ symbols by name pattern. Use target_type to "
-                "narrow to classes, functions, or all. Use output_detail_level "
-                "to control response size.\n\n"
+                "Discover C++ symbols (classes, functions, methods) by name pattern. "
+                "Use this to find a symbol when you don't know its exact location. "
+                "Once found, use get_class_info / get_class_hierarchy / "
+                "get_functions_called_by for details.\n\n"
+                "Do NOT use this to explore all symbols in a known file — "
+                "use find_in_file instead. Do NOT use this to get class details, "
+                "inheritance, or call graph — use the specialized tools.\n\n"
                 "Pattern matching (case-insensitive):\n"
                 "- 'Widget' — matches in any namespace\n"
                 "- 'ui::Widget' — matches namespace suffix\n"
                 "- '.*Manager.*' — regex, matches containing 'Manager'\n"
-                "- '' (empty) — matches ALL symbols (use with file_name)\n\n"
+                "- '' (empty) — matches ALL symbols; to enumerate a known file use find_in_file\n\n"
                 "Filtering by location:\n"
                 "- file_name: restrict to a directory, file prefix, or path "
                 "(e.g. 'tests/', 'detail_')\n"
@@ -325,7 +329,7 @@ def list_tools_b() -> List[Tool]:
             description=(
                 "Get full details of a specific class: methods, base classes, "
                 "derived classes, documentation. Requires exact class name — "
-                "use search_codebase first if unsure. Returns disambiguation "
+                "use find_symbols_by_pattern first if unsure. Returns disambiguation "
                 "options if name is ambiguous."
             ),
             inputSchema={
@@ -346,8 +350,12 @@ def list_tools_b() -> List[Tool]:
             name="get_class_hierarchy",
             description=(
                 "Get complete inheritance graph for a class — all ancestors "
-                "and descendants as a flat adjacency list. Use this for full "
-                "inheritance trees; get_class_info gives only direct parents/children."
+                "and descendants as a flat adjacency list. "
+                "Use to answer: 'who implements this interface?', "
+                "'what classes derive from X?', 'find all subclasses', "
+                "'find all concrete implementations'. Pass the interface or "
+                "base class name to see all its implementors and ancestors. "
+                "Use this for full trees; get_class_info gives only direct parents/children."
             ),
             inputSchema={
                 "type": "object",
@@ -536,7 +544,7 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
     if name == "sync_project":
         return await _handle_sync_project(arguments)
 
-    if name == "search_codebase":
+    if name == "find_symbols_by_pattern":
         return await _handle_search_codebase(arguments)
 
     if name == "get_functions_called_by":
