@@ -85,7 +85,7 @@ scenarios:
     expected_steps:
       - tool: "find_usage_sites"
         params:
-          symbol_name: { type: contains, value: "myFunction" }
+          function_name: { type: contains, value: "myFunction" }
 
   # Root Cause 3: get_functions_called_by vs find_usage_sites ambiguity
   # These should clarify direction: outgoing vs incoming
@@ -103,7 +103,7 @@ scenarios:
     expected_steps:
       - tool: "find_usage_sites"
         params:
-          symbol_name: { type: contains, value: "updateUI" }
+          function_name: { type: contains, value: "updateUI" }
 
   - id: "PROBE-RC3-03"
     category: "probe"
