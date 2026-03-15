@@ -301,17 +301,19 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="find_in_file",
             description=(
-                "Search for symbols within a specific file or glob pattern. "
-                "Supports: absolute path, relative path, filename, "
-                "glob patterns (**/tests/*.cpp). "
-                "Empty pattern matches all symbols in the file."
+                "List all symbols defined in ONE specific file you already know. "
+                "Requires a concrete file path (absolute, relative, or basename). "
+                "Empty pattern returns all symbols in that file.\n\n"
+                "Do NOT use for directory searches or file patterns — "
+                "use find_symbols_by_pattern with file_name filter instead "
+                "(e.g., file_name='tests/', file_name='DOM_')."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "File path or glob pattern to search in.",
+                        "description": "Concrete file path (absolute, relative, or basename). NOT a glob pattern — for multi-file search use find_symbols_by_pattern with file_name filter.",
                     },
                     "pattern": {
                         "type": "string",
@@ -397,13 +399,15 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="get_functions_called_by",
             description=(
-                "Find all functions that a given function CALLS — outgoing calls, internal dependencies.\n"
-                "What does function X invoke/call? What are X's dependencies?\n\n"
+                "Query the call graph: find all functions that X CALLS (outgoing direction).\n"
+                "Pass the function name directly — no need to find it first with find_symbols_by_pattern.\n\n"
                 "Use for questions like:\n"
-                "- 'What does X call?', 'What functions does X invoke?', 'X calls what internally?'\n"
+                "- 'What does X call?', 'What happens inside X?', 'What does X invoke/trigger internally?'\n"
+                "- 'Show all function calls that happen inside X'\n"
                 "- 'What are X's dependencies?', 'What does X depend on?'\n"
                 "- 'Show outgoing calls from X'\n\n"
-                "Do NOT use for 'what calls X?' or 'where is X used?' — use find_usage_sites instead.\n\n"
+                "Do NOT use for 'what calls X?' or 'where is X used?' — use find_usage_sites instead.\n"
+                "Do NOT use find_symbols_by_pattern to answer call graph questions — this tool is the right one.\n\n"
                 "Return format:\n"
                 "- 'function_definitions_summary' (default): callee names + file locations\n"
                 "- 'function_definitions_full': complete signatures + metadata\n"

@@ -192,6 +192,125 @@ responses:
           file: "src/main.cpp"
           line: 8
 
+  # Search in Core/ directory
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Core/"
+    response:
+      results:
+        - qualified_name: "app::core::EventHandler"
+          kind: "class"
+          prototype: "class EventHandler"
+          file: "src/Core/EventHandler.h"
+          line: 10
+        - qualified_name: "app::core::BaseService"
+          kind: "class"
+          prototype: "class BaseService"
+          file: "src/Core/BaseService.h"
+          line: 8
+        - qualified_name: "app::core::Config"
+          kind: "class"
+          prototype: "class Config"
+          file: "src/Core/Config.h"
+          line: 14
+
+  # Search in Util_ files
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Util_"
+    response:
+      results:
+        - qualified_name: "app::utils::parseString"
+          kind: "function"
+          prototype: "std::string parseString(const char *input)"
+          file: "src/Util_strings.h"
+          line: 12
+        - qualified_name: "app::utils::formatDate"
+          kind: "function"
+          prototype: "std::string formatDate(time_t ts)"
+          file: "src/Util_datetime.h"
+          line: 8
+        - qualified_name: "app::utils::hexEncode"
+          kind: "function"
+          prototype: "std::string hexEncode(const uint8_t *data, size_t len)"
+          file: "src/Util_encoding.h"
+          line: 20
+
+  # Search in Tests/ directory — functions/methods only
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Tests/"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "app::test::runDataManagerTests"
+          kind: "function"
+          prototype: "void runDataManagerTests()"
+          file: "src/Tests/DataManagerTest.cpp"
+          line: 5
+        - qualified_name: "app::test::runWidgetTests"
+          kind: "function"
+          prototype: "void runWidgetTests()"
+          file: "src/Tests/WidgetTest.cpp"
+          line: 7
+        - qualified_name: "app::test::DataManagerTest::setUp"
+          kind: "method"
+          prototype: "void DataManagerTest::setUp()"
+          file: "src/Tests/DataManagerTest.h"
+          line: 14
+
+  # Search in Tests/ directory — all symbol types
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Tests/"
+    response:
+      results:
+        - qualified_name: "app::test::DataManagerTest"
+          kind: "class"
+          prototype: "class DataManagerTest"
+          file: "src/Tests/DataManagerTest.h"
+          line: 10
+        - qualified_name: "app::test::runDataManagerTests"
+          kind: "function"
+          prototype: "void runDataManagerTests()"
+          file: "src/Tests/DataManagerTest.cpp"
+          line: 5
+        - qualified_name: "app::test::WidgetTest"
+          kind: "class"
+          prototype: "class WidgetTest"
+          file: "src/Tests/WidgetTest.h"
+          line: 8
+
+  # Search in Helper files
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Helper"
+    response:
+      results:
+        - qualified_name: "app::TestHelper"
+          kind: "class"
+          prototype: "class TestHelper"
+          file: "src/helpers/Helper_test.h"
+          line: 14
+        - qualified_name: "app::DocumentBuilderHelper"
+          kind: "class"
+          prototype: "class DocumentBuilderHelper"
+          file: "src/helpers/Helper_docbuilder.h"
+          line: 6
+
+  # Non-existent symbol search — return empty
+  - tool: find_symbols_by_pattern
+    match:
+      pattern: "myFunction"
+    response:
+      results: []
+      message: "No symbols matching 'myFunction' found in the codebase."
+
   # Default search response
   - tool: find_symbols_by_pattern
     default: true
@@ -273,9 +392,34 @@ responses:
         - "find_symbols_by_pattern('render', target_type='functions_and_methods_only') -- find implementations"
 
   - tool: get_class_info
+    match:
+      class_name:
+        contains: "EventHandler"
+    response:
+      qualified_name: "app::EventHandler"
+      kind: "class"
+      prototype: "class EventHandler"
+      file: "src/event_handler.h"
+      line: 10
+      base_classes: []
+      derived_classes:
+        - "app::ui::Widget"
+        - "app::ui::Button"
+      methods:
+        - qualified_name: "app::EventHandler::handleEvent"
+          prototype: "virtual bool EventHandler::handleEvent(const Event &event) = 0"
+          attributes: ["pure_virtual"]
+        - qualified_name: "app::EventHandler::onFocus"
+          prototype: "virtual void EventHandler::onFocus() = 0"
+          attributes: ["pure_virtual"]
+      next_steps:
+        - "get_class_hierarchy('EventHandler') -- see all subclasses"
+
+  - tool: get_class_info
     default: true
     response:
-      error: "Class not found. Use find_symbols_by_pattern to find the correct name."
+      error: "Class not found in index."
+      hint: "Verify the class name spelling. Use find_symbols_by_pattern only if you need to discover what names exist."
 
   # -----------------------------------------------------------------
   # get_class_hierarchy
@@ -318,9 +462,44 @@ responses:
           children: []
 
   - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "IProcessor"
+    response:
+      root: "app::IProcessor"
+      nodes:
+        - name: "app::IProcessor"
+          children: ["app::BatchProcessor", "app::StreamProcessor", "app::AsyncProcessor"]
+        - name: "app::BatchProcessor"
+          children: []
+        - name: "app::StreamProcessor"
+          children: ["app::FilteredStreamProcessor"]
+        - name: "app::AsyncProcessor"
+          children: []
+        - name: "app::FilteredStreamProcessor"
+          children: []
+
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "INodeVisitor"
+    response:
+      root: "app::INodeVisitor"
+      nodes:
+        - name: "app::INodeVisitor"
+          children: ["app::DOMPrinter", "app::NodeCounter", "app::StyleApplier"]
+        - name: "app::DOMPrinter"
+          children: []
+        - name: "app::NodeCounter"
+          children: []
+        - name: "app::StyleApplier"
+          children: []
+
+  - tool: get_class_hierarchy
     default: true
     response:
-      error: "Class not found in hierarchy. Use find_symbols_by_pattern to find the correct name."
+      error: "Class not found in hierarchy."
+      hint: "Verify the class name. If unsure of the exact name, use find_symbols_by_pattern to discover classes."
 
   # -----------------------------------------------------------------
   # find_in_file
@@ -435,12 +614,79 @@ responses:
           line: 30
 
   - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "initialize"
+    response:
+      function: "app::DataManager::initialize"
+      callees:
+        - qualified_name: "app::Config::load"
+          prototype: "bool Config::load(const std::string &)"
+          file: "src/config.h"
+          line: 18
+        - qualified_name: "app::Logger::init"
+          prototype: "void Logger::init(LogLevel)"
+          file: "src/logger.h"
+          line: 10
+        - qualified_name: "app::Database::connect"
+          prototype: "bool Database::connect(const Config &)"
+          file: "src/database.h"
+          line: 32
+      next_steps:
+        - "find_usage_sites('initialize') -- find callers"
+
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "render"
+    response:
+      function: "app::ui::Widget::render"
+      callees:
+        - qualified_name: "app::ui::Painter::drawRect"
+          prototype: "void Painter::drawRect(const Rect &)"
+          file: "src/ui/painter.h"
+          line: 25
+        - qualified_name: "app::ui::Widget::renderChildren"
+          prototype: "void Widget::renderChildren(Painter &)"
+          file: "src/ui/widget.h"
+          line: 88
+        - qualified_name: "app::ui::StyleSheet::apply"
+          prototype: "void StyleSheet::apply(Widget &)"
+          file: "src/ui/stylesheet.h"
+          line: 14
+      next_steps:
+        - "find_usage_sites('render') -- find callers"
+
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "processData"
+    response:
+      function: "app::DataManager::processData"
+      callees:
+        - qualified_name: "app::DataValidator::validate"
+          prototype: "bool DataValidator::validate(const DataRecord &)"
+          file: "src/data_validator.h"
+          line: 20
+        - qualified_name: "app::DataManager::transform"
+          prototype: "DataRecord DataManager::transform(const RawData &)"
+          file: "src/data_manager.h"
+          line: 60
+        - qualified_name: "app::Database::insert"
+          prototype: "bool Database::insert(const DataRecord &)"
+          file: "src/database.h"
+          line: 44
+      next_steps:
+        - "find_usage_sites('processData') -- find callers"
+
+  - tool: get_functions_called_by
     default: true
     response:
       function: "unknown"
       callees: []
       next_steps:
-        - "Use find_symbols_by_pattern to find the correct function name"
+        - "Function not found or has no recorded calls. Verify the name is correct."
+        - "If it is a method, pass class_name parameter to narrow the search."
 
   # -----------------------------------------------------------------
   # find_usage_sites (incoming calls / callers)
@@ -473,12 +719,40 @@ responses:
         - "get_functions_called_by('dispatch', class_name='EventLoop') -- trace upstream"
 
   - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "myFunction"
+    response:
+      function: "myFunction"
+      callers: []
+      message: "No callers found — this function appears to be unused or not yet in the index."
+
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "updateUI"
+    response:
+      function: "app::ui::Widget::updateUI"
+      callers:
+        - qualified_name: "app::EventLoop::onEvent"
+          prototype: "void EventLoop::onEvent(const Event &)"
+          file: "src/event_loop.cpp"
+          line: 78
+          call_sites:
+            - file: "src/event_loop.cpp"
+              line: 85
+              column: 8
+      next_steps:
+        - "get_functions_called_by('updateUI') -- see what updateUI calls"
+
+  - tool: find_usage_sites
     default: true
     response:
       function: "unknown"
       callers: []
       next_steps:
-        - "Use find_symbols_by_pattern to find the correct function name"
+        - "Function not found or has no recorded callers in this codebase."
+        - "If it is a method, pass class_name parameter to narrow the search."
 
   # -----------------------------------------------------------------
   # trace_execution_path
