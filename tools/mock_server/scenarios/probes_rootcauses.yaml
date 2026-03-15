@@ -1,0 +1,114 @@
+---
+# Probe scenarios to verify root causes from Phase 2 analysis
+# These probe queries should trigger the same root causes as failing tests
+
+scenarios:
+  # Root Cause 1: find_symbols_by_pattern vs find_in_file confusion
+  # Expected: find_symbols_by_pattern should be used WITH file_name filter
+  - id: "PROBE-RC1-01"
+    category: "probe"
+    query: "Show me all classes defined in the Core/ subdirectory"
+    expected_steps:
+      - tool: "find_symbols_by_pattern"
+        params:
+          pattern: { type: exact, value: "" }
+          target_type: { type: exact, value: "classes_and_structs_only" }
+          file_name: { type: contains, value: "Core/" }
+
+  - id: "PROBE-RC1-02"
+    category: "probe"
+    query: "List all functions in files that start with Util_"
+    expected_steps:
+      - tool: "find_symbols_by_pattern"
+        params:
+          pattern: { type: exact, value: "" }
+          target_type: { type: exact, value: "functions_and_methods_only" }
+          file_name: { type: contains, value: "Util_" }
+
+  - id: "PROBE-RC1-03"
+    category: "probe"
+    query: "I need to find all methods defined in files under Tests/ directory"
+    expected_steps:
+      - tool: "find_symbols_by_pattern"
+        params:
+          pattern: { type: exact, value: "" }
+          target_type: { type: exact, value: "functions_and_methods_only" }
+          file_name: { type: contains, value: "Tests/" }
+
+  - id: "PROBE-RC1-04"
+    category: "probe"
+    query: "What classes are defined in files matching pattern Helper*.h?"
+    expected_steps:
+      - tool: "find_symbols_by_pattern"
+        params:
+          pattern: { type: exact, value: "" }
+          target_type: { type: exact, value: "classes_and_structs_only" }
+          file_name: { type: contains, value: "Helper" }
+
+  # Root Cause 2: find_symbols_by_pattern overuse as fallback
+  # These should use specialized tools, NOT find_symbols_by_pattern
+  - id: "PROBE-RC2-01"
+    category: "probe"
+    query: "What are the full implementation details and base classes of EventHandler?"
+    expected_steps:
+      - tool: "get_class_info"
+        params:
+          class_name: { type: contains, value: "EventHandler" }
+
+  - id: "PROBE-RC2-02"
+    category: "probe"
+    query: "Show me all subclasses and parent classes of Widget in the hierarchy"
+    expected_steps:
+      - tool: "get_class_hierarchy"
+        params:
+          class_name: { type: contains, value: "Widget" }
+
+  - id: "PROBE-RC2-03"
+    category: "probe"
+    query: "What functions are called by processData? Show me its dependencies."
+    expected_steps:
+      - tool: "get_functions_called_by"
+        params:
+          function_name: { type: contains, value: "processData" }
+
+  - id: "PROBE-RC2-04"
+    category: "probe"
+    query: "Find all implementations of the IProcessor interface"
+    expected_steps:
+      - tool: "get_class_hierarchy"
+        params:
+          class_name: { type: contains, value: "IProcessor" }
+
+  - id: "PROBE-RC2-05"
+    category: "probe"
+    query: "Show me all places where myFunction is called from"
+    expected_steps:
+      - tool: "find_usage_sites"
+        params:
+          symbol_name: { type: contains, value: "myFunction" }
+
+  # Root Cause 3: get_functions_called_by vs find_usage_sites ambiguity
+  # These should clarify direction: outgoing vs incoming
+  - id: "PROBE-RC3-01"
+    category: "probe"
+    query: "What other functions does initialize() call internally?"
+    expected_steps:
+      - tool: "get_functions_called_by"
+        params:
+          function_name: { type: contains, value: "initialize" }
+
+  - id: "PROBE-RC3-02"
+    category: "probe"
+    query: "Where in the codebase is updateUI() being called from?"
+    expected_steps:
+      - tool: "find_usage_sites"
+        params:
+          symbol_name: { type: contains, value: "updateUI" }
+
+  - id: "PROBE-RC3-03"
+    category: "probe"
+    query: "Show all the function calls that happen inside render()"
+    expected_steps:
+      - tool: "get_functions_called_by"
+        params:
+          function_name: { type: contains, value: "render" }

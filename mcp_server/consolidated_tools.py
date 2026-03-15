@@ -227,11 +227,10 @@ def list_tools_b() -> List[Tool]:
                 "- 'ui::Widget' — matches namespace suffix\n"
                 "- '.*Manager.*' — regex, matches containing 'Manager'\n"
                 "- '' (empty) — matches ALL symbols; to enumerate a known file use find_in_file\n\n"
-                "Filtering by location:\n"
-                "- file_name: restrict to a directory, file prefix, or path "
-                "(e.g. 'tests/', 'detail_')\n"
-                "- namespace: restrict to a C++ namespace "
-                "(e.g. 'core', 'utils')\n\n"
+                "Filtering by location (can combine with patterns):\n"
+                "- file_name: restrict to files/dirs (e.g., 'tests/', 'DOM_', 'Helper')\n"
+                "  Examples: pattern='' with file_name='DOM_' finds all symbols in DOM_ files\n"
+                "- namespace: restrict to C++ namespace (e.g., 'core', 'utils')\n\n"
                 "Returns qualified_name, kind, and more based on detail level."
             ),
             inputSchema={
@@ -398,13 +397,17 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="get_functions_called_by",
             description=(
-                "Find all functions called BY a specified function (OUTGOING "
-                "direction). Shows what this function depends on.\n\n"
-                "Use return_format to choose:\n"
-                "- 'function_definitions_summary': compact list of callees\n"
-                "- 'function_definitions_full': callees with full metadata\n"
-                "- 'exact_call_line_locations': file:line:column of each call\n\n"
-                "Do NOT use for finding callers — use find_usage_sites instead."
+                "Find all functions that a given function CALLS — outgoing calls, internal dependencies.\n"
+                "What does function X invoke/call? What are X's dependencies?\n\n"
+                "Use for questions like:\n"
+                "- 'What does X call?', 'What functions does X invoke?', 'X calls what internally?'\n"
+                "- 'What are X's dependencies?', 'What does X depend on?'\n"
+                "- 'Show outgoing calls from X'\n\n"
+                "Do NOT use for 'what calls X?' or 'where is X used?' — use find_usage_sites instead.\n\n"
+                "Return format:\n"
+                "- 'function_definitions_summary' (default): callee names + file locations\n"
+                "- 'function_definitions_full': complete signatures + metadata\n"
+                "- 'exact_call_line_locations': file:line:column of every call within the function"
             ),
             inputSchema={
                 "type": "object",
