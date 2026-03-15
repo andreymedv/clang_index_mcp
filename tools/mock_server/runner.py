@@ -637,6 +637,14 @@ remember that patterns are anchored (matched against full name).
 When you find what you need, provide a concise answer summarizing the results.\
 """
 
+# Short addition for --validate-intent mode.
+# Intentionally brief to avoid distracting small models from the main task.
+VALIDATE_INTENT_ADDITION = (
+    "\n\nBefore using any tool: if the request does not contain a specific C++ symbol name "
+    "(a class name, function name, or filename), reply with a clarification question "
+    "asking which specific class or function to look up. Do not guess or search broadly."
+)
+
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -747,6 +755,16 @@ def main() -> None:
             "Useful for debugging context presentation issues (e.g. call_chain step-2 failures)."
         ),
     )
+    parser.add_argument(
+        "--validate-intent",
+        action="store_true",
+        help=(
+            "Append a short instruction telling the model to ask for clarification "
+            "when the request lacks a specific symbol name. "
+            "Scenarios where the model asks for clarification instead of searching "
+            "are marked as 'clarification_requested' (not PASS, not FAIL)."
+        ),
+    )
     args = parser.parse_args()
 
     client = OpenAIClient(
@@ -841,7 +859,13 @@ def main() -> None:
         print("Explain failures: ON")
     if args.verbose_messages:
         print("Verbose messages: ON (printing messages array each turn)")
+    if args.validate_intent:
+        print("Validate intent: ON (model asked to clarify vague requests)")
     print()
+
+    system_prompt = SYSTEM_PROMPT
+    if args.validate_intent:
+        system_prompt = SYSTEM_PROMPT + VALIDATE_INTENT_ADDITION
 
     results: List[Dict[str, Any]] = []
     for i, scenario in enumerate(scenarios):
@@ -856,7 +880,7 @@ def main() -> None:
             scenario=scenario,
             openai_tools=openai_tools,
             store=store,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             temperature=args.temperature,
             max_tokens=args.max_tokens,
             explain_failures=args.explain_failures,
@@ -864,9 +888,27 @@ def main() -> None:
         )
         results.append(result)
 
-        status = "PASS" if result["overall_pass"] else "FAIL"
+        # Detect clarification_requested: no tool calls, model responded with text
+        clarification = (
+            args.validate_intent
+            and not result["all_tool_calls"]
+            and not result["overall_pass"]
+            and result.get("final_answer", "").strip()
+        )
+        if clarification:
+            result["clarification_requested"] = True
+
+        if clarification:
+            status = "CLAR"
+        elif result["overall_pass"]:
+            status = "PASS"
+        else:
+            status = "FAIL"
         tools_used = [tc["tool"] for tc in result["all_tool_calls"]]
         print(f"  {status} | Tools: {tools_used} | {result['wall_time_seconds']}s")
+        if clarification:
+            answer_preview = result.get("final_answer", "")[:120].replace("\n", " ")
+            print(f"  CLARIFY: {answer_preview}")
         if result["error"]:
             print(f"  ERROR: {result['error']}")
         if args.explain_failures and not result["overall_pass"]:
@@ -890,9 +932,14 @@ def main() -> None:
 
     # Summary
     passed = sum(1 for r in results if r["overall_pass"])
+    clarified = sum(1 for r in results if r.get("clarification_requested"))
     total = len(results)
     print(f"\n{'=' * 50}")
-    print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%)")
+    if clarified:
+        print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%), "
+              f"{clarified} clarification requested")
+    else:
+        print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%)")
 
     # Per-base-scenario variant summary (only if multi-query scenarios exist)
     has_variants = any(r.get("query_variant") for r in results)
