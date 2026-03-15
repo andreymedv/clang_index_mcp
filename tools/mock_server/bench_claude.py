@@ -107,7 +107,11 @@ def check_assertion(assertion, actual_value):
 
 
 def evaluate_scenario(scenario, tools_text, model, verbose=False):
-    query = scenario["query"]
+    # Support both single `query` and multi-query `queries` formats
+    if "queries" in scenario:
+        query = scenario["queries"][0]  # use first query
+    else:
+        query = scenario["query"]
     expected_steps = scenario.get("expected_steps", [])
 
     if not expected_steps:
@@ -204,45 +208,132 @@ def print_result(r, verbose=False):
         print(f"     Full args: {json.dumps(r['actual_args'])}")
 
 
+ALL_SCENARIO_FILES = [
+    "basic",
+    "edge_cases",
+    "multi_step",
+    "probes_rootcauses",
+    "probes_usage_ambiguity",
+    "real_workflows",
+]
+
+
+def resolve_scenarios_path(name_or_path):
+    p = Path(name_or_path)
+    if p.is_absolute():
+        return p
+    # Try as bare name (e.g. "basic" → scenarios/basic.yaml)
+    root = Path(__file__).parent.parent.parent
+    candidate = root / "tools" / "mock_server" / "scenarios" / f"{name_or_path}.yaml"
+    if candidate.exists():
+        return candidate
+    return root / name_or_path
+
+
 def main():
     parser = argparse.ArgumentParser(description="Benchmark Claude models on tool selection")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Claude model ID")
     parser.add_argument("--scenario", help="Run single scenario by ID")
     parser.add_argument(
         "--scenarios-file",
-        default="tools/mock_server/scenarios/probes_rootcauses.yaml",
-        help="Path to scenarios YAML file",
+        help="Path or bare name of a scenarios YAML file (default: run all)",
     )
+    parser.add_argument(
+        "--all", action="store_true", help="Run all scenario files and save combined report"
+    )
+    parser.add_argument("--output", help="Save JSON results to this file")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     tools = list_tools_b()
     tools_text = build_tools_text(tools)
 
-    scenarios_path = Path(args.scenarios_file)
-    if not scenarios_path.is_absolute():
-        scenarios_path = Path(__file__).parent.parent.parent / scenarios_path
+    # Decide which files to run
+    if args.all or (not args.scenarios_file and not args.scenario):
+        files_to_run = ALL_SCENARIO_FILES
+    else:
+        files_to_run = [args.scenarios_file or "probes_rootcauses"]
 
-    scenarios = load_scenarios(scenarios_path, args.scenario)
-
-    if not scenarios:
-        print(f"No scenarios found (id={args.scenario})")
-        sys.exit(1)
+    import datetime
+    run_ts = datetime.datetime.now().isoformat(timespec="seconds")
 
     print(f"Model: {args.model}")
-    print(f"Scenarios: {scenarios_path.name}  ({len(scenarios)} to run)\n")
+    print(f"Run:   {run_ts}")
+    print(f"Files: {', '.join(files_to_run)}\n")
 
-    results = []
-    for s in scenarios:
-        print(f"Running {s['id']}...")
-        r = evaluate_scenario(s, tools_text, args.model, verbose=args.verbose)
-        print_result(r, verbose=args.verbose)
-        results.append(r)
-        print()
+    all_results = []
+    per_file_stats = []
 
-    passed = sum(1 for r in results if r.get("overall_pass"))
-    total = sum(1 for r in results if not r.get("skip"))
-    print(f"Results: {passed}/{total} passed ({100*passed/total:.0f}%)" if total else "No results")
+    for fname in files_to_run:
+        spath = resolve_scenarios_path(fname)
+        if not spath.exists():
+            print(f"  [SKIP] {fname} — file not found: {spath}")
+            continue
+
+        scenarios = load_scenarios(spath, args.scenario)
+        if not scenarios:
+            continue
+
+        print(f"=== {spath.name} ({len(scenarios)} scenarios) ===")
+        file_results = []
+        for s in scenarios:
+            print(f"Running {s['id']}...", end=" ", flush=True)
+            r = evaluate_scenario(s, tools_text, args.model, verbose=args.verbose)
+            r["scenarios_file"] = spath.name
+            status = "PASS" if r.get("overall_pass") else ("SKIP" if r.get("skip") else "FAIL")
+            print(status)
+            if not r.get("overall_pass") and not r.get("skip"):
+                print_result(r, verbose=args.verbose)
+                print()
+            file_results.append(r)
+
+        passed = sum(1 for r in file_results if r.get("overall_pass"))
+        total = sum(1 for r in file_results if not r.get("skip"))
+        rate = 100 * passed / total if total else 0
+        print(f"  → {passed}/{total} ({rate:.0f}%)\n")
+        per_file_stats.append({"file": spath.name, "passed": passed, "total": total, "rate": rate})
+        all_results.extend(file_results)
+
+    # Overall summary
+    total_passed = sum(s["passed"] for s in per_file_stats)
+    total_total = sum(s["total"] for s in per_file_stats)
+    overall_rate = 100 * total_passed / total_total if total_total else 0
+
+    print("=" * 50)
+    print(f"TOTAL: {total_passed}/{total_total} ({overall_rate:.1f}%)")
+    print(f"Model: {args.model}")
+
+    # Save JSON report
+    output_path = args.output
+    if not output_path and (args.all or (not args.scenarios_file and not args.scenario)):
+        # Auto-save when running all files
+        out_dir = Path(__file__).parent / "optimization_runs" / "bench_claude"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe_model = args.model.replace("/", "_").replace(":", "_")
+        output_path = str(out_dir / f"{safe_model}.json")
+
+    if output_path:
+        report = {
+            "run_id": run_ts,
+            "model": args.model,
+            "method": "claude-cli-text-simulation",
+            "note": "Tool selection tested via text prompt (no actual tool calling). First query used for multi-query scenarios.",
+            "summary": {
+                "total_passed": total_passed,
+                "total_total": total_total,
+                "overall_rate": round(overall_rate, 1),
+            },
+            "per_file": per_file_stats,
+            "failures": [
+                {k: v for k, v in r.items() if k != "skip"}
+                for r in all_results
+                if not r.get("overall_pass") and not r.get("skip")
+            ],
+            "results": all_results,
+        }
+        with open(output_path, "w") as f:
+            json.dump(report, f, indent=2)
+        print(f"Saved: {output_path}")
 
 
 if __name__ == "__main__":
