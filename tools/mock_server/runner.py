@@ -386,6 +386,9 @@ def run_scenario(
     error: Optional[str] = None
     final_answer = ""
     stopped_for_explanation = False
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    peak_context_tokens = 0
 
     for turn in range(max_turns):
         if verbose_messages:
@@ -406,6 +409,14 @@ def run_scenario(
         except json.JSONDecodeError as e:
             error = f"json_error: {e}"
             break
+
+        usage = response.get("usage", {})
+        pt = usage.get("prompt_tokens", 0)
+        ct = usage.get("completion_tokens", 0)
+        total_prompt_tokens += pt
+        total_completion_tokens += ct
+        if pt > peak_context_tokens:
+            peak_context_tokens = pt
 
         choice = response.get("choices", [{}])[0]
         message = choice.get("message", {})
@@ -573,6 +584,11 @@ def run_scenario(
         "all_tool_calls": recorded_calls,
         "final_answer": final_answer[:500],
         "wall_time_seconds": round(wall_time, 2),
+        "tokens": {
+            "total_prompt": total_prompt_tokens,
+            "total_completion": total_completion_tokens,
+            "peak_context": peak_context_tokens,
+        },
         "error": error,
     }
 
@@ -940,6 +956,14 @@ def main() -> None:
               f"{clarified} clarification requested")
     else:
         print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%)")
+
+    total_wall = sum(r["wall_time_seconds"] for r in results)
+    total_prompt = sum(r["tokens"]["total_prompt"] for r in results)
+    total_compl = sum(r["tokens"]["total_completion"] for r in results)
+    if total_prompt:
+        tps = total_compl / total_wall if total_wall else 0
+        print(f"Tokens:  prompt={total_prompt:,}  completion={total_compl:,}  "
+              f"~{tps:.0f} tok/s completion")
 
     # Per-base-scenario variant summary (only if multi-query scenarios exist)
     has_variants = any(r.get("query_variant") for r in results)
