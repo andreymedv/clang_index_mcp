@@ -329,9 +329,9 @@ def list_tools_b() -> List[Tool]:
             name="get_class_info",
             description=(
                 "Get full details of a specific class: methods, base classes, "
-                "derived classes, documentation. Requires exact class name — "
-                "use find_symbols_by_pattern first if unsure. Returns disambiguation "
-                "options if name is ambiguous."
+                "derived classes, documentation. Call directly when you know the "
+                "class name — handles ambiguous/partial names with disambiguation. "
+                "No need to search first."
             ),
             inputSchema={
                 "type": "object",
