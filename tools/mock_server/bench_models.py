@@ -220,12 +220,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--scenarios",
-        nargs="*",
+        nargs="+",
         default=None,
         metavar="FILE",
         help=(
             "Scenario YAML filenames (relative to scenarios/). "
-            "Default: all *.yaml in scenarios/"
+            "Default: all *.yaml except advanced_*.yaml. "
+            "Use --all-scenarios to include advanced_*.yaml too. "
+            "NOTE: place model names BEFORE --scenarios to avoid argparse ambiguity."
         ),
     )
     parser.add_argument(
@@ -258,6 +260,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Output directory (default: optimization_runs/bench_<timestamp>)",
     )
+    parser.add_argument(
+        "--all-scenarios",
+        action="store_true",
+        help="Include advanced_*.yaml scenarios (excluded by default)",
+    )
     return parser.parse_args()
 
 
@@ -273,6 +280,15 @@ def main() -> None:
             sys.exit(1)
     else:
         scenario_files = sorted(SCENARIOS_DIR.glob("*.yaml"))
+        if not args.all_scenarios:
+            before = len(scenario_files)
+            scenario_files = [
+                f for f in scenario_files if not f.name.startswith("advanced_")
+            ]
+            skipped = before - len(scenario_files)
+            if skipped:
+                print(f"Skipping {skipped} advanced scenario file(s) "
+                      f"(use --all-scenarios to include)")
 
     if not scenario_files:
         print(f"ERROR: no scenario files found in {SCENARIOS_DIR}")
