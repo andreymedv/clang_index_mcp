@@ -32,7 +32,43 @@ responses:
 
   # =================================================================
   # find_symbols_by_pattern
+  # NOTE: More specific fixtures MUST come before broader ones.
+  # "CoreDOM/Tests/" contains both "DOM" and "Test", so the Test fixture
+  # must be listed first to avoid the DOM fixture intercepting test queries.
   # =================================================================
+
+  # --- P-01: Test classes (file_name contains "Test") ---
+  # BEFORE DOM fixtures because "CoreDOM/Tests/" contains "DOM" too
+  - tool: find_symbols_by_pattern
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
+        contains: "Test"
+    response:
+      results:
+        - qualified_name: "DocumentTestFixture"
+          kind: "class"
+          prototype: "class DocumentTestFixture : public ::testing::Test"
+          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+          line: 18
+        - qualified_name: "ElementTestFixture"
+          kind: "class"
+          prototype: "class ElementTestFixture : public ::testing::Test"
+          file: "CoreDOM/Tests/DOM_ElementTests.cpp"
+          line: 15
+        - qualified_name: "StyleResolverTestFixture"
+          kind: "class"
+          prototype: "class StyleResolverTestFixture : public ::testing::Test"
+          file: "CoreCSS/Tests/CSS_StyleResolverTests.cpp"
+          line: 12
+        - qualified_name: "TableOperationsFixture"
+          kind: "class"
+          prototype: "class TableOperationsFixture : public ::testing::Test"
+          file: "TableEngine/Tests/TBL_OperationsTests.cpp"
+          line: 20
+      next_steps:
+        - "get_class_info('DocumentTestFixture') -- see test fixture setup"
+        - "find_in_file('CoreDOM/Tests/DOM_DocumentTests.cpp', '') -- see all test functions"
 
   # --- L-01 / R-01: Classes in DOM module (by file_name containing "DOM") ---
   - tool: find_symbols_by_pattern
@@ -242,38 +278,6 @@ responses:
         - "find_usage_sites('ApplyStyle') -- see where styles are applied"
         - "get_functions_called_by('ResolveInheritedStyle') -- trace inheritance resolution"
 
-  # --- P-01: Test classes (file_name contains "Test") ---
-  - tool: find_symbols_by_pattern
-    match:
-      target_type: "classes_and_structs_only"
-      file_name:
-        contains: "Test"
-    response:
-      results:
-        - qualified_name: "DocumentTestFixture"
-          kind: "class"
-          prototype: "class DocumentTestFixture : public ::testing::Test"
-          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
-          line: 18
-        - qualified_name: "ElementTestFixture"
-          kind: "class"
-          prototype: "class ElementTestFixture : public ::testing::Test"
-          file: "CoreDOM/Tests/DOM_ElementTests.cpp"
-          line: 15
-        - qualified_name: "StyleResolverTestFixture"
-          kind: "class"
-          prototype: "class StyleResolverTestFixture : public ::testing::Test"
-          file: "CoreCSS/Tests/CSS_StyleResolverTests.cpp"
-          line: 12
-        - qualified_name: "TableOperationsFixture"
-          kind: "class"
-          prototype: "class TableOperationsFixture : public ::testing::Test"
-          file: "TableEngine/Tests/TBL_OperationsTests.cpp"
-          line: 20
-      next_steps:
-        - "get_class_info('DocumentTestFixture') -- see test fixture setup"
-        - "find_in_file('CoreDOM/Tests/DOM_DocumentTests.cpp', '') -- see all test functions"
-
   # --- P-02: DocumentBuilder search ---
   - tool: find_symbols_by_pattern
     match:
@@ -380,6 +384,227 @@ responses:
       next_steps:
         - "get_functions_called_by('MergeTableCells') -- see implementation"
         - "find_usage_sites('mergeCells', class_name='CellMerger') -- find callers"
+
+  # --- PROBE-RC2-01: EventHandler search (models that search before get_class_info) ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "EventHandler"
+    response:
+      results:
+        - qualified_name: "UI::EventHandler"
+          kind: "class"
+          prototype: "class EventHandler"
+          file: "EditorUI/Public/UI_EventHandler.h"
+          line: 15
+        - qualified_name: "UI::EventHandler::handleEvent"
+          kind: "method"
+          prototype: "void EventHandler::handleEvent(const Event &event)"
+          file: "EditorUI/Public/UI_EventHandler.h"
+          line: 28
+      next_steps:
+        - "get_class_info('EventHandler') -- get full class details"
+
+  # --- PROBE-RC3-01: initialize search ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "initialize"
+    response:
+      results:
+        - qualified_name: "UI::EditorWidget::initialize"
+          kind: "method"
+          prototype: "void EditorWidget::initialize()"
+          file: "EditorUI/Public/UI_EditorWidget.h"
+          line: 42
+        - qualified_name: "DOM::Document::initializeDOM"
+          kind: "method"
+          prototype: "void Document::initializeDOM()"
+          file: "CoreDOM/Public/DOM_Document.h"
+          line: 68
+      next_steps:
+        - "get_functions_called_by('initialize', class_name='EditorWidget') -- see what initialize does"
+
+  # --- PROBE: processData search ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "processData"
+    response:
+      results:
+        - qualified_name: "DOM::Document::processData"
+          kind: "method"
+          prototype: "void Document::processData(const std::string &input)"
+          file: "CoreDOM/Public/DOM_Document.h"
+          line: 75
+      next_steps:
+        - "get_functions_called_by('processData', class_name='Document') -- see callees"
+
+  # --- PROBE: IProcessor search ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "IProcessor"
+    response:
+      results:
+        - qualified_name: "DOM::IProcessor"
+          kind: "class"
+          prototype: "class IProcessor"
+          file: "CoreDOM/Public/DOM_IProcessor.h"
+          line: 8
+      next_steps:
+        - "get_class_hierarchy('IProcessor') -- find implementations"
+
+  # --- PROBE: myFunction search ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "myFunction"
+    response:
+      results:
+        - qualified_name: "myFunction"
+          kind: "function"
+          prototype: "void myFunction(int param)"
+          file: "CoreDOM/Public/DOM_Helpers.h"
+          line: 55
+      next_steps:
+        - "find_usage_sites('myFunction') -- find callers"
+
+  # --- PROBE: updateUI search ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "updateUI"
+    response:
+      results:
+        - qualified_name: "UI::EditorWidget::updateUI"
+          kind: "method"
+          prototype: "void EditorWidget::updateUI()"
+          file: "EditorUI/Public/UI_EditorWidget.h"
+          line: 52
+      next_steps:
+        - "find_usage_sites('updateUI', class_name='EditorWidget') -- find callers"
+
+  # --- PROBE: render search ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "render"
+    response:
+      results:
+        - qualified_name: "UI::EditorWidget::render"
+          kind: "method"
+          prototype: "void EditorWidget::render()"
+          file: "EditorUI/Public/UI_EditorWidget.h"
+          line: 60
+      next_steps:
+        - "get_functions_called_by('render', class_name='EditorWidget') -- see what render calls"
+
+  # --- PROBE-RC1: Classes in Core/ (file_name filter) ---
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Core"
+      target_type: "classes_and_structs_only"
+    response:
+      results:
+        - qualified_name: "DOM::Document"
+          kind: "class"
+          prototype: "class Document : public Node"
+          file: "CoreDOM/Public/DOM_Document.h"
+          line: 24
+        - qualified_name: "DOM::Element"
+          kind: "class"
+          prototype: "class Element : public Node"
+          file: "CoreDOM/Public/DOM_Element.h"
+          line: 18
+        - qualified_name: "CSS::StyleResolver"
+          kind: "class"
+          prototype: "class StyleResolver"
+          file: "CoreCSS/Public/CSS_StyleResolver.h"
+          line: 15
+      next_steps:
+        - "get_class_info('Document') -- see Document details"
+
+  # --- PROBE-RC1: Functions in Util_ files ---
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Util"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "formatString"
+          kind: "function"
+          prototype: "std::string formatString(const char *fmt, ...)"
+          file: "Utils/Util_StringHelpers.h"
+          line: 12
+        - qualified_name: "parseInteger"
+          kind: "function"
+          prototype: "int parseInteger(const std::string &str)"
+          file: "Utils/Util_Parsers.h"
+          line: 8
+      next_steps:
+        - "find_usage_sites('formatString') -- find callers"
+
+  # --- PROBE-RC1: Functions/methods in Tests/ files ---
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Tests/"
+      target_type: "functions_and_methods_only"
+    response:
+      results:
+        - qualified_name: "TEST_F_CreateElement"
+          kind: "function"
+          prototype: "TEST_F(DocumentTestFixture, CreateElement)"
+          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+          line: 45
+        - qualified_name: "TEST_F_AppendChild"
+          kind: "function"
+          prototype: "TEST_F(DocumentTestFixture, AppendChild)"
+          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+          line: 62
+      next_steps:
+        - "find_in_file('CoreDOM/Tests/DOM_DocumentTests.cpp') -- see all symbols in test file"
+
+  # --- PROBE-RC1: Classes in files matching Helper* ---
+  - tool: find_symbols_by_pattern
+    match:
+      file_name:
+        contains: "Helper"
+      target_type: "classes_and_structs_only"
+    response:
+      results:
+        - qualified_name: "TestUtils::AssertionHelper"
+          kind: "class"
+          prototype: "class AssertionHelper"
+          file: "TestUtils/AssertionHelpers.h"
+          line: 8
+      next_steps:
+        - "get_class_info('AssertionHelper') -- see helper methods"
+
+  # --- O-02: DOM::Table search (when models search first) ---
+  - tool: find_symbols_by_pattern
+    match:
+      pattern:
+        contains: "Table"
+      target_type: "classes_and_structs_only"
+    response:
+      results:
+        - qualified_name: "TBL::TableProcessor"
+          kind: "class"
+          prototype: "class TableProcessor"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 18
+        - qualified_name: "DOM::Table"
+          kind: "class"
+          prototype: "class Table : public Element"
+          file: "CoreDOM/Public/DOM_Table.h"
+          line: 22
+      next_steps:
+        - "get_class_info('TableProcessor') -- see table class details"
+        - "get_class_info('Table') -- see DOM table element details"
 
   # --- Default search response ---
   - tool: find_symbols_by_pattern
@@ -681,6 +906,80 @@ responses:
       next_steps:
         - "find_usage_sites('build', class_name='DocumentBuilder') -- see usage in tests"
 
+  # --- EventHandler (for PROBE-RC2-01) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "EventHandler"
+    response:
+      qualified_name: "UI::EventHandler"
+      kind: "class"
+      prototype: "class EventHandler"
+      file: "EditorUI/Public/UI_EventHandler.h"
+      line: 15
+      base_classes: []
+      derived_classes:
+        - "UI::KeyEventHandler"
+        - "UI::MouseEventHandler"
+      methods:
+        - qualified_name: "UI::EventHandler::handleEvent"
+          prototype: "void EventHandler::handleEvent(const Event &event)"
+          attributes: ["virtual"]
+        - qualified_name: "UI::EventHandler::addEventListener"
+          prototype: "void EventHandler::addEventListener(EventType type, Callback cb)"
+          attributes: []
+        - qualified_name: "UI::EventHandler::removeEventListener"
+          prototype: "void EventHandler::removeEventListener(EventType type)"
+          attributes: []
+      next_steps:
+        - "get_class_hierarchy('EventHandler') -- see all event handler implementations"
+        - "find_usage_sites('handleEvent', class_name='EventHandler') -- find callers"
+
+  # --- IProcessor (for PROBE-RC2-04) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "IProcessor"
+    response:
+      qualified_name: "DOM::IProcessor"
+      kind: "class"
+      prototype: "class IProcessor"
+      file: "CoreDOM/Public/DOM_IProcessor.h"
+      line: 8
+      base_classes: []
+      derived_classes:
+        - "DOM::NodeProcessor"
+        - "DOM::StyleProcessor"
+      methods:
+        - qualified_name: "DOM::IProcessor::process"
+          prototype: "void IProcessor::process(Node &node)"
+          attributes: ["pure_virtual"]
+      next_steps:
+        - "get_class_hierarchy('IProcessor') -- see all implementations"
+
+  # --- DocumentImpl (for Q-03 follow-up) ---
+  - tool: get_class_info
+    match:
+      class_name:
+        contains: "DocumentImpl"
+    response:
+      qualified_name: "DOM::DocumentImpl"
+      kind: "class"
+      prototype: "class DocumentImpl"
+      file: "CoreDOM/Private/DOM_DocumentImpl.h"
+      line: 15
+      base_classes: []
+      derived_classes: []
+      methods:
+        - qualified_name: "DOM::DocumentImpl::parse"
+          prototype: "void DocumentImpl::parse(const std::string &html)"
+          attributes: []
+        - qualified_name: "DOM::DocumentImpl::serialize"
+          prototype: "std::string DocumentImpl::serialize() const"
+          attributes: ["const"]
+      next_steps:
+        - "find_in_file('CoreDOM/Private/DOM_DocumentImpl.h') -- see all members"
+
   - tool: get_class_info
     default: true
     response:
@@ -728,6 +1027,62 @@ responses:
         - name: "DOM::TextNode"
           children: []
 
+  # --- EventHandler hierarchy (PROBE-RC2-04 variant) ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "EventHandler"
+    response:
+      root: "UI::EventHandler"
+      nodes:
+        - name: "UI::EventHandler"
+          children: ["UI::KeyEventHandler", "UI::MouseEventHandler"]
+        - name: "UI::KeyEventHandler"
+          children: []
+        - name: "UI::MouseEventHandler"
+          children: []
+
+  # --- IProcessor hierarchy (PROBE-RC2-04) ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "IProcessor"
+    response:
+      root: "DOM::IProcessor"
+      nodes:
+        - name: "DOM::IProcessor"
+          children: ["DOM::NodeProcessor", "DOM::StyleProcessor"]
+        - name: "DOM::NodeProcessor"
+          children: []
+        - name: "DOM::StyleProcessor"
+          children: []
+
+  # --- Widget hierarchy ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "Widget"
+    response:
+      root: "UI::Widget"
+      nodes:
+        - name: "UI::Widget"
+          children: ["UI::EditorWidget", "UI::ToolbarWidget"]
+        - name: "UI::EditorWidget"
+          children: []
+        - name: "UI::ToolbarWidget"
+          children: []
+
+  # --- DataManager hierarchy ---
+  - tool: get_class_hierarchy
+    match:
+      class_name:
+        contains: "DataManager"
+    response:
+      root: "app::DataManager"
+      nodes:
+        - name: "app::DataManager"
+          children: []
+
   - tool: get_class_hierarchy
     default: true
     response:
@@ -736,6 +1091,68 @@ responses:
   # =================================================================
   # get_functions_called_by
   # =================================================================
+
+  # --- PROBE-RC3-01: initialize() callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "initialize"
+    response:
+      function: "UI::EditorWidget::initialize"
+      callees:
+        - qualified_name: "UI::EditorWidget::createToolbar"
+          prototype: "void EditorWidget::createToolbar()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 55
+        - qualified_name: "UI::EditorWidget::loadPlugins"
+          prototype: "void EditorWidget::loadPlugins()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 68
+        - qualified_name: "DOM::Document::initializeDOM"
+          prototype: "void Document::initializeDOM()"
+          file: "CoreDOM/Private/DOM_Document.cpp"
+          line: 42
+      next_steps:
+        - "get_functions_called_by('createToolbar', class_name='EditorWidget') -- go deeper"
+        - "find_usage_sites('initialize', class_name='EditorWidget') -- find callers"
+
+  # --- PROBE-RC2-03: processData callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "processData"
+    response:
+      function: "DOM::Document::processData"
+      callees:
+        - qualified_name: "DOM::Document::parse"
+          prototype: "void Document::parse(const std::string &input)"
+          file: "CoreDOM/Private/DOM_Document.cpp"
+          line: 88
+        - qualified_name: "DOM::Document::validate"
+          prototype: "bool Document::validate()"
+          file: "CoreDOM/Private/DOM_Document.cpp"
+          line: 102
+      next_steps:
+        - "find_usage_sites('processData', class_name='Document') -- find callers"
+
+  # --- PROBE-RC3-03: render() callees ---
+  - tool: get_functions_called_by
+    match:
+      function_name:
+        contains: "render"
+    response:
+      function: "UI::EditorWidget::render"
+      callees:
+        - qualified_name: "UI::EditorWidget::layoutContent"
+          prototype: "void EditorWidget::layoutContent()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 120
+        - qualified_name: "UI::EditorWidget::paintElements"
+          prototype: "void EditorWidget::paintElements()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 135
+      next_steps:
+        - "get_functions_called_by('layoutContent', class_name='EditorWidget') -- go deeper"
 
   # --- L-04: Element::setAttribute callees ---
   - tool: get_functions_called_by
@@ -1009,6 +1426,71 @@ responses:
               column: 12
       next_steps:
         - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
+
+  # --- PROBE: processEvent callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "processEvent"
+    response:
+      function: "app::processEvent"
+      callers:
+        - qualified_name: "app::EventLoop::dispatch"
+          prototype: "void EventLoop::dispatch(const Event &event)"
+          file: "src/event_loop.cpp"
+          line: 45
+          call_sites:
+            - file: "src/event_loop.cpp"
+              line: 52
+              column: 8
+        - qualified_name: "app::Widget::handleInput"
+          prototype: "void Widget::handleInput()"
+          file: "src/ui/widget.cpp"
+          line: 78
+          call_sites:
+            - file: "src/ui/widget.cpp"
+              line: 95
+              column: 12
+      next_steps:
+        - "get_functions_called_by('processEvent') -- see what processEvent calls"
+
+  # --- PROBE: myFunction callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "myFunction"
+    response:
+      function: "myFunction"
+      callers:
+        - qualified_name: "DOM::Document::processData"
+          prototype: "void Document::processData(const std::string &input)"
+          file: "CoreDOM/Private/DOM_Document.cpp"
+          line: 88
+          call_sites:
+            - file: "CoreDOM/Private/DOM_Document.cpp"
+              line: 92
+              column: 4
+      next_steps:
+        - "get_functions_called_by('myFunction') -- see what it calls"
+
+  # --- PROBE: updateUI callers ---
+  - tool: find_usage_sites
+    match:
+      function_name:
+        contains: "updateUI"
+    response:
+      function: "UI::EditorWidget::updateUI"
+      callers:
+        - qualified_name: "UI::EditorWidget::onDocumentChanged"
+          prototype: "void EditorWidget::onDocumentChanged()"
+          file: "EditorUI/Private/UI_EditorWidget.cpp"
+          line: 165
+          call_sites:
+            - file: "EditorUI/Private/UI_EditorWidget.cpp"
+              line: 172
+              column: 8
+      next_steps:
+        - "get_functions_called_by('updateUI', class_name='EditorWidget') -- see implementation"
 
   - tool: find_usage_sites
     default: true
