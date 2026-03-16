@@ -4,11 +4,11 @@
 Loads canned tool responses from YAML files and matches them by
 tool name + argument patterns.
 
-Matching priority (first match wins):
-  1. Exact match on tool_name + all specified argument values
-  2. Pattern match (contains/regex) on tool_name + argument values
-  3. Default response for the tool (marked with default: true)
-  4. Global fallback: {"error": "no fixture matched"}
+Matching priority (most specific wins):
+  1. Best match: entry with most matching criteria in match spec
+     (ties broken by entry order — first wins)
+  2. Default response for the tool (marked with default: true)
+  3. Global fallback: {"error": "no fixture matched"}
 """
 
 import json
@@ -44,9 +44,15 @@ class FixtureStore:
     def match(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Find the best matching canned response for a tool call.
 
+        Uses best-match strategy: among all matching entries, the one with
+        the most criteria in its match spec wins (most specific match).
+        Ties are broken by entry order (first wins).
+
         Returns the response dict (ready to be JSON-serialized).
         """
-        # Pass 1: check entries with match criteria
+        # Pass 1: find all matching entries, pick most specific
+        best_entry = None
+        best_specificity = -1
         for entry in self._entries:
             if entry["tool"] != tool_name:
                 continue
@@ -54,7 +60,13 @@ class FixtureStore:
             if not match_spec:
                 continue
             if self._matches(match_spec, arguments):
-                return entry["response"]
+                specificity = len(match_spec)
+                if specificity > best_specificity:
+                    best_specificity = specificity
+                    best_entry = entry
+
+        if best_entry is not None:
+            return best_entry["response"]
 
         # Pass 2: default for this tool
         if tool_name in self._defaults:
