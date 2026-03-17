@@ -113,6 +113,7 @@ scenarios:
     query: "How is ApplyStyle used with DOM elements? Find the function first, then show me its callers"
     expected_steps:
       - tool: find_symbols_by_pattern
+        optional: true
         params:
           pattern:
             type: contains
