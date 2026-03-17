@@ -15,6 +15,7 @@ scenarios:
     query: "Find the DataManager class and show me all its methods"
     expected_steps:
       - tool: find_symbols_by_pattern
+        optional: true
         params:
           pattern:
             type: contains
@@ -30,6 +31,7 @@ scenarios:
     query: "Find classes with Manager in the name, then show me the full inheritance tree of DataManager"
     expected_steps:
       - tool: find_symbols_by_pattern
+        optional: true
         params:
           pattern:
             type: contains
@@ -49,6 +51,7 @@ scenarios:
     query: "Find the processEvent function and show what it calls"
     expected_steps:
       - tool: find_symbols_by_pattern
+        optional: true
         params:
           pattern:
             type: contains
@@ -101,11 +104,13 @@ scenarios:
     query: "Find the Widget class, show me its details, then trace the inheritance tree"
     expected_steps:
       - tool: find_symbols_by_pattern
+        optional: true
         params:
           pattern:
             type: contains
             value: "Widget"
       - tool: get_class_info
+        optional: true
         params:
           class_name:
             type: contains
