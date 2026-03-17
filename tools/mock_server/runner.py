@@ -176,6 +176,8 @@ def evaluate_step(
         "param_assertions": {},
         "params_pass": True,
     }
+    if expected.get("optional"):
+        result["optional"] = True
 
     expected_params = expected.get("params", {})
     for param_name, assertion in expected_params.items():
@@ -186,6 +188,77 @@ def evaluate_step(
             result["params_pass"] = False
 
     return result
+
+
+def _align_steps(
+    expected_steps: List[Dict[str, Any]],
+    recorded_calls: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Align recorded tool calls against expected steps, respecting optional.
+
+    Uses greedy matching: for each recorded call, try to match it against the
+    current expected step. If the current step is optional and the call doesn't
+    match it, skip the optional step and try the next expected step.
+
+    Returns a list of result dicts, one per expected step. Optional steps that
+    were skipped get ``"skipped_optional": True``.
+    """
+    results: List[Dict[str, Any]] = []
+    call_idx = 0
+
+    for i, expected in enumerate(expected_steps):
+        is_optional = expected.get("optional", False)
+
+        if call_idx < len(recorded_calls):
+            call = recorded_calls[call_idx]
+            step_eval = evaluate_step(expected, call["tool"], call["arguments"])
+            step_eval["step"] = i + 1
+
+            if step_eval["tool_match"]:
+                # Matches — consume this call
+                call_idx += 1
+                results.append(step_eval)
+            elif is_optional:
+                # Optional step not matched — skip it (don't consume call)
+                results.append({
+                    "step": i + 1,
+                    "expected_tool": expected["tool"],
+                    "actual_tool": None,
+                    "tool_match": False,
+                    "param_assertions": {},
+                    "params_pass": False,
+                    "optional": True,
+                    "skipped_optional": True,
+                })
+            else:
+                # Required step, wrong tool — consume call, report mismatch
+                call_idx += 1
+                results.append(step_eval)
+        else:
+            # No more recorded calls
+            if is_optional:
+                results.append({
+                    "step": i + 1,
+                    "expected_tool": expected["tool"],
+                    "actual_tool": None,
+                    "tool_match": False,
+                    "param_assertions": {},
+                    "params_pass": False,
+                    "optional": True,
+                    "skipped_optional": True,
+                })
+            else:
+                results.append({
+                    "step": i + 1,
+                    "expected_tool": expected["tool"],
+                    "actual_tool": None,
+                    "tool_match": False,
+                    "param_assertions": {},
+                    "params_pass": False,
+                    "missing": True,
+                })
+
+    return results
 
 
 def _check_param(assertion: Dict[str, Any], actual: Any) -> Dict[str, Any]:
@@ -389,6 +462,8 @@ def run_scenario(
     total_prompt_tokens = 0
     total_completion_tokens = 0
     peak_context_tokens = 0
+    # Cursor into expected_steps for inline eval (explain_failures mode)
+    next_expected_idx = 0
 
     for turn in range(max_turns):
         if verbose_messages:
@@ -428,29 +503,46 @@ def run_scenario(
             final_answer = message.get("content", "") or ""
 
             # Check if LLM should have called a tool but didn't
-            if explain_failures and len(recorded_calls) < len(expected_steps):
-                step_idx = len(recorded_calls)
-                step_eval = {
-                    "step": step_idx + 1,
-                    "expected_tool": expected_steps[step_idx]["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "missing": True,
-                }
-                prompt = _build_explanation_prompt(step_eval, None)
-                explanation = _request_explanation(
-                    client,
-                    model,
-                    messages,
-                    prompt,
-                    temperature=temperature,
-                    max_tokens=2048,
-                )
-                step_eval["llm_explanation"] = explanation
-                step_results.append(step_eval)
-                stopped_for_explanation = True
+            if explain_failures and next_expected_idx < len(expected_steps):
+                # Skip any remaining optional steps to find next required
+                while (
+                    next_expected_idx < len(expected_steps)
+                    and expected_steps[next_expected_idx].get("optional")
+                ):
+                    step_results.append({
+                        "step": next_expected_idx + 1,
+                        "expected_tool": expected_steps[next_expected_idx]["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "optional": True,
+                        "skipped_optional": True,
+                    })
+                    next_expected_idx += 1
+
+                if next_expected_idx < len(expected_steps):
+                    step_eval = {
+                        "step": next_expected_idx + 1,
+                        "expected_tool": expected_steps[next_expected_idx]["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "missing": True,
+                    }
+                    prompt = _build_explanation_prompt(step_eval, None)
+                    explanation = _request_explanation(
+                        client,
+                        model,
+                        messages,
+                        prompt,
+                        temperature=temperature,
+                        max_tokens=2048,
+                    )
+                    step_eval["llm_explanation"] = explanation
+                    step_results.append(step_eval)
+                    stopped_for_explanation = True
             break
 
         # Append assistant message with tool calls
@@ -482,29 +574,70 @@ def run_scenario(
             )
 
             # Inline evaluation for explain_failures mode
-            step_idx = len(recorded_calls) - 1
-            if explain_failures and step_idx < len(expected_steps):
-                step_eval = evaluate_step(
-                    expected_steps[step_idx],
-                    tool_name,
-                    tool_args,
-                )
-                step_eval["step"] = step_idx + 1
-                if not step_eval["tool_match"] or not step_eval["params_pass"]:
+            if explain_failures and next_expected_idx < len(expected_steps):
+                expected = expected_steps[next_expected_idx]
+                step_eval = evaluate_step(expected, tool_name, tool_args)
+                step_eval["step"] = next_expected_idx + 1
+
+                if step_eval["tool_match"]:
+                    # Matched current expected step
+                    if not step_eval["params_pass"]:
+                        prompt = _build_explanation_prompt(step_eval, call_record)
+                        explanation = _request_explanation(
+                            client, model, messages, prompt,
+                            temperature=temperature, max_tokens=2048,
+                        )
+                        step_eval["llm_explanation"] = explanation
+                        step_results.append(step_eval)
+                        stopped_for_explanation = True
+                        break
+                    step_results.append(step_eval)
+                    next_expected_idx += 1
+                elif expected.get("optional"):
+                    # Optional step not matched — skip it, try next
+                    step_results.append({
+                        "step": next_expected_idx + 1,
+                        "expected_tool": expected["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "optional": True,
+                        "skipped_optional": True,
+                    })
+                    next_expected_idx += 1
+                    # Re-evaluate same call against next expected step
+                    if next_expected_idx < len(expected_steps):
+                        expected2 = expected_steps[next_expected_idx]
+                        step_eval2 = evaluate_step(
+                            expected2, tool_name, tool_args,
+                        )
+                        step_eval2["step"] = next_expected_idx + 1
+                        if not step_eval2["tool_match"] or not step_eval2["params_pass"]:
+                            prompt = _build_explanation_prompt(
+                                step_eval2, call_record,
+                            )
+                            explanation = _request_explanation(
+                                client, model, messages, prompt,
+                                temperature=temperature, max_tokens=2048,
+                            )
+                            step_eval2["llm_explanation"] = explanation
+                            step_results.append(step_eval2)
+                            stopped_for_explanation = True
+                            break
+                        step_results.append(step_eval2)
+                        next_expected_idx += 1
+                else:
+                    # Required step, wrong tool — fail
                     prompt = _build_explanation_prompt(step_eval, call_record)
                     explanation = _request_explanation(
-                        client,
-                        model,
-                        messages,
-                        prompt,
-                        temperature=temperature,
-                        max_tokens=2048,
+                        client, model, messages, prompt,
+                        temperature=temperature, max_tokens=2048,
                     )
                     step_eval["llm_explanation"] = explanation
                     step_results.append(step_eval)
                     stopped_for_explanation = True
                     break
-                step_results.append(step_eval)
 
         if stopped_for_explanation:
             break
@@ -519,58 +652,39 @@ def run_scenario(
 
     # Post-hoc evaluation (only for steps not already evaluated inline)
     if not explain_failures:
-        for i, expected_step in enumerate(expected_steps):
-            if i < len(recorded_calls):
-                step_result = evaluate_step(
-                    expected_step,
-                    recorded_calls[i]["tool"],
-                    recorded_calls[i]["arguments"],
-                )
-                step_result["step"] = i + 1
-                step_results.append(step_result)
-            else:
-                step_results.append(
-                    {
-                        "step": i + 1,
-                        "expected_tool": expected_step["tool"],
-                        "actual_tool": None,
-                        "tool_match": False,
-                        "param_assertions": {},
-                        "params_pass": False,
-                        "missing": True,
-                    }
-                )
+        step_results = _align_steps(expected_steps, recorded_calls)
     else:
-        # In explain mode, add remaining missing steps (not yet evaluated)
-        evaluated_count = len(step_results)
-        for i in range(evaluated_count, len(expected_steps)):
-            if not stopped_for_explanation:
-                if i < len(recorded_calls):
-                    step_result = evaluate_step(
-                        expected_steps[i],
-                        recorded_calls[i]["tool"],
-                        recorded_calls[i]["arguments"],
-                    )
-                    step_result["step"] = i + 1
-                    step_results.append(step_result)
-                else:
-                    step_results.append(
-                        {
-                            "step": i + 1,
-                            "expected_tool": expected_steps[i]["tool"],
-                            "actual_tool": None,
-                            "tool_match": False,
-                            "param_assertions": {},
-                            "params_pass": False,
-                            "missing": True,
-                            "skipped": True,
-                        }
-                    )
+        # In explain mode, add remaining unevaluated steps
+        for i in range(next_expected_idx, len(expected_steps)):
+            is_opt = expected_steps[i].get("optional", False)
+            if is_opt:
+                step_results.append({
+                    "step": i + 1,
+                    "expected_tool": expected_steps[i]["tool"],
+                    "actual_tool": None,
+                    "tool_match": False,
+                    "param_assertions": {},
+                    "params_pass": False,
+                    "optional": True,
+                    "skipped_optional": True,
+                })
+            else:
+                step_results.append({
+                    "step": i + 1,
+                    "expected_tool": expected_steps[i]["tool"],
+                    "actual_tool": None,
+                    "tool_match": False,
+                    "param_assertions": {},
+                    "params_pass": False,
+                    "missing": True,
+                    "skipped": True,
+                })
 
-    # Overall pass: all expected steps matched
+    # Overall pass: all required (non-optional) steps matched
+    required_steps = [s for s in step_results if not s.get("skipped_optional")]
     overall_pass = (
-        len(step_results) > 0
-        and all(s["tool_match"] and s["params_pass"] for s in step_results)
+        len(required_steps) > 0
+        and all(s["tool_match"] and s["params_pass"] for s in required_steps)
         and error is None
     )
 
