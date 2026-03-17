@@ -194,24 +194,8 @@ scenarios:
   # =================================================================
   # Category O: "How to do X?" — finding existing patterns
   # Workflow: developer asks abstract question, LLM must pick search tool
+  # NOTE: O-01 (semantic/ambiguous queries) moved to advanced_semantic.yaml
   # =================================================================
-
-  - id: "O-01"
-    category: "how_to"
-    queries:
-      - "How do we apply CSS styles to elements in this codebase?"
-      - "Find functions that handle style application to DOM elements"
-      - "Show me the code responsible for applying styles"
-      - "What functions exist for styling elements?"
-    expected_steps:
-      - tool: find_symbols_by_pattern
-        params:
-          pattern:
-            type: contains
-            value: "Style"
-          target_type:
-            type: exact
-            value: "functions_and_methods_only"
 
   - id: "O-02"
     category: "how_to"

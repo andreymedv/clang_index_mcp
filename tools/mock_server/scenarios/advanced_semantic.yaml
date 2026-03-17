@@ -1,0 +1,30 @@
+# Advanced semantic scenarios — queries that require model to INVENT search
+# strategies from conceptual/abstract descriptions without specific symbol names.
+#
+# These test model reasoning capability, not tool description quality.
+# Excluded from default benchmark runs (use --scenarios advanced_semantic.yaml to include).
+#
+# Codebase model: same as real_workflows.yaml
+
+scenarios:
+  # =================================================================
+  # Category O-semantic: "How to do X?" — abstract conceptual queries
+  # The model must decompose a semantic question into tool calls
+  # =================================================================
+
+  - id: "O-01"
+    category: "how_to"
+    queries:
+      - "How do we apply CSS styles to elements in this codebase?"
+      - "Find functions that handle style application to DOM elements"
+      - "Show me the code responsible for applying styles"
+      - "What functions exist for styling elements?"
+    expected_steps:
+      - tool: find_symbols_by_pattern
+        params:
+          pattern:
+            type: contains
+            value: "Style"
+          target_type:
+            type: exact
+            value: "functions_and_methods_only"
