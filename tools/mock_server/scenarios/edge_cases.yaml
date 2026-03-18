@@ -87,9 +87,6 @@ scenarios:
           function_name:
             type: contains
             value: "processEvent"
-          class_name:
-            type: contains
-            value: "DataManager"
 
   - id: "K-02"
     category: "method_class"
@@ -100,6 +97,3 @@ scenarios:
           function_name:
             type: contains
             value: "processEvent"
-          class_name:
-            type: contains
-            value: "DataManager"
