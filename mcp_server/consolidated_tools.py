@@ -281,8 +281,9 @@ def list_tools_b() -> List[Tool]:
                     "file_name": {
                         "type": "string",
                         "description": (
-                            "Optional: Filter to symbols in this file "
-                            "(filename, relative path, or absolute path)."
+                            "Optional: Filter by substring match on file path. "
+                            "Examples: 'Leaf.h' (exact file), 'Tree_' (files "
+                            "starting with Tree_), 'tests/' (files in tests dir)."
                         ),
                     },
                     "namespace": {
