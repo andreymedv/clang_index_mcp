@@ -13,7 +13,7 @@ Tool mapping (public → internal):
   get_class_hierarchy    → passthrough
   get_type_alias_info    → passthrough
   get_functions_called_by → get_outgoing_calls / get_call_sites
-  find_usage_sites       → get_incoming_calls
+  find_callers       → get_incoming_calls
   trace_execution_path   → get_call_path
 """
 
@@ -79,7 +79,7 @@ TOOL_NAMES = [
     "get_class_hierarchy",
     "get_type_alias_info",
     "get_functions_called_by",
-    "find_usage_sites",
+    "find_callers",
     "trace_execution_path",
 ]
 
@@ -407,7 +407,7 @@ def list_tools_b() -> List[Tool]:
                 "- 'Show all function calls that happen inside X'\n"
                 "- 'What are X's dependencies?', 'What does X depend on?'\n"
                 "- 'Show outgoing calls from X'\n\n"
-                "Do NOT use for 'what calls X?' or 'where is X used?' — use find_usage_sites instead.\n"
+                "Do NOT use for 'what calls X?' or 'where is X used?' — use find_callers instead.\n"
                 "Do NOT use find_symbols_by_pattern to answer call graph questions — this tool is the right one.\n\n"
                 "Return format:\n"
                 "- 'function_definitions_summary' (default): callee names + file locations\n"
@@ -459,7 +459,7 @@ def list_tools_b() -> List[Tool]:
             },
         ),
         Tool(
-            name="find_usage_sites",
+            name="find_callers",
             description=(
                 "Find all functions that CALL the specified function (INCOMING "
                 "direction). Shows what code depends on this function.\n\n"
@@ -558,8 +558,8 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
     if name == "get_functions_called_by":
         return await _handle_get_functions_called_by(arguments)
 
-    if name == "find_usage_sites":
-        return await _handle_find_usage_sites(arguments)
+    if name == "find_callers":
+        return await _handle_find_callers(arguments)
 
     if name == "trace_execution_path":
         return await _handle_trace_execution_path(arguments)
@@ -695,10 +695,10 @@ async def _handle_get_functions_called_by(
     return result
 
 
-async def _handle_find_usage_sites(
+async def _handle_find_callers(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
-    """Translate find_usage_sites → get_incoming_calls (rename only)."""
+    """Translate find_callers → get_incoming_calls (rename only)."""
     from mcp_server.cpp_mcp_server import _handle_tool_call
 
     return await _handle_tool_call("get_incoming_calls", arguments)

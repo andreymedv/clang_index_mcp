@@ -618,7 +618,7 @@ class TestGetFunctionsCalledByRouting:
 
 
 class TestFindUsageSitesRouting:
-    """Test find_usage_sites → get_incoming_calls delegation."""
+    """Test find_callers → get_incoming_calls delegation."""
 
     @pytest.mark.asyncio
     async def test_delegates_to_incoming_calls(self) -> None:
@@ -628,7 +628,7 @@ class TestFindUsageSitesRouting:
             return_value=_tc({"callers": []}),
         ) as mock:
             args = {"function_name": "render", "class_name": "View"}
-            await handle_tool_call_b("find_usage_sites", args)
+            await handle_tool_call_b("find_callers", args)
             mock.assert_called_once_with("get_incoming_calls", args)
 
 

@@ -135,7 +135,7 @@ responses:
           line: 15
       next_steps:
         - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
-        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+        - "find_callers('processEvent', class_name='DataManager') -- find callers"
 
   # Search for functions with "event"
   - tool: find_symbols_by_pattern
@@ -157,7 +157,7 @@ responses:
           line: 22
       next_steps:
         - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
-        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+        - "find_callers('processEvent', class_name='DataManager') -- find callers"
 
   # Empty search result (for testing empty-result hints)
   - tool: find_symbols_by_pattern
@@ -358,7 +358,7 @@ responses:
       next_steps:
         - "get_class_info('BaseService') -- explore base class"
         - "get_class_hierarchy('DataManager') -- full inheritance tree"
-        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+        - "find_callers('processEvent', class_name='DataManager') -- find callers"
 
   - tool: get_class_info
     match:
@@ -591,7 +591,7 @@ responses:
           file: "src/logger.h"
           line: 15
       next_steps:
-        - "find_usage_sites('processEvent', class_name='DataManager') -- find callers"
+        - "find_callers('processEvent', class_name='DataManager') -- find callers"
         - "get_functions_called_by('validate', class_name='EventValidator') -- go deeper"
 
   - tool: get_functions_called_by
@@ -633,7 +633,7 @@ responses:
           file: "src/database.h"
           line: 32
       next_steps:
-        - "find_usage_sites('initialize') -- find callers"
+        - "find_callers('initialize') -- find callers"
 
   - tool: get_functions_called_by
     match:
@@ -655,7 +655,7 @@ responses:
           file: "src/ui/stylesheet.h"
           line: 14
       next_steps:
-        - "find_usage_sites('render') -- find callers"
+        - "find_callers('render') -- find callers"
 
   - tool: get_functions_called_by
     match:
@@ -677,7 +677,7 @@ responses:
           file: "src/database.h"
           line: 44
       next_steps:
-        - "find_usage_sites('processData') -- find callers"
+        - "find_callers('processData') -- find callers"
 
   - tool: get_functions_called_by
     default: true
@@ -689,10 +689,10 @@ responses:
         - "If it is a method, pass class_name parameter to narrow the search."
 
   # -----------------------------------------------------------------
-  # find_usage_sites (incoming calls / callers)
+  # find_callers (incoming calls / callers)
   # -----------------------------------------------------------------
 
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "processEvent"
@@ -718,7 +718,7 @@ responses:
       next_steps:
         - "get_functions_called_by('dispatch', class_name='EventLoop') -- trace upstream"
 
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "myFunction"
@@ -727,7 +727,7 @@ responses:
       callers: []
       message: "No callers found — this function appears to be unused or not yet in the index."
 
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "updateUI"
@@ -745,7 +745,7 @@ responses:
       next_steps:
         - "get_functions_called_by('updateUI') -- see what updateUI calls"
 
-  - tool: find_usage_sites
+  - tool: find_callers
     default: true
     response:
       function: "unknown"

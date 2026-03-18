@@ -104,7 +104,7 @@ scenarios:
     category: "call_graph"
     query: "Find all callers of processEvent"
     expected_steps:
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
