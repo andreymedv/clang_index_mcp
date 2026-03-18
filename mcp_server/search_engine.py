@@ -532,9 +532,9 @@ class SearchEngine:
                     if not project_only or info.is_project:
                         # Filter by file name if specified
                         if file_name:
-                            # Match if the file path ends with the specified file_name
-                            # This supports full paths, relative paths, or just filenames
-                            if not info.file.endswith(file_name):
+                            # Match if the file path contains the specified file_name
+                            # Supports full paths, relative paths, filenames, or prefixes
+                            if file_name not in info.file:
                                 continue
 
                         # Filter by namespace if specified (supports partial matching)
@@ -657,8 +657,8 @@ class SearchEngine:
             # Search file_index for file-specific queries
             with self.index_lock:
                 for file_path, infos in self.file_index.items():
-                    # Match if the file path ends with the specified file_name
-                    if not file_path.endswith(file_name):
+                    # Match if the file path contains the specified file_name
+                    if file_name not in file_path:
                         continue
 
                     for info in infos:
