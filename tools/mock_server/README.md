@@ -96,7 +96,7 @@ scenarios:
       - "Who invokes processEvent?"
       - "Show me the usage sites of processEvent"
     expected_steps:
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -209,7 +209,7 @@ Example output:
 ```json
 {
   "step": 1,
-  "expected_tool": "find_usage_sites",
+  "expected_tool": "find_callers",
   "actual_tool": "get_functions_called_by",
   "tool_match": false,
   "llm_explanation": "I chose get_functions_called_by because the description says 'find all functions called BY' which matched the query pattern..."

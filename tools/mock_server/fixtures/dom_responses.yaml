@@ -218,7 +218,7 @@ responses:
           line: 62
       next_steps:
         - "get_functions_called_by('resolveElementStyle', class_name='StyleResolver') -- see implementation details"
-        - "find_usage_sites('CollectElementStyles') -- find where this is used"
+        - "find_callers('CollectElementStyles') -- find where this is used"
 
   # --- M-02 step 1 / O-01: Search for ApplyStyle ---
   - tool: find_symbols_by_pattern
@@ -238,7 +238,7 @@ responses:
           file: "CoreCSS/Public/CSS_Operations.h"
           line: 45
       next_steps:
-        - "find_usage_sites('ApplyStyle') -- find all callers"
+        - "find_callers('ApplyStyle') -- find all callers"
         - "get_functions_called_by('ApplyStyle') -- see implementation details"
 
   # --- O-01: Style-related functions ---
@@ -275,7 +275,7 @@ responses:
           file: "CoreCSS/Public/CSS_StyleResolver.h"
           line: 28
       next_steps:
-        - "find_usage_sites('ApplyStyle') -- see where styles are applied"
+        - "find_callers('ApplyStyle') -- see where styles are applied"
         - "get_functions_called_by('ResolveInheritedStyle') -- trace inheritance resolution"
 
   # --- P-02: DocumentBuilder search ---
@@ -307,7 +307,7 @@ responses:
           line: 35
       next_steps:
         - "get_class_info('DocumentBuilder') -- see full builder API"
-        - "find_usage_sites('build', class_name='DocumentBuilder') -- see how builder is used in tests"
+        - "find_callers('build', class_name='DocumentBuilder') -- see how builder is used in tests"
 
   # --- Q-03 step 2: Search for DocumentImpl ---
   - tool: find_symbols_by_pattern
@@ -383,7 +383,7 @@ responses:
           line: 22
       next_steps:
         - "get_functions_called_by('MergeTableCells') -- see implementation"
-        - "find_usage_sites('mergeCells', class_name='CellMerger') -- find callers"
+        - "find_callers('mergeCells', class_name='CellMerger') -- find callers"
 
   # --- PROBE-RC2-01: EventHandler search (models that search before get_class_info) ---
   - tool: find_symbols_by_pattern
@@ -468,7 +468,7 @@ responses:
           file: "CoreDOM/Public/DOM_Helpers.h"
           line: 55
       next_steps:
-        - "find_usage_sites('myFunction') -- find callers"
+        - "find_callers('myFunction') -- find callers"
 
   # --- PROBE: updateUI search ---
   - tool: find_symbols_by_pattern
@@ -483,7 +483,7 @@ responses:
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 52
       next_steps:
-        - "find_usage_sites('updateUI', class_name='EditorWidget') -- find callers"
+        - "find_callers('updateUI', class_name='EditorWidget') -- find callers"
 
   # --- PROBE: render search ---
   - tool: find_symbols_by_pattern
@@ -545,7 +545,7 @@ responses:
           file: "Utils/Util_Parsers.h"
           line: 8
       next_steps:
-        - "find_usage_sites('formatString') -- find callers"
+        - "find_callers('formatString') -- find callers"
 
   # --- PROBE-RC1: Functions/methods in Tests/ files ---
   - tool: find_symbols_by_pattern
@@ -693,7 +693,7 @@ responses:
           prototype: "TEST_F(DocumentTestFixture, GetElementById)"
       next_steps:
         - "get_class_info('DocumentTestFixture') -- see fixture details"
-        - "find_usage_sites('createSampleDocument') -- see reuse of helper"
+        - "find_callers('createSampleDocument') -- see reuse of helper"
 
   - tool: find_in_file
     default: true
@@ -781,7 +781,7 @@ responses:
           attributes: ["const"]
       next_steps:
         - "get_class_hierarchy('Element') -- see inheritance tree"
-        - "find_usage_sites('setAttribute', class_name='Element') -- see how attributes are set"
+        - "find_callers('setAttribute', class_name='Element') -- see how attributes are set"
 
   # --- StyleResolver ---
   - tool: get_class_info
@@ -810,7 +810,7 @@ responses:
           prototype: "PropertyMap StyleResolver::getCascadedProperties(const DOM::Element &elem)"
           attributes: ["const"]
       next_steps:
-        - "find_usage_sites('resolveStyle', class_name='StyleResolver') -- find callers"
+        - "find_callers('resolveStyle', class_name='StyleResolver') -- find callers"
         - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- see implementation"
 
   # --- INodeVisitor (interface with pure virtuals) ---
@@ -874,7 +874,7 @@ responses:
           prototype: "void TableProcessor::setTableElement(DOM::ElementPtr tableElem)"
           attributes: []
       next_steps:
-        - "find_usage_sites('addRow', class_name='TableProcessor') -- see how rows are added"
+        - "find_callers('addRow', class_name='TableProcessor') -- see how rows are added"
         - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
 
   # --- DocumentBuilder (for P-02 follow-up) ---
@@ -904,7 +904,7 @@ responses:
           prototype: "DOM::DocumentPtr DocumentBuilder::build()"
           attributes: []
       next_steps:
-        - "find_usage_sites('build', class_name='DocumentBuilder') -- see usage in tests"
+        - "find_callers('build', class_name='DocumentBuilder') -- see usage in tests"
 
   # --- EventHandler (for PROBE-RC2-01) ---
   - tool: get_class_info
@@ -933,7 +933,7 @@ responses:
           attributes: []
       next_steps:
         - "get_class_hierarchy('EventHandler') -- see all event handler implementations"
-        - "find_usage_sites('handleEvent', class_name='EventHandler') -- find callers"
+        - "find_callers('handleEvent', class_name='EventHandler') -- find callers"
 
   # --- IProcessor (for PROBE-RC2-04) ---
   - tool: get_class_info
@@ -1114,7 +1114,7 @@ responses:
           line: 42
       next_steps:
         - "get_functions_called_by('createToolbar', class_name='EditorWidget') -- go deeper"
-        - "find_usage_sites('initialize', class_name='EditorWidget') -- find callers"
+        - "find_callers('initialize', class_name='EditorWidget') -- find callers"
 
   # --- PROBE-RC2-03: processData callees ---
   - tool: get_functions_called_by
@@ -1133,7 +1133,7 @@ responses:
           file: "CoreDOM/Private/DOM_Document.cpp"
           line: 102
       next_steps:
-        - "find_usage_sites('processData', class_name='Document') -- find callers"
+        - "find_callers('processData', class_name='Document') -- find callers"
 
   # --- PROBE-RC3-03: render() callees ---
   - tool: get_functions_called_by
@@ -1177,7 +1177,7 @@ responses:
           file: "CoreDOM/Private/DOM_Node.cpp"
           line: 120
       next_steps:
-        - "find_usage_sites('setAttribute', class_name='Element') -- find callers"
+        - "find_callers('setAttribute', class_name='Element') -- find callers"
         - "get_functions_called_by('invalidateStyle', class_name='Element') -- go deeper"
 
   # --- N-01 step 1: ResolveInheritedStyle callees ---
@@ -1202,7 +1202,7 @@ responses:
           line: 42
       next_steps:
         - "get_functions_called_by('GetComputedStyle') -- go deeper into style computation"
-        - "find_usage_sites('ResolveInheritedStyle') -- find callers"
+        - "find_callers('ResolveInheritedStyle') -- find callers"
 
   # --- N-01 step 2: GetComputedStyle callees ---
   - tool: get_functions_called_by
@@ -1225,7 +1225,7 @@ responses:
           file: "CoreDOM/Public/DOM_Element.h"
           line: 25
       next_steps:
-        - "find_usage_sites('GetComputedStyle') -- who calls this?"
+        - "find_callers('GetComputedStyle') -- who calls this?"
         - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- deeper into resolver"
 
   # --- N-03 step 1: HandleKeyPress callees ---
@@ -1249,7 +1249,7 @@ responses:
           file: "EditorUI/Public/UI_SelectionManager.h"
           line: 22
       next_steps:
-        - "find_usage_sites('HandleKeyPress') -- find callers"
+        - "find_callers('HandleKeyPress') -- find callers"
         - "get_functions_called_by('executeCommand', class_name='CommandHandler') -- trace command execution"
 
   - tool: get_functions_called_by
@@ -1261,11 +1261,11 @@ responses:
         - "Use find_symbols_by_pattern to find the correct function name"
 
   # =================================================================
-  # find_usage_sites
+  # find_callers
   # =================================================================
 
   # --- M-02 step 2 / O-01 follow-up: ApplyStyle callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "ApplyStyle"
@@ -1292,7 +1292,7 @@ responses:
         - "get_functions_called_by('applyResolvedStyles', class_name='StyleResolver') -- trace full flow"
 
   # --- M-03 step 2: StyleResolver::resolveStyle callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "resolveStyle"
@@ -1327,7 +1327,7 @@ responses:
         - "get_functions_called_by('GetComputedStyle') -- trace style query chain"
 
   # --- N-02 step 1: MergeTableCells callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "MergeTableCells"
@@ -1351,11 +1351,11 @@ responses:
               line: 128
               column: 12
       next_steps:
-        - "find_usage_sites('RecalculateSpans') -- who triggers recalculation?"
+        - "find_callers('RecalculateSpans') -- who triggers recalculation?"
         - "get_functions_called_by('MergeTableCells') -- see internal implementation"
 
   # --- N-02 step 2: RecalculateSpans callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "RecalculateSpans"
@@ -1382,7 +1382,7 @@ responses:
         - "get_class_info('TableProcessor') -- see all table operations"
 
   # --- N-03 step 2: HandleKeyPress callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "HandleKeyPress"
@@ -1401,7 +1401,7 @@ responses:
         - "get_functions_called_by('keyPressEvent', class_name='EditorWidget') -- trace Qt event handling"
 
   # --- O-02 step 2: TableProcessor::addRow callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "addRow"
@@ -1428,7 +1428,7 @@ responses:
         - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
 
   # --- PROBE: processEvent callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "processEvent"
@@ -1455,7 +1455,7 @@ responses:
         - "get_functions_called_by('processEvent') -- see what processEvent calls"
 
   # --- PROBE: myFunction callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "myFunction"
@@ -1474,7 +1474,7 @@ responses:
         - "get_functions_called_by('myFunction') -- see what it calls"
 
   # --- PROBE: updateUI callers ---
-  - tool: find_usage_sites
+  - tool: find_callers
     match:
       function_name:
         contains: "updateUI"
@@ -1492,7 +1492,7 @@ responses:
       next_steps:
         - "get_functions_called_by('updateUI', class_name='EditorWidget') -- see implementation"
 
-  - tool: find_usage_sites
+  - tool: find_callers
     default: true
     response:
       function: "unknown"

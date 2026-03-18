@@ -83,11 +83,11 @@ scenarios:
     category: "probe"
     query: "Show me all places where myFunction is called from"
     expected_steps:
-      - tool: "find_usage_sites"
+      - tool: "find_callers"
         params:
           function_name: { type: contains, value: "myFunction" }
 
-  # Root Cause 3: get_functions_called_by vs find_usage_sites ambiguity
+  # Root Cause 3: get_functions_called_by vs find_callers ambiguity
   # These should clarify direction: outgoing vs incoming
   - id: "PROBE-RC3-01"
     category: "probe"
@@ -101,7 +101,7 @@ scenarios:
     category: "probe"
     query: "Where in the codebase is updateUI() being called from?"
     expected_steps:
-      - tool: "find_usage_sites"
+      - tool: "find_callers"
         params:
           function_name: { type: contains, value: "updateUI" }
 

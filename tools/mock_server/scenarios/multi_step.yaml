@@ -71,7 +71,7 @@ scenarios:
           pattern:
             type: contains
             value: "event"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: any

@@ -115,7 +115,7 @@ scenarios:
           pattern:
             type: contains
             value: "ApplyStyle"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -130,7 +130,7 @@ scenarios:
           class_name:
             type: contains
             value: "StyleResolver"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -163,12 +163,12 @@ scenarios:
     category: "call_chain"
     query: "Who calls MergeTableCells? Then find who calls RecalculateSpans"
     expected_steps:
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
             value: "MergeTableCells"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -183,7 +183,7 @@ scenarios:
           function_name:
             type: contains
             value: "HandleKeyPress"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -204,7 +204,7 @@ scenarios:
           class_name:
             type: contains
             value: "Table"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
