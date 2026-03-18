@@ -128,6 +128,7 @@ def run_scenarios(
     lm_url: str,
     explain_failures: bool,
     token: str = "sk-lm-local",
+    eval_mode: str = "strict",
 ) -> dict:
     """Run all scenario files for one model, merge results, return summary."""
     all_results = []
@@ -144,6 +145,7 @@ def run_scenarios(
             "--lm-url", lm_url,
             "--token", token,
             "--output", str(out),
+            "--eval-mode", eval_mode,
         ]
         if explain_failures:
             cmd.append("--explain-failures")
@@ -265,6 +267,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include advanced_*.yaml scenarios (excluded by default)",
     )
+    parser.add_argument(
+        "--eval-mode",
+        choices=["strict", "relaxed"],
+        default="strict",
+        help=(
+            "Step evaluation mode passed to runner.py. "
+            "'relaxed' skips discovery tool calls before expected tool."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -341,6 +352,7 @@ def main() -> None:
             lm_url=args.lm_url,
             explain_failures=args.explain_failures,
             token=args.token,
+            eval_mode=args.eval_mode,
         )
         summary["model"] = model_arg  # use original arg for display
 

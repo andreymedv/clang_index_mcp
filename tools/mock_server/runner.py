@@ -36,6 +36,11 @@ from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 DEFAULT_FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DEFAULT_SCENARIOS = Path(__file__).parent / "scenarios" / "basic.yaml"
 
+# Tools that models legitimately call as a "discovery" step before the
+# actual expected tool.  In relaxed eval mode these calls are skipped
+# (not counted as mismatches) when they appear before the expected tool.
+DISCOVERY_TOOLS = frozenset({"find_symbols_by_pattern"})
+
 
 # ---------------------------------------------------------------------------
 # MCP Tool → OpenAI function-calling format conversion
@@ -193,6 +198,7 @@ def evaluate_step(
 def _align_steps(
     expected_steps: List[Dict[str, Any]],
     recorded_calls: List[Dict[str, Any]],
+    eval_mode: str = "strict",
 ) -> List[Dict[str, Any]]:
     """Align recorded tool calls against expected steps, respecting optional.
 
@@ -200,14 +206,32 @@ def _align_steps(
     current expected step. If the current step is optional and the call doesn't
     match it, skip the optional step and try the next expected step.
 
+    Args:
+        eval_mode: "strict" (default) — first call must match first expected
+            step. "relaxed" — calls to DISCOVERY_TOOLS before the expected
+            tool are silently skipped (not counted as mismatches).
+
     Returns a list of result dicts, one per expected step. Optional steps that
-    were skipped get ``"skipped_optional": True``.
+    were skipped get ``"skipped_optional": True``. In relaxed mode, skipped
+    discovery calls are counted in ``"discovery_calls_skipped"``.
     """
     results: List[Dict[str, Any]] = []
     call_idx = 0
+    discovery_skipped = 0
 
     for i, expected in enumerate(expected_steps):
         is_optional = expected.get("optional", False)
+
+        # In relaxed mode, skip over discovery tool calls that don't match
+        # the current expected step.
+        if eval_mode == "relaxed":
+            while (
+                call_idx < len(recorded_calls)
+                and recorded_calls[call_idx]["tool"] in DISCOVERY_TOOLS
+                and recorded_calls[call_idx]["tool"] != expected["tool"]
+            ):
+                discovery_skipped += 1
+                call_idx += 1
 
         if call_idx < len(recorded_calls):
             call = recorded_calls[call_idx]
@@ -257,6 +281,10 @@ def _align_steps(
                     "params_pass": False,
                     "missing": True,
                 })
+
+    # Attach discovery skip count to first result for reporting
+    if discovery_skipped and results:
+        results[0]["discovery_calls_skipped"] = discovery_skipped
 
     return results
 
@@ -437,6 +465,7 @@ def run_scenario(
     max_tokens: int = 4096,
     explain_failures: bool = False,
     verbose_messages: bool = False,
+    eval_mode: str = "strict",
 ) -> Dict[str, Any]:
     """Run a single scenario through the LLM tool-call mediation loop.
 
@@ -444,9 +473,14 @@ def run_scenario(
         explain_failures: If True, on first mismatch stop the scenario and
             ask the LLM to explain its reasoning. The explanation is included
             in the result under step_results[i]["llm_explanation"].
+        eval_mode: "strict" or "relaxed". Can be overridden per-scenario
+            via ``eval_mode`` key in the scenario YAML. In relaxed mode,
+            calls to DISCOVERY_TOOLS before the expected tool are skipped.
 
     Returns a result dict with step-by-step evaluation.
     """
+    # Per-scenario eval_mode override
+    effective_eval_mode = scenario.get("eval_mode", eval_mode)
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": scenario["query"]},
@@ -652,7 +686,7 @@ def run_scenario(
 
     # Post-hoc evaluation (only for steps not already evaluated inline)
     if not explain_failures:
-        step_results = _align_steps(expected_steps, recorded_calls)
+        step_results = _align_steps(expected_steps, recorded_calls, effective_eval_mode)
     else:
         # In explain mode, add remaining unevaluated steps
         for i in range(next_expected_idx, len(expected_steps)):
@@ -692,6 +726,7 @@ def run_scenario(
         "scenario_id": scenario["id"],
         "category": scenario.get("category", ""),
         "query": scenario["query"],
+        "eval_mode": effective_eval_mode,
         "steps": step_results,
         "overall_pass": overall_pass,
         "total_tool_calls": len(recorded_calls),
@@ -726,6 +761,7 @@ def export_results(
     output_path: str,
     scenarios_file: str,
     fixtures_file: str,
+    eval_mode: str = "strict",
 ) -> None:
     """Export results as structured JSON."""
     passed = sum(1 for r in results if r["overall_pass"])
@@ -734,6 +770,7 @@ def export_results(
     report = {
         "run_id": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "model": model,
+        "eval_mode": eval_mode,
         "scenarios_file": scenarios_file,
         "fixtures_file": fixtures_file,
         "results": results,
@@ -886,6 +923,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--eval-mode",
+        choices=["strict", "relaxed"],
+        default="strict",
+        help=(
+            "Step evaluation mode. 'strict' (default): first call must match "
+            "first expected step. 'relaxed': calls to discovery tools "
+            "(find_symbols_by_pattern) before the expected tool are skipped."
+        ),
+    )
+    parser.add_argument(
         "--validate-intent",
         action="store_true",
         help=(
@@ -989,6 +1036,8 @@ def main() -> None:
         print("Explain failures: ON")
     if args.verbose_messages:
         print("Verbose messages: ON (printing messages array each turn)")
+    if args.eval_mode != "strict":
+        print(f"Eval mode: {args.eval_mode}")
     if args.validate_intent:
         print("Validate intent: ON (model asked to clarify vague requests)")
     print()
@@ -1015,6 +1064,7 @@ def main() -> None:
             max_tokens=args.max_tokens,
             explain_failures=args.explain_failures,
             verbose_messages=args.verbose_messages,
+            eval_mode=args.eval_mode,
         )
         results.append(result)
 
@@ -1058,6 +1108,7 @@ def main() -> None:
         output_path=args.output,
         scenarios_file=args.scenarios,
         fixtures_file=fixtures_label,
+        eval_mode=args.eval_mode,
     )
 
     # Summary
