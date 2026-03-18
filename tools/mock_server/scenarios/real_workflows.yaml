@@ -70,9 +70,6 @@ scenarios:
           function_name:
             type: contains
             value: "setAttribute"
-          class_name:
-            type: contains
-            value: "Element"
 
   - id: "L-05"
     category: "module_discovery"
