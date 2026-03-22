@@ -216,6 +216,49 @@ Example output:
 }
 ```
 
+## Post-Hoc Explanation Mode
+
+When `--explain-all` is enabled, the runner completes the full scenario first,
+evaluates the result, and only then requests explanations for selected tool
+calls. This preserves the full call trace instead of aborting at the first
+mismatch.
+
+```bash
+python tools/mock_server/runner.py \
+  --scenarios tools/mock_server/scenarios/basic.yaml \
+  --explain-all
+```
+
+Supported scopes:
+
+- `--explain-scope=mismatches` (default): explain mismatching calls plus extra
+  calls that did not align to any expected step.
+- `--explain-scope=all_failed`: explain every tool call in failed scenarios.
+- `--explain-scope=all`: explain every tool call in every scenario, including
+  passing runs.
+
+Implementation detail: post-hoc explanations are processed from the last
+interesting tool call back to the first one. This maximizes prompt-prefix cache
+reuse in LM Studio and similar local servers.
+
+Each annotated tool call gets an `explanation` object in `all_tool_calls[]`:
+
+```json
+{
+  "tool": "find_symbols_by_pattern",
+  "arguments": {"pattern": "Widget"},
+  "message_index": 4,
+  "explanation": {
+    "prompt": "You called 'find_symbols_by_pattern' but the expected tool was 'find_callers'...",
+    "response": "I chose the broader search tool first because the query did not mention a concrete function name."
+  }
+}
+```
+
+When the explained call corresponds to a failed expected step, the step also
+receives `steps[i].llm_explanation` for compatibility with existing analysis
+tools.
+
 ## Optimization Loop (Claude Code-driven)
 
 `optimize.py` is a helper that runs tests and produces compact failure reports.
