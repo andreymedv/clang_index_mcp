@@ -192,34 +192,6 @@ responses:
         - "get_class_info('TableProcessor') -- explore TableProcessor class"
         - "get_functions_called_by('MergeTableCells') -- see what MergeTableCells does"
 
-  # --- M-01: Leaf-related functions in CSS module ---
-  - tool: find_symbols_by_pattern
-    match:
-      pattern:
-        contains: "Leaf"
-      file_name:
-        contains: "CSS"
-    response:
-      results:
-        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
-          kind: "method"
-          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const Tree::Leaf &elem)"
-          file: "CoreCSS/Public/CSS_StyleResolver.h"
-          line: 28
-        - qualified_name: "CSS::CascadeEngine::getElementProperties"
-          kind: "method"
-          prototype: "PropertyMap CascadeEngine::getElementProperties(const Tree::Leaf &elem)"
-          file: "CoreCSS/Public/CSS_CascadeEngine.h"
-          line: 35
-        - qualified_name: "CollectElementStyles"
-          kind: "function"
-          prototype: "std::vector<ComputedStyle> CollectElementStyles(const Tree::Leaf &root)"
-          file: "CoreCSS/Public/CSS_Utilities.h"
-          line: 62
-      next_steps:
-        - "get_functions_called_by('resolveElementStyle', class_name='StyleResolver') -- see implementation details"
-        - "find_callers('CollectElementStyles') -- find where this is used"
-
   # --- M-02 step 1 / O-01: Search for ApplyStyle ---
   - tool: find_symbols_by_pattern
     match:
@@ -660,40 +632,6 @@ responses:
       next_steps:
         - "get_class_info('Item') -- see base classes and full details"
         - "get_functions_called_by('createElement', class_name='Item') -- trace implementation"
-
-  # --- P-03: Symbols in Tree_DocumentTests.cpp ---
-  - tool: find_in_file
-    match:
-      file_path:
-        contains: "Tree_DocumentTests"
-    response:
-      results:
-        - qualified_name: "ItemTestFixture"
-          kind: "class"
-          line: 18
-        - qualified_name: "ItemTestFixture::SetUp"
-          kind: "method"
-          line: 22
-          prototype: "void ItemTestFixture::SetUp()"
-        - qualified_name: "ItemTestFixture::createSampleDocument"
-          kind: "method"
-          line: 28
-          prototype: "Tree::ItemPtr ItemTestFixture::createSampleDocument()"
-        - qualified_name: "TEST_F_CreateElement"
-          kind: "function"
-          line: 45
-          prototype: "TEST_F(ItemTestFixture, CreateElement)"
-        - qualified_name: "TEST_F_AppendChild"
-          kind: "function"
-          line: 62
-          prototype: "TEST_F(ItemTestFixture, AppendChild)"
-        - qualified_name: "TEST_F_GetElementById"
-          kind: "function"
-          line: 78
-          prototype: "TEST_F(ItemTestFixture, GetElementById)"
-      next_steps:
-        - "get_class_info('ItemTestFixture') -- see fixture details"
-        - "find_callers('createSampleDocument') -- see reuse of helper"
 
   - tool: find_in_file
     default: true
