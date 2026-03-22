@@ -36,6 +36,11 @@ from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 DEFAULT_FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DEFAULT_SCENARIOS = Path(__file__).parent / "scenarios" / "basic.yaml"
 
+# Tools that models legitimately call as a "discovery" step before the
+# actual expected tool.  In relaxed eval mode these calls are skipped
+# (not counted as mismatches) when they appear before the expected tool.
+DISCOVERY_TOOLS = frozenset({"find_symbols_by_pattern"})
+
 
 # ---------------------------------------------------------------------------
 # MCP Tool → OpenAI function-calling format conversion
@@ -193,6 +198,7 @@ def evaluate_step(
 def _align_steps(
     expected_steps: List[Dict[str, Any]],
     recorded_calls: List[Dict[str, Any]],
+    eval_mode: str = "strict",
 ) -> List[Dict[str, Any]]:
     """Align recorded tool calls against expected steps, respecting optional.
 
@@ -200,19 +206,38 @@ def _align_steps(
     current expected step. If the current step is optional and the call doesn't
     match it, skip the optional step and try the next expected step.
 
+    Args:
+        eval_mode: "strict" (default) — first call must match first expected
+            step. "relaxed" — calls to DISCOVERY_TOOLS before the expected
+            tool are silently skipped (not counted as mismatches).
+
     Returns a list of result dicts, one per expected step. Optional steps that
-    were skipped get ``"skipped_optional": True``.
+    were skipped get ``"skipped_optional": True``. In relaxed mode, skipped
+    discovery calls are counted in ``"discovery_calls_skipped"``.
     """
     results: List[Dict[str, Any]] = []
     call_idx = 0
+    discovery_skipped = 0
 
     for i, expected in enumerate(expected_steps):
         is_optional = expected.get("optional", False)
+
+        # In relaxed mode, skip over discovery tool calls that don't match
+        # the current expected step.
+        if eval_mode == "relaxed":
+            while (
+                call_idx < len(recorded_calls)
+                and recorded_calls[call_idx]["tool"] in DISCOVERY_TOOLS
+                and recorded_calls[call_idx]["tool"] != expected["tool"]
+            ):
+                discovery_skipped += 1
+                call_idx += 1
 
         if call_idx < len(recorded_calls):
             call = recorded_calls[call_idx]
             step_eval = evaluate_step(expected, call["tool"], call["arguments"])
             step_eval["step"] = i + 1
+            step_eval["call_index"] = call_idx
 
             if step_eval["tool_match"]:
                 # Matches — consume this call
@@ -229,6 +254,7 @@ def _align_steps(
                     "params_pass": False,
                     "optional": True,
                     "skipped_optional": True,
+                    "call_index": None,
                 })
             else:
                 # Required step, wrong tool — consume call, report mismatch
@@ -246,6 +272,7 @@ def _align_steps(
                     "params_pass": False,
                     "optional": True,
                     "skipped_optional": True,
+                    "call_index": None,
                 })
             else:
                 results.append({
@@ -256,7 +283,12 @@ def _align_steps(
                     "param_assertions": {},
                     "params_pass": False,
                     "missing": True,
+                    "call_index": None,
                 })
+
+    # Attach discovery skip count to first result for reporting
+    if discovery_skipped and results:
+        results[0]["discovery_calls_skipped"] = discovery_skipped
 
     return results
 
@@ -337,6 +369,14 @@ def _build_explanation_prompt(
 
     actual_tool = recorded_call["tool"]
     actual_args = recorded_call["arguments"]
+
+    if not step_eval:
+        return (
+            f"You called '{actual_tool}' with arguments {actual_args}. "
+            "Explain your reasoning for choosing this tool and these "
+            "parameter values at that point in the conversation."
+        )
+
     expected_tool = step_eval["expected_tool"]
 
     # Case 2: Wrong tool
@@ -420,6 +460,122 @@ def _request_explanation(
         return None
 
 
+def _explanation_payload(
+    prompt: str,
+    response: Optional[str],
+) -> Dict[str, Any]:
+    """Build a serializable explanation payload."""
+    return {
+        "prompt": prompt,
+        "response": response,
+    }
+
+
+def _is_step_mismatch(step_eval: Dict[str, Any]) -> bool:
+    """Return True when a step evaluation represents a mismatch."""
+    if step_eval.get("skipped_optional"):
+        return False
+    return not (step_eval.get("tool_match") and step_eval.get("params_pass"))
+
+
+def _find_interesting_calls(
+    step_results: List[Dict[str, Any]],
+    recorded_calls: List[Dict[str, Any]],
+    overall_pass: bool,
+    explain_scope: str,
+) -> List[Dict[str, Any]]:
+    """Identify which recorded calls should receive post-hoc explanations."""
+    interesting: List[Dict[str, Any]] = []
+
+    if explain_scope == "all":
+        for call in recorded_calls:
+            interesting.append({"call_record": call, "step_eval": None})
+        return interesting
+
+    if overall_pass:
+        return interesting
+
+    matched_call_indexes = {
+        step_eval["call_index"]
+        for step_eval in step_results
+        if step_eval.get("call_index") is not None
+    }
+
+    if explain_scope == "all_failed":
+        for call in recorded_calls:
+            interesting.append({"call_record": call, "step_eval": None})
+        return interesting
+
+    step_calls = set()
+    for step_eval in step_results:
+        call_index = step_eval.get("call_index")
+        if call_index is None:
+            continue
+        step_calls.add(call_index)
+        if _is_step_mismatch(step_eval):
+            interesting.append({
+                "call_record": recorded_calls[call_index],
+                "step_eval": step_eval,
+            })
+
+    for call_index, call_record in enumerate(recorded_calls):
+        if call_index in step_calls or call_index in matched_call_indexes:
+            continue
+        interesting.append({"call_record": call_record, "step_eval": None})
+
+    return interesting
+
+
+def _collect_posthoc_explanations(
+    client: OpenAIClient,
+    model: str,
+    messages: List[Dict[str, Any]],
+    step_results: List[Dict[str, Any]],
+    recorded_calls: List[Dict[str, Any]],
+    overall_pass: bool,
+    explain_scope: str = "mismatches",
+    temperature: float = 0,
+    max_tokens: int = 2048,
+) -> None:
+    """Mutate step_results and recorded_calls in-place with explanations."""
+    interesting = _find_interesting_calls(
+        step_results=step_results,
+        recorded_calls=recorded_calls,
+        overall_pass=overall_pass,
+        explain_scope=explain_scope,
+    )
+
+    interesting.sort(
+        key=lambda item: item["call_record"].get("message_index", -1),
+        reverse=True,
+    )
+
+    for item in interesting:
+        call_record = item["call_record"]
+        step_eval = item.get("step_eval")
+        message_index = call_record.get("message_index")
+        if message_index is None:
+            continue
+
+        truncated_messages = messages[:message_index + 1]
+        prompt = _build_explanation_prompt(step_eval or {}, call_record)
+        explanation_text = _request_explanation(
+            client=client,
+            model=model,
+            messages=truncated_messages,
+            explanation_prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        explanation = _explanation_payload(prompt, explanation_text)
+        call_record["explanation"] = explanation
+
+        if step_eval is not None:
+            step_eval["llm_explanation"] = explanation_text
+        elif "llm_explanation" not in call_record:
+            call_record["llm_explanation"] = explanation_text
+
+
 # ---------------------------------------------------------------------------
 # Tool-call mediation loop
 # ---------------------------------------------------------------------------
@@ -436,7 +592,10 @@ def run_scenario(
     temperature: float = 0,
     max_tokens: int = 4096,
     explain_failures: bool = False,
+    explain_all: bool = False,
+    explain_scope: str = "mismatches",
     verbose_messages: bool = False,
+    eval_mode: str = "strict",
 ) -> Dict[str, Any]:
     """Run a single scenario through the LLM tool-call mediation loop.
 
@@ -444,9 +603,18 @@ def run_scenario(
         explain_failures: If True, on first mismatch stop the scenario and
             ask the LLM to explain its reasoning. The explanation is included
             in the result under step_results[i]["llm_explanation"].
+        explain_all: If True, perform a post-hoc explanation pass after
+            evaluation and attach explanations to selected tool calls.
+        explain_scope: Which calls receive post-hoc explanations:
+            "mismatches", "all_failed", or "all".
+        eval_mode: "strict" or "relaxed". Can be overridden per-scenario
+            via ``eval_mode`` key in the scenario YAML. In relaxed mode,
+            calls to DISCOVERY_TOOLS before the expected tool are skipped.
 
     Returns a result dict with step-by-step evaluation.
     """
+    # Per-scenario eval_mode override
+    effective_eval_mode = scenario.get("eval_mode", eval_mode)
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": scenario["query"]},
@@ -518,6 +686,7 @@ def run_scenario(
                         "params_pass": False,
                         "optional": True,
                         "skipped_optional": True,
+                        "call_index": None,
                     })
                     next_expected_idx += 1
 
@@ -530,6 +699,7 @@ def run_scenario(
                         "param_assertions": {},
                         "params_pass": False,
                         "missing": True,
+                        "call_index": None,
                     }
                     prompt = _build_explanation_prompt(step_eval, None)
                     explanation = _request_explanation(
@@ -546,6 +716,7 @@ def run_scenario(
             break
 
         # Append assistant message with tool calls
+        call_message_index = len(messages)
         messages.append(message)
 
         # Process each tool call
@@ -557,7 +728,12 @@ def run_scenario(
             except json.JSONDecodeError:
                 tool_args = {}
 
-            call_record = {"tool": tool_name, "arguments": tool_args}
+            call_record = {
+                "tool": tool_name,
+                "arguments": tool_args,
+                "message_index": call_message_index,
+                "call_index": len(recorded_calls),
+            }
             recorded_calls.append(call_record)
 
             # Get canned response
@@ -578,6 +754,7 @@ def run_scenario(
                 expected = expected_steps[next_expected_idx]
                 step_eval = evaluate_step(expected, tool_name, tool_args)
                 step_eval["step"] = next_expected_idx + 1
+                step_eval["call_index"] = call_record["call_index"]
 
                 if step_eval["tool_match"]:
                     # Matched current expected step
@@ -604,6 +781,7 @@ def run_scenario(
                         "params_pass": False,
                         "optional": True,
                         "skipped_optional": True,
+                        "call_index": None,
                     })
                     next_expected_idx += 1
                     # Re-evaluate same call against next expected step
@@ -613,6 +791,7 @@ def run_scenario(
                             expected2, tool_name, tool_args,
                         )
                         step_eval2["step"] = next_expected_idx + 1
+                        step_eval2["call_index"] = call_record["call_index"]
                         if not step_eval2["tool_match"] or not step_eval2["params_pass"]:
                             prompt = _build_explanation_prompt(
                                 step_eval2, call_record,
@@ -652,7 +831,7 @@ def run_scenario(
 
     # Post-hoc evaluation (only for steps not already evaluated inline)
     if not explain_failures:
-        step_results = _align_steps(expected_steps, recorded_calls)
+        step_results = _align_steps(expected_steps, recorded_calls, effective_eval_mode)
     else:
         # In explain mode, add remaining unevaluated steps
         for i in range(next_expected_idx, len(expected_steps)):
@@ -667,6 +846,7 @@ def run_scenario(
                     "params_pass": False,
                     "optional": True,
                     "skipped_optional": True,
+                    "call_index": None,
                 })
             else:
                 step_results.append({
@@ -678,6 +858,7 @@ def run_scenario(
                     "params_pass": False,
                     "missing": True,
                     "skipped": True,
+                    "call_index": None,
                 })
 
     # Overall pass: all required (non-optional) steps matched
@@ -688,10 +869,24 @@ def run_scenario(
         and error is None
     )
 
+    if explain_all and not explain_failures:
+        _collect_posthoc_explanations(
+            client=client,
+            model=model,
+            messages=messages,
+            step_results=step_results,
+            recorded_calls=recorded_calls,
+            overall_pass=overall_pass,
+            explain_scope=explain_scope,
+            temperature=temperature,
+            max_tokens=2048,
+        )
+
     result: Dict[str, Any] = {
         "scenario_id": scenario["id"],
         "category": scenario.get("category", ""),
         "query": scenario["query"],
+        "eval_mode": effective_eval_mode,
         "steps": step_results,
         "overall_pass": overall_pass,
         "total_tool_calls": len(recorded_calls),
@@ -726,6 +921,7 @@ def export_results(
     output_path: str,
     scenarios_file: str,
     fixtures_file: str,
+    eval_mode: str = "strict",
 ) -> None:
     """Export results as structured JSON."""
     passed = sum(1 for r in results if r["overall_pass"])
@@ -734,6 +930,7 @@ def export_results(
     report = {
         "run_id": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "model": model,
+        "eval_mode": eval_mode,
         "scenarios_file": scenarios_file,
         "fixtures_file": fixtures_file,
         "results": results,
@@ -868,7 +1065,8 @@ def main() -> None:
         action="store_true",
         help="List available models from LM Studio",
     )
-    parser.add_argument(
+    explain_group = parser.add_mutually_exclusive_group()
+    explain_group.add_argument(
         "--explain-failures",
         action="store_true",
         help=(
@@ -877,12 +1075,39 @@ def main() -> None:
             "to failed steps in the output."
         ),
     )
+    explain_group.add_argument(
+        "--explain-all",
+        action="store_true",
+        help=(
+            "After evaluation, collect post-hoc explanations for selected "
+            "tool calls and attach them to the output."
+        ),
+    )
+    parser.add_argument(
+        "--explain-scope",
+        choices=["mismatches", "all_failed", "all"],
+        default="mismatches",
+        help=(
+            "Which calls to explain in post-hoc mode: 'mismatches' "
+            "(default), 'all_failed', or 'all'."
+        ),
+    )
     parser.add_argument(
         "--verbose-messages",
         action="store_true",
         help=(
             "Print the exact messages array sent to the LLM before each API call. "
             "Useful for debugging context presentation issues (e.g. call_chain step-2 failures)."
+        ),
+    )
+    parser.add_argument(
+        "--eval-mode",
+        choices=["strict", "relaxed"],
+        default="strict",
+        help=(
+            "Step evaluation mode. 'strict' (default): first call must match "
+            "first expected step. 'relaxed': calls to discovery tools "
+            "(find_symbols_by_pattern) before the expected tool are skipped."
         ),
     )
     parser.add_argument(
@@ -987,8 +1212,12 @@ def main() -> None:
     print(f"Output: {args.output}")
     if args.explain_failures:
         print("Explain failures: ON")
+    if args.explain_all:
+        print(f"Explain all: ON ({args.explain_scope})")
     if args.verbose_messages:
         print("Verbose messages: ON (printing messages array each turn)")
+    if args.eval_mode != "strict":
+        print(f"Eval mode: {args.eval_mode}")
     if args.validate_intent:
         print("Validate intent: ON (model asked to clarify vague requests)")
     print()
@@ -1014,7 +1243,10 @@ def main() -> None:
             temperature=args.temperature,
             max_tokens=args.max_tokens,
             explain_failures=args.explain_failures,
+            explain_all=args.explain_all,
+            explain_scope=args.explain_scope,
             verbose_messages=args.verbose_messages,
+            eval_mode=args.eval_mode,
         )
         results.append(result)
 
@@ -1045,11 +1277,18 @@ def main() -> None:
             for step in result["steps"]:
                 explanation = step.get("llm_explanation")
                 if explanation:
-                    # Show first 200 chars of explanation in console
                     short = explanation[:200].replace("\n", " ")
                     if len(explanation) > 200:
                         short += "..."
                     print(f"  EXPLAIN: {short}")
+        elif args.explain_all:
+            for call in result["all_tool_calls"]:
+                explanation = call.get("explanation", {}).get("response")
+                if explanation:
+                    short = explanation[:200].replace("\n", " ")
+                    if len(explanation) > 200:
+                        short += "..."
+                    print(f"  EXPLAIN[{call['tool']}]: {short}")
 
     # Export
     export_results(
@@ -1058,6 +1297,7 @@ def main() -> None:
         output_path=args.output,
         scenarios_file=args.scenarios,
         fixtures_file=fixtures_label,
+        eval_mode=args.eval_mode,
     )
 
     # Summary

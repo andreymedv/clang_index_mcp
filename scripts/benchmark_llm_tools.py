@@ -255,7 +255,7 @@ QUERIES_SCHEMA_B: list[dict[str, Any]] = [
         "id": "E-03",
         "category": "multi_tool",
         "text": ("Find all places in the codebase that call the " "assertionEnded method"),
-        "expected_tools": ["search_codebase", "find_usage_sites"],
+        "expected_tools": ["search_codebase", "find_callers"],
     },
 ]
 
@@ -273,7 +273,7 @@ Available tools:
 - get_class_hierarchy: Get complete inheritance tree.
 - get_functions_called_by: Find what a function calls (outgoing).
   Use return_format to choose between definitions and call locations.
-- find_usage_sites: Find what calls a function (incoming/callers).
+- find_callers: Find what calls a function (incoming/callers).
 - trace_execution_path: Find call paths between two functions.
 - find_in_file: Search symbols within a specific file.
 - get_type_alias_info: Resolve type aliases.

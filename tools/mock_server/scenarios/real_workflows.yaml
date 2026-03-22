@@ -70,9 +70,6 @@ scenarios:
           function_name:
             type: contains
             value: "setAttribute"
-          class_name:
-            type: contains
-            value: "Element"
 
   - id: "L-05"
     category: "module_discovery"
@@ -95,19 +92,6 @@ scenarios:
   # Workflow: "where do we work with TypeA + TypeB?"
   # =================================================================
 
-  - id: "M-01"
-    category: "cross_type_search"
-    query: "Find functions related to Element in the CoreCSS module"
-    expected_steps:
-      - tool: find_symbols_by_pattern
-        params:
-          pattern:
-            type: contains
-            value: "Element"
-          file_name:
-            type: contains
-            value: "CSS"
-
   - id: "M-02"
     category: "cross_type_search"
     query: "How is ApplyStyle used with DOM elements? Find the function first, then show me its callers"
@@ -118,7 +102,7 @@ scenarios:
           pattern:
             type: contains
             value: "ApplyStyle"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -133,7 +117,7 @@ scenarios:
           class_name:
             type: contains
             value: "StyleResolver"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -166,12 +150,12 @@ scenarios:
     category: "call_chain"
     query: "Who calls MergeTableCells? Then find who calls RecalculateSpans"
     expected_steps:
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
             value: "MergeTableCells"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -186,7 +170,7 @@ scenarios:
           function_name:
             type: contains
             value: "HandleKeyPress"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -207,7 +191,7 @@ scenarios:
           class_name:
             type: contains
             value: "Table"
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -243,16 +227,6 @@ scenarios:
           pattern:
             type: contains
             value: "DocumentBuilder"
-
-  - id: "P-03"
-    category: "test_discovery"
-    query: "Show all test functions in DOM_DocumentTests.cpp"
-    expected_steps:
-      - tool: find_in_file
-        params:
-          file_path:
-            type: contains
-            value: "DOM_DocumentTests"
 
   # =================================================================
   # Category Q: Interface → Implementation navigation

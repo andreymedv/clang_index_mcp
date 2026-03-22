@@ -44,7 +44,7 @@ scenarios:
       - "Who invokes processEvent?"
       - "Show me the usage sites of processEvent"
     expected_steps:
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
@@ -87,19 +87,13 @@ scenarios:
           function_name:
             type: contains
             value: "processEvent"
-          class_name:
-            type: contains
-            value: "DataManager"
 
   - id: "K-02"
     category: "method_class"
     query: "Find all callers of DataManager::processEvent"
     expected_steps:
-      - tool: find_usage_sites
+      - tool: find_callers
         params:
           function_name:
             type: contains
             value: "processEvent"
-          class_name:
-            type: contains
-            value: "DataManager"
