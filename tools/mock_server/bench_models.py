@@ -127,6 +127,8 @@ def run_scenarios(
     output_path: Path,
     lm_url: str,
     explain_failures: bool,
+    explain_all: bool,
+    explain_scope: str,
     token: str = "sk-lm-local",
     eval_mode: str = "strict",
 ) -> dict:
@@ -149,6 +151,8 @@ def run_scenarios(
         ]
         if explain_failures:
             cmd.append("--explain-failures")
+        elif explain_all:
+            cmd.extend(["--explain-all", "--explain-scope", explain_scope])
 
         result = subprocess.run(cmd, capture_output=False, text=True)
         if result.returncode != 0:
@@ -252,10 +256,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Keep model loaded after run",
     )
-    parser.add_argument(
+    explain_group = parser.add_mutually_exclusive_group()
+    explain_group.add_argument(
         "--explain-failures",
         action="store_true",
         help="Ask LLM to explain first failure per scenario",
+    )
+    explain_group.add_argument(
+        "--explain-all",
+        action="store_true",
+        help="Collect post-hoc explanations after each scenario run",
+    )
+    parser.add_argument(
+        "--explain-scope",
+        choices=["mismatches", "all_failed", "all"],
+        default="mismatches",
+        help="Which calls to explain in post-hoc mode. Passed through to runner.py.",
     )
     parser.add_argument(
         "--output-dir",
@@ -351,6 +367,8 @@ def main() -> None:
             output_path=output_path,
             lm_url=args.lm_url,
             explain_failures=args.explain_failures,
+            explain_all=args.explain_all,
+            explain_scope=args.explain_scope,
             token=args.token,
             eval_mode=args.eval_mode,
         )
