@@ -192,34 +192,6 @@ responses:
         - "get_class_info('TableProcessor') -- explore TableProcessor class"
         - "get_functions_called_by('MergeTableCells') -- see what MergeTableCells does"
 
-  # --- M-01: Element-related functions in CSS module ---
-  - tool: find_symbols_by_pattern
-    match:
-      pattern:
-        contains: "Element"
-      file_name:
-        contains: "CSS"
-    response:
-      results:
-        - qualified_name: "CSS::StyleResolver::resolveElementStyle"
-          kind: "method"
-          prototype: "ComputedStyle StyleResolver::resolveElementStyle(const DOM::Element &elem)"
-          file: "CoreCSS/Public/CSS_StyleResolver.h"
-          line: 28
-        - qualified_name: "CSS::CascadeEngine::getElementProperties"
-          kind: "method"
-          prototype: "PropertyMap CascadeEngine::getElementProperties(const DOM::Element &elem)"
-          file: "CoreCSS/Public/CSS_CascadeEngine.h"
-          line: 35
-        - qualified_name: "CollectElementStyles"
-          kind: "function"
-          prototype: "std::vector<ComputedStyle> CollectElementStyles(const DOM::Element &root)"
-          file: "CoreCSS/Public/CSS_Utilities.h"
-          line: 62
-      next_steps:
-        - "get_functions_called_by('resolveElementStyle', class_name='StyleResolver') -- see implementation details"
-        - "find_callers('CollectElementStyles') -- find where this is used"
-
   # --- M-02 step 1 / O-01: Search for ApplyStyle ---
   - tool: find_symbols_by_pattern
     match:
@@ -660,40 +632,6 @@ responses:
       next_steps:
         - "get_class_info('Document') -- see base classes and full details"
         - "get_functions_called_by('createElement', class_name='Document') -- trace implementation"
-
-  # --- P-03: Symbols in DOM_DocumentTests.cpp ---
-  - tool: find_in_file
-    match:
-      file_path:
-        contains: "DOM_DocumentTests"
-    response:
-      results:
-        - qualified_name: "DocumentTestFixture"
-          kind: "class"
-          line: 18
-        - qualified_name: "DocumentTestFixture::SetUp"
-          kind: "method"
-          line: 22
-          prototype: "void DocumentTestFixture::SetUp()"
-        - qualified_name: "DocumentTestFixture::createSampleDocument"
-          kind: "method"
-          line: 28
-          prototype: "DOM::DocumentPtr DocumentTestFixture::createSampleDocument()"
-        - qualified_name: "TEST_F_CreateElement"
-          kind: "function"
-          line: 45
-          prototype: "TEST_F(DocumentTestFixture, CreateElement)"
-        - qualified_name: "TEST_F_AppendChild"
-          kind: "function"
-          line: 62
-          prototype: "TEST_F(DocumentTestFixture, AppendChild)"
-        - qualified_name: "TEST_F_GetElementById"
-          kind: "function"
-          line: 78
-          prototype: "TEST_F(DocumentTestFixture, GetElementById)"
-      next_steps:
-        - "get_class_info('DocumentTestFixture') -- see fixture details"
-        - "find_callers('createSampleDocument') -- see reuse of helper"
 
   - tool: find_in_file
     default: true

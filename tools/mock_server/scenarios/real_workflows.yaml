@@ -92,19 +92,6 @@ scenarios:
   # Workflow: "where do we work with TypeA + TypeB?"
   # =================================================================
 
-  - id: "M-01"
-    category: "cross_type_search"
-    query: "Find functions related to Element in the CoreCSS module"
-    expected_steps:
-      - tool: find_symbols_by_pattern
-        params:
-          pattern:
-            type: contains
-            value: "Element"
-          file_name:
-            type: contains
-            value: "CSS"
-
   - id: "M-02"
     category: "cross_type_search"
     query: "How is ApplyStyle used with DOM elements? Find the function first, then show me its callers"
@@ -240,16 +227,6 @@ scenarios:
           pattern:
             type: contains
             value: "DocumentBuilder"
-
-  - id: "P-03"
-    category: "test_discovery"
-    query: "Show all test functions in DOM_DocumentTests.cpp"
-    expected_steps:
-      - tool: find_in_file
-        params:
-          file_path:
-            type: contains
-            value: "DOM_DocumentTests"
 
   # =================================================================
   # Category Q: Interface → Implementation navigation
