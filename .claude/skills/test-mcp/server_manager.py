@@ -55,11 +55,23 @@ class ServerManager:
         else:
             raise ValueError(f"Unsupported protocol: {self.protocol}")
 
-    def _start_sse_server(self, timeout):
-        """Start SSE server"""
+    def _start_server(self, protocol: str, timeout: int) -> Dict:
+        """
+        Start MCP server with specified protocol.
+
+        Args:
+            protocol: Protocol to use ("sse" or "http")
+            timeout: Timeout in seconds to wait for server ready
+
+        Returns:
+            dict: Server info (pid, endpoint, protocol, status)
+
+        Raises:
+            RuntimeError: If server fails to start within timeout
+        """
         cmd = [
             "python", "-m", "mcp_server.cpp_mcp_server",
-            "--transport", "sse",
+            "--transport", protocol,
             "--port", str(self.port)
         ]
 
@@ -87,9 +99,13 @@ class ServerManager:
         return {
             "pid": self.server_process.pid,
             "endpoint": endpoint,
-            "protocol": "sse",
+            "protocol": protocol,
             "status": "running"
         }
+
+    def _start_sse_server(self, timeout: int) -> Dict:
+        """Start SSE server"""
+        return self._start_server("sse", timeout)
 
     def _start_stdio_server(self):
         """Start stdio server"""
@@ -97,41 +113,9 @@ class ServerManager:
         # For Phase 1, focus on SSE mode
         raise NotImplementedError("stdio protocol not implemented yet (Phase 3)")
 
-    def _start_http_server(self, timeout):
+    def _start_http_server(self, timeout: int) -> Dict:
         """Start HTTP server"""
-        cmd = [
-            "python", "-m", "mcp_server.cpp_mcp_server",
-            "--transport", "http",
-            "--port", str(self.port)
-        ]
-
-        env = os.environ.copy()
-        env["MCP_DEBUG"] = "1"
-        env["PYTHONUNBUFFERED"] = "1"
-
-        # Start server process
-        # Use DEVNULL to avoid blocking on full pipes
-        self.server_process = subprocess.Popen(
-            cmd,
-            cwd=self.repo_root,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True
-        )
-
-        # Wait for server to be ready
-        endpoint = f"http://localhost:{self.port}"
-        if not self._wait_for_ready(endpoint, timeout):
-            self.stop_server()
-            raise RuntimeError(f"Server failed to start within {timeout}s")
-
-        return {
-            "pid": self.server_process.pid,
-            "endpoint": endpoint,
-            "protocol": "http",
-            "status": "running"
-        }
+        return self._start_server("http", timeout)
 
     def _wait_for_ready(self, endpoint, timeout):
         """
