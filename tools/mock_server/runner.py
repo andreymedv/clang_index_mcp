@@ -491,7 +491,7 @@ def _find_interesting_calls(
     overall_pass: bool,
     explain_scope: str,
 ) -> List[Dict[str, Any]]:
-    """Identify which recorded calls should receive post-hoc explanations."""
+    """Identify which calls or missing steps should receive explanations."""
     interesting: List[Dict[str, Any]] = []
 
     if explain_scope == "all":
@@ -517,6 +517,11 @@ def _find_interesting_calls(
     for step_eval in step_results:
         call_index = step_eval.get("call_index")
         if call_index is None:
+            if _is_step_mismatch(step_eval):
+                interesting.append({
+                    "call_record": None,
+                    "step_eval": step_eval,
+                })
             continue
         step_calls.add(call_index)
         if _is_step_mismatch(step_eval):
@@ -553,18 +558,25 @@ def _collect_posthoc_explanations(
     )
 
     interesting.sort(
-        key=lambda item: item["call_record"].get("message_index", -1),
+        key=lambda item: (
+            item["call_record"].get("message_index", -1)
+            if item["call_record"] is not None
+            else len(messages) - 1
+        ),
         reverse=True,
     )
 
     for item in interesting:
         call_record = item["call_record"]
         step_eval = item.get("step_eval")
-        message_index = call_record.get("message_index")
-        if message_index is None:
-            continue
+        if call_record is None:
+            truncated_messages = list(messages)
+        else:
+            message_index = call_record.get("message_index")
+            if message_index is None:
+                continue
+            truncated_messages = messages[:message_index + 1]
 
-        truncated_messages = messages[:message_index + 1]
         prompt = _build_explanation_prompt(step_eval or {}, call_record)
         explanation_text = _request_explanation(
             client=client,
@@ -575,11 +587,12 @@ def _collect_posthoc_explanations(
             max_tokens=max_tokens,
         )
         explanation = _explanation_payload(prompt, explanation_text)
-        call_record["explanation"] = explanation
+        if call_record is not None:
+            call_record["explanation"] = explanation
 
         if step_eval is not None:
             step_eval["llm_explanation"] = explanation_text
-        elif "llm_explanation" not in call_record:
+        elif call_record is not None and "llm_explanation" not in call_record:
             call_record["llm_explanation"] = explanation_text
 
 
@@ -676,6 +689,7 @@ def run_scenario(
         if not tool_calls:
             # LLM responded with text — conversation done
             final_answer = message.get("content", "") or ""
+            messages.append(message)
 
             # Check if LLM should have called a tool but didn't
             if explain_failures and next_expected_idx < len(expected_steps):

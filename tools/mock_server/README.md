@@ -232,7 +232,8 @@ python tools/mock_server/runner.py \
 Supported scopes:
 
 - `--explain-scope=mismatches` (default): explain mismatching calls plus extra
-  calls that did not align to any expected step.
+  calls that did not align to any expected step. Missing expected steps with
+  no tool call are also explained and stored on the failed step.
 - `--explain-scope=all_failed`: explain every tool call in failed scenarios.
 - `--explain-scope=all`: explain every tool call in every scenario, including
   passing runs.
@@ -258,6 +259,9 @@ Each annotated tool call gets an `explanation` object in `all_tool_calls[]`:
 When the explained call corresponds to a failed expected step, the step also
 receives `steps[i].llm_explanation` for compatibility with existing analysis
 tools.
+
+If the failure is a missing tool call, there is no `all_tool_calls[]` entry to
+annotate, so the explanation is stored only in `steps[i].llm_explanation`.
 
 ## Optimization Loop (Claude Code-driven)
 
