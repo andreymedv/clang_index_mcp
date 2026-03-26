@@ -362,9 +362,10 @@ def _build_explanation_prompt(
     if recorded_call is None:
         expected = step_eval["expected_tool"]
         return (
-            "You did not call any tool. The expected action was to call "
-            f"'{expected}'. Explain why you chose not to use any tool. "
-            "What in the tool descriptions made you decide against calling one?"
+            "Explain why you chose not to use any tool. "
+            "If you could not find suitable tool, quote an EXACT part (or parts) "
+            f"of '{expected}' tool description that made you decide against calling one."
+            "Be concise. Do not output any fluff. "
         )
 
     actual_tool = recorded_call["tool"]
@@ -372,9 +373,10 @@ def _build_explanation_prompt(
 
     if not step_eval:
         return (
-            f"You called '{actual_tool}' with arguments {actual_args}. "
-            "Explain your reasoning for choosing this tool and these "
-            "parameter values at that point in the conversation."
+            f"Quote an EXACT part (or parts) of {actual_tool} description "
+            "and/or hints from previous tools' responses that made you decide to call "
+            f"{actual_tool} with {actual_args} arguments. "
+            "Be concise. Do not output any fluff."
         )
 
     expected_tool = step_eval["expected_tool"]
@@ -382,10 +384,10 @@ def _build_explanation_prompt(
     # Case 2: Wrong tool
     if not step_eval["tool_match"]:
         return (
-            f"You called '{actual_tool}' but the expected tool was "
-            f"'{expected_tool}'. Explain your reasoning: what in the "
-            f"description of '{actual_tool}' made it seem like the right "
-            f"choice? What about '{expected_tool}' made you not choose it?"
+            f"Quote an EXACT part (or parts) of {actual_tool} and {expected_tool} "
+            " descriptions and/or hints from previous tools' responses that made you decide "
+            f"to chose {actual_tool} against {expected_tool}? "
+            "Be concise. Do not output any fluff."
         )
 
     # Case 3: Right tool, wrong parameters
@@ -400,37 +402,42 @@ def _build_explanation_prompt(
         if expected_desc == "absent":
             # LLM passed a parameter that shouldn't be there
             issues.append(
-                f"- You passed parameter '{param_name}' = {actual_val!r}, "
-                f"but this parameter was not expected. "
-                f"Why did you include '{param_name}'?"
+                f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+                "from previous tools' responses that made you to pass parameter "
+                f"{param_name} = {actual_val!r}? "
+                "Be concise. Do not output any fluff."
             )
         elif actual_val is None:
             # LLM omitted a required parameter
             issues.append(
-                f"- You did not pass parameter '{param_name}' "
-                f"(expected: {expected_desc}). "
-                f"Why did you omit '{param_name}'?"
+                f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+                f"from previous tools' responses that made you to omit parameter {param_name} "
+                f"(expected: {expected_desc})? "
+                "Be concise. Do not output any fluff."
             )
         else:
             # LLM passed wrong value
             issues.append(
-                f"- Parameter '{param_name}': you passed {actual_val!r} "
-                f"but expected was {expected_desc}. "
-                f"Why did you choose this value?"
+                f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+                f"from previous tools' responses that made you to pass {actual_val!r} value "
+                f"in '{param_name}' parameter (expected: {expected_desc})? "
+                "Be concise. Do not output any fluff."
             )
 
     if not issues:
         return (
-            f"You called '{actual_tool}' with arguments {actual_args}. "
-            "Explain why you chose these specific parameter values."
+            f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+            f"from previous tools' responses that made you to call {actual_tool} with "
+            f"THESE specific {actual_args} arguments? "
+            "Be concise. Do not output any fluff."
         )
 
     issues_text = "\n".join(issues)
     return (
-        f"You called '{actual_tool}' (correct tool) but with "
-        f"unexpected parameters:\n{issues_text}\n\n"
-        "Analyze the tool description and your reasoning. "
-        "What led you to these parameter choices?"
+        f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+        "from previous tools' responses that made you to pass THESE specific "
+        f"{actual_args} arguments to the {actual_tool}? "
+        "Be concise. Do not output any fluff."
     )
 
 
@@ -484,7 +491,7 @@ def _find_interesting_calls(
     overall_pass: bool,
     explain_scope: str,
 ) -> List[Dict[str, Any]]:
-    """Identify which recorded calls should receive post-hoc explanations."""
+    """Identify which calls or missing steps should receive explanations."""
     interesting: List[Dict[str, Any]] = []
 
     if explain_scope == "all":
@@ -510,6 +517,11 @@ def _find_interesting_calls(
     for step_eval in step_results:
         call_index = step_eval.get("call_index")
         if call_index is None:
+            if _is_step_mismatch(step_eval):
+                interesting.append({
+                    "call_record": None,
+                    "step_eval": step_eval,
+                })
             continue
         step_calls.add(call_index)
         if _is_step_mismatch(step_eval):
@@ -546,18 +558,25 @@ def _collect_posthoc_explanations(
     )
 
     interesting.sort(
-        key=lambda item: item["call_record"].get("message_index", -1),
+        key=lambda item: (
+            item["call_record"].get("message_index", -1)
+            if item["call_record"] is not None
+            else len(messages) - 1
+        ),
         reverse=True,
     )
 
     for item in interesting:
         call_record = item["call_record"]
         step_eval = item.get("step_eval")
-        message_index = call_record.get("message_index")
-        if message_index is None:
-            continue
+        if call_record is None:
+            truncated_messages = list(messages)
+        else:
+            message_index = call_record.get("message_index")
+            if message_index is None:
+                continue
+            truncated_messages = messages[:message_index + 1]
 
-        truncated_messages = messages[:message_index + 1]
         prompt = _build_explanation_prompt(step_eval or {}, call_record)
         explanation_text = _request_explanation(
             client=client,
@@ -568,11 +587,12 @@ def _collect_posthoc_explanations(
             max_tokens=max_tokens,
         )
         explanation = _explanation_payload(prompt, explanation_text)
-        call_record["explanation"] = explanation
+        if call_record is not None:
+            call_record["explanation"] = explanation
 
         if step_eval is not None:
             step_eval["llm_explanation"] = explanation_text
-        elif "llm_explanation" not in call_record:
+        elif call_record is not None and "llm_explanation" not in call_record:
             call_record["llm_explanation"] = explanation_text
 
 
@@ -669,6 +689,7 @@ def run_scenario(
         if not tool_calls:
             # LLM responded with text — conversation done
             final_answer = message.get("content", "") or ""
+            messages.append(message)
 
             # Check if LLM should have called a tool but didn't
             if explain_failures and next_expected_idx < len(expected_steps):
@@ -961,7 +982,12 @@ Use the available tools to answer the user's question. Be precise with tool \
 arguments -- use class/function names, not signatures. For regex patterns, \
 remember that patterns are anchored (matched against full name).
 
-When you find what you need, provide a concise answer summarizing the results.\
+When you need a tool, you MUST emit a native tool call via the tool-calling \
+API. Do NOT write tool invocations as plain text, markdown, code fences, or \
+```tool_code``` blocks. Do NOT describe the tool call you plan to make; make \
+the actual tool call instead.
+
+When you find what you need, provide a concise answer summarizing the results.
 """
 
 # Short addition for --validate-intent mode.
