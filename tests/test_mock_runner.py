@@ -179,7 +179,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
                 "Explain why you chose not to use any tool. "
                 "If you could not find suitable tool, quote an EXACT part (or parts) "
                 "of 'find_callers' tool description that made you decide against calling one."
-                "Be concise. Do not output any fluff. "
+                "Be concise. Do not output any fluff."
             ),
         }
     ]
@@ -321,7 +321,7 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
                 "Explain why you chose not to use any tool. "
                 "If you could not find suitable tool, quote an EXACT part (or parts) "
                 "of 'find_callers' tool description that made you decide against calling one."
-                "Be concise. Do not output any fluff. "
+                "Be concise. Do not output any fluff."
             ),
         }
     ]
