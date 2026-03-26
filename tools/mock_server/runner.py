@@ -362,9 +362,10 @@ def _build_explanation_prompt(
     if recorded_call is None:
         expected = step_eval["expected_tool"]
         return (
-            "You did not call any tool. The expected action was to call "
-            f"'{expected}'. Explain why you chose not to use any tool. "
-            "What in the tool descriptions made you decide against calling one?"
+            "Explain why you chose not to use any tool. "
+            "If you could not find suitable tool, quote an EXACT part (or parts) "
+            f"of '{expected}' tool description that made you decide against calling one."
+            "Be concise. Do not output any fluff. "
         )
 
     actual_tool = recorded_call["tool"]
@@ -372,9 +373,10 @@ def _build_explanation_prompt(
 
     if not step_eval:
         return (
-            f"You called '{actual_tool}' with arguments {actual_args}. "
-            "Explain your reasoning for choosing this tool and these "
-            "parameter values at that point in the conversation."
+            f"Quote an EXACT part (or parts) of {actual_tool} description "
+            "and/or hints from previous tools' responses that made you decide to call "
+            f"{actual_tool} with {actual_args} arguments. "
+            "Be concise. Do not output any fluff."
         )
 
     expected_tool = step_eval["expected_tool"]
@@ -382,10 +384,10 @@ def _build_explanation_prompt(
     # Case 2: Wrong tool
     if not step_eval["tool_match"]:
         return (
-            f"You called '{actual_tool}' but the expected tool was "
-            f"'{expected_tool}'. Explain your reasoning: what in the "
-            f"description of '{actual_tool}' made it seem like the right "
-            f"choice? What about '{expected_tool}' made you not choose it?"
+            f"Quote an EXACT part (or parts) of {actual_tool} and {expected_tool} "
+            " descriptions and/or hints from previous tools' responses that made you decide "
+            f"to chose {actual_tool} against {expected_tool}? "
+            "Be concise. Do not output any fluff."
         )
 
     # Case 3: Right tool, wrong parameters
@@ -400,37 +402,42 @@ def _build_explanation_prompt(
         if expected_desc == "absent":
             # LLM passed a parameter that shouldn't be there
             issues.append(
-                f"- You passed parameter '{param_name}' = {actual_val!r}, "
-                f"but this parameter was not expected. "
-                f"Why did you include '{param_name}'?"
+                f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+                "from previous tools' responses that made you to pass parameter "
+                f"{param_name} = {actual_val!r}? "
+                "Be concise. Do not output any fluff."
             )
         elif actual_val is None:
             # LLM omitted a required parameter
             issues.append(
-                f"- You did not pass parameter '{param_name}' "
-                f"(expected: {expected_desc}). "
-                f"Why did you omit '{param_name}'?"
+                f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+                f"from previous tools' responses that made you to omit parameter {param_name} "
+                f"(expected: {expected_desc})? "
+                "Be concise. Do not output any fluff."
             )
         else:
             # LLM passed wrong value
             issues.append(
-                f"- Parameter '{param_name}': you passed {actual_val!r} "
-                f"but expected was {expected_desc}. "
-                f"Why did you choose this value?"
+                f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+                f"from previous tools' responses that made you to pass {actual_val!r} value "
+                f"in '{param_name}' parameter (expected: {expected_desc})? "
+                "Be concise. Do not output any fluff."
             )
 
     if not issues:
         return (
-            f"You called '{actual_tool}' with arguments {actual_args}. "
-            "Explain why you chose these specific parameter values."
+            f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+            f"from previous tools' responses that made you to call {actual_tool} with "
+            f"THESE specific {actual_args} arguments? "
+            "Be concise. Do not output any fluff."
         )
 
     issues_text = "\n".join(issues)
     return (
-        f"You called '{actual_tool}' (correct tool) but with "
-        f"unexpected parameters:\n{issues_text}\n\n"
-        "Analyze the tool description and your reasoning. "
-        "What led you to these parameter choices?"
+        f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+        "from previous tools' responses that made you to pass THESE specific "
+        f"{actual_args} arguments to the {actual_tool}? "
+        "Be concise. Do not output any fluff."
     )
 
 
@@ -961,7 +968,7 @@ Use the available tools to answer the user's question. Be precise with tool \
 arguments -- use class/function names, not signatures. For regex patterns, \
 remember that patterns are anchored (matched against full name).
 
-When you find what you need, provide a concise answer summarizing the results.\
+When you find what you need, provide a concise answer summarizing the results.
 """
 
 # Short addition for --validate-intent mode.
