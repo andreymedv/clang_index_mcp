@@ -982,6 +982,11 @@ Use the available tools to answer the user's question. Be precise with tool \
 arguments -- use class/function names, not signatures. For regex patterns, \
 remember that patterns are anchored (matched against full name).
 
+When you need a tool, you MUST emit a native tool call via the tool-calling \
+API. Do NOT write tool invocations as plain text, markdown, code fences, or \
+```tool_code``` blocks. Do NOT describe the tool call you plan to make; make \
+the actual tool call instead.
+
 When you find what you need, provide a concise answer summarizing the results.
 """
 

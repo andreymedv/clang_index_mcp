@@ -10,6 +10,12 @@ class FakeClient:
         return self._responses.pop(0)
 
 
+def test_system_prompt_bans_textual_tool_plans():
+    assert "native tool call via the tool-calling API" in runner.SYSTEM_PROMPT
+    assert "Do NOT write tool invocations as plain text" in runner.SYSTEM_PROMPT
+    assert "tool_code" in runner.SYSTEM_PROMPT
+
+
 def test_find_interesting_calls_mismatches_includes_mismatches_and_extra_calls():
     recorded_calls = [
         {"tool": "wrong_tool", "arguments": {}, "call_index": 0, "message_index": 2},

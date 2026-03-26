@@ -263,6 +263,10 @@ tools.
 If the failure is a missing tool call, there is no `all_tool_calls[]` entry to
 annotate, so the explanation is stored only in `steps[i].llm_explanation`.
 
+The default runner system prompt also tells the model to use native
+tool-calling only. It explicitly forbids markdown or pseudo-code tool plans
+such as fenced `tool_code` blocks.
+
 ## Optimization Loop (Claude Code-driven)
 
 `optimize.py` is a helper that runs tests and produces compact failure reports.
