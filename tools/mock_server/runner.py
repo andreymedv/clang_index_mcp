@@ -365,7 +365,7 @@ def _build_explanation_prompt(
             "Explain why you chose not to use any tool. "
             "If you could not find suitable tool, quote an EXACT part (or parts) "
             f"of '{expected}' tool description that made you decide against calling one."
-            "Be concise. Do not output any fluff. "
+            "Be concise. Do not output any fluff."
         )
 
     actual_tool = recorded_call["tool"]
@@ -404,29 +404,26 @@ def _build_explanation_prompt(
             issues.append(
                 f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
                 "from previous tools' responses that made you to pass parameter "
-                f"{param_name} = {actual_val!r}? "
-                "Be concise. Do not output any fluff."
+                f"{param_name} = {actual_val!r}?"
             )
         elif actual_val is None:
             # LLM omitted a required parameter
             issues.append(
                 f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
                 f"from previous tools' responses that made you to omit parameter {param_name} "
-                f"(expected: {expected_desc})? "
-                "Be concise. Do not output any fluff."
+                f"(expected: {expected_desc})?"
             )
         else:
             # LLM passed wrong value
             issues.append(
                 f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
                 f"from previous tools' responses that made you to pass {actual_val!r} value "
-                f"in '{param_name}' parameter (expected: {expected_desc})? "
-                "Be concise. Do not output any fluff."
+                f"in '{param_name}' parameter (expected: {expected_desc})?"
             )
 
     if not issues:
         return (
-            f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
+            f"Quote an EXACT part or parts of {actual_tool} description and/or hints "
             f"from previous tools' responses that made you to call {actual_tool} with "
             f"THESE specific {actual_args} arguments? "
             "Be concise. Do not output any fluff."
@@ -434,9 +431,8 @@ def _build_explanation_prompt(
 
     issues_text = "\n".join(issues)
     return (
-        f"- Quote an EXACT part or parts of {actual_tool} description and/or hints "
-        "from previous tools' responses that made you to pass THESE specific "
-        f"{actual_args} arguments to the {actual_tool}? "
+        f"You called right {actual_tool} tool. "
+        f"Analyze reasons to pass the following parameters:\n{issues_text}\n"
         "Be concise. Do not output any fluff."
     )
 
