@@ -223,13 +223,13 @@ def list_tools_b() -> List[Tool]:
                 "use find_in_file instead. Do NOT use this to get class details, "
                 "inheritance, or call graph — use the specialized tools.\n\n"
                 "Pattern matching (case-insensitive):\n"
-                "- 'Widget' — matches in any namespace\n"
-                "- 'ui::Widget' — matches namespace suffix\n"
+                "- 'DataRecord' — matches in any namespace\n"
+                "- 'storage::DataRecord' — matches namespace suffix\n"
                 "- '.*Manager.*' — regex, matches containing 'Manager'\n"
                 "- '' (empty) — matches ALL symbols; to enumerate a known file use find_in_file\n\n"
                 "Filtering by location (can combine with patterns):\n"
-                "- file_name: restrict to files/dirs (e.g., 'tests/', 'DOM_', 'Helper')\n"
-                "  Examples: pattern='' with file_name='DOM_' finds all symbols in DOM_ files\n"
+                "- file_name: restrict to files/dirs (e.g., 'spec/', 'SAMPLE_', 'Util')\n"
+                "  Examples: pattern='' with file_name='SAMPLE_' finds all symbols in SAMPLE_ files\n"
                 "- namespace: restrict to C++ namespace (e.g., 'core', 'utils')\n\n"
                 "Returns qualified_name, kind, and more based on detail level."
             ),
@@ -282,8 +282,8 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "description": (
                             "Optional: Filter by substring match on file path. "
-                            "Examples: 'Element.h' (exact file), 'DOM_' (files "
-                            "starting with DOM_), 'tests/' (files in tests dir)."
+                            "Examples: 'Record.h' (exact file), 'SAMPLE_' (files "
+                            "starting with SAMPLE_), 'spec/' (files in spec dir)."
                         ),
                     },
                     "namespace": {
@@ -307,7 +307,7 @@ def list_tools_b() -> List[Tool]:
                 "Empty pattern returns all symbols in that file.\n\n"
                 "Do NOT use for directory searches or file patterns — "
                 "use find_symbols_by_pattern with file_name filter instead "
-                "(e.g., file_name='tests/', file_name='DOM_')."
+                "(e.g., file_name='spec/', file_name='SAMPLE_')."
             ),
             inputSchema={
                 "type": "object",
@@ -341,7 +341,7 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "description": (
                             "Exact class name (simple or qualified, "
-                            "e.g. 'Widget' or 'ui::Widget')."
+                            "e.g. 'DataRecord' or 'storage::DataRecord')."
                         ),
                     },
                 },
