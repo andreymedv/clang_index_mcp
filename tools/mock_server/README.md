@@ -11,10 +11,18 @@ tool descriptions, response formats, and next-step hints.
 | `runner.py` | LLM test runner with tool-call mediation loop |
 | `fixtures.py` | YAML fixture loader + argument matcher |
 | `fixtures/responses.yaml` | Canned tool responses |
-| `scenarios/basic.yaml` | 1-step test scenarios |
-| `scenarios/multi_step.yaml` | 2-3 step chained scenarios |
+| `fixtures/dom_responses.yaml` | Domain-specific response fixtures |
+| `scenarios/basic.yaml` | Basic single-step test scenarios |
+| `scenarios/multi_step.yaml` | Multi-step chained scenarios |
 | `scenarios/edge_cases.yaml` | Edge cases (empty results, direction confusion) |
+| `scenarios/advanced_semantic.yaml` | Advanced semantic search scenarios |
+| `scenarios/probes_rootcauses.yaml` | Root cause analysis probe scenarios |
+| `scenarios/probes_usage_ambiguity.yaml` | Usage ambiguity probe scenarios |
+| `scenarios/real_workflows.yaml` | Real-world workflow scenarios |
 | `optimize.py` | Automated test→analyze→fix→retest loop |
+| `bench_claude.py` | Benchmark Claude Code tool-calling behavior |
+| `bench_models.py` | Benchmark multiple model performance |
+| `diagnose_looping.py` | Diagnose infinite loop issues in LLM tool calls |
 
 ## Quick Start
 
@@ -35,12 +43,29 @@ python tools/mock_server/runner.py --model qwen3-4b --scenarios tools/mock_serve
 python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml
 python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/multi_step.yaml
 python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/edge_cases.yaml
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/advanced_semantic.yaml
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/real_workflows.yaml
 
 # Run specific scenario by ID
 python tools/mock_server/runner.py --scenario-id A-01 --scenario-id C-02
 
 # List available models
 python tools/mock_server/runner.py --list-models
+
+# Run with custom fixtures directory
+python tools/mock_server/runner.py --fixtures tools/mock_server/fixtures/responses.yaml
+
+# Use relaxed evaluation mode (skip discovery tool calls)
+python tools/mock_server/runner.py --scenarios basic.yaml --eval-mode relaxed
+
+# Enable intent validation (ask for clarification on ambiguous requests)
+python tools/mock_server/runner.py --scenarios basic.yaml --validate-intent
+
+# Custom LM Studio URL and token
+python tools/mock_server/runner.py --scenarios basic.yaml --lm-url http://localhost:1234 --token mytoken
+
+# Increase timeout for slow models
+python tools/mock_server/runner.py --scenarios basic.yaml --timeout 600
 ```
 
 ## Mock MCP Server (Standalone)
@@ -70,7 +95,7 @@ scenarios:
     category: "search"
     query: "Find all classes with Manager in their name"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains       # substring match
@@ -130,7 +155,7 @@ Fixtures define canned responses for tool calls:
 
 ```yaml
 responses:
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "Manager"        # match when pattern contains "Manager"
@@ -141,7 +166,7 @@ responses:
           kind: "class"
           # ...
 
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     default: true                  # fallback when no other match
     response:
       results: []
@@ -162,8 +187,8 @@ Results are saved as JSON with per-step evaluation:
       "steps": [
         {
           "step": 1,
-          "expected_tool": "search_codebase",
-          "actual_tool": "search_codebase",
+          "expected_tool": "find_symbols_by_pattern",
+          "actual_tool": "find_symbols_by_pattern",
           "tool_match": true,
           "param_assertions": { ... },
           "params_pass": true
