@@ -16,18 +16,19 @@ Instead of having Claude grep through your C++ codebase trying to understand the
 
 ## Features
 
-Context-efficient C++ code analysis:
-- **search_classes** - Find classes by name pattern
-- **search_functions** - Find functions by name pattern  
-- **get_class_info** - Get detailed class information (methods, members, inheritance)
-- **get_function_signature** - Get function signatures and parameters
+Consolidated C++ code analysis tools (unified from multiple individual tools):
+- **set_project** - Set project directory and wait for indexing completion
+- **sync_project** - Check system status and trigger project refresh
+- **find_symbols_by_pattern** - Unified search for classes and functions by pattern
 - **find_in_file** - Search symbols within specific files
+- **get_class_info** - Get detailed class information (methods, members, inheritance)
 - **get_class_hierarchy** - Get complete inheritance hierarchy for a class (all descendants and ancestors)
-- **get_incoming_calls** - Find all functions that call a specific function
-- **get_outgoing_calls** - Find all functions called by a specific function
-- **get_call_path** - Find call paths from one function to another
+- **get_type_alias_info** - Get information about type aliases and template aliases
+- **get_functions_called_by** - Find all functions called by a specific function (combines outgoing calls and call sites)
+- **find_callers** - Find all functions that call a specific function
+- **trace_execution_path** - Find call paths from one function to another
 
-**Qualified Names Support** (v10.1):
+**Qualified Names Support** (Unreleased - v10.1):
 - **Namespace-Aware Search**: Search by qualified patterns like `"ui::View"`, `"app::Database::save"`
 - **Four Pattern Modes**: Unqualified, qualified suffix, exact match (`::`), and regex
 - **Template Specialization Detection**: Distinguish `template<> void foo<int>()` from generic `template<typename T> void foo(T)`
@@ -50,7 +51,7 @@ Standard input/output transport for MCP client integration (Claude Desktop, Clau
 python -m mcp_server.cpp_mcp_server
 ```
 
-### HTTP (Streamable HTTP) ✨ New
+### HTTP (Streamable HTTP)
 RESTful HTTP transport for API access and web integrations:
 ```bash
 python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
@@ -206,7 +207,7 @@ python scripts/diagnose_cache.py
 - **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
 
-## Intelligent Incremental Analysis (New in v3.1.0)
+## Intelligent Incremental Analysis
 
 The analyzer now features intelligent incremental analysis that dramatically reduces re-analysis time when files change. Instead of re-analyzing your entire project, only affected files are re-parsed.
 
@@ -343,32 +344,42 @@ Once configured, you can use the C++ analyzer in your conversations with Claude:
 
 ## Configuration Options
 
-The server behavior can be configured via `cpp-analyzer-config.json`:
+The server behavior can be configured via `.cpp-analyzer-config.json` (in project root):
 
 ```json
 {
-  "exclude_directories": [".git", ".svn", "node_modules", "build", "Build"],
-  "exclude_patterns": ["*.generated.h", "*.generated.cpp", "*_test.cpp"],
-  "dependency_directories": ["vcpkg_installed", "third_party", "external"],
+  "exclude_directories": [".git", ".svn", ".hg", "node_modules", "__pycache__", ".vs", ".vscode", ".idea", "CMakeFiles"],
+  "exclude_patterns": [],
+  "dependency_directories": ["vcpkg_installed", "third_party", "ThirdParty", "external", "External", "vendor", "dependencies", "packages"],
   "include_dependencies": true,
   "max_file_size_mb": 10,
+  "max_parse_retries": 2,
+  "max_workers": null,
+  "query_behavior": "allow_partial",
+  "diagnostics": {"level": "info", "enabled": true},
   "compile_commands": {
     "enabled": true,
     "path": "compile_commands.json",
     "cache_enabled": true,
     "fallback_to_hardcoded": true,
-    "cache_expiry_seconds": 300
+    "cache_expiry_seconds": 300,
+    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
+    "exclude_patterns": []
   }
 }
 ```
 
 ### General Options
 
-- **exclude_directories**: Directories to skip during project scanning
-- **exclude_patterns**: File patterns to exclude from analysis
-- **dependency_directories**: Directories containing third-party dependencies
-- **include_dependencies**: Whether to analyze files in dependency directories
-- **max_file_size_mb**: Maximum file size to analyze (larger files are skipped)
+- **exclude_directories**: Directories to skip during project scanning (default includes `.git`, `.svn`, `.hg`, `node_modules`, `__pycache__`, `.vs`, `.vscode`, `.idea`, `CMakeFiles`)
+- **exclude_patterns**: File patterns to exclude from analysis (default: `[]`)
+- **dependency_directories**: Directories containing third-party dependencies (default includes `vcpkg_installed`, `third_party`, `ThirdParty`, `external`, `External`, `vendor`, `dependencies`, `packages`)
+- **include_dependencies**: Whether to analyze files in dependency directories (default: `true`)
+- **max_file_size_mb**: Maximum file size to analyze in MB (default: `10`)
+- **max_parse_retries**: Maximum number of times to retry parsing a failed file (default: `2`)
+- **max_workers**: Number of worker processes for parallel parsing (default: `null` = use `cpu_count()`)
+- **query_behavior**: Query behavior policy - `allow_partial` (return partial results), `block` (block until indexing complete), or `reject` (reject queries during indexing) (default: `allow_partial`)
+- **diagnostics**: Diagnostics output configuration with `level` (`debug`, `info`, `warning`, `error`, `fatal`) and `enabled` (default: `{level: "info", enabled: true}`)
 
 ### Compile Commands Integration
 
@@ -381,6 +392,8 @@ The server supports using `compile_commands.json` to provide accurate compilatio
 - **compile_commands.cache_enabled**: Enable caching of compile commands (default: `true`)
 - **compile_commands.fallback_to_hardcoded**: Fall back to default args if compile_commands.json not found (default: `true`)
 - **compile_commands.cache_expiry_seconds**: Cache expiry time in seconds (default: `300`)
+- **compile_commands.supported_extensions**: List of source file extensions to analyze (default: `[".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]`)
+- **compile_commands.exclude_patterns**: Additional file patterns to exclude from compile_commands processing (default: `[]`)
 
 **Header File Analysis:**
 - Project headers included by source files are automatically analyzed
