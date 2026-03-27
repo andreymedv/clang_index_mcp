@@ -11,10 +11,18 @@ tool descriptions, response formats, and next-step hints.
 | `runner.py` | LLM test runner with tool-call mediation loop |
 | `fixtures.py` | YAML fixture loader + argument matcher |
 | `fixtures/responses.yaml` | Canned tool responses |
-| `scenarios/basic.yaml` | 1-step test scenarios |
-| `scenarios/multi_step.yaml` | 2-3 step chained scenarios |
+| `fixtures/dom_responses.yaml` | Domain-specific response fixtures |
+| `scenarios/basic.yaml` | Basic single-step test scenarios |
+| `scenarios/multi_step.yaml` | Multi-step chained scenarios |
 | `scenarios/edge_cases.yaml` | Edge cases (empty results, direction confusion) |
+| `scenarios/advanced_semantic.yaml` | Advanced semantic search scenarios |
+| `scenarios/probes_rootcauses.yaml` | Root cause analysis probe scenarios |
+| `scenarios/probes_usage_ambiguity.yaml` | Usage ambiguity probe scenarios |
+| `scenarios/real_workflows.yaml` | Real-world workflow scenarios |
 | `optimize.py` | Automated test→analyze→fix→retest loop |
+| `bench_claude.py` | Benchmark Claude Code tool-calling behavior |
+| `bench_models.py` | Benchmark multiple model performance |
+| `diagnose_looping.py` | Diagnose infinite loop issues in LLM tool calls |
 
 ## Quick Start
 
@@ -35,12 +43,29 @@ python tools/mock_server/runner.py --model qwen3-4b --scenarios tools/mock_serve
 python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml
 python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/multi_step.yaml
 python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/edge_cases.yaml
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/advanced_semantic.yaml
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/real_workflows.yaml
 
 # Run specific scenario by ID
 python tools/mock_server/runner.py --scenario-id A-01 --scenario-id C-02
 
 # List available models
 python tools/mock_server/runner.py --list-models
+
+# Run with custom fixtures directory
+python tools/mock_server/runner.py --fixtures tools/mock_server/fixtures/responses.yaml
+
+# Use relaxed evaluation mode (skip discovery tool calls)
+python tools/mock_server/runner.py --scenarios basic.yaml --eval-mode relaxed
+
+# Enable intent validation (ask for clarification on ambiguous requests)
+python tools/mock_server/runner.py --scenarios basic.yaml --validate-intent
+
+# Custom LM Studio URL and token
+python tools/mock_server/runner.py --scenarios basic.yaml --lm-url http://localhost:1234 --token mytoken
+
+# Increase timeout for slow models
+python tools/mock_server/runner.py --scenarios basic.yaml --timeout 600
 ```
 
 ## Mock MCP Server (Standalone)
@@ -70,7 +95,7 @@ scenarios:
     category: "search"
     query: "Find all classes with Manager in their name"
     expected_steps:
-      - tool: search_codebase
+      - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains       # substring match
@@ -130,7 +155,7 @@ Fixtures define canned responses for tool calls:
 
 ```yaml
 responses:
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     match:
       pattern:
         contains: "Manager"        # match when pattern contains "Manager"
@@ -141,7 +166,7 @@ responses:
           kind: "class"
           # ...
 
-  - tool: search_codebase
+  - tool: find_symbols_by_pattern
     default: true                  # fallback when no other match
     response:
       results: []
@@ -162,8 +187,8 @@ Results are saved as JSON with per-step evaluation:
       "steps": [
         {
           "step": 1,
-          "expected_tool": "search_codebase",
-          "actual_tool": "search_codebase",
+          "expected_tool": "find_symbols_by_pattern",
+          "actual_tool": "find_symbols_by_pattern",
           "tool_match": true,
           "param_assertions": { ... },
           "params_pass": true
@@ -307,3 +332,145 @@ python tools/mock_server/optimize.py restore
 
 The compact report is designed to be ~500-1000 tokens, minimizing Claude Code
 context usage. Switch to Haiku (`/model`) for routine iteration cycles.
+
+## Multi-Model Benchmark (bench_models.py)
+
+`bench_models.py` runs MCP tool description tests across multiple LLM models and generates comparison reports. Designed for overnight unattended runs to compare model performance.
+
+### Purpose
+
+- Compare tool-calling accuracy across different models (e.g., qwen3-4b vs qwen3-8b vs qwen3-14b)
+- Identify which models have better tool description understanding
+- Generate standardized reports for model selection decisions
+
+### Basic Usage
+
+```bash
+# Benchmark single model
+python tools/mock_server/bench_models.py qwen3-4b
+
+# Benchmark multiple models
+python tools/mock_server/bench_models.py qwen3-4b qwen3-8b qwen3-14b
+
+# Run specific scenario files
+python tools/mock_server/bench_models.py --scenarios basic.yaml multi_step.yaml qwen3-4b
+
+# Include advanced scenarios
+python tools/mock_server/bench_models.py --all-scenarios qwen3-4b
+
+# Keep model loaded after run (faster for repeated tests)
+python tools/mock_server/bench_models.py --no-unload qwen3-4b
+
+# Skip loading (model already in LM Studio)
+python tools/mock_server/bench_models.py --no-load qwen3-4b
+```
+
+### Explanation Options
+
+```bash
+# Ask LLM to explain first failure per scenario
+python tools/mock_server/bench_models.py --explain-failures qwen3-4b
+
+# Collect post-hoc explanations after each run
+python tools/mock_server/bench_models.py --explain-all qwen3-4b
+```
+
+### Output & Reports
+
+Results are saved to `tools/mock_server/optimization_runs/bench_<timestamp>/`:
+
+```
+optimization_runs/
+└── bench_2026-03-27_120000/
+    ├── summary.json              # Cross-model comparison
+    ├── qwen3-4b.json             # Per-model results
+    ├── qwen3-8b.json
+    └── qwen3-14b.json
+```
+
+**summary.json** contains a comparison table:
+
+```
+============================================================
+BENCHMARK SUMMARY
+============================================================
+Model                                  Passed  Total    Rate
+------------------------------------------------------------
+qwen3-14b                             45      50      90.0% *
+qwen3-8b                              42      50      84.0%
+qwen3-4b                              38      50      76.0%
+============================================================
+* best result
+```
+
+Each per-model JSON file contains detailed results from `runner.py` including pass/fail breakdown per scenario and any explanations if requested.
+
+## Claude Model Benchmark (bench_claude.py)
+
+`bench_claude.py` benchmarks Claude Code's tool selection by presenting tool schemas as text and asking the model to choose the appropriate tool. Uses the `claude -p` (pipe mode) for direct model interaction without actual tool execution.
+
+### Purpose
+
+- Evaluate how well Claude models understand MCP tool descriptions
+- Test tool selection without requiring LM Studio or local LLM servers
+- Benchmark different Claude models (haiku, sonnet, opus) on tool-calling tasks
+- Identify ambiguities in tool descriptions that cause wrong tool selection
+
+### Basic Usage
+
+```bash
+# Run all default scenarios (probes_rootcauses.yaml)
+python tools/mock_server/bench_claude.py
+
+# Run specific scenario by ID
+python tools/mock_server/bench_claude.py --scenario PROBE-RC3-01
+
+# Use specific scenario file
+python tools/mock_server/bench_claude.py --scenarios-file scenarios/probes_rootcauses.yaml
+
+# Run all scenario files in scenarios/
+python tools/mock_server/bench_claude.py --all
+
+# Specify Claude model
+python tools/mock_server/bench_claude.py --model claude-sonnet-4-20250514
+
+# Save results to file
+python tools/mock_server/bench_claude.py --output results.json
+```
+
+### Available Models
+
+Default model is `claude-haiku-4-5-20251001`. Other options include:
+- `claude-sonnet-4-20250514` - Faster, good for iteration
+- `claude-opus-4-20250514` - Most capable, for final validation
+
+### How It Works
+
+1. Loads tool schemas from `consolidated_tools.py`
+2. Builds a prompt with tool names, descriptions, and parameters
+3. Presents each scenario query and asks Claude to select a tool
+4. Parses the JSON response and compares with expected tool
+5. Reports pass/fail for each scenario
+
+The system prompt instructs Claude to:
+- Not use `set_project` or `sync_project` (project already indexed)
+- Respond with only JSON (no markdown, no explanation)
+- Use `{"tool": null}` if no tool is needed
+
+### Output
+
+Console output shows per-scenario results:
+
+```
+=== scenarios/probes_rootcauses.yaml (10 scenarios) ===
+Running PROBE-RC3-01... ✓ PASS
+Running PROBE-RC3-02... ✗ FAIL
+   Query:  What function calls the deprecated setupAPI?
+   Tool:  expected=find_callers  actual=find_symbols_by_pattern
+  → 7/10 (70%)
+```
+
+JSON output (when `--output` specified) includes:
+- Per-scenario pass/fail status
+- Expected vs actual tool comparison
+- Query text and any error messages
