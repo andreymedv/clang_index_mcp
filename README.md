@@ -342,6 +342,41 @@ Once configured, you can use the C++ analyzer in your conversations with Claude:
   - Call graph analysis for understanding code flow
   - File locations for easy navigation
 
+## Tool Description Testing & Benchmarking
+
+This project includes a comprehensive toolkit for testing and optimizing MCP tool descriptions to improve LLM tool-calling accuracy. These tools are located in `tools/mock_server/`.
+
+### Purpose
+
+The benchmarking instruments help developers:
+- Test how well AI models understand and select the correct MCP tools
+- Identify ambiguities in tool descriptions that cause wrong tool selection
+- Compare performance across different models (local LLMs via LM Studio, Claude models)
+- Iteratively improve tool descriptions based on test results
+
+### Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| `runner.py` | LLM test runner - runs scenario-based tests against LM Studio models |
+| `server.py` | Mock MCP server - returns canned responses for rapid iteration |
+| `optimize.py` | Automated optimization loop - test→analyze→fix→retest with Claude Code |
+| `bench_models.py` | Multi-model benchmark - compare tool-calling accuracy across models |
+| `bench_claude.py` | Claude model benchmark - test Claude Code tool selection directly |
+| `diagnose_looping.py` | Diagnostic tool - identify infinite loop issues in LLM tool calls |
+
+### Quick Test Example
+
+```bash
+# Run tool description tests against a local model
+python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml
+
+# Or test with Claude Code directly
+python tools/mock_server/bench_claude.py --scenarios-file scenarios/probes_rootcauses.yaml
+```
+
+For detailed documentation on each testing tool, see [tools/mock_server/README.md](tools/mock_server/README.md).
+
 ## Configuration Options
 
 The server behavior can be configured via `.cpp-analyzer-config.json` (in project root):
