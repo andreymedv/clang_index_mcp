@@ -108,8 +108,7 @@ responses:
           file: "CoreDOM/Private/DOM_DocumentImpl.h"
           line: 15
       next_steps:
-        - "get_class_info('Document') -- possible: explore Document class"
-        - "get_class_hierarchy('Node') -- possible: see DOM inheritance tree"
+        - "get_class_info('DOM::Document') — get full details for top match"
 
   # --- L-01 variant: Classes in DOM namespace ---
   - tool: find_symbols_by_pattern
@@ -145,8 +144,7 @@ responses:
           file: "CoreDOM/Public/DOM_Attribute.h"
           line: 8
       next_steps:
-        - "get_class_info('Document') -- explore Document class"
-        - "get_class_hierarchy('Node') -- see DOM inheritance tree"
+        - "get_class_info('DOM::Document') — get full details for top match"
 
   # --- L-02: Functions in TBL_ files ---
   - tool: find_symbols_by_pattern
@@ -207,7 +205,7 @@ responses:
           file: "CoreCSS/Public/CSS_Operations.h"
           line: 45
       next_steps:
-        - "find_callers('ApplyStyle') -- possible: see incoming callers"
+        - "get_class_info('ApplyStyle') — get full details for top match"
 
   # --- O-01: Style-related functions ---
   - tool: find_symbols_by_pattern
@@ -243,7 +241,7 @@ responses:
           file: "CoreCSS/Public/CSS_StyleResolver.h"
           line: 28
       next_steps:
-        - "get_functions_called_by('ResolveInheritedStyle') -- possible: trace inheritance logic"
+        - "get_class_info('ResolveInheritedStyle') — get full details for top match"
 
   # --- P-02: DocumentBuilder search ---
   - tool: find_symbols_by_pattern
@@ -318,7 +316,7 @@ responses:
           file: "CoreDOM/Public/DOM_ExportVisitor.h"
           line: 12
       next_steps:
-        - "get_class_hierarchy('INodeVisitor') -- possible: see full implementation tree"
+        - "get_class_info('DOM::INodeVisitor') — get full details for top match"
 
   # --- R-02: Merge functions in TBL_ files ---
   - tool: find_symbols_by_pattern
@@ -346,7 +344,7 @@ responses:
           file: "TableEngine/Public/TBL_CellMerger.h"
           line: 22
       next_steps:
-        - "get_functions_called_by('MergeTableCells') -- possible: see implementation"
+        - "get_class_info('MergeTableCells') — get full details for top match"
 
   # --- PROBE-RC2-01: EventHandler search (models that search before get_class_info) ---
   - tool: find_symbols_by_pattern
@@ -386,7 +384,7 @@ responses:
           file: "CoreDOM/Public/DOM_Document.h"
           line: 68
       next_steps:
-        - "get_functions_called_by('initialize', class_name='EditorWidget') -- possible: see what initialize does"
+        - "get_class_info('UI::EditorWidget') — explore owning class"
 
   # --- PROBE: processData search ---
   - tool: find_symbols_by_pattern
@@ -401,7 +399,7 @@ responses:
           file: "CoreDOM/Public/DOM_Document.h"
           line: 75
       next_steps:
-        - "get_functions_called_by('processData', class_name='Document') -- possible: see callees"
+        - "get_class_info('DOM::Document') — explore owning class"
 
   # --- PROBE: IProcessor search ---
   - tool: find_symbols_by_pattern
@@ -416,7 +414,7 @@ responses:
           file: "CoreDOM/Public/DOM_IProcessor.h"
           line: 8
       next_steps:
-        - "get_class_hierarchy('IProcessor') -- possible: find implementations"
+        - "get_class_info('DOM::IProcessor') — get full details for top match"
 
   # --- PROBE: myFunction search ---
   - tool: find_symbols_by_pattern
@@ -431,7 +429,7 @@ responses:
           file: "CoreDOM/Public/DOM_Helpers.h"
           line: 55
       next_steps:
-        - "find_callers('myFunction') -- possible: find callers"
+        - "get_class_info('myFunction') — get full details for top match"
 
   # --- PROBE: updateUI search ---
   - tool: find_symbols_by_pattern
@@ -446,7 +444,7 @@ responses:
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 52
       next_steps:
-        - "find_callers('updateUI', class_name='EditorWidget') -- possible: find callers"
+        - "get_class_info('UI::EditorWidget') — explore owning class"
 
   # --- PROBE: render search ---
   - tool: find_symbols_by_pattern
@@ -461,7 +459,7 @@ responses:
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 60
       next_steps:
-        - "get_functions_called_by('render', class_name='EditorWidget') -- possible: see what render calls"
+        - "get_class_info('UI::EditorWidget') — explore owning class"
 
   # --- PROBE-RC1: Classes in Core/ (file_name filter) ---
   - tool: find_symbols_by_pattern
@@ -508,7 +506,7 @@ responses:
           file: "Utils/Util_Parsers.h"
           line: 8
       next_steps:
-        - "find_callers('formatString') -- possible: find callers"
+        - "get_class_info('formatString') — get full details for top match"
 
   # --- PROBE-RC1: Functions/methods in Tests/ files ---
   - tool: find_symbols_by_pattern
@@ -700,8 +698,7 @@ responses:
           attributes: ["const"]
       notes: "Uses PIMPL pattern. Implementation class is private and follows Document naming convention."
       next_steps:
-        - "get_class_hierarchy('Document') -- possible: see inheritance tree"
-        - "find_symbols_by_pattern(pattern='DocumentImpl') -- possible: find PIMPL implementation (use 'DocumentImpl' as substring pattern, not regex)"
+        - "get_class_info('DOM::Node') — explore base class"
 
   # --- Element ---
   - tool: get_class_info
@@ -740,7 +737,7 @@ responses:
           prototype: "OptionalStyle Element::getComputedStyle() const"
           attributes: ["const"]
       next_steps:
-        - "get_class_hierarchy('Element') -- possible: see inheritance tree"
+        - "get_class_info('DOM::Node') — explore base class"
 
   # --- StyleResolver ---
   - tool: get_class_info
@@ -768,8 +765,7 @@ responses:
         - qualified_name: "CSS::StyleResolver::getCascadedProperties"
           prototype: "PropertyMap StyleResolver::getCascadedProperties(const DOM::Element &elem)"
           attributes: ["const"]
-      next_steps:
-        - "find_callers('resolveStyle', class_name='StyleResolver') -- possible: find callers"
+      next_steps: []
 
   # --- INodeVisitor (interface with pure virtuals) ---
   - tool: get_class_info
@@ -798,7 +794,7 @@ responses:
           prototype: "void INodeVisitor::visitDocument(Document &doc)"
           attributes: ["pure_virtual"]
       next_steps:
-        - "get_class_hierarchy('INodeVisitor') -- possible: see all implementations"
+        - "find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') — find concrete implementations of DOM::INodeVisitor's pure virtual methods"
 
   # --- Table (for O-02) ---
   - tool: get_class_info
@@ -829,8 +825,7 @@ responses:
         - qualified_name: "TBL::TableProcessor::setTableElement"
           prototype: "void TableProcessor::setTableElement(DOM::ElementPtr tableElem)"
           attributes: []
-      next_steps:
-        - "find_callers('addRow', class_name='TableProcessor') -- possible: see incoming callers"
+      next_steps: []
 
   # --- DocumentBuilder (for P-02 follow-up) ---
   - tool: get_class_info
@@ -858,8 +853,7 @@ responses:
         - qualified_name: "TestUtils::DocumentBuilder::build"
           prototype: "DOM::DocumentPtr DocumentBuilder::build()"
           attributes: []
-      next_steps:
-        - "find_callers('build', class_name='DocumentBuilder') -- possible: see usage"
+      next_steps: []
 
   # --- EventHandler (for PROBE-RC2-01) ---
   - tool: get_class_info
@@ -886,8 +880,7 @@ responses:
         - qualified_name: "UI::EventHandler::removeEventListener"
           prototype: "void EventHandler::removeEventListener(EventType type)"
           attributes: []
-      next_steps:
-        - "get_class_hierarchy('EventHandler') -- possible: see implementations"
+      next_steps: []
 
   # --- IProcessor (for PROBE-RC2-04) ---
   - tool: get_class_info
@@ -909,7 +902,7 @@ responses:
           prototype: "void IProcessor::process(Node &node)"
           attributes: ["pure_virtual"]
       next_steps:
-        - "get_class_hierarchy('IProcessor') -- possible: see all implementations"
+        - "find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') — find concrete implementations of DOM::IProcessor's pure virtual methods"
 
   # --- DocumentImpl (for Q-03 follow-up) ---
   - tool: get_class_info
@@ -1067,7 +1060,7 @@ responses:
           file: "CoreDOM/Private/DOM_Document.cpp"
           line: 42
       next_steps:
-        - "get_functions_called_by('createToolbar', class_name='EditorWidget') -- possible: go deeper"
+        - "get_functions_called_by('UI::EditorWidget::initialize', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- PROBE-RC2-03: processData callees ---
   - tool: get_functions_called_by
@@ -1086,7 +1079,7 @@ responses:
           file: "CoreDOM/Private/DOM_Document.cpp"
           line: 102
       next_steps:
-        - "find_callers('processData', class_name='Document') -- possible: find callers"
+        - "get_functions_called_by('DOM::Document::processData', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- PROBE-RC3-03: render() callees ---
   - tool: get_functions_called_by
@@ -1105,7 +1098,7 @@ responses:
           file: "EditorUI/Private/UI_EditorWidget.cpp"
           line: 135
       next_steps:
-        - "get_functions_called_by('layoutContent', class_name='EditorWidget') -- possible: go deeper"
+        - "get_functions_called_by('UI::EditorWidget::render', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- L-04: Element::setAttribute callees ---
   - tool: get_functions_called_by
@@ -1130,7 +1123,7 @@ responses:
           file: "CoreDOM/Private/DOM_Node.cpp"
           line: 120
       next_steps:
-        - "find_callers('setAttribute', class_name='Element') -- possible: find callers"
+        - "get_functions_called_by('DOM::Element::setAttribute', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- N-01 step 1: ResolveInheritedStyle callees ---
   - tool: get_functions_called_by
@@ -1153,7 +1146,7 @@ responses:
           file: "CoreCSS/Public/CSS_CascadeEngine.h"
           line: 42
       next_steps:
-        - "get_functions_called_by('GetComputedStyle') -- possible: go deeper into style"
+        - "get_functions_called_by('ResolveInheritedStyle', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- N-01 step 2: GetComputedStyle callees ---
   - tool: get_functions_called_by
@@ -1176,7 +1169,7 @@ responses:
           file: "CoreDOM/Public/DOM_Element.h"
           line: 25
       next_steps:
-        - "find_callers('GetComputedStyle') -- possible: find incoming callers"
+        - "get_functions_called_by('GetComputedStyle', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- N-03 step 1: HandleKeyPress callees ---
   - tool: get_functions_called_by
@@ -1199,7 +1192,7 @@ responses:
           file: "EditorUI/Public/UI_SelectionManager.h"
           line: 22
       next_steps:
-        - "find_callers('HandleKeyPress') -- possible: find incoming callers"
+        - "get_functions_called_by('UI::CommandHandler::HandleKeyPress', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     default: true
@@ -1238,7 +1231,7 @@ responses:
               line: 162
               column: 8
       next_steps:
-        - "get_functions_called_by('applyResolvedStyles', class_name='StyleResolver') -- possible: trace flow"
+        - "get_functions_called_by('ApplyStyle') — see what this function calls (complements incoming calls view)"
 
   # --- M-03 step 2: StyleResolver::resolveStyle callers ---
   - tool: find_callers
@@ -1273,7 +1266,7 @@ responses:
               line: 38
               column: 8
       next_steps:
-        - "get_functions_called_by('GetComputedStyle') -- possible: trace style chain"
+        - "get_functions_called_by('CSS::StyleResolver::resolveStyle') — see what this function calls (complements incoming calls view)"
 
   # --- N-02 step 1: MergeTableCells callers ---
   - tool: find_callers
@@ -1300,7 +1293,7 @@ responses:
               line: 128
               column: 12
       next_steps:
-        - "find_callers('RecalculateSpans') -- possible: who triggers recalculation?"
+        - "get_functions_called_by('MergeTableCells') — see what this function calls (complements incoming calls view)"
 
   # --- N-02 step 2: RecalculateSpans callers ---
   - tool: find_callers
@@ -1346,7 +1339,7 @@ responses:
               line: 95
               column: 8
       next_steps:
-        - "get_functions_called_by('keyPressEvent', class_name='EditorWidget') -- possible: trace Qt events"
+        - "get_functions_called_by('UI::CommandHandler::HandleKeyPress') — see what this function calls (complements incoming calls view)"
 
   # --- O-02 step 2: TableProcessor::addRow callers ---
   - tool: find_callers
@@ -1373,7 +1366,7 @@ responses:
               line: 42
               column: 12
       next_steps:
-        - "get_functions_called_by('addRow', class_name='TableProcessor') -- possible: see implementation"
+        - "get_functions_called_by('TBL::TableProcessor::addRow') — see what this function calls (complements incoming calls view)"
 
   # --- PROBE: processEvent callers ---
   - tool: find_callers
@@ -1400,7 +1393,7 @@ responses:
               line: 95
               column: 12
       next_steps:
-        - "get_functions_called_by('processEvent') -- possible: see what processEvent calls"
+        - "get_functions_called_by('app::processEvent') — see what this function calls (complements incoming calls view)"
 
   # --- PROBE: myFunction callers ---
   - tool: find_callers
@@ -1419,7 +1412,7 @@ responses:
               line: 92
               column: 4
       next_steps:
-        - "get_functions_called_by('myFunction') -- possible: see what it calls"
+        - "get_functions_called_by('myFunction') — see what this function calls (complements incoming calls view)"
 
   # --- PROBE: updateUI callers ---
   - tool: find_callers
@@ -1438,7 +1431,7 @@ responses:
               line: 172
               column: 8
       next_steps:
-        - "get_functions_called_by('updateUI', class_name='EditorWidget') -- possible: see implementation"
+        - "get_functions_called_by('UI::EditorWidget::updateUI') — see what this function calls (complements incoming calls view)"
 
   - tool: find_callers
     default: true

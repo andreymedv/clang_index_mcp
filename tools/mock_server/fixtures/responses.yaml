@@ -61,8 +61,9 @@ responses:
           file: "src/ui/window_manager.h"
           line: 22
       next_steps:
-        - "get_class_info('DataManager') -- explore class details"
-        - "get_class_hierarchy('DataManager') -- see inheritance tree"
+        - "get_class_info('app::DataManager') — get full details for top match"
+        - "get_class_info('app::CacheManager') — get full details for top match"
+        - "get_class_info('app::ui::WindowManager') — get full details for top match"
 
   # Search for Manager pattern (all symbol types)
   - tool: find_symbols_by_pattern
@@ -112,8 +113,9 @@ responses:
           file: "src/ui/text_widget.h"
           line: 10
       next_steps:
-        - "get_class_info('Widget') -- explore base class"
-        - "get_class_hierarchy('Widget') -- see full inheritance tree"
+        - "get_class_info('app::ui::Widget') — get full details for top match"
+        - "get_class_info('app::ui::ButtonWidget') — get full details for top match"
+        - "get_class_info('app::ui::TextWidget') — get full details for top match"
 
   # Search for functions with "process"
   - tool: find_symbols_by_pattern
@@ -134,8 +136,7 @@ responses:
           file: "src/main.cpp"
           line: 15
       next_steps:
-        - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
+        - "get_class_info('app::DataManager') — explore owning class"
 
   # Search for functions with "event"
   - tool: find_symbols_by_pattern
@@ -156,8 +157,7 @@ responses:
           file: "src/ui/widget.h"
           line: 22
       next_steps:
-        - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
+        - "get_class_info('app::DataManager') — explore owning class"
 
   # Empty search result (for testing empty-result hints)
   - tool: find_symbols_by_pattern
@@ -356,9 +356,7 @@ responses:
           prototype: "const Data &DataManager::getData() const"
           attributes: ["const"]
       next_steps:
-        - "get_class_info('BaseService') -- explore base class"
-        - "get_class_hierarchy('DataManager') -- full inheritance tree"
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
+        - "get_class_info('app::BaseService') — explore base class"
 
   - tool: get_class_info
     match:
@@ -387,9 +385,7 @@ responses:
           prototype: "void Widget::resize(int w, int h)"
           attributes: ["virtual"]
       next_steps:
-        - "get_class_info('EventHandler') -- explore base class"
-        - "get_class_hierarchy('Widget') -- full inheritance tree"
-        - "find_symbols_by_pattern('render', target_type='functions_and_methods_only') -- find implementations"
+        - "get_class_info('app::EventHandler') — explore base class"
 
   - tool: get_class_info
     match:
@@ -412,8 +408,7 @@ responses:
         - qualified_name: "app::EventHandler::onFocus"
           prototype: "virtual void EventHandler::onFocus() = 0"
           attributes: ["pure_virtual"]
-      next_steps:
-        - "get_class_hierarchy('EventHandler') -- see all subclasses"
+      next_steps: []
 
   - tool: get_class_info
     default: true
@@ -591,8 +586,7 @@ responses:
           file: "src/logger.h"
           line: 15
       next_steps:
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
-        - "get_functions_called_by('validate', class_name='EventValidator') -- go deeper"
+        - "get_functions_called_by('app::DataManager::processEvent', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     match:
@@ -633,7 +627,7 @@ responses:
           file: "src/database.h"
           line: 32
       next_steps:
-        - "find_callers('initialize') -- find callers"
+        - "get_functions_called_by('app::DataManager::initialize', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     match:
@@ -655,7 +649,7 @@ responses:
           file: "src/ui/stylesheet.h"
           line: 14
       next_steps:
-        - "find_callers('render') -- find callers"
+        - "get_functions_called_by('app::ui::Widget::render', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     match:
@@ -716,7 +710,7 @@ responses:
               line: 42
               column: 8
       next_steps:
-        - "get_functions_called_by('dispatch', class_name='EventLoop') -- trace upstream"
+        - "get_functions_called_by('app::DataManager::processEvent') — see what this function calls (complements incoming calls view)"
 
   - tool: find_callers
     match:
