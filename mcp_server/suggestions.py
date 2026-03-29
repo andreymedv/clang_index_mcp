@@ -17,7 +17,7 @@ def _strip_template_args(name: str) -> str:
 
 
 def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
-    """Generate next-step suggestions for get_class_info results.
+    """Generate next-step suggestions for get_class_info results (public: get_class_info).
 
     Args:
         result_data: The dict returned by get_class_info (must be truthy / non-error)
@@ -43,7 +43,7 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     if has_pure_virtual:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"search_functions(is_definition=True, parent_class='<DerivedClassName>') "
+            f"find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') "
             f"— find concrete implementations of {class_name}'s pure virtual methods"
         )
 
@@ -51,7 +51,7 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     if len(methods) > 10:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"search_functions(pattern='...', parent_class='{class_name}') "
+            f"find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') "
             f"— filter methods by name pattern"
         )
 
@@ -59,7 +59,7 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
 
 
 def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
-    """Generate next-step suggestions for search_classes results.
+    """Generate next-step suggestions for search_classes results (public: find_symbols_by_pattern).
 
     Args:
         results: The list returned by search_classes (non-empty)
@@ -89,7 +89,7 @@ def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
 
 
 def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
-    """Generate next-step suggestions for search_functions results.
+    """Generate next-step suggestions for search_functions results (public: find_symbols_by_pattern).
 
     Args:
         results: The list returned by search_functions (non-empty)
@@ -122,7 +122,7 @@ def for_get_incoming_calls(
     result_data: Dict[str, Any],
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Generate next-step suggestions for get_incoming_calls results.
+    """Generate next-step suggestions for get_incoming_calls results (public: find_callers).
 
     Args:
         function_name: The function name that was queried
@@ -138,7 +138,7 @@ def for_get_incoming_calls(
 
     name_to_use = qualified_name or function_name
     return [
-        f"get_outgoing_calls('{name_to_use}') — see what this function calls "
+        f"get_functions_called_by('{name_to_use}') — see what this function calls "
         f"(complements incoming calls view)"
     ]
 
@@ -148,7 +148,7 @@ def for_get_outgoing_calls(
     result_data: Dict[str, Any],
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Generate next-step suggestions for get_outgoing_calls results.
+    """Generate next-step suggestions for get_outgoing_calls results (public: get_functions_called_by).
 
     Args:
         function_name: The function name that was queried
@@ -163,16 +163,16 @@ def for_get_outgoing_calls(
         return []
 
     name_to_use = qualified_name or function_name
-    return [f"get_call_sites('{name_to_use}') — get exact call locations within the function body"]
+    return [f"get_functions_called_by('{name_to_use}', return_format='exact_call_line_locations') — get exact call locations within the function body"]
 
 
 def for_get_call_sites_empty(
     function_name: str,
     class_name: str = "",
 ) -> List[str]:
-    """Suggestion when get_call_sites returns no call sites.
+    """Suggestion when get_call_sites returns no call sites (via get_functions_called_by).
 
-    Guides the caller to use get_outgoing_calls to distinguish between 'no body',
+    Guides the caller to use get_functions_called_by to distinguish between 'no body',
     'leaf function', and 'all callees are external'.
 
     Args:
@@ -185,7 +185,7 @@ def for_get_call_sites_empty(
     name = f"{class_name}::{function_name}" if class_name else function_name
     return [
         f"No call sites found within '{name}'. "
-        f"Call get_outgoing_calls('{name}') to check why — "
+        f"Call get_functions_called_by('{name}') to check why — "
         "if it reports 'all callees outside project', "
         "the function calls only external libraries; "
         "use search_scope='include_external_libraries' to list them."
@@ -197,7 +197,7 @@ def for_get_call_path_empty(
     to_function: str,
     max_depth: int,
 ) -> List[str]:
-    """Suggestion when get_call_path returns no paths.
+    """Suggestion when get_call_path returns no paths (public: trace_execution_path).
 
     Args:
         from_function: The source function name
@@ -211,5 +211,5 @@ def for_get_call_path_empty(
         f"No call path found from '{from_function}' to '{to_function}' "
         f"within max_depth={max_depth}. "
         "Try increasing max_depth or verify both functions exist "
-        "with search_functions."
+        "with find_symbols_by_pattern."
     ]
