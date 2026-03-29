@@ -27,7 +27,7 @@ scenarios:
 
   - id: "P1-03"
     category: "probe"
-    query: "Which parts of the code rely on processEvent?"
+    query: "Which functions call processEvent?"
     expected_steps:
       - tool: find_callers
         params:
@@ -37,7 +37,7 @@ scenarios:
 
   - id: "P1-04"
     category: "probe"
-    query: "I want to see everywhere processEvent is referenced"
+    query: "Show me every function that calls processEvent"
     expected_steps:
       - tool: find_callers
         params:
