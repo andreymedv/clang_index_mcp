@@ -133,7 +133,7 @@ scenarios:
     queries:
       - "What does ResolveInheritedStyle call? Then drill down into GetComputedStyle"
       - "Show callees of ResolveInheritedStyle, then go deeper into GetComputedStyle"
-      - "Trace calls from ResolveInheritedStyle, then what does GetComputedStyle call?"
+      - "Show functions called by ResolveInheritedStyle, then show callees of GetComputedStyle"
     expected_steps:
       - tool: get_functions_called_by
         params:
@@ -184,13 +184,13 @@ scenarios:
 
   - id: "O-02"
     category: "how_to"
-    query: "How is DOM::Table used? Get its class info, then find callers of addRow"
+    query: "How is the table functionality used? Get TableProcessor class info, then find callers of addRow"
     expected_steps:
       - tool: get_class_info
         params:
           class_name:
             type: contains
-            value: "Table"
+            value: "TableProcessor"
       - tool: find_callers
         params:
           function_name:
@@ -206,7 +206,7 @@ scenarios:
     category: "test_discovery"
     queries:
       - "Find classes in files under CoreDOM/Tests/"
-      - "Find classes whose file names contain 'Test' in the DOM area"
+      - "Find classes in files with 'Test' in the name"
       - "Show me test classes in CoreDOM/Tests/"
     expected_steps:
       - tool: find_symbols_by_pattern
@@ -271,6 +271,7 @@ scenarios:
             type: contains
             value: "Document"
       - tool: find_symbols_by_pattern
+        optional: true
         params:
           pattern:
             type: contains

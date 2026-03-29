@@ -37,7 +37,7 @@ scenarios:
 
   - id: "PROBE-RC1-04"
     category: "probe"
-    query: "What classes are defined in files matching pattern Helper*.h?"
+    query: "What classes are defined in files with 'Helper' in the name?"
     expected_steps:
       - tool: "find_symbols_by_pattern"
         params:

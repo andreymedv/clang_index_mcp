@@ -216,21 +216,25 @@ def list_tools_b() -> List[Tool]:
             name="find_symbols_by_pattern",
             description=(
                 "Discover C++ symbols (classes, functions, methods) by name pattern. "
-                "Use this to find a symbol when you don't know its exact location. "
-                "Once found, use get_class_info / get_class_hierarchy / "
-                "get_functions_called_by for details.\n\n"
+                "Use this ONLY when symbol identity is genuinely unknown, or when "
+                "enumerating symbols across many files, directories, or namespaces. "
+                "If the user already names a class/function and asks for details, hierarchy, "
+                "callers, or callees, use the specialized tool directly.\n\n"
                 "Do NOT use this to explore all symbols in a known file — "
                 "use find_in_file instead. Do NOT use this to get class details, "
-                "inheritance, or call graph — use the specialized tools.\n\n"
+                "inheritance, or call graph — use the specialized tools "
+                "(get_class_info, get_class_hierarchy, find_callers, get_functions_called_by).\n\n"
                 "Pattern matching (case-insensitive):\n"
                 "- 'DataRecord' — matches in any namespace\n"
                 "- 'storage::DataRecord' — matches namespace suffix\n"
                 "- '.*Manager.*' — regex, matches containing 'Manager'\n"
-                "- '' (empty) — matches ALL symbols; to enumerate a known file use find_in_file\n\n"
-                "Filtering by location (can combine with patterns):\n"
-                "- file_name: restrict to files/dirs (e.g., 'spec/', 'SAMPLE_', 'Util')\n"
-                "  Examples: pattern='' with file_name='SAMPLE_' finds all symbols in SAMPLE_ files\n"
-                "- namespace: restrict to C++ namespace (e.g., 'core', 'utils')\n\n"
+                "- '' (empty) — matches ALL symbols; combine with file_name or namespace for enumeration\n\n"
+                "Enumeration via empty pattern + filters:\n"
+                "- pattern='' + file_name='Helper' — all symbols in files with 'Helper' in path\n"
+                "- pattern='' + namespace='DOM' — all symbols in DOM namespace\n\n"
+                "file_name semantics:\n"
+                "- Substring match only (NOT glob/regex). 'Helper*.h' → use file_name='Helper'\n"
+                "- Examples: 'spec/' (files in spec dir), 'SAMPLE_' (files starting with SAMPLE_)\n\n"
                 "Returns qualified_name, kind, and more based on detail level."
             ),
             inputSchema={
@@ -332,7 +336,9 @@ def list_tools_b() -> List[Tool]:
                 "Get full details of a specific class: methods, base classes, "
                 "derived classes, documentation. Call directly when you know the "
                 "class name — handles ambiguous/partial names with disambiguation. "
-                "No need to search first."
+                "No need to search first.\n\n"
+                "If the user asks for a full tree, implementation tree, or all subclasses, "
+                "use get_class_hierarchy instead — it returns the complete inheritance graph."
             ),
             inputSchema={
                 "type": "object",
@@ -353,11 +359,15 @@ def list_tools_b() -> List[Tool]:
             description=(
                 "Get complete inheritance graph for a class — all ancestors "
                 "and descendants as a flat adjacency list. "
-                "Use to answer: 'who implements this interface?', "
+                "Call directly when you know the class/interface name; no need to search first. "
+                "Use to answer: 'full hierarchy of Widget', 'who implements this interface?', "
                 "'what classes derive from X?', 'find all subclasses', "
-                "'find all concrete implementations'. Pass the interface or "
-                "base class name to see all its implementors and ancestors. "
-                "Use this for full trees; get_class_info gives only direct parents/children."
+                "'find all concrete implementations of INodeVisitor'. "
+                "Use this for full trees; get_class_info gives only direct parents/children.\n\n"
+                "Examples:\n"
+                "- 'full hierarchy of Widget' → get_class_hierarchy('Widget')\n"
+                "- 'all implementations of INodeVisitor' → get_class_hierarchy('INodeVisitor')\n"
+                "- 'find all subclasses of X' → get_class_hierarchy('X')"
             ),
             inputSchema={
                 "type": "object",
@@ -462,12 +472,16 @@ def list_tools_b() -> List[Tool]:
             name="find_callers",
             description=(
                 "Find all functions that CALL the specified function (INCOMING "
-                "direction). Shows what code depends on this function.\n\n"
-                "Use for: 'what calls X?', 'where is X used?', 'callers of X', "
-                "impact analysis, refactoring safety.\n\n"
-                "Returns callers with definitions + exact call site locations.\n\n"
+                "direction). Pass the function name directly — no need to find it first "
+                "with find_symbols_by_pattern.\n\n"
+                "Use for questions like:\n"
+                "- 'what calls X?', 'who invokes X?', 'where is X used?'\n"
+                "- 'callers of X', 'incoming calls to X'\n"
+                "- impact analysis, refactoring safety\n\n"
+                "Do NOT use find_symbols_by_pattern first unless function identity is actually unknown. "
                 "Do NOT use for finding what a function calls — use "
-                "get_functions_called_by instead."
+                "get_functions_called_by instead (outgoing direction).\n\n"
+                "Returns callers with definitions + exact call site locations."
             ),
             inputSchema={
                 "type": "object",
@@ -501,8 +515,10 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="trace_execution_path",
             description=(
-                "Find call chains between two functions using BFS. Returns all "
-                "execution paths from source to target within max_depth hops.\n\n"
+                "Find execution paths between a source and target function using BFS. "
+                "Returns all call chains from source to target within max_depth hops.\n\n"
+                "Use ONLY when BOTH source and target are known and you need paths between them. "
+                "For 'what does X call?' without a target, use get_functions_called_by instead.\n\n"
                 "Example: trace_execution_path('main', 'loadConfig') might "
                 "return: main -> init -> setup -> loadConfig\n\n"
                 "WARNING: Can return many paths in highly connected code. "
