@@ -43,6 +43,24 @@ responses:
     match:
       target_type: "classes_and_structs_only"
       file_name:
+        contains: "CoreDOM/Tests/"
+    response:
+      results:
+        - qualified_name: "DocumentTestFixture"
+          kind: "class"
+          prototype: "class DocumentTestFixture : public ::testing::Test"
+          file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
+          line: 18
+        - qualified_name: "ElementTestFixture"
+          kind: "class"
+          prototype: "class ElementTestFixture : public ::testing::Test"
+          file: "CoreDOM/Tests/DOM_ElementTests.cpp"
+          line: 15
+
+  - tool: find_symbols_by_pattern
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
         contains: "Test"
     response:
       results:
@@ -437,7 +455,7 @@ responses:
   - tool: find_symbols_by_pattern
     match:
       file_name:
-        contains: "Core"
+        contains: "Core/"
       target_type: "classes_and_structs_only"
     response:
       results:
@@ -651,10 +669,7 @@ responses:
         - qualified_name: "DOM::Document::getDocumentElement"
           prototype: "ElementPtr Document::getDocumentElement() const"
           attributes: ["const"]
-      notes: "Uses PIMPL pattern. Implementation class is private and follows Document naming convention."
-      next_steps:
-        - "get_class_info('DOM::Node') — explore base class"
-
+      notes: "Uses PIMPL pattern. Private implementation class is DOM::DocumentImpl in CoreDOM/Private/DOM_DocumentImpl.h."
   # --- Element ---
   - tool: get_class_info
     match:
@@ -691,9 +706,6 @@ responses:
         - qualified_name: "DOM::Element::getComputedStyle"
           prototype: "OptionalStyle Element::getComputedStyle() const"
           attributes: ["const"]
-      next_steps:
-        - "get_class_info('DOM::Node') — explore base class"
-
   # --- StyleResolver ---
   - tool: get_class_info
     match:
@@ -879,8 +891,7 @@ responses:
         - qualified_name: "DOM::DocumentImpl::serialize"
           prototype: "std::string DocumentImpl::serialize() const"
           attributes: ["const"]
-      next_steps:
-        - "find_in_file('CoreDOM/Private/DOM_DocumentImpl.h') -- see all members"
+      next_steps: []
 
   - tool: get_class_info
     default: true

@@ -206,8 +206,20 @@ scenarios:
     category: "test_discovery"
     queries:
       - "Find classes in files under CoreDOM/Tests/"
-      - "Find classes in files with 'Test' in the name"
       - "Show me test classes in CoreDOM/Tests/"
+    expected_steps:
+      - tool: find_symbols_by_pattern
+        params:
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
+          file_name:
+            type: contains
+            value: "CoreDOM/Tests/"
+
+  - id: "P-03"
+    category: "test_discovery"
+    query: "Find classes in files with 'Test' in the name"
     expected_steps:
       - tool: find_symbols_by_pattern
         params:

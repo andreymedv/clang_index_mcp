@@ -24,37 +24,15 @@ def test_get_class_info_no_suggestions_for_none():
     assert suggestions.for_get_class_info(None) == []  # type: ignore[arg-type]
 
 
-def test_get_class_info_base_class_suggestion():
+def test_get_class_info_no_base_class_suggestion():
     result = {
         "qualified_name": "Child",
         "base_classes": ["BaseA"],
         "methods": [],
     }
     hints = suggestions.for_get_class_info(result)
-    assert any("get_class_info('BaseA')" in h for h in hints)
-    assert any("base class" in h for h in hints)
-
-
-def test_get_class_info_multiple_base_classes_capped_at_3():
-    result = {
-        "qualified_name": "Multi",
-        "base_classes": ["A", "B", "C", "D", "E"],
-        "methods": [],
-    }
-    hints = suggestions.for_get_class_info(result)
-    # Only first 3 bases should produce hints
-    base_hints = [h for h in hints if "get_class_info" in h and "base class" in h]
-    assert len(base_hints) == 3
-
-
-def test_get_class_info_template_base_stripped():
-    result = {
-        "qualified_name": "Container",
-        "base_classes": ["BaseTemplate<T>"],
-        "methods": [],
-    }
-    hints = suggestions.for_get_class_info(result)
-    assert any("get_class_info('BaseTemplate')" in h for h in hints)
+    assert not any("base class" in h for h in hints)
+    assert not any("get_class_info('BaseA')" in h for h in hints)
 
 
 def test_get_class_info_pure_virtual_suggestion():
@@ -144,7 +122,7 @@ def test_search_classes_three_results():
 
 def test_search_classes_more_than_three_results():
     results = [{"qualified_name": f"Class{i}"} for i in range(5)]
-    hints = suggestions.for_search_classes(results)
+    hints = suggestions.for_search_classes(results, pattern="Widget")
     # Only top match suggested when >3 results
     assert len(hints) == 1
     assert "get_class_info('Class0')" in hints[0]
@@ -152,8 +130,26 @@ def test_search_classes_more_than_three_results():
 
 
 def test_search_classes_uses_name_fallback():
-    results = [{"name": "FallbackClass"}]
-    hints = suggestions.for_search_classes(results)
+    results = [
+        {"qualified_name": "Class0"},
+        {"qualified_name": "Class1"},
+        {"qualified_name": "Class2"},
+        {"name": "FallbackClass"},
+    ]
+    hints = suggestions.for_search_classes(results, pattern="Widget")
+    assert len(hints) == 1
+    assert "get_class_info('Class0')" in hints[0]
+
+
+def test_search_classes_no_hints_for_file_enumeration():
+    results = [{"qualified_name": f"Class{i}"} for i in range(5)]
+    hints = suggestions.for_search_classes(results, pattern="", file_name="CoreDOM/Tests/")
+    assert hints == []
+
+
+def test_search_classes_no_hints_for_namespace_enumeration():
+    results = [{"qualified_name": f"Class{i}"} for i in range(5)]
+    hints = suggestions.for_search_classes(results, pattern="", namespace="DOM")
     assert hints == []
 
 

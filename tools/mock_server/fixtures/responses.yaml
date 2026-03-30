@@ -341,9 +341,6 @@ responses:
         - qualified_name: "app::DataManager::getData"
           prototype: "const Data &DataManager::getData() const"
           attributes: ["const"]
-      next_steps:
-        - "get_class_info('app::BaseService') — explore base class"
-
   - tool: get_class_info
     match:
       class_name:
@@ -370,9 +367,6 @@ responses:
         - qualified_name: "app::ui::Widget::resize"
           prototype: "void Widget::resize(int w, int h)"
           attributes: ["virtual"]
-      next_steps:
-        - "get_class_info('app::EventHandler') — explore base class"
-
   - tool: get_class_info
     match:
       class_name:
