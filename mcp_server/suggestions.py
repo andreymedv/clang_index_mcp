@@ -72,14 +72,10 @@ def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
 
     hints: List[str] = []
 
-    if len(results) <= 3:
-        # Few results — suggest get_class_info for each
-        for item in results:
-            qname = item.get("qualified_name") or item.get("name") or ""
-            if qname:
-                hints.append(f"get_class_info('{qname}') — get full class details")
-    else:
-        # Many results — suggest get_class_info for top match only
+    if len(results) > 3:
+        # Many results — suggest get_class_info for top match only.
+        # For small result sets, avoid nudging the model into extra follow-up
+        # calls when the search already answered the user's discovery task.
         top = results[0]
         qname = top.get("qualified_name") or top.get("name") or ""
         if qname:
@@ -100,21 +96,9 @@ def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
     if not results:
         return []
 
-    hints: List[str] = []
-
-    # Collect unique parent classes (up to 2)
-    seen: List[str] = []
-    for item in results:
-        parent = item.get("parent_class") or ""
-        if parent and parent not in seen:
-            seen.append(parent)
-        if len(seen) >= 2:
-            break
-
-    for parent in seen:
-        hints.append(f"get_class_info('{parent}') — explore owning class")
-
-    return hints
+    # Function searches often precede call-graph queries. Avoid steering models
+    # toward class-info detours unless the user explicitly asked about the class.
+    return []
 
 
 def for_get_incoming_calls(

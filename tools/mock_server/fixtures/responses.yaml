@@ -60,10 +60,6 @@ responses:
           prototype: "class WindowManager : public Singleton<WindowManager>"
           file: "src/ui/window_manager.h"
           line: 22
-      next_steps:
-        - "get_class_info('app::DataManager') — get full details for top match"
-        - "get_class_info('app::CacheManager') — get full details for top match"
-        - "get_class_info('app::ui::WindowManager') — get full details for top match"
 
   # Search for Manager pattern (all symbol types)
   - tool: find_symbols_by_pattern
@@ -87,8 +83,6 @@ responses:
           prototype: "bool DataManager::initialize(const Config &config)"
           file: "src/data_manager.cpp"
           line: 45
-      next_steps:
-        - "get_class_info('DataManager') -- explore class details"
 
   # Search for Widget
   - tool: find_symbols_by_pattern
@@ -112,10 +106,6 @@ responses:
           prototype: "class TextWidget : public Widget"
           file: "src/ui/text_widget.h"
           line: 10
-      next_steps:
-        - "get_class_info('app::ui::Widget') — get full details for top match"
-        - "get_class_info('app::ui::ButtonWidget') — get full details for top match"
-        - "get_class_info('app::ui::TextWidget') — get full details for top match"
 
   # Search for functions with "process"
   - tool: find_symbols_by_pattern
@@ -135,8 +125,6 @@ responses:
           prototype: "bool processInput(int argc, char **argv)"
           file: "src/main.cpp"
           line: 15
-      next_steps:
-        - "get_class_info('app::DataManager') — explore owning class"
 
   # Search for functions with "event"
   - tool: find_symbols_by_pattern
@@ -156,8 +144,6 @@ responses:
           prototype: "bool Widget::handleEvent(const Event &event)"
           file: "src/ui/widget.h"
           line: 22
-      next_steps:
-        - "get_class_info('app::DataManager') — explore owning class"
 
   # Empty search result (for testing empty-result hints)
   - tool: find_symbols_by_pattern
