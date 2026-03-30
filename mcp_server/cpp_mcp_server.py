@@ -708,7 +708,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 results, state_manager, "search_classes", max_results, total_count, fallback
             )
             if results:
-                enhanced_result.next_steps = suggestions.for_search_classes(results)
+                enhanced_result.next_steps = suggestions.for_search_classes(
+                    results,
+                    pattern=pattern,
+                    file_name=file_name,
+                    namespace=namespace,
+                )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_functions":

@@ -43,6 +43,24 @@ responses:
     match:
       target_type: "classes_and_structs_only"
       file_name:
+        contains: "CoreTree/Tests/"
+    response:
+      results:
+        - qualified_name: "ItemTestFixture"
+          kind: "class"
+          prototype: "class ItemTestFixture : public ::testing::Test"
+          file: "CoreTree/Tests/Tree_DocumentTests.cpp"
+          line: 18
+        - qualified_name: "LeafTestFixture"
+          kind: "class"
+          prototype: "class LeafTestFixture : public ::testing::Test"
+          file: "CoreTree/Tests/Tree_ElementTests.cpp"
+          line: 15
+
+  - tool: find_symbols_by_pattern
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
         contains: "Test"
     response:
       results:
@@ -437,7 +455,7 @@ responses:
   - tool: find_symbols_by_pattern
     match:
       file_name:
-        contains: "Core"
+        contains: "Core/"
       target_type: "classes_and_structs_only"
     response:
       results:
@@ -651,10 +669,7 @@ responses:
         - qualified_name: "Tree::Item::getDocumentElement"
           prototype: "LeafPtr Item::getDocumentElement() const"
           attributes: ["const"]
-      notes: "Uses PIMPL pattern. Implementation class is private and follows Item naming convention."
-      next_steps:
-        - "get_class_info('Tree::Node') — explore base class"
-
+      notes: "Uses PIMPL pattern. Private implementation class is Tree::ItemImpl in CoreTree/Private/Tree_ItemImpl.h."
   # --- Leaf ---
   - tool: get_class_info
     match:
@@ -691,9 +706,6 @@ responses:
         - qualified_name: "Tree::Leaf::getComputedStyle"
           prototype: "OptionalStyle Leaf::getComputedStyle() const"
           attributes: ["const"]
-      next_steps:
-        - "get_class_info('Tree::Node') — explore base class"
-
   # --- StyleResolver ---
   - tool: get_class_info
     match:
@@ -879,8 +891,7 @@ responses:
         - qualified_name: "Tree::ItemImpl::serialize"
           prototype: "std::string ItemImpl::serialize() const"
           attributes: ["const"]
-      next_steps:
-        - "find_in_file('CoreTree/Private/Tree_ItemImpl.h') -- see all members"
+      next_steps: []
 
   - tool: get_class_info
     default: true

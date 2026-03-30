@@ -1,19 +1,6 @@
-"""
-Conditional next-step suggestions for MCP tool responses.
-
-Design principle: hints only appear when returned data warrants them.
-Each function returns list[str] — empty list means no suggestions (no metadata added).
-"""
+"""Conditional next-step suggestions for MCP tool responses."""
 
 from typing import Any, Dict, List, Optional
-
-
-def _strip_template_args(name: str) -> str:
-    """Strip template arguments from a type name: 'Foo<T>' -> 'Foo'."""
-    idx = name.find("<")
-    if idx != -1:
-        return name[:idx].strip()
-    return name
 
 
 def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
@@ -29,13 +16,6 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
         return []
 
     hints: List[str] = []
-
-    # Suggest exploring base classes (up to 3)
-    base_classes: List[str] = result_data.get("base_classes") or []
-    for base in base_classes[:3]:
-        clean = _strip_template_args(base)
-        if clean:
-            hints.append(f"get_class_info('{clean}') — explore base class")
 
     # Suggest finding implementations of pure virtual methods
     methods: List[Dict[str, Any]] = result_data.get("methods") or []
@@ -58,7 +38,12 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     return hints
 
 
-def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
+def for_search_classes(
+    results: List[Dict[str, Any]],
+    pattern: str = "",
+    file_name: Optional[str] = None,
+    namespace: Optional[str] = None,
+) -> List[str]:
     """Generate next-step suggestions for search_classes results (public: find_symbols_by_pattern).
 
     Args:
@@ -70,8 +55,10 @@ def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
     if not results:
         return []
 
-    hints: List[str] = []
+    if pattern == "" or file_name or namespace:
+        return []
 
+    hints: List[str] = []
     if len(results) > 3:
         # Many results — suggest get_class_info for top match only.
         # For small result sets, avoid nudging the model into extra follow-up
