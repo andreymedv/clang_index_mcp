@@ -67,7 +67,7 @@ responses:
           file: "TableEngine/Tests/TBL_OperationsTests.cpp"
           line: 20
       next_steps:
-        - "get_class_info('DocumentTestFixture') -- possible: see test fixture setup"
+        - "get_class_info('DocumentTestFixture') — get full details for top match"
 
   # --- L-01 / R-01: Classes in DOM module (by file_name containing "DOM") ---
   - tool: find_symbols_by_pattern
@@ -184,8 +184,6 @@ responses:
           prototype: "void RecalculateSpans(DOM::Element &table)"
           file: "TableEngine/Public/TBL_Operations.h"
           line: 52
-      next_steps:
-        - "get_class_info('TableProcessor') -- possible: explore TableProcessor class"
 
   # --- M-02 step 1 / O-01: Search for ApplyStyle ---
   - tool: find_symbols_by_pattern
@@ -204,8 +202,6 @@ responses:
           prototype: "void ApplyStyleRecursive(DOM::Node &root, const CSS::ComputedStyle &style)"
           file: "CoreCSS/Public/CSS_Operations.h"
           line: 45
-      next_steps:
-        - "get_class_info('ApplyStyle') — get full details for top match"
 
   # --- O-01: Style-related functions ---
   - tool: find_symbols_by_pattern
@@ -240,8 +236,6 @@ responses:
           prototype: "ComputedStyle StyleResolver::resolveElementStyle(const DOM::Element &elem)"
           file: "CoreCSS/Public/CSS_StyleResolver.h"
           line: 28
-      next_steps:
-        - "get_class_info('ResolveInheritedStyle') — get full details for top match"
 
   # --- P-02: DocumentBuilder search ---
   - tool: find_symbols_by_pattern
@@ -270,8 +264,6 @@ responses:
           prototype: "DocumentBuilder &DocumentBuilder::withTable(int rows, int cols)"
           file: "TestUtils/DocumentBuilder.h"
           line: 35
-      next_steps:
-        - "get_class_info('DocumentBuilder') -- possible: see full builder API"
 
   # --- Q-03 step 2: Search for DocumentImpl ---
   - tool: find_symbols_by_pattern
@@ -290,8 +282,6 @@ responses:
           prototype: "DocumentImpl::DocumentImpl()"
           file: "CoreDOM/Private/DOM_DocumentImpl.cpp"
           line: 8
-      next_steps:
-        - "get_class_info('DocumentImpl') -- possible: see implementation details"
 
   # --- Q-01: INodeVisitor search ---
   - tool: find_symbols_by_pattern
@@ -315,8 +305,6 @@ responses:
           prototype: "class ExportVisitor : public INodeVisitor"
           file: "CoreDOM/Public/DOM_ExportVisitor.h"
           line: 12
-      next_steps:
-        - "get_class_info('DOM::INodeVisitor') — get full details for top match"
 
   # --- R-02: Merge functions in TBL_ files ---
   - tool: find_symbols_by_pattern
@@ -343,8 +331,6 @@ responses:
           prototype: "void CellMerger::unmerge(CellRange range)"
           file: "TableEngine/Public/TBL_CellMerger.h"
           line: 22
-      next_steps:
-        - "get_class_info('MergeTableCells') — get full details for top match"
 
   # --- PROBE-RC2-01: EventHandler search (models that search before get_class_info) ---
   - tool: find_symbols_by_pattern
@@ -363,8 +349,6 @@ responses:
           prototype: "void EventHandler::handleEvent(const Event &event)"
           file: "EditorUI/Public/UI_EventHandler.h"
           line: 28
-      next_steps:
-        - "get_class_info('EventHandler') -- possible: get full class details"
 
   # --- PROBE-RC3-01: initialize search ---
   - tool: find_symbols_by_pattern
@@ -383,8 +367,6 @@ responses:
           prototype: "void Document::initializeDOM()"
           file: "CoreDOM/Public/DOM_Document.h"
           line: 68
-      next_steps:
-        - "get_class_info('UI::EditorWidget') — explore owning class"
 
   # --- PROBE: processData search ---
   - tool: find_symbols_by_pattern
@@ -398,8 +380,6 @@ responses:
           prototype: "void Document::processData(const std::string &input)"
           file: "CoreDOM/Public/DOM_Document.h"
           line: 75
-      next_steps:
-        - "get_class_info('DOM::Document') — explore owning class"
 
   # --- PROBE: IProcessor search ---
   - tool: find_symbols_by_pattern
@@ -413,8 +393,6 @@ responses:
           prototype: "class IProcessor"
           file: "CoreDOM/Public/DOM_IProcessor.h"
           line: 8
-      next_steps:
-        - "get_class_info('DOM::IProcessor') — get full details for top match"
 
   # --- PROBE: myFunction search ---
   - tool: find_symbols_by_pattern
@@ -428,8 +406,6 @@ responses:
           prototype: "void myFunction(int param)"
           file: "CoreDOM/Public/DOM_Helpers.h"
           line: 55
-      next_steps:
-        - "get_class_info('myFunction') — get full details for top match"
 
   # --- PROBE: updateUI search ---
   - tool: find_symbols_by_pattern
@@ -443,8 +419,6 @@ responses:
           prototype: "void EditorWidget::updateUI()"
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 52
-      next_steps:
-        - "get_class_info('UI::EditorWidget') — explore owning class"
 
   # --- PROBE: render search ---
   - tool: find_symbols_by_pattern
@@ -458,8 +432,6 @@ responses:
           prototype: "void EditorWidget::render()"
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 60
-      next_steps:
-        - "get_class_info('UI::EditorWidget') — explore owning class"
 
   # --- PROBE-RC1: Classes in Core/ (file_name filter) ---
   - tool: find_symbols_by_pattern
@@ -484,8 +456,6 @@ responses:
           prototype: "class StyleResolver"
           file: "CoreCSS/Public/CSS_StyleResolver.h"
           line: 15
-      next_steps:
-        - "get_class_info('Document') -- possible: see Document details"
 
   # --- PROBE-RC1: Functions in Util_ files ---
   - tool: find_symbols_by_pattern
@@ -505,8 +475,6 @@ responses:
           prototype: "int parseInteger(const std::string &str)"
           file: "Utils/Util_Parsers.h"
           line: 8
-      next_steps:
-        - "get_class_info('formatString') — get full details for top match"
 
   # --- PROBE-RC1: Functions/methods in Tests/ files ---
   - tool: find_symbols_by_pattern
@@ -526,8 +494,6 @@ responses:
           prototype: "TEST_F(DocumentTestFixture, AppendChild)"
           file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
           line: 62
-      next_steps:
-        - "find_in_file(file_path='CoreDOM/Tests/DOM_DocumentTests.cpp') -- possible: see all symbols in test file"
 
   # --- PROBE-RC1: Classes in files matching Helper* ---
   - tool: find_symbols_by_pattern
@@ -542,8 +508,6 @@ responses:
           prototype: "class AssertionHelper"
           file: "TestUtils/AssertionHelpers.h"
           line: 8
-      next_steps:
-        - "get_class_info('AssertionHelper') -- possible: see helper methods"
 
   # --- O-02: DOM::Table search (when models search first) ---
   # NOTE: Specific DOM::Table fixture before broader TableProcessor
@@ -559,8 +523,6 @@ responses:
           prototype: "class Table : public Element"
           file: "CoreDOM/Public/DOM_Table.h"
           line: 22
-      next_steps:
-        - "get_class_info('Table') -- see DOM table element details"
 
   - tool: find_symbols_by_pattern
     match:
@@ -574,8 +536,6 @@ responses:
           prototype: "class TableProcessor"
           file: "TableEngine/Public/TBL_TableProcessor.h"
           line: 18
-      next_steps:
-        - "get_class_info('TableProcessor') -- see table processor class details"
 
   # Broader Table search for general queries
   - tool: find_symbols_by_pattern
@@ -595,9 +555,6 @@ responses:
           prototype: "class TableProcessor"
           file: "TableEngine/Public/TBL_TableProcessor.h"
           line: 18
-      next_steps:
-        - "get_class_info('Table') -- see DOM table element details"
-        - "get_class_info('TableProcessor') -- see table processor class details"
 
   # --- Default search response ---
   - tool: find_symbols_by_pattern
@@ -609,8 +566,6 @@ responses:
           prototype: "class Document : public Node"
           file: "CoreDOM/Public/DOM_Document.h"
           line: 24
-      next_steps:
-        - "find_symbols_by_pattern with target_type, file_name, or namespace -- possible: refine search"
 
   # =================================================================
   # find_in_file

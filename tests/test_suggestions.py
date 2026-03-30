@@ -68,10 +68,9 @@ def test_get_class_info_pure_virtual_suggestion():
     }
     hints = suggestions.for_get_class_info(result)
     assert any("pure virtual" in h for h in hints)
-    assert any("search_functions" in h for h in hints)
-    # Placeholder must use angle brackets so LLMs don't treat it as a literal value
+    assert any("find_symbols_by_pattern" in h for h in hints)
     pure_virtual_hints = [h for h in hints if "pure virtual" in h]
-    assert all("<DerivedClassName>" in h for h in pure_virtual_hints)
+    assert all("target_type='functions_and_methods_only'" in h for h in pure_virtual_hints)
     assert not any("parent_class='DerivedClass'" in h for h in pure_virtual_hints)
 
 
@@ -94,7 +93,7 @@ def test_get_class_info_many_methods_suggestion():
         "methods": [{"prototype": f"void m{i}()", "attributes": []} for i in range(11)],
     }
     hints = suggestions.for_get_class_info(result)
-    assert any("filter" in h and "search_functions" in h for h in hints)
+    assert any("filter" in h and "find_symbols_by_pattern" in h for h in hints)
 
 
 def test_get_class_info_few_methods_no_filter_suggestion():
@@ -130,9 +129,7 @@ def test_search_classes_empty_returns_no_hints():
 def test_search_classes_single_result():
     results = [{"qualified_name": "ns::MyClass", "name": "MyClass"}]
     hints = suggestions.for_search_classes(results)
-    assert len(hints) == 1
-    assert "get_class_info('ns::MyClass')" in hints[0]
-    assert "full class details" in hints[0]
+    assert hints == []
 
 
 def test_search_classes_three_results():
@@ -142,8 +139,7 @@ def test_search_classes_three_results():
         {"qualified_name": "C"},
     ]
     hints = suggestions.for_search_classes(results)
-    assert len(hints) == 3
-    assert all("get_class_info" in h for h in hints)
+    assert hints == []
 
 
 def test_search_classes_more_than_three_results():
@@ -158,7 +154,7 @@ def test_search_classes_more_than_three_results():
 def test_search_classes_uses_name_fallback():
     results = [{"name": "FallbackClass"}]
     hints = suggestions.for_search_classes(results)
-    assert any("FallbackClass" in h for h in hints)
+    assert hints == []
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +175,7 @@ def test_search_functions_no_parent_class():
 def test_search_functions_with_parent_class():
     results = [{"qualified_name": "MyClass::foo", "parent_class": "MyClass"}]
     hints = suggestions.for_search_functions(results)
-    assert len(hints) == 1
-    assert "get_class_info('MyClass')" in hints[0]
+    assert hints == []
 
 
 def test_search_functions_unique_parents_capped_at_2():
@@ -190,7 +185,7 @@ def test_search_functions_unique_parents_capped_at_2():
         {"qualified_name": "C::baz", "parent_class": "C"},
     ]
     hints = suggestions.for_search_functions(results)
-    assert len(hints) == 2
+    assert hints == []
 
 
 def test_search_functions_deduplicates_parent_class():
@@ -199,8 +194,7 @@ def test_search_functions_deduplicates_parent_class():
         {"qualified_name": "Widget::hide", "parent_class": "Widget"},
     ]
     hints = suggestions.for_search_functions(results)
-    # Only one unique parent → one hint
-    assert len(hints) == 1
+    assert hints == []
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +210,7 @@ def test_get_incoming_calls_non_empty_callers():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
     hints = suggestions.for_get_incoming_calls("doThing", result_data)
     assert len(hints) == 1
-    assert "get_outgoing_calls('doThing')" in hints[0]
+    assert "get_functions_called_by('doThing')" in hints[0]
     assert "complements" in hints[0]
 
 
@@ -231,14 +225,14 @@ def test_get_incoming_calls_uses_qualified_name_in_hint():
         "build", result_data, qualified_name="NS::Cls::build"
     )
     assert len(hints) == 1
-    assert "get_outgoing_calls('NS::Cls::build')" in hints[0]
+    assert "get_functions_called_by('NS::Cls::build')" in hints[0]
     assert "build" not in hints[0].replace("NS::Cls::build", "")
 
 
 def test_get_incoming_calls_falls_back_to_function_name_when_no_qualified():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
     hints = suggestions.for_get_incoming_calls("doThing", result_data, qualified_name=None)
-    assert "get_outgoing_calls('doThing')" in hints[0]
+    assert "get_functions_called_by('doThing')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +248,7 @@ def test_get_outgoing_calls_non_empty_callees():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
     hints = suggestions.for_get_outgoing_calls("process", result_data)
     assert len(hints) == 1
-    assert "get_call_sites('process')" in hints[0]
+    assert "get_functions_called_by('process', return_format='exact_call_line_locations')" in hints[0]
     assert "function body" in hints[0]
 
 
@@ -269,7 +263,10 @@ def test_get_outgoing_calls_uses_qualified_name_in_hint():
         "builder", result_data, qualified_name="NS::Doc::builder"
     )
     assert len(hints) == 1
-    assert "get_call_sites('NS::Doc::builder')" in hints[0]
+    assert (
+        "get_functions_called_by('NS::Doc::builder', return_format='exact_call_line_locations')"
+        in hints[0]
+    )
     assert "builder" in hints[0]
     assert "process" not in hints[0]
 
@@ -277,7 +274,7 @@ def test_get_outgoing_calls_uses_qualified_name_in_hint():
 def test_get_outgoing_calls_falls_back_to_function_name_when_no_qualified():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
     hints = suggestions.for_get_outgoing_calls("process", result_data, qualified_name=None)
-    assert "get_call_sites('process')" in hints[0]
+    assert "get_functions_called_by('process', return_format='exact_call_line_locations')" in hints[0]
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +317,7 @@ def test_get_call_sites_empty_basic():
     hints = suggestions.for_get_call_sites_empty("doThing")
     assert len(hints) == 1
     assert "doThing" in hints[0]
-    assert "get_outgoing_calls('doThing')" in hints[0]
+    assert "get_functions_called_by('doThing')" in hints[0]
     assert "search_scope='include_external_libraries'" in hints[0]
 
 
@@ -328,13 +325,13 @@ def test_get_call_sites_empty_with_class_name():
     hints = suggestions.for_get_call_sites_empty("builder", class_name="MyClass")
     assert len(hints) == 1
     assert "MyClass::builder" in hints[0]
-    assert "get_outgoing_calls('MyClass::builder')" in hints[0]
+    assert "get_functions_called_by('MyClass::builder')" in hints[0]
 
 
 def test_get_call_sites_empty_no_class_name():
     hints = suggestions.for_get_call_sites_empty("process", class_name="")
-    assert "get_outgoing_calls('process')" in hints[0]
-    assert "::" not in hints[0].split("get_outgoing_calls")[1].split(")")[0]
+    assert "get_functions_called_by('process')" in hints[0]
+    assert "::" not in hints[0].split("get_functions_called_by")[1].split(")")[0]
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +345,7 @@ def test_get_call_path_empty_includes_functions_and_depth():
     assert "main" in hints[0]
     assert "leaf" in hints[0]
     assert "max_depth=10" in hints[0]
-    assert "search_functions" in hints[0]
+    assert "find_symbols_by_pattern" in hints[0]
 
 
 def test_get_call_path_empty_suggests_increasing_depth():

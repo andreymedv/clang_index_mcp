@@ -7,13 +7,16 @@ scenarios:
 
   - id: "H-01"
     category: "empty_results"
-    query: "Find the NonExistentSymbol12345 class"
+    query: "Search for classes with 'NonExistentSymbol12345' in the name"
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
             value: "NonExistentSymbol12345"
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
 
   # -----------------------------------------------------------------
   # Category I: Direction confusion (callers vs callees)

@@ -31,13 +31,16 @@ scenarios:
 
   - id: "A-02"
     category: "search"
-    query: "Search for the Widget class"
+    query: "Search for classes with 'Widget' in the name"
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
           pattern:
             type: contains
             value: "Widget"
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
 
   - id: "A-03"
     category: "search"
