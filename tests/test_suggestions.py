@@ -45,11 +45,23 @@ def test_get_class_info_pure_virtual_suggestion():
         ],
     }
     hints = suggestions.for_get_class_info(result)
-    assert any("pure virtual" in h for h in hints)
-    assert any("find_symbols_by_pattern" in h for h in hints)
-    pure_virtual_hints = [h for h in hints if "pure virtual" in h]
-    assert all("target_type='functions_and_methods_only'" in h for h in pure_virtual_hints)
-    assert not any("parent_class='DerivedClass'" in h for h in pure_virtual_hints)
+    assert any("implementation tree" in h for h in hints)
+    assert any("get_class_hierarchy('IInterface')" in h for h in hints)
+    assert not any("find_symbols_by_pattern" in h and "pure virtual" in h for h in hints)
+
+
+def test_get_class_info_pimpl_suggestion_from_notes():
+    result = {
+        "qualified_name": "Tree::Item",
+        "methods": [],
+        "notes": (
+            "Uses PIMPL pattern. Private implementation class is "
+            "Tree::ItemImpl in CoreTree/Private/Tree_ItemImpl.h."
+        ),
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert any("get_class_info('Tree::ItemImpl')" in h for h in hints)
+    assert any("PIMPL" in h for h in hints)
 
 
 def test_get_class_info_no_pure_virtual_no_suggestion():
