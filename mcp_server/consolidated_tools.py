@@ -215,15 +215,8 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="find_symbols_by_pattern",
             description=(
-                "Discover C++ symbols (classes, functions, methods) by name pattern. "
-                "Use this ONLY when symbol identity is genuinely unknown, or when "
-                "enumerating symbols across many files, directories, or namespaces. "
-                "If the user already names a class/function and asks for details, hierarchy, "
-                "callers, or callees, use the specialized tool directly.\n\n"
-                "Do NOT use this to explore all symbols in a known file — "
-                "use find_in_file instead. Do NOT use this to get class details, "
-                "inheritance, or call graph — use the specialized tools "
-                "(get_class_info, get_class_hierarchy, find_callers, get_functions_called_by).\n\n"
+                "Discover C++ symbols by name pattern. Supports classes, functions, and methods; "
+                "optional filters narrow results by symbol kind, namespace, and file path.\n\n"
                 "Pattern matching (case-insensitive):\n"
                 "- 'DataRecord' — matches in any namespace\n"
                 "- 'storage::DataRecord' — matches namespace suffix\n"
@@ -232,12 +225,6 @@ def list_tools_b() -> List[Tool]:
                 "Enumeration via empty pattern + filters:\n"
                 "- pattern='' + file_name='Helper' — all symbols in files with 'Helper' in path\n"
                 "- pattern='' + namespace='project' — all symbols in that namespace\n\n"
-                "Filter discipline:\n"
-                "- If the user asked for classes/interfaces, set target_type='classes_and_structs_only'\n"
-                "- If the user asked for functions/methods, set target_type='functions_and_methods_only'\n"
-                "- If the user asked for one known file, switch to find_in_file instead of using file_name\n"
-                "- If returned rows visibly do NOT match your file_name/namespace/type filter, do NOT conclude "
-                "that nothing exists; refine the query or use the more specific tool\n\n"
                 "file_name semantics:\n"
                 "- Substring match only (NOT glob/regex). 'Helper*.h' → use file_name='Helper'\n"
                 "- If the user names a directory/subdirectory, preserve the narrowest path substring "
@@ -317,17 +304,14 @@ def list_tools_b() -> List[Tool]:
             description=(
                 "List all symbols defined in ONE specific file you already know. "
                 "Requires a concrete file path (absolute, relative, or basename). "
-                "Empty pattern returns all symbols in that file.\n\n"
-                "Do NOT use for directory searches or file patterns — "
-                "use find_symbols_by_pattern with file_name filter instead "
-                "(e.g., file_name='spec/', file_name='SAMPLE_')."
+                "Empty pattern returns all symbols in that file."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Concrete file path (absolute, relative, or basename). NOT a glob pattern — for multi-file search use find_symbols_by_pattern with file_name filter.",
+                        "description": "Concrete file path (absolute, relative, or basename).",
                     },
                     "pattern": {
                         "type": "string",
@@ -343,13 +327,8 @@ def list_tools_b() -> List[Tool]:
             name="get_class_info",
             description=(
                 "Get full details of a specific class: methods, base classes, "
-                "derived classes, documentation. Call directly when you know the "
-                "class name — handles ambiguous/partial names with disambiguation. "
-                "No need to search first.\n\n"
-                "If the user asks for a full tree, implementation tree, or all subclasses, "
-                "use get_class_hierarchy instead — it returns the complete inheritance graph. "
-                "Use get_class_info for the class itself; use get_class_hierarchy for "
-                "interface implementations, concrete subclasses, or full ancestor/descendant trees."
+                "derived classes, and documentation. Handles simple or qualified names "
+                "and reports ambiguities when a name matches multiple classes."
             ),
             inputSchema={
                 "type": "object",
@@ -369,12 +348,8 @@ def list_tools_b() -> List[Tool]:
             name="get_class_hierarchy",
             description=(
                 "Get complete inheritance graph for a class — all ancestors "
-                "and descendants as a flat adjacency list. "
-                "Call directly when you know the class/interface name; no need to search first. "
-                "Use to answer: 'full hierarchy of TaskRunner', 'who implements this interface?', "
-                "'what classes derive from X?', 'find all subclasses', "
-                "'find all concrete implementations of ITaskHandler'. "
-                "Use this for full trees; get_class_info gives only direct parents/children.\n\n"
+                "and descendants as a flat adjacency list. Useful for full trees, "
+                "interface implementations, and subclass discovery.\n\n"
                 "Examples:\n"
                 "- 'full hierarchy of TaskRunner' → get_class_hierarchy('TaskRunner')\n"
                 "- 'all implementations of ITaskHandler' → get_class_hierarchy('ITaskHandler')\n"
@@ -421,18 +396,13 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="get_functions_called_by",
             description=(
-                "Query the call graph: find all functions that X CALLS (outgoing direction).\n"
-                "Pass the function name directly — no need to find it first with find_symbols_by_pattern.\n\n"
+                "Query the call graph in the outgoing direction: find the functions called by X.\n\n"
                 "Use for questions like:\n"
                 "- 'What does X call?', 'What happens inside X?', 'What does X invoke/trigger internally?'\n"
                 "- 'Show all function calls that happen inside X'\n"
                 "- 'What are X's dependencies?', 'What does X depend on?'\n"
                 "- 'Show outgoing calls from X'\n"
                 "- 'Which functions does X call?'\n\n"
-                "Do NOT use for 'what calls X?' or 'where is X used?' — use find_callers instead.\n"
-                "If the question can be rephrased as 'who calls X?' or 'where is X called?', "
-                "that is INCOMING direction, so use find_callers.\n"
-                "Do NOT use find_symbols_by_pattern to answer call graph questions — this tool is the right one.\n\n"
                 "Return format:\n"
                 "- 'function_definitions_summary' (default): callee names + file locations\n"
                 "- 'function_definitions_full': complete signatures + metadata\n"
@@ -443,7 +413,7 @@ def list_tools_b() -> List[Tool]:
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the function whose outgoing calls you want to inspect.",
+                        "description": "Function name to inspect.",
                     },
                     "class_name": {
                         "type": "string",
@@ -485,18 +455,11 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="find_callers",
             description=(
-                "Find all functions that CALL the specified function (INCOMING "
-                "direction). Pass the function name directly — no need to find it first "
-                "with find_symbols_by_pattern.\n\n"
+                "Find all functions that call the specified function (incoming direction).\n\n"
                 "Use for questions like:\n"
                 "- 'what calls X?', 'who invokes X?', 'where is X used?'\n"
                 "- 'callers of X', 'incoming calls to X'\n"
                 "- impact analysis, refactoring safety\n\n"
-                "Do NOT use find_symbols_by_pattern first unless function identity is actually unknown. "
-                "Do NOT use for finding what a function calls — use "
-                "get_functions_called_by instead (outgoing direction).\n"
-                "Use this when X is the target being called. If X is the function doing the calling, "
-                "use get_functions_called_by instead.\n\n"
                 "Returns callers with definitions + exact call site locations."
             ),
             inputSchema={
@@ -533,8 +496,7 @@ def list_tools_b() -> List[Tool]:
             description=(
                 "Find execution paths between a source and target function using BFS. "
                 "Returns all call chains from source to target within max_depth hops.\n\n"
-                "Use ONLY when BOTH source and target are known and you need paths between them. "
-                "For 'what does X call?' without a target, use get_functions_called_by instead.\n\n"
+                "Use when both source and target are known and you need paths between them.\n\n"
                 "Example: trace_execution_path('main', 'loadConfig') might "
                 "return: main -> init -> setup -> loadConfig\n\n"
                 "WARNING: Can return many paths in highly connected code. "
