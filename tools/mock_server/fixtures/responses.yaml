@@ -565,8 +565,6 @@ responses:
           prototype: "void Logger::log(LogLevel, const std::string &)"
           file: "src/logger.h"
           line: 15
-      next_steps:
-        - "get_functions_called_by('app::DataManager::processEvent', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     match:
@@ -606,8 +604,6 @@ responses:
           prototype: "bool Database::connect(const Config &)"
           file: "src/database.h"
           line: 32
-      next_steps:
-        - "get_functions_called_by('app::DataManager::initialize', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     match:
@@ -628,8 +624,6 @@ responses:
           prototype: "void StyleSheet::apply(Widget &)"
           file: "src/ui/stylesheet.h"
           line: 14
-      next_steps:
-        - "get_functions_called_by('app::ui::Widget::render', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     match:
@@ -650,8 +644,6 @@ responses:
           prototype: "bool Database::insert(const DataRecord &)"
           file: "src/database.h"
           line: 44
-      next_steps:
-        - "find_callers('processData') -- find callers"
 
   - tool: get_functions_called_by
     default: true
@@ -689,8 +681,6 @@ responses:
             - file: "tests/test_runner.cpp"
               line: 42
               column: 8
-      next_steps:
-        - "get_functions_called_by('app::DataManager::processEvent') — see what this function calls (complements incoming calls view)"
 
   - tool: find_callers
     match:
@@ -716,8 +706,6 @@ responses:
             - file: "src/event_loop.cpp"
               line: 85
               column: 8
-      next_steps:
-        - "get_functions_called_by('updateUI') -- see what updateUI calls"
 
   - tool: find_callers
     default: true

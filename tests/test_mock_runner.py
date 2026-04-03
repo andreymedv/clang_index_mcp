@@ -19,8 +19,12 @@ def test_system_prompt_bans_textual_tool_plans():
 def test_system_prompt_includes_tool_selection_rules():
     assert "Tool selection rules:" in runner.TOOL_SELECTION_RULES
     assert runner.TOOL_SELECTION_RULES in runner.SYSTEM_PROMPT
+    assert "file prefixes, directories, or subtrees" in runner.SYSTEM_PROMPT
+    assert "use find_symbols_by_pattern with file_name" in runner.SYSTEM_PROMPT
     assert "use get_functions_called_by for outgoing calls" in runner.SYSTEM_PROMPT
-    assert "use find_in_file" in runner.SYSTEM_PROMPT
+    assert "Think: X -> callees" in runner.SYSTEM_PROMPT
+    assert "callers -> X" in runner.SYSTEM_PROMPT
+    assert "search first unless the name is ambiguous or not found" in runner.SYSTEM_PROMPT
 
 
 def test_find_interesting_calls_mismatches_includes_mismatches_and_extra_calls():
