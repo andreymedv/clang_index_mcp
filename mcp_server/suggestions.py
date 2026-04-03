@@ -1,6 +1,5 @@
 """Conditional next-step suggestions for MCP tool responses."""
 
-import re
 from typing import Any, Dict, List, Optional
 
 
@@ -24,19 +23,9 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     if has_pure_virtual:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"get_class_hierarchy('{class_name}') — inspect the full implementation tree "
-            f"and concrete subclasses"
+            f"find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') "
+            f"— find concrete implementations of {class_name}'s pure virtual methods"
         )
-
-    notes = result_data.get("notes")
-    if isinstance(notes, str):
-        match = re.search(r"Private implementation class is ([A-Za-z_][\w:]*)", notes)
-        if match:
-            impl_class = match.group(1)
-            hints.append(
-                f"get_class_info('{impl_class}') — inspect the private implementation "
-                f"class behind this PIMPL interface"
-            )
 
     # Suggest filtering when there are many methods
     if len(methods) > 10:

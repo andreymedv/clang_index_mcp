@@ -16,6 +16,13 @@ def test_system_prompt_bans_textual_tool_plans():
     assert "tool_code" in runner.SYSTEM_PROMPT
 
 
+def test_system_prompt_includes_tool_selection_rules():
+    assert "Tool selection rules:" in runner.TOOL_SELECTION_RULES
+    assert runner.TOOL_SELECTION_RULES in runner.SYSTEM_PROMPT
+    assert "use get_functions_called_by for outgoing calls" in runner.SYSTEM_PROMPT
+    assert "use find_in_file" in runner.SYSTEM_PROMPT
+
+
 def test_find_interesting_calls_mismatches_includes_mismatches_and_extra_calls():
     recorded_calls = [
         {"tool": "wrong_tool", "arguments": {}, "call_index": 0, "message_index": 2},
