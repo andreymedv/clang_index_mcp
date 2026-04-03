@@ -2,7 +2,6 @@
 Unit tests for mcp_server/suggestions.py — conditional next-step suggestions.
 """
 
-import pytest
 from mcp_server import suggestions
 from mcp_server.state_manager import EnhancedQueryResult
 
@@ -45,11 +44,23 @@ def test_get_class_info_pure_virtual_suggestion():
         ],
     }
     hints = suggestions.for_get_class_info(result)
-    assert any("pure virtual" in h for h in hints)
-    assert any("find_symbols_by_pattern" in h for h in hints)
-    pure_virtual_hints = [h for h in hints if "pure virtual" in h]
-    assert all("target_type='functions_and_methods_only'" in h for h in pure_virtual_hints)
-    assert not any("parent_class='DerivedClass'" in h for h in pure_virtual_hints)
+    assert any("get_class_hierarchy('IInterface')" in h for h in hints)
+    assert any("find concrete implementations" in h for h in hints)
+    assert not any("find_symbols_by_pattern" in h for h in hints)
+
+
+def test_get_class_info_pimpl_suggestion_from_notes():
+    result = {
+        "qualified_name": "DOM::Document",
+        "methods": [],
+        "notes": (
+            "Uses PIMPL pattern. Private implementation class is "
+            "DOM::DocumentImpl in CoreDOM/Private/DOM_DocumentImpl.h."
+        ),
+    }
+    hints = suggestions.for_get_class_info(result)
+    assert any("get_class_info('DOM::DocumentImpl')" in h for h in hints)
+    assert any("PIMPL" in h for h in hints)
 
 
 def test_get_class_info_no_pure_virtual_no_suggestion():
@@ -204,10 +215,7 @@ def test_get_incoming_calls_empty_callers_no_hints():
 
 def test_get_incoming_calls_non_empty_callers():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    hints = suggestions.for_get_incoming_calls("doThing", result_data)
-    assert len(hints) == 1
-    assert "get_functions_called_by('doThing')" in hints[0]
-    assert "complements" in hints[0]
+    assert suggestions.for_get_incoming_calls("doThing", result_data) == []
 
 
 def test_get_incoming_calls_non_dict_result_no_hints():
@@ -215,20 +223,16 @@ def test_get_incoming_calls_non_dict_result_no_hints():
     assert hints == []
 
 
-def test_get_incoming_calls_uses_qualified_name_in_hint():
+def test_get_incoming_calls_non_empty_with_qualified_name_still_no_hints():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    hints = suggestions.for_get_incoming_calls(
+    assert suggestions.for_get_incoming_calls(
         "build", result_data, qualified_name="NS::Cls::build"
-    )
-    assert len(hints) == 1
-    assert "get_functions_called_by('NS::Cls::build')" in hints[0]
-    assert "build" not in hints[0].replace("NS::Cls::build", "")
+    ) == []
 
 
-def test_get_incoming_calls_falls_back_to_function_name_when_no_qualified():
+def test_get_incoming_calls_non_empty_without_qualified_name_still_no_hints():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    hints = suggestions.for_get_incoming_calls("doThing", result_data, qualified_name=None)
-    assert "get_functions_called_by('doThing')" in hints[0]
+    assert suggestions.for_get_incoming_calls("doThing", result_data, qualified_name=None) == []
 
 
 # ---------------------------------------------------------------------------
@@ -242,10 +246,7 @@ def test_get_outgoing_calls_empty_callees_no_hints():
 
 def test_get_outgoing_calls_non_empty_callees():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    hints = suggestions.for_get_outgoing_calls("process", result_data)
-    assert len(hints) == 1
-    assert "get_functions_called_by('process', return_format='exact_call_line_locations')" in hints[0]
-    assert "function body" in hints[0]
+    assert suggestions.for_get_outgoing_calls("process", result_data) == []
 
 
 def test_get_outgoing_calls_non_dict_result_no_hints():
@@ -253,24 +254,16 @@ def test_get_outgoing_calls_non_dict_result_no_hints():
     assert hints == []
 
 
-def test_get_outgoing_calls_uses_qualified_name_in_hint():
+def test_get_outgoing_calls_non_empty_with_qualified_name_still_no_hints():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    hints = suggestions.for_get_outgoing_calls(
+    assert suggestions.for_get_outgoing_calls(
         "builder", result_data, qualified_name="NS::Doc::builder"
-    )
-    assert len(hints) == 1
-    assert (
-        "get_functions_called_by('NS::Doc::builder', return_format='exact_call_line_locations')"
-        in hints[0]
-    )
-    assert "builder" in hints[0]
-    assert "process" not in hints[0]
+    ) == []
 
 
-def test_get_outgoing_calls_falls_back_to_function_name_when_no_qualified():
+def test_get_outgoing_calls_non_empty_without_qualified_name_still_no_hints():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    hints = suggestions.for_get_outgoing_calls("process", result_data, qualified_name=None)
-    assert "get_functions_called_by('process', return_format='exact_call_line_locations')" in hints[0]
+    assert suggestions.for_get_outgoing_calls("process", result_data, qualified_name=None) == []
 
 
 # ---------------------------------------------------------------------------

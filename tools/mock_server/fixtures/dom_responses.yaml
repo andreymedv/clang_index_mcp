@@ -670,6 +670,8 @@ responses:
           prototype: "ElementPtr Document::getDocumentElement() const"
           attributes: ["const"]
       notes: "Uses PIMPL pattern. Private implementation class is DOM::DocumentImpl in CoreDOM/Private/DOM_DocumentImpl.h."
+      next_steps:
+        - "get_class_info('DOM::DocumentImpl') — inspect the private implementation class behind this PIMPL interface"
   # --- Element ---
   - tool: get_class_info
     match:
@@ -761,7 +763,7 @@ responses:
           prototype: "void INodeVisitor::visitDocument(Document &doc)"
           attributes: ["pure_virtual"]
       next_steps:
-        - "find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') — find concrete implementations of DOM::INodeVisitor's pure virtual methods"
+        - "get_class_hierarchy('DOM::INodeVisitor') — find concrete implementations of this interface"
 
   # --- Table (for O-02) ---
   - tool: get_class_info
@@ -869,7 +871,7 @@ responses:
           prototype: "void IProcessor::process(Node &node)"
           attributes: ["pure_virtual"]
       next_steps:
-        - "find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') — find concrete implementations of DOM::IProcessor's pure virtual methods"
+        - "get_class_hierarchy('DOM::IProcessor') — find concrete implementations of this interface"
 
   # --- DocumentImpl (for Q-03 follow-up) ---
   - tool: get_class_info
@@ -1025,8 +1027,6 @@ responses:
           prototype: "void Document::initializeDOM()"
           file: "CoreDOM/Private/DOM_Document.cpp"
           line: 42
-      next_steps:
-        - "get_functions_called_by('UI::EditorWidget::initialize', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- PROBE-RC2-03: processData callees ---
   - tool: get_functions_called_by
@@ -1044,8 +1044,6 @@ responses:
           prototype: "bool Document::validate()"
           file: "CoreDOM/Private/DOM_Document.cpp"
           line: 102
-      next_steps:
-        - "get_functions_called_by('DOM::Document::processData', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- PROBE-RC3-03: render() callees ---
   - tool: get_functions_called_by
@@ -1063,8 +1061,6 @@ responses:
           prototype: "void EditorWidget::paintElements()"
           file: "EditorUI/Private/UI_EditorWidget.cpp"
           line: 135
-      next_steps:
-        - "get_functions_called_by('UI::EditorWidget::render', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- L-04: Element::setAttribute callees ---
   - tool: get_functions_called_by
@@ -1088,8 +1084,6 @@ responses:
           prototype: "void Node::notifyModification()"
           file: "CoreDOM/Private/DOM_Node.cpp"
           line: 120
-      next_steps:
-        - "get_functions_called_by('DOM::Element::setAttribute', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- N-01 step 1: ResolveInheritedStyle callees ---
   - tool: get_functions_called_by
@@ -1111,8 +1105,6 @@ responses:
           prototype: "ComputedStyle CascadeEngine::mergeProperties(const ComputedStyle &parent, const ComputedStyle &local)"
           file: "CoreCSS/Public/CSS_CascadeEngine.h"
           line: 42
-      next_steps:
-        - "get_functions_called_by('ResolveInheritedStyle', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- N-01 step 2: GetComputedStyle callees ---
   - tool: get_functions_called_by
@@ -1134,8 +1126,6 @@ responses:
           prototype: "std::optional<std::string> Element::getAttribute(const std::string &name) const"
           file: "CoreDOM/Public/DOM_Element.h"
           line: 25
-      next_steps:
-        - "get_functions_called_by('GetComputedStyle', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   # --- N-03 step 1: HandleKeyPress callees ---
   - tool: get_functions_called_by
@@ -1157,8 +1147,6 @@ responses:
           prototype: "Selection SelectionManager::getSelection() const"
           file: "EditorUI/Public/UI_SelectionManager.h"
           line: 22
-      next_steps:
-        - "get_functions_called_by('UI::CommandHandler::HandleKeyPress', return_format='exact_call_line_locations') — get exact call locations within the function body"
 
   - tool: get_functions_called_by
     default: true
@@ -1196,8 +1184,6 @@ responses:
             - file: "EditorUI/Private/UI_EditorWidget.cpp"
               line: 162
               column: 8
-      next_steps:
-        - "get_functions_called_by('ApplyStyle') — see what this function calls (complements incoming calls view)"
 
   # --- M-03 step 2: StyleResolver::resolveStyle callers ---
   - tool: find_callers
@@ -1231,8 +1217,6 @@ responses:
             - file: "CoreCSS/Private/CSS_StyleVisitor.cpp"
               line: 38
               column: 8
-      next_steps:
-        - "get_functions_called_by('CSS::StyleResolver::resolveStyle') — see what this function calls (complements incoming calls view)"
 
   # --- N-02 step 1: MergeTableCells callers ---
   - tool: find_callers
@@ -1258,8 +1242,6 @@ responses:
             - file: "EditorUI/Private/UI_CommandHandler.cpp"
               line: 128
               column: 12
-      next_steps:
-        - "get_functions_called_by('MergeTableCells') — see what this function calls (complements incoming calls view)"
 
   # --- N-02 step 2: RecalculateSpans callers ---
   - tool: find_callers
@@ -1285,8 +1267,6 @@ responses:
             - file: "TableEngine/Private/TBL_TableProcessor.cpp"
               line: 72
               column: 4
-      next_steps:
-        - "get_class_info('TableProcessor') -- possible: see all table operations"
 
   # --- N-03 step 2: HandleKeyPress callers ---
   - tool: find_callers
@@ -1304,8 +1284,6 @@ responses:
             - file: "EditorUI/Private/UI_EditorWidget.cpp"
               line: 95
               column: 8
-      next_steps:
-        - "get_functions_called_by('UI::CommandHandler::HandleKeyPress') — see what this function calls (complements incoming calls view)"
 
   # --- O-02 step 2: TableProcessor::addRow callers ---
   - tool: find_callers
@@ -1331,8 +1309,6 @@ responses:
             - file: "CoreDOM/Tests/DOM_DocumentTests.cpp"
               line: 42
               column: 12
-      next_steps:
-        - "get_functions_called_by('TBL::TableProcessor::addRow') — see what this function calls (complements incoming calls view)"
 
   # --- PROBE: processEvent callers ---
   - tool: find_callers
@@ -1358,8 +1334,6 @@ responses:
             - file: "src/ui/widget.cpp"
               line: 95
               column: 12
-      next_steps:
-        - "get_functions_called_by('app::processEvent') — see what this function calls (complements incoming calls view)"
 
   # --- PROBE: myFunction callers ---
   - tool: find_callers
@@ -1377,8 +1351,6 @@ responses:
             - file: "CoreDOM/Private/DOM_Document.cpp"
               line: 92
               column: 4
-      next_steps:
-        - "get_functions_called_by('myFunction') — see what this function calls (complements incoming calls view)"
 
   # --- PROBE: updateUI callers ---
   - tool: find_callers
@@ -1396,8 +1368,6 @@ responses:
             - file: "EditorUI/Private/UI_EditorWidget.cpp"
               line: 172
               column: 8
-      next_steps:
-        - "get_functions_called_by('UI::EditorWidget::updateUI') — see what this function calls (complements incoming calls view)"
 
   - tool: find_callers
     default: true
