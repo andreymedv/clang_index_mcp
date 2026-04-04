@@ -2805,7 +2805,7 @@ class CppAnalyzer:
                 # BUG FIX (cplusplus_mcp-y6j): Template call tracking USR mismatch
                 # For template function calls, cursor.referenced returns the instantiation USR
                 # (e.g., someFunction<const char[6], int>), but function_index stores the
-                # generic template USR (e.g., someFunction<T...>). This causes find_callers,
+                # generic template USR (e.g., someFunction<T...>). This causes find_incoming_calls,
                 # find_callees, get_call_sites, and get_call_path to fail for templates.
                 #
                 # Solution: Use clang_getSpecializedCursorTemplate to get the canonical
@@ -5283,7 +5283,7 @@ class CppAnalyzer:
     def _lookup_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
         """Return a rich symbol dict for *usr*, querying SQLite when not in usr_index.
 
-        Used by find_callers/find_callees to avoid returning opaque USR strings for
+        Used by find_incoming_calls/find_callees to avoid returning opaque USR strings for
         external symbols.  Returns None when the symbol cannot be found at all.
         """
         if usr in self.usr_index:
@@ -5346,7 +5346,7 @@ class CppAnalyzer:
             "template_types": project_types,
         }
 
-    def find_callers(
+    def find_incoming_calls(
         self,
         function_name: str,
         class_name: str = "",
@@ -5397,7 +5397,7 @@ class CppAnalyzer:
         # "genuinely no callers" from "callers exist but all are external".
         total_raw_callers = 0
         for usr in target_usrs:
-            callers = self.call_graph_analyzer.find_callers(usr)
+            callers = self.call_graph_analyzer.find_incoming_calls(usr)
             total_raw_callers += len(callers)
             for caller_usr in callers:
                 if caller_usr in self.usr_index:
@@ -5491,7 +5491,7 @@ class CppAnalyzer:
         call_sites_list = []
 
         # Find the source function(s)
-        # Pass function_name directly (see find_callers comment for rationale).
+        # Pass function_name directly (see find_incoming_calls comment for rationale).
         source_functions = self.search_functions(
             function_name, project_only=False, class_name=class_name
         )
@@ -5574,7 +5574,7 @@ class CppAnalyzer:
         callees_list = []
 
         # Find the target function(s)
-        # Pass function_name directly (see find_callers comment for rationale).
+        # Pass function_name directly (see find_incoming_calls comment for rationale).
         target_functions = self.search_functions(
             function_name, project_only=False, class_name=class_name
         )
@@ -5654,7 +5654,7 @@ class CppAnalyzer:
     ) -> List[List[str]]:
         """Find call paths from one function to another using BFS"""
         # Find source and target USRs
-        # Pass names directly (see find_callers comment for rationale).
+        # Pass names directly (see find_incoming_calls comment for rationale).
         from_funcs = self.search_functions(from_function, project_only=False)
         to_funcs = self.search_functions(to_function, project_only=False)
 
@@ -5961,7 +5961,7 @@ class CppAnalyzer:
 
         # Support partially qualified names (e.g. "ClassName::method") by using the
         # simple (unqualified) name for index keying and matches_qualified_pattern for
-        # the full match check.  This mirrors the approach used in find_callers/find_callees.
+        # the full match check.  This mirrors the approach used in find_incoming_calls/find_callees.
         simple_name = symbol_name.split("::")[-1]
 
         def _name_matches(info) -> bool:
@@ -6007,7 +6007,7 @@ class CppAnalyzer:
 
                 # Find all callers of these functions
                 for usr in target_usrs:
-                    callers = self.call_graph_analyzer.find_callers(usr)
+                    callers = self.call_graph_analyzer.find_incoming_calls(usr)
                     for caller_usr in callers:
                         if caller_usr in self.usr_index:
                             caller_info = self.usr_index[caller_usr]

@@ -56,7 +56,7 @@ scenarios:
           symbol_name:
             type: contains
             value: "processEvent"
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -71,7 +71,7 @@ scenarios:
           symbol_name:
             type: contains
             value: "event"
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: any

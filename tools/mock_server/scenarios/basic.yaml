@@ -97,7 +97,7 @@ scenarios:
     category: "call_graph"
     query: "What functions does processEvent call?"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -107,7 +107,7 @@ scenarios:
     category: "call_graph"
     query: "Find all callers of processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains

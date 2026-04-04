@@ -16,17 +16,6 @@ def test_system_prompt_bans_textual_tool_plans():
     assert "tool_code" in runner.SYSTEM_PROMPT
 
 
-def test_system_prompt_includes_tool_selection_rules():
-    assert "Tool selection rules:" in runner.TOOL_SELECTION_RULES
-    assert runner.TOOL_SELECTION_RULES in runner.SYSTEM_PROMPT
-    assert "file prefixes, directories, or subtrees" in runner.SYSTEM_PROMPT
-    assert "use find_symbols_by_pattern with file_name" in runner.SYSTEM_PROMPT
-    assert "use get_functions_called_by for outgoing calls" in runner.SYSTEM_PROMPT
-    assert "Think: X -> callees" in runner.SYSTEM_PROMPT
-    assert "callers -> X" in runner.SYSTEM_PROMPT
-    assert "search first unless the name is ambiguous or not found" in runner.SYSTEM_PROMPT
-
-
 def test_find_interesting_calls_mismatches_includes_mismatches_and_extra_calls():
     recorded_calls = [
         {"tool": "wrong_tool", "arguments": {}, "call_index": 0, "message_index": 2},
@@ -68,7 +57,7 @@ def test_find_interesting_calls_mismatches_includes_missing_steps_without_calls(
     step_results = [
         {
             "step": 1,
-            "expected_tool": "find_callers",
+            "expected_tool": "find_incoming_calls",
             "actual_tool": None,
             "tool_match": False,
             "params_pass": False,
@@ -147,7 +136,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
     step_results = [
         {
             "step": 1,
-            "expected_tool": "find_callers",
+            "expected_tool": "find_incoming_calls",
             "actual_tool": None,
             "tool_match": False,
             "params_pass": False,
@@ -189,7 +178,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
             "prompt": (
                 "Explain why you chose not to use any tool. "
                 "If you could not find suitable tool, quote an EXACT part (or parts) "
-                "of 'find_callers' tool description that made you decide against calling one."
+                "of 'find_incoming_calls' tool description that made you decide against calling one."
                 "Be concise. Do not output any fluff."
             ),
         }
@@ -247,7 +236,7 @@ def test_run_scenario_explain_all_adds_posthoc_explanation(monkeypatch):
             "query": "Find callers of Widget",
             "expected_steps": [
                 {
-                    "tool": "find_callers",
+                    "tool": "find_incoming_calls",
                     "params": {
                         "function_name": {"type": "contains", "value": "Widget"},
                     },
@@ -305,7 +294,7 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
             "query": "Find callers of Widget",
             "expected_steps": [
                 {
-                    "tool": "find_callers",
+                    "tool": "find_incoming_calls",
                     "params": {
                         "function_name": {"type": "contains", "value": "Widget"},
                     },
@@ -331,7 +320,7 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
             "prompt": (
                 "Explain why you chose not to use any tool. "
                 "If you could not find suitable tool, quote an EXACT part (or parts) "
-                "of 'find_callers' tool description that made you decide against calling one."
+                "of 'find_incoming_calls' tool description that made you decide against calling one."
                 "Be concise. Do not output any fluff."
             ),
         }

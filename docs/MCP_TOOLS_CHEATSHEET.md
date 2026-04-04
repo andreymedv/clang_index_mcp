@@ -25,7 +25,7 @@ Quick reference for C++ code analysis tools. All examples use YAML format for re
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ CALL GRAPH (who calls what)                                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ get_incoming_calls │ Functions that call target function (INCOMING)         │
+│ find_incoming_calls │ Functions that call target function (INCOMING)         │
 │ get_outgoing_calls │ Functions called by target function (OUTGOING)         │
 │ get_call_sites     │ Exact lines where calls occur                          │
 │ get_call_path      │ Path between two functions in call graph               │
@@ -286,7 +286,7 @@ derived_hierarchy:                         # Full tree downward
 
 ## Call Graph Tools
 
-### get_incoming_calls
+### find_incoming_calls
 
 Find all functions that call the target function.
 
@@ -480,7 +480,7 @@ usage_files:
 | Find a class by name | `search_classes(pattern="ClassName")` |
 | Find all classes in a file | `search_classes(pattern="", file_name="myfile.h")` |
 | See class methods and inheritance | `get_class_info(class_name="ClassName")` |
-| Find who calls a function | `get_incoming_calls(function_name="func")` |
+| Find who calls a function | `find_incoming_calls(function_name="func")` |
 | See full inheritance tree | `get_class_hierarchy(class_name="Base")` |
 | Find function signature | `get_function_signature(function_name="func")` |
 | Search in specific namespace | `search_classes(pattern=".*", namespace="app::core")` |

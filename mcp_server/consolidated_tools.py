@@ -4,17 +4,17 @@
 Provides the public tool surface for the C++ analyzer MCP server.
 Each consolidated tool maps to one or more internal handlers.
 
-Tool mapping (public → internal):
-  set_project            → set_project_directory + wait_for_indexing (sync wait)
-  sync_project           → check_system_status + refresh_project
+Tool mapping (public      → internal):
+  set_project             → set_project_directory + wait_for_indexing (sync wait)
+  sync_project            → check_system_status + refresh_project
   find_symbols_by_pattern → search_classes / search_functions / search_symbols
-  find_in_file           → passthrough
-  get_class_info         → passthrough
-  get_class_hierarchy    → passthrough
-  get_type_alias_info    → passthrough
-  get_functions_called_by → get_outgoing_calls / get_call_sites
-  find_callers       → get_incoming_calls
-  trace_execution_path   → get_call_path
+  find_in_file            → passthrough
+  get_class_info          → passthrough
+  get_class_hierarchy     → passthrough
+  get_type_alias_info     → passthrough
+  find_outgoing_calls     → find_outgoing_calls / get_call_sites
+  find_incoming_calls     → passthrough
+  trace_execution_path    → get_call_path
 """
 
 import json
@@ -78,8 +78,8 @@ TOOL_NAMES = [
     "get_class_info",
     "get_class_hierarchy",
     "get_type_alias_info",
-    "get_functions_called_by",
-    "find_callers",
+    "find_outgoing_calls",
+    "find_incoming_calls",
     "trace_execution_path",
 ]
 
@@ -229,7 +229,7 @@ def list_tools_b() -> List[Tool]:
                 "- symbol_name='' + namespace='project' — all symbols in that namespace\n\n"
                 "Do not encode file paths or namespaces in the symbol_name when a dedicated filter exists.\n\n"
                 "file_name semantics:\n"
-                "- Substring match only (NOT glob/regex). 'Helper*.h' → use file_name='Helper'\n"
+                "- Substring match only (NOT glob/regex). 'Helper*.h' -> use file_name='Helper'\n"
                 "- If a directory/subdirectory is known, preserve the narrowest path substring.\n"
                 "- Examples: 'module/' for that subtree, 'module/tests/' for that exact tests dir\n"
                 "- Examples: 'spec/' (files in spec dir), 'SAMPLE_' (files starting with SAMPLE_)\n\n"
@@ -352,14 +352,14 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="get_class_hierarchy",
             description=(
-                "Get complete inheritance graph for a class — all ancestors "
-                "and descendants as a flat adjacency list. Useful for full trees, "
+                "Get complete inheritance graph for a named class or structure — all ancestors "
+                "and descendants as a flat adjacency list. Useful for full inheritance trees, "
                 "interface implementations, and subclass discovery. Call directly when "
-                "you know the class or interface name; do not search first.\n\n"
+                "you know the class or interface name; do NOT search symbol first.\n\n"
                 "Examples:\n"
-                "- 'full hierarchy of TaskRunner' → get_class_hierarchy('TaskRunner')\n"
-                "- 'all implementations of ITaskHandler' → get_class_hierarchy('ITaskHandler')\n"
-                "- 'find all subclasses of X' → get_class_hierarchy('X')"
+                "- 'full hierarchy of X' -> get_class_hierarchy('X')\n"
+                "- 'all implementations of Y' -> get_class_hierarchy('Y')\n"
+                "- 'find all derived classes of Z' -> get_class_hierarchy('Z')"
             ),
             inputSchema={
                 "type": "object",
@@ -400,16 +400,10 @@ def list_tools_b() -> List[Tool]:
             },
         ),
         Tool(
-            name="get_functions_called_by",
+            name="find_outgoing_calls",
             description=(
-                "Query the call graph in the outgoing direction: X -> functions it calls.\n\n"
-                "Use for questions like:\n"
-                "- 'What does X call?', 'What happens inside X?', 'What does X invoke/trigger internally?'\n"
-                "- 'Show all function calls that happen inside X'\n"
-                "- 'What are X's dependencies?', 'What does X depend on?'\n"
-                "- 'Show outgoing calls from X'\n"
-                "- 'Which functions does X call?'\n"
-                "- Do not use for 'who calls X?' or 'where is X used?' — use find_callers instead.\n\n"
+                "Find functions called by this function (outbound direction): X -> called functions.\n\n"
+                "- Do NOT use for 'who calls X?' or 'where is X used?' — use find_incoming_calls instead.\n\n"
                 "Return format:\n"
                 "- 'function_definitions_summary' (default): callee names + file locations\n"
                 "- 'function_definitions_full': complete signatures + metadata\n"
@@ -460,14 +454,10 @@ def list_tools_b() -> List[Tool]:
             },
         ),
         Tool(
-            name="find_callers",
+            name="find_incoming_calls",
             description=(
-                "Find all functions that call the specified function (incoming direction): callers -> X.\n\n"
-                "Use for questions like:\n"
-                "- 'what calls X?', 'who invokes X?', 'where is X used?'\n"
-                "- 'callers of X', 'incoming calls to X'\n"
-                "- impact analysis, refactoring safety\n\n"
-                "Do not use for what X itself calls; use get_functions_called_by instead.\n"
+                "Find all functions that call the specified function (inbound direction): callers -> X.\n\n"
+                "Do NOT use for what X itself calls; use find_outgoing_calls instead.\n"
                 "Do not search first when the function name is already known.\n\n"
                 "Returns callers with definitions + exact call site locations."
             ),
@@ -492,7 +482,7 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "enum": ["project_code_only", "include_external_libraries"],
                         "description": (
-                            "'project_code_only' (default) or " "'include_external_libraries'."
+                            "'project_code_only' (default) or 'include_external_libraries'."
                         ),
                         "default": "project_code_only",
                     },
@@ -506,7 +496,7 @@ def list_tools_b() -> List[Tool]:
                 "Find execution paths between a source and target function using BFS. "
                 "Returns all call chains from source to target within max_depth hops.\n\n"
                 "Use when both source and target are known and you need paths between them. "
-                "If you only need what X calls, use get_functions_called_by instead.\n\n"
+                "If you only need what X calls, use find_outgoing_calls instead.\n\n"
                 "Example: trace_execution_path('main', 'loadConfig') might "
                 "return: main -> init -> setup -> loadConfig\n\n"
                 "WARNING: Can return many paths in highly connected code. "
@@ -559,11 +549,11 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
     if name == "find_symbols_by_pattern":
         return await _handle_search_codebase(arguments)
 
-    if name == "get_functions_called_by":
-        return await _handle_get_functions_called_by(arguments)
+    if name == "find_outgoing_calls":
+        return await _handle_find_outgoing_calls(arguments)
 
-    if name == "find_callers":
-        return await _handle_find_callers(arguments)
+    if name == "find_incoming_calls":
+        return await _handle_find_incoming_calls(arguments)
 
     if name == "trace_execution_path":
         return await _handle_trace_execution_path(arguments)
@@ -672,7 +662,7 @@ async def _handle_search_codebase(
     return _filter_detail_level(result, detail_level)
 
 
-async def _handle_get_functions_called_by(
+async def _handle_find_outgoing_calls(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
     """Route to get_outgoing_calls or get_call_sites based on return_format."""
@@ -699,13 +689,13 @@ async def _handle_get_functions_called_by(
     return result
 
 
-async def _handle_find_callers(
+async def _handle_find_incoming_calls(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
-    """Translate find_callers → get_incoming_calls (rename only)."""
+    """Translate find_incoming_calls → find_incoming_calls (rename only)."""
     from mcp_server.cpp_mcp_server import _handle_tool_call
 
-    return await _handle_tool_call("get_incoming_calls", arguments)
+    return await _handle_tool_call("find_incoming_calls", arguments)
 
 
 async def _handle_trace_execution_path(

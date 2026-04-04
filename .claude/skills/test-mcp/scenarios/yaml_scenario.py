@@ -173,7 +173,7 @@ def _validate_scenario_schema(scenario):
         "search_classes", "search_functions", "search_symbols",
         "get_class_info", "get_function_signature", "find_in_file",
         "refresh_project", "get_server_status", "get_class_hierarchy",
-        "get_derived_classes", "find_callers", "find_callees",
+        "get_derived_classes", "find_incoming_calls", "find_callees",
         "get_call_sites", "get_files_containing_symbol", "get_call_path"
     }
 

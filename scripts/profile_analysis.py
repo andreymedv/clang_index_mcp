@@ -303,7 +303,7 @@ class ProfiledAnalyzer(CppAnalyzer):
                             calls = self.call_graph_analyzer.find_callees(symbol.usr)
                             if calls:
                                 symbol.calls = list(calls)
-                            callers = self.call_graph_analyzer.find_callers(symbol.usr)
+                            callers = self.call_graph_analyzer.find_incoming_calls(symbol.usr)
                             if callers:
                                 symbol.called_by = list(callers)
 

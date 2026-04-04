@@ -543,10 +543,10 @@ responses:
       error: "Type alias not found. Try find_symbols_by_pattern to find type names."
 
   # -----------------------------------------------------------------
-  # get_functions_called_by (outgoing calls)
+  # find_outgoing_calls (outgoing calls)
   # -----------------------------------------------------------------
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "processEvent"
@@ -566,7 +566,7 @@ responses:
           file: "src/logger.h"
           line: 15
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name: "main"
     response:
@@ -585,7 +585,7 @@ responses:
           file: "src/ui/application.h"
           line: 30
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "initialize"
@@ -605,7 +605,7 @@ responses:
           file: "src/database.h"
           line: 32
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "render"
@@ -625,7 +625,7 @@ responses:
           file: "src/ui/stylesheet.h"
           line: 14
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "processData"
@@ -645,7 +645,7 @@ responses:
           file: "src/database.h"
           line: 44
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     default: true
     response:
       function: "unknown"
@@ -655,10 +655,10 @@ responses:
         - "If it is a method, pass class_name parameter to narrow the search."
 
   # -----------------------------------------------------------------
-  # find_callers (incoming calls / callers)
+  # find_incoming_calls (incoming calls / callers)
   # -----------------------------------------------------------------
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "processEvent"
@@ -682,7 +682,7 @@ responses:
               line: 42
               column: 8
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "myFunction"
@@ -691,7 +691,7 @@ responses:
       callers: []
       message: "No callers found — this function appears to be unused or not yet in the index."
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "updateUI"
@@ -707,7 +707,7 @@ responses:
               line: 85
               column: 8
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     default: true
     response:
       function: "unknown"

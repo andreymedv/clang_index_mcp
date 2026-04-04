@@ -984,11 +984,11 @@ def export_results(
 
 TOOL_SELECTION_RULES = """\
 Tool selection rules:
+- If the request names a specific class or function and asks for details, hierarchy, callers, or callees, use the specialized tool directly. Do not search for symbol unless the name is ambiguous or other tools return empty result.
 - If the request names a specific file, use find_in_file. If it mentions file prefixes, directories, or subtrees, use find_symbols_by_pattern with file_name. If it mentions a namespace, use find_symbols_by_pattern with namespace.
-- If the request names a specific class or function and asks for details, hierarchy, callers, or callees, use the specialized tool directly. Do not search first unless the name is ambiguous or not found.
-- For call graph questions, use get_functions_called_by for outgoing calls from a function and find_callers for incoming calls to a function. Think: X -> callees for get_functions_called_by, callers -> X for find_callers.
-- Use trace_execution_path only when both source and target functions are known and the task asks for paths between them.
-- Use find_symbols_by_pattern as a discovery tool when the exact symbol identity is unknown or the task is broad discovery; otherwise prefer the more specific tool.
+- Use find_symbols_by_pattern as a discovery tool ONLY when the exact symbol identity is unknown or the task is broad discovery; otherwise prefer the more specific tool.
+- For call graph questions, use find_outgoing_calls for outbound calls from a function and find_incoming_calls for inbound calls to a function. Think: X -> callees for find_outgoing_calls, callers -> X for find_incoming_calls.
+- Use trace_execution_path only when both source and target functions are known and the request asks for call paths between them.
 """
 
 SYSTEM_PROMPT = """\
