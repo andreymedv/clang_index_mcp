@@ -324,6 +324,8 @@ responses:
       prototype: "class DataManager : public BaseService"
       file: "src/data_manager.h"
       line: 15
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details."
       base_classes:
         - "app::BaseService"
       derived_classes:
@@ -351,6 +353,8 @@ responses:
       prototype: "class Widget : public EventHandler"
       file: "src/ui/widget.h"
       line: 18
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. Use get_class_hierarchy if you need the full inheritance tree."
       base_classes:
         - "app::EventHandler"
       derived_classes:
@@ -377,6 +381,8 @@ responses:
       prototype: "class EventHandler"
       file: "src/event_handler.h"
       line: 10
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. Use get_class_hierarchy if you need the full inheritance tree."
       base_classes: []
       derived_classes:
         - "app::ui::Widget"
@@ -406,6 +412,8 @@ responses:
         contains: "Widget"
     response:
       root: "app::EventHandler"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "app::EventHandler"
           children: ["app::ui::Widget"]
@@ -426,6 +434,8 @@ responses:
         contains: "DataManager"
     response:
       root: "app::BaseService"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "app::BaseService"
           children: ["app::DataManager", "app::NetworkManager"]
@@ -442,6 +452,8 @@ responses:
         contains: "IProcessor"
     response:
       root: "app::IProcessor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "app::IProcessor"
           children: ["app::BatchProcessor", "app::StreamProcessor", "app::AsyncProcessor"]
@@ -460,6 +472,8 @@ responses:
         contains: "INodeVisitor"
     response:
       root: "app::INodeVisitor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "app::INodeVisitor"
           children: ["app::DOMPrinter", "app::NodeCounter", "app::StyleApplier"]

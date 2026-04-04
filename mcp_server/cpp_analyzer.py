@@ -5278,6 +5278,11 @@ class CppAnalyzer:
         if truncated:
             result["truncated"] = True
             result["nodes_returned"] = len(classes)
+            result["completeness"] = "partial"
+            result["completeness_note"] = "Hierarchy was truncated due to max_nodes or max_depth limit. Increase limits to get full hierarchy."
+        else:
+            result["completeness"] = "complete"
+            result["completeness_note"] = "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
         return result
 
     def _lookup_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:

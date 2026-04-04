@@ -647,6 +647,8 @@ responses:
       prototype: "class Item : public Node"
       file: "CoreTree/Public/Tree_Document.h"
       line: 24
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. This class uses PIMPL pattern - see notes for implementation class."
       base_classes:
         - "Tree::Node"
       derived_classes: []
@@ -683,6 +685,8 @@ responses:
       prototype: "class Leaf : public Node"
       file: "CoreTree/Public/Tree_Element.h"
       line: 18
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details."
       base_classes:
         - "Tree::Node"
       derived_classes: []
@@ -911,6 +915,8 @@ responses:
         contains: "INodeVisitor"
     response:
       root: "Tree::INodeVisitor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "Tree::INodeVisitor"
           children: ["CSS::StyleVisitor", "Tree::ExportVisitor", "Tree::ValidationVisitor"]
@@ -932,6 +938,8 @@ responses:
         contains: "Node"
     response:
       root: "Tree::Node"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "Tree::Node"
           children: ["Tree::Item", "Tree::Leaf", "Tree::TextNode"]
@@ -949,6 +957,8 @@ responses:
         contains: "EventHandler"
     response:
       root: "UI::EventHandler"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "UI::EventHandler"
           children: ["UI::KeyEventHandler", "UI::MouseEventHandler"]
@@ -964,6 +974,8 @@ responses:
         contains: "IProcessor"
     response:
       root: "Tree::IProcessor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "Tree::IProcessor"
           children: ["Tree::NodeProcessor", "Tree::StyleProcessor"]
