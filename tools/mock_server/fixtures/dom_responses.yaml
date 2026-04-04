@@ -647,6 +647,8 @@ responses:
       prototype: "class Document : public Node"
       file: "CoreDOM/Public/DOM_Document.h"
       line: 24
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. This class uses PIMPL pattern - see notes for implementation class."
       base_classes:
         - "DOM::Node"
       derived_classes: []
@@ -683,6 +685,8 @@ responses:
       prototype: "class Element : public Node"
       file: "CoreDOM/Public/DOM_Element.h"
       line: 18
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details."
       base_classes:
         - "DOM::Node"
       derived_classes: []
@@ -911,6 +915,8 @@ responses:
         contains: "INodeVisitor"
     response:
       root: "DOM::INodeVisitor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "DOM::INodeVisitor"
           children: ["CSS::StyleVisitor", "DOM::ExportVisitor", "DOM::ValidationVisitor"]
@@ -932,6 +938,8 @@ responses:
         contains: "Node"
     response:
       root: "DOM::Node"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "DOM::Node"
           children: ["DOM::Document", "DOM::Element", "DOM::TextNode"]
@@ -949,6 +957,8 @@ responses:
         contains: "EventHandler"
     response:
       root: "UI::EventHandler"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "UI::EventHandler"
           children: ["UI::KeyEventHandler", "UI::MouseEventHandler"]
@@ -964,6 +974,8 @@ responses:
         contains: "IProcessor"
     response:
       root: "DOM::IProcessor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "DOM::IProcessor"
           children: ["DOM::NodeProcessor", "DOM::StyleProcessor"]

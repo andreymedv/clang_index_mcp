@@ -63,6 +63,9 @@ class FixtureStore:
 
         Returns the response dict (ready to be JSON-serialized).
         """
+        # Normalize arguments: unwrap if wrapped in 'parameters'
+        normalized_args = self._normalize_arguments(arguments)
+
         # Pass 1: find all matching entries, pick most specific
         best_entry = None
         best_specificity = -1
@@ -72,7 +75,7 @@ class FixtureStore:
             match_spec = entry.get("match", {})
             if not match_spec:
                 continue
-            if self._matches(match_spec, arguments):
+            if self._matches(match_spec, normalized_args):
                 specificity = len(match_spec)
                 if specificity > best_specificity:
                     best_specificity = specificity
@@ -83,13 +86,14 @@ class FixtureStore:
 
         # Pass 2: default for this tool (only if exists and no arguments provided)
         # We no longer use defaults when arguments were provided but didn't match
-        if tool_name in self._defaults and not arguments:
+        if tool_name in self._defaults and not normalized_args:
             return self._defaults[tool_name]
 
         # Pass 3: record unmatched incident and return internal error
         incident = {
             "tool": tool_name,
             "arguments": arguments,
+            "normalized_arguments": normalized_args,
         }
         self._unmatched_incidents.append(incident)
 
@@ -99,6 +103,22 @@ class FixtureStore:
             "message": f"The mock server has no canned response for this tool call. Tool: {tool_name}, Arguments: {json.dumps(arguments)}",
             "hint": "This is a test infrastructure issue - the fixture is missing for this specific tool call.",
         }
+
+    @staticmethod
+    def _normalize_arguments(arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize arguments by unwrapping common wrapper patterns.
+
+        Some models wrap arguments in {'parameters': {...}} instead of passing
+        them directly. This method unwraps such patterns.
+        """
+        if not isinstance(arguments, dict):
+            return arguments
+
+        # Unwrap {'parameters': {...}} → {...}
+        if "parameters" in arguments and len(arguments) == 1:
+            return arguments["parameters"]
+
+        return arguments
 
     def match_json(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """Like match() but returns JSON string."""
