@@ -41,7 +41,7 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     if len(methods) > 10:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"find_symbols_by_pattern(pattern='...', target_type='functions_and_methods_only') "
+            f"find_symbols_by_pattern(symbol_name='...', target_type='functions_and_methods_only') "
             f"— filter methods by name pattern"
         )
 

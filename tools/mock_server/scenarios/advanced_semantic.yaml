@@ -22,7 +22,7 @@ scenarios:
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "Style"
           target_type:

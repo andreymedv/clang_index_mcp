@@ -685,7 +685,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
 
         if name == "search_classes":
             project_only = _parse_search_scope(arguments)
-            pattern = arguments["pattern"]
+            pattern = arguments["symbol_name"]
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
             max_results = arguments.get("max_results", None)
@@ -721,7 +721,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             class_name = arguments.get("class_name", None)
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
-            pattern = arguments["pattern"]
+            pattern = arguments["symbol_name"]
             max_results = arguments.get("max_results", None)
             signature_pattern = arguments.get("signature_pattern", None)
             include_attributes = arguments.get("include_attributes", False)
@@ -780,7 +780,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_symbols":
-            pattern = arguments["pattern"]
+            pattern = arguments["symbol_name"]
             project_only = _parse_search_scope(arguments)
             symbol_types = arguments.get("symbol_types", None)
             namespace = arguments.get("namespace", None)

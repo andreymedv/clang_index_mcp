@@ -11,7 +11,7 @@ scenarios:
     expected_steps:
       - tool: "find_symbols_by_pattern"
         params:
-          pattern: { type: one_of, value: ["", ".*", ".+", "*"] }
+          symbol_name: { type: one_of, value: ["", ".*", ".+", "*"] }
           target_type: { type: exact, value: "classes_and_structs_only" }
           file_name: { type: contains, value: "Core/" }
 
@@ -21,7 +21,7 @@ scenarios:
     expected_steps:
       - tool: "find_symbols_by_pattern"
         params:
-          pattern: { type: one_of, value: ["", ".*", ".+", "*"] }
+          symbol_name: { type: one_of, value: ["", ".*", ".+", "*"] }
           target_type: { type: exact, value: "functions_and_methods_only" }
           file_name: { type: contains, value: "Util_" }
 
@@ -31,7 +31,7 @@ scenarios:
     expected_steps:
       - tool: "find_symbols_by_pattern"
         params:
-          pattern: { type: one_of, value: ["", ".*", ".+", "*"] }
+          symbol_name: { type: one_of, value: ["", ".*", ".+", "*"] }
           target_type: { type: exact, value: "functions_and_methods_only" }
           file_name: { type: contains, value: "Tests/" }
 
@@ -41,7 +41,7 @@ scenarios:
     expected_steps:
       - tool: "find_symbols_by_pattern"
         params:
-          pattern: { type: one_of, value: ["", ".*", ".+", "*"] }
+          symbol_name: { type: one_of, value: ["", ".*", ".+", "*"] }
           target_type: { type: exact, value: "classes_and_structs_only" }
           file_name: { type: contains, value: "Helper" }
 

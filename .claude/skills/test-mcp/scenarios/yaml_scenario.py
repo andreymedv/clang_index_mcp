@@ -292,16 +292,16 @@ def _validate_expectations(expectations, step_num):
                        f"  Hint: value: 'expected text'"
 
         elif exp_type == "content_matches":
-            if "pattern" not in expectation:
-                return f"Step {step_num}, expectation {exp_num}: 'content_matches' type requires 'pattern' field\n" \
-                       f"  Hint: pattern: 'regex_pattern'"
+            if "symbol_name" not in expectation:
+                return f"Step {step_num}, expectation {exp_num}: 'content_matches' type requires 'symbol_name' field\n" \
+                       f"  Hint: symbol_name: 'regex_pattern'"
 
             # Validate regex pattern
-            pattern = expectation.get("pattern")
+            pattern = expectation.get("symbol_name")
             try:
                 re.compile(pattern)
             except re.error as e:
-                return f"Step {step_num}, expectation {exp_num}: invalid regex pattern: {e}"
+                return f"Step {step_num}, expectation {exp_num}: invalid regex symbol_name: {e}"
 
         elif exp_type == "has_field":
             if "field" not in expectation:
@@ -405,7 +405,7 @@ def _check_expectation(expectation, response_text, response):
         return True, ""
 
     elif exp_type == "content_matches":
-        pattern = expectation.get("pattern", "")
+        pattern = expectation.get("symbol_name", "")
         if not re.search(pattern, response_text):
             return False, f"Content does not match pattern '{pattern}'"
         return True, ""
