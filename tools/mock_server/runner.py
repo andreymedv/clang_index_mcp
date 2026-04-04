@@ -899,6 +899,9 @@ def run_scenario(
             max_tokens=2048,
         )
 
+    # Collect unmatched incidents from the store
+    unmatched_incidents = store.get_unmatched_incidents()
+
     result: Dict[str, Any] = {
         "scenario_id": scenario["id"],
         "category": scenario.get("category", ""),
@@ -917,6 +920,12 @@ def run_scenario(
         },
         "error": error,
     }
+
+    # Include unmatched incidents if any
+    if unmatched_incidents:
+        result["unmatched_incidents"] = list(unmatched_incidents)
+        # Clear incidents for next scenario
+        store.clear_incidents()
 
     # Include query variant metadata if present
     if scenario.get("query_variant"):
@@ -939,12 +948,13 @@ def export_results(
     scenarios_file: str,
     fixtures_file: str,
     eval_mode: str = "strict",
+    unmatched_incidents: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """Export results as structured JSON."""
     passed = sum(1 for r in results if r["overall_pass"])
     total = len(results)
 
-    report = {
+    report: Dict[str, Any] = {
         "run_id": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "model": model,
         "eval_mode": eval_mode,
@@ -958,6 +968,11 @@ def export_results(
             "pass_rate": round(passed / total, 3) if total > 0 else 0,
         },
     }
+
+    # Include unmatched incidents if any
+    if unmatched_incidents:
+        report["unmatched_incidents"] = unmatched_incidents
+        report["summary"]["unmatched_incident_count"] = len(unmatched_incidents)
 
     with open(output_path, "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -1260,6 +1275,8 @@ def main() -> None:
         system_prompt = SYSTEM_PROMPT + VALIDATE_INTENT_ADDITION
 
     results: List[Dict[str, Any]] = []
+    all_unmatched_incidents: List[Dict[str, Any]] = []
+
     for i, scenario in enumerate(scenarios):
         if state.interrupted:
             break
@@ -1282,6 +1299,14 @@ def main() -> None:
             eval_mode=args.eval_mode,
         )
         results.append(result)
+
+        # Collect unmatched incidents from this scenario
+        if result.get("unmatched_incidents"):
+            for incident in result["unmatched_incidents"]:
+                incident["scenario_id"] = scenario["id"]
+                all_unmatched_incidents.append(incident)
+            # Print warning about unmatched incidents
+            print(f"  WARN: {len(result['unmatched_incidents'])} unmatched tool call(s)")
 
         # Detect clarification_requested: no tool calls, model responded with text
         clarification = (
@@ -1331,6 +1356,7 @@ def main() -> None:
         scenarios_file=args.scenarios,
         fixtures_file=fixtures_label,
         eval_mode=args.eval_mode,
+        unmatched_incidents=all_unmatched_incidents if all_unmatched_incidents else None,
     )
 
     # Summary
