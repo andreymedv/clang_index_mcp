@@ -297,7 +297,7 @@ The MCP server provides these tools:
 | `search_symbols` | Search all symbols | `pattern`, `search_scope`, `symbol_types` |
 | `find_in_file` | Search symbols in a specific file | `file_path`, `pattern` |
 | `get_class_hierarchy` | Get complete inheritance hierarchy (ancestors and descendants) | `class_name` |
-| `get_incoming_calls` | Find functions that call a function | `function_name`, `class_name` |
+| `find_incoming_calls` | Find functions that call a function | `function_name`, `class_name` |
 | `get_outgoing_calls` | Find functions called by a function | `function_name`, `class_name` |
 | `get_call_path` | Find call paths between functions | `from_function`, `to_function`, `max_depth` |
 | `get_server_status` | Get server status and statistics | None |

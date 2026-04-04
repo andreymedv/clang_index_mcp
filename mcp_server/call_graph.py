@@ -174,7 +174,7 @@ class CallGraphAnalyzer:
         Rebuild call graph from symbol list.
 
         DEPRECATED (v9.0): This method is now a no-op.
-        Call graph data is loaded lazily from SQLite via find_callers/find_callees.
+        Call graph data is loaded lazily from SQLite via find_incoming_calls/find_callees.
         The calls/called_by fields were removed from SymbolInfo in v9.0.
 
         For backward compatibility, this method is kept but does nothing.
@@ -203,7 +203,7 @@ class CallGraphAnalyzer:
             )
             self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
-    def find_callers(self, function_usr: str) -> Set[str]:
+    def find_incoming_calls(self, function_usr: str) -> Set[str]:
         """
         Find all functions that call the specified function.
 

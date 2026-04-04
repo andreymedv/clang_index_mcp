@@ -337,7 +337,7 @@ class Derived2 : public Base {};
         assert "Derived2" in names_qualified
 
     def test_get_call_graph_tool(self, temp_project_dir):
-        """Test get_call_graph functionality using find_callees and find_callers"""
+        """Test get_call_graph functionality using find_callees and find_incoming_calls"""
         (temp_project_dir / "src" / "test.cpp").write_text("""
 void helper() {}
 void process() {
@@ -354,15 +354,15 @@ void main() {
         # Get callees (functions called by process)
         callees_result = analyzer.find_callees("process")
         assert callees_result is not None
-        # find_callees now returns dict with 'callees' key (matching find_callers pattern)
+        # find_callees now returns dict with 'callees' key (matching find_incoming_calls pattern)
         assert isinstance(callees_result, dict)
         assert 'callees' in callees_result
         assert isinstance(callees_result['callees'], list)
 
         # Get callers (functions that call process)
-        callers_result = analyzer.find_callers("process")
+        callers_result = analyzer.find_incoming_calls("process")
         assert callers_result is not None
-        # Phase 3: find_callers now returns dict with 'callers' key
+        # Phase 3: find_incoming_calls now returns dict with 'callers' key
         assert isinstance(callers_result, dict)
         assert 'callers' in callers_result
         assert isinstance(callers_result['callers'], list)
@@ -504,14 +504,14 @@ class TestMCPServerToolsAdditional:
     def test_nonexistent_class(self, temp_project_dir):
         """Test querying non-existent class returns None or empty"""
         (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
-        
+
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
-        
+
         # Query non-existent class
         info = analyzer.get_class_info("NonExistentClass")
         assert info is None, "Should return None for non-existent class"
-        
+
         # Search should return empty list
         results = analyzer.search_classes("NonExistentClass")
         assert isinstance(results, list)
@@ -520,12 +520,12 @@ class TestMCPServerToolsAdditional:
     def test_invalid_project_path(self):
         """Test that invalid project path raises appropriate error"""
         import pytest
-        
+
         # Test with non-existent path - should raise or handle gracefully
         # CppAnalyzer might create directories, so we test with None or invalid type
         with pytest.raises((TypeError, ValueError, OSError)):
             analyzer = CppAnalyzer(None)
-        
+
         # Test with file instead of directory
         import tempfile
         with tempfile.NamedTemporaryFile() as tmp:
@@ -545,31 +545,31 @@ class TestMCPServerToolsAdditional:
         import tempfile
         import shutil
         from pathlib import Path
-        
+
         temp_dir = tempfile.mkdtemp()
         try:
             project_dir = Path(temp_dir) / "project"
             project_dir.mkdir(parents=True)
             (project_dir / "src").mkdir()
-            
+
             analyzer = CppAnalyzer(str(project_dir))
             # Don't call index_project()
-            
+
             # Operations should handle gracefully (return empty or None)
             results = analyzer.search_classes("Test")
             assert isinstance(results, list)
             # Might be empty or have cached results
-            
+
         finally:
             shutil.rmtree(temp_dir)
 
     def test_compile_commands_stats(self, temp_project_dir):
         """Test get_compile_commands_stats API"""
         (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
-        
+
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
-        
+
         # Get compile commands stats
         stats = analyzer.get_compile_commands_stats()
         assert stats is not None
@@ -579,12 +579,12 @@ class TestMCPServerToolsAdditional:
     def test_invalid_regex_patterns(self, temp_project_dir):
         """Test handling of various invalid regex patterns"""
         (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
-        
+
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
-        
+
         from mcp_server.regex_validator import RegexValidationError
-        
+
         # Test various dangerous patterns
         dangerous_patterns = [
             "(a+)+b",           # Nested quantifiers
@@ -592,7 +592,7 @@ class TestMCPServerToolsAdditional:
             "(a|a)*b",          # Alternation with quantifiers
             "(x+x+)+y",         # Multiple nested quantifiers
         ]
-        
+
         for pattern in dangerous_patterns:
             with pytest.raises(RegexValidationError):
                 analyzer.search_classes(pattern)
@@ -661,10 +661,10 @@ class BrokenClass {
 };  // Missing closing paren
 """)
         (temp_project_dir / "src" / "good.cpp").write_text("class GoodClass {};")
-        
+
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
-        
+
         # Get parse errors
         errors = analyzer.get_parse_errors()
         assert isinstance(errors, list)
@@ -673,10 +673,10 @@ class BrokenClass {
     def test_empty_search_pattern(self, temp_project_dir):
         """Test search with empty pattern"""
         (temp_project_dir / "src" / "test.cpp").write_text("class TestClass {};")
-        
+
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
-        
+
         # Empty pattern might be treated as "match nothing" or "match all"
         # Either behavior is acceptable as long as it doesn't crash
         try:

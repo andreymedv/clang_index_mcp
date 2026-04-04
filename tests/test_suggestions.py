@@ -205,34 +205,34 @@ def test_search_functions_deduplicates_parent_class():
 
 
 # ---------------------------------------------------------------------------
-# for_get_incoming_calls
+# for_find_incoming_calls
 # ---------------------------------------------------------------------------
 
 
-def test_get_incoming_calls_empty_callers_no_hints():
-    assert suggestions.for_get_incoming_calls("doThing", {"callers": []}) == []
+def test_find_incoming_calls_empty_callers_no_hints():
+    assert suggestions.for_find_incoming_calls("doThing", {"callers": []}) == []
 
 
-def test_get_incoming_calls_non_empty_callers():
+def test_find_incoming_calls_non_empty_callers():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    assert suggestions.for_get_incoming_calls("doThing", result_data) == []
+    assert suggestions.for_find_incoming_calls("doThing", result_data) == []
 
 
-def test_get_incoming_calls_non_dict_result_no_hints():
-    hints = suggestions.for_get_incoming_calls("doThing", [])  # type: ignore[arg-type]
+def test_find_incoming_calls_non_dict_result_no_hints():
+    hints = suggestions.for_find_incoming_calls("doThing", [])  # type: ignore[arg-type]
     assert hints == []
 
 
-def test_get_incoming_calls_non_empty_with_qualified_name_still_no_hints():
+def test_find_incoming_calls_non_empty_with_qualified_name_still_no_hints():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    assert suggestions.for_get_incoming_calls(
+    assert suggestions.for_find_incoming_calls(
         "build", result_data, qualified_name="NS::Cls::build"
     ) == []
 
 
-def test_get_incoming_calls_non_empty_without_qualified_name_still_no_hints():
+def test_find_incoming_calls_non_empty_without_qualified_name_still_no_hints():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    assert suggestions.for_get_incoming_calls("doThing", result_data, qualified_name=None) == []
+    assert suggestions.for_find_incoming_calls("doThing", result_data, qualified_name=None) == []
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +306,7 @@ def test_get_call_sites_empty_basic():
     hints = suggestions.for_get_call_sites_empty("doThing")
     assert len(hints) == 1
     assert "doThing" in hints[0]
-    assert "get_functions_called_by('doThing')" in hints[0]
+    assert "find_outgoing_calls('doThing')" in hints[0]
     assert "search_scope='include_external_libraries'" in hints[0]
 
 
@@ -314,13 +314,13 @@ def test_get_call_sites_empty_with_class_name():
     hints = suggestions.for_get_call_sites_empty("builder", class_name="MyClass")
     assert len(hints) == 1
     assert "MyClass::builder" in hints[0]
-    assert "get_functions_called_by('MyClass::builder')" in hints[0]
+    assert "find_outgoing_calls('MyClass::builder')" in hints[0]
 
 
 def test_get_call_sites_empty_no_class_name():
     hints = suggestions.for_get_call_sites_empty("process", class_name="")
-    assert "get_functions_called_by('process')" in hints[0]
-    assert "::" not in hints[0].split("get_functions_called_by")[1].split(")")[0]
+    assert "find_outgoing_calls('process')" in hints[0]
+    assert "::" not in hints[0].split("find_outgoing_calls")[1].split(")")[0]
 
 
 # ---------------------------------------------------------------------------

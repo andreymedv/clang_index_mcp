@@ -131,7 +131,7 @@ QUERIES: list[dict[str, Any]] = [
         "id": "E-03",
         "category": "multi_tool",
         "text": ("Find all places in the codebase that call the " "assertionEnded method"),
-        "expected_tools": ["search_functions", "get_incoming_calls"],
+        "expected_tools": ["search_functions", "find_incoming_calls"],
     },
 ]
 
@@ -255,7 +255,7 @@ QUERIES_SCHEMA_B: list[dict[str, Any]] = [
         "id": "E-03",
         "category": "multi_tool",
         "text": ("Find all places in the codebase that call the " "assertionEnded method"),
-        "expected_tools": ["search_codebase", "find_callers"],
+        "expected_tools": ["search_codebase", "find_incoming_calls"],
     },
 ]
 
@@ -271,9 +271,9 @@ Available tools:
   Use target_type to narrow results. Use output_detail_level to control size.
 - get_class_info: Get full class details (methods, bases, derived).
 - get_class_hierarchy: Get complete inheritance tree.
-- get_functions_called_by: Find what a function calls (outgoing).
+- find_outgoing_calls: Find what a function calls (outgoing).
   Use return_format to choose between definitions and call locations.
-- find_callers: Find what calls a function (incoming/callers).
+- find_incoming_calls: Find what calls a function (incoming/callers).
 - trace_execution_path: Find call paths between two functions.
 - find_in_file: Search symbols within a specific file.
 - get_type_alias_info: Resolve type aliases.

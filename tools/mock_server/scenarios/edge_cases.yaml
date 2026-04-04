@@ -32,7 +32,7 @@ scenarios:
       - "List the outgoing calls from processEvent"
       - "Show me what processEvent invokes"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -47,7 +47,7 @@ scenarios:
       - "Who invokes processEvent?"
       - "Show me the usage sites of processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -85,7 +85,7 @@ scenarios:
     category: "method_class"
     query: "What does the DataManager::processEvent method call?"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -95,7 +95,7 @@ scenarios:
     category: "method_class"
     query: "Find all callers of DataManager::processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains

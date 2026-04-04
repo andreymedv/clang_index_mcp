@@ -2,7 +2,7 @@
 Integration tests for Phase 3.1 MCP tools.
 
 Tests the MCP tool layer to ensure proper integration with call site tracking:
-- get_incoming_calls tool with call_sites response
+- find_incoming_calls tool with call_sites response
 - get_call_sites tool
 - Backward compatibility
 - Response format validation
@@ -32,48 +32,48 @@ def indexed_analyzer(phase3_fixtures_dir):
 
 
 class TestGetIncomingCallsToolIntegration:
-    """Test get_incoming_calls MCP tool with Phase 3.1 enhancements."""
+    """Test find_incoming_calls MCP tool with Phase 3.1 enhancements."""
 
-    def test_find_callers_returns_dictionary(self, indexed_analyzer):
-        """Test that find_callers returns a dictionary (not list)."""
-        result = indexed_analyzer.find_callers("helper")
+    def test_find_incoming_calls_returns_dictionary(self, indexed_analyzer):
+        """Test that find_incoming_calls returns a dictionary (not list)."""
+        result = indexed_analyzer.find_incoming_calls("helper")
 
-        assert isinstance(result, dict), "find_callers must return dict"
+        assert isinstance(result, dict), "find_incoming_calls must return dict"
         assert not isinstance(result, list), "Should not return list (backward incompatible)"
 
-    def test_find_callers_has_backward_compatible_callers_key(self, indexed_analyzer):
+    def test_find_incoming_calls_has_backward_compatible_callers_key(self, indexed_analyzer):
         """Test that 'callers' key exists for backward compatibility."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         assert 'callers' in result, "Missing 'callers' key (backward compatibility)"
         assert isinstance(result['callers'], list), "'callers' should be a list"
 
-    def test_find_callers_includes_call_sites_key(self, indexed_analyzer):
+    def test_find_incoming_calls_includes_call_sites_key(self, indexed_analyzer):
         """Test that new 'call_sites' key is present (Phase 3)."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         assert 'call_sites' in result, "Missing 'call_sites' key (Phase 3)"
         assert isinstance(result['call_sites'], list), "'call_sites' should be a list"
 
-    def test_find_callers_includes_total_call_sites(self, indexed_analyzer):
+    def test_find_incoming_calls_includes_total_call_sites(self, indexed_analyzer):
         """Test that 'total_call_sites' count is present."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         assert 'total_call_sites' in result, "Missing 'total_call_sites' key"
         assert isinstance(result['total_call_sites'], int), "'total_call_sites' should be int"
         assert result['total_call_sites'] == len(result['call_sites']), \
             "total_call_sites should match call_sites length"
 
-    def test_find_callers_includes_function_name(self, indexed_analyzer):
+    def test_find_incoming_calls_includes_function_name(self, indexed_analyzer):
         """Test that 'function' name is included in response."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         assert 'function' in result, "Missing 'function' key"
         assert result['function'] == 'helper', "Function name mismatch"
 
     def test_call_sites_entries_have_required_fields(self, indexed_analyzer):
         """Test that each call site has all required fields."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         required_fields = ['file', 'line', 'column', 'caller', 'caller_file', 'caller_signature']
 
@@ -90,7 +90,7 @@ class TestGetIncomingCallsToolIntegration:
 
     def test_call_sites_sorted_by_file_and_line(self, indexed_analyzer):
         """Test that call sites are sorted by file, then line."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         call_sites = result['call_sites']
 
@@ -107,7 +107,7 @@ class TestGetIncomingCallsToolIntegration:
 
     def test_callers_list_has_line_ranges(self, indexed_analyzer):
         """Test that caller function info includes start_line and end_line (in nested location)."""
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         for caller in result['callers']:
             # Location info is now nested under 'definition' or 'declaration'
@@ -179,13 +179,13 @@ class TestGetCallSitesTool:
 
 
 class TestComplementaryTools:
-    """Test that get_incoming_calls and get_call_sites are complementary."""
+    """Test that find_incoming_calls and get_call_sites are complementary."""
 
-    def test_get_incoming_calls_backward_get_call_sites_forward(self, indexed_analyzer):
-        """Test that get_incoming_calls shows WHO calls (backward), get_call_sites shows WHAT is called (forward)."""
+    def test_find_incoming_calls_backward_get_call_sites_forward(self, indexed_analyzer):
+        """Test that find_incoming_calls shows WHO calls (backward), get_call_sites shows WHAT is called (forward)."""
 
         # Get functions that call helper (backward analysis)
-        callers_result = indexed_analyzer.find_callers("helper")
+        callers_result = indexed_analyzer.find_incoming_calls("helper")
         callers = {c['qualified_name'].split('::')[-1] for c in callers_result['callers']}
 
         # For each caller, check that get_call_sites shows helper as target (forward analysis)
@@ -201,15 +201,15 @@ class TestComplementaryTools:
 class TestResponseFormatJSON:
     """Test that responses can be serialized to JSON."""
 
-    def test_find_callers_json_serializable(self, indexed_analyzer):
-        """Test that find_callers response can be serialized to JSON."""
-        result = indexed_analyzer.find_callers("helper")
+    def test_find_incoming_calls_json_serializable(self, indexed_analyzer):
+        """Test that find_incoming_calls response can be serialized to JSON."""
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         try:
             json_str = json.dumps(result, indent=2)
             assert len(json_str) > 0
         except Exception as e:
-            pytest.fail(f"find_callers result not JSON serializable: {e}")
+            pytest.fail(f"find_incoming_calls result not JSON serializable: {e}")
 
     def test_get_call_sites_json_serializable(self, indexed_analyzer):
         """Test that get_call_sites response can be serialized to JSON."""
@@ -233,7 +233,7 @@ class TestRealWorldScenarios:
         3. Verify line numbers are usable
         """
         # Step 1: Find all callers of helper()
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         assert len(result['callers']) > 0, "Should have at least one caller"
 
@@ -280,7 +280,7 @@ class TestPerformance:
         # This is a basic sanity check
         # In a real large codebase, call_sites list should scale linearly with number of calls
 
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
 
         # Should not have duplicate call sites
         call_site_tuples = [(cs['file'], cs['line']) for cs in result['call_sites']]
@@ -295,7 +295,7 @@ class TestPerformance:
         import time
 
         start = time.time()
-        result = indexed_analyzer.find_callers("helper")
+        result = indexed_analyzer.find_incoming_calls("helper")
         elapsed = time.time() - start
 
         # Should complete in under 1 second for small test project

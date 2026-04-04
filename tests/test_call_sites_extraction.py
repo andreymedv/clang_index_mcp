@@ -263,15 +263,15 @@ class TestTemplateCalls:
 class TestMCPToolIntegration:
     """Test MCP tool integration for call sites."""
 
-    def test_find_callers_includes_call_sites(self, analyzer):
-        """Test that find_callers returns call_sites array."""
+    def test_find_incoming_calls_includes_call_sites(self, analyzer):
+        """Test that find_incoming_calls returns call_sites array."""
         analyzer.index_project()
 
         # Find callers of helper() function
-        result = analyzer.find_callers("helper")
+        result = analyzer.find_incoming_calls("helper")
 
         # Should return a dictionary
-        assert isinstance(result, dict), "find_callers should return dict"
+        assert isinstance(result, dict), "find_incoming_calls should return dict"
 
         # Should have required keys
         assert 'function' in result
@@ -291,11 +291,11 @@ class TestMCPToolIntegration:
         # total_call_sites should match length
         assert result['total_call_sites'] == len(result['call_sites'])
 
-    def test_find_callers_call_sites_have_required_fields(self, analyzer):
+    def test_find_incoming_calls_call_sites_have_required_fields(self, analyzer):
         """Test that call_sites entries have all required fields."""
         analyzer.index_project()
 
-        result = analyzer.find_callers("helper")
+        result = analyzer.find_incoming_calls("helper")
 
         if result['call_sites']:
             cs = result['call_sites'][0]
@@ -358,29 +358,29 @@ class TestCallSiteAccuracy:
 class TestPartiallyQualifiedNameLookup:
     """Regression tests for cplusplus_mcp-9bh: partially qualified names rejected.
 
-    The bug: find_callers/find_callees/get_call_sites wrapped the name in
+    The bug: find_incoming_calls/find_callees/get_call_sites wrapped the name in
     ^re.escape(name)$ which forced regex classification, breaking suffix matching
     for names like "ClassName::method" that don't match the full qualified string.
     """
 
-    def test_find_callers_simple_name(self, analyzer):
+    def test_find_incoming_calls_simple_name(self, analyzer):
         """Simple unqualified name still finds callers."""
         analyzer.index_project()
 
         # Processor::process() calls helper() — should be found with bare name
-        result = analyzer.find_callers("helper")
+        result = analyzer.find_incoming_calls("helper")
         caller_names = [c["qualified_name"] for c in result["callers"]]
         assert any("process" in n or "single_caller" in n or "nested_calls" in n
                    for n in caller_names), (
             f"Expected callers of helper(), got: {caller_names}"
         )
 
-    def test_find_callers_partial_name_class_method(self, analyzer):
+    def test_find_incoming_calls_partial_name_class_method(self, analyzer):
         """Partially qualified 'ClassName::method' finds callers via suffix matching."""
         analyzer.index_project()
 
         # Processor::validate() is called from Processor::process() on line 41
-        result = analyzer.find_callers("Processor::validate")
+        result = analyzer.find_incoming_calls("Processor::validate")
         assert result["callers"] or result["call_sites"], (
             "Processor::validate should have callers (called from Processor::process), "
             f"got callers={result['callers']}, call_sites={result['call_sites']}"
@@ -409,14 +409,14 @@ class TestPartiallyQualifiedNameLookup:
             "get_call_sites should return non-empty list"
         )
 
-    def test_find_callers_partial_disambiguates_from_global(self, analyzer):
+    def test_find_incoming_calls_partial_disambiguates_from_global(self, analyzer):
         """'Processor::validate' should return only callers of the member, not global validate()."""
         analyzer.index_project()
 
         # There are two validate() functions:
         #   - global validate()     — called by multiple_calls() and nested_calls()
         #   - Processor::validate() — called by Processor::process()
-        result_partial = analyzer.find_callers("Processor::validate")
+        result_partial = analyzer.find_incoming_calls("Processor::validate")
         partial_caller_names = [c["qualified_name"] for c in result_partial["callers"]]
 
         # Processor::process calls Processor::validate → must appear
@@ -491,7 +491,7 @@ class TestCallGraphAnalyzer:
 
 
 # =============================================================================
-# Three-case empty-result logic for find_callers / find_callees
+# Three-case empty-result logic for find_incoming_calls / find_callees
 # =============================================================================
 
 class TestCallGraphEmptyResultFlags:
@@ -547,28 +547,28 @@ class TestCallGraphEmptyResultFlags:
         assert len(result["callees"]) > 0
 
     # ------------------------------------------------------------------
-    # find_callers — 3 cases
+    # find_incoming_calls — 3 cases
     # ------------------------------------------------------------------
 
-    def test_find_callers_function_not_found(self, tmp_path):
+    def test_find_incoming_calls_function_not_found(self, tmp_path):
         """Case 1: queried name does not exist → _function_found=False."""
         az = self._make_analyzer(tmp_path, "void realFunc() {}")
-        result = az.find_callers("completelymade_up_name")
+        result = az.find_incoming_calls("completelymade_up_name")
         assert result["_function_found"] is False
         assert result["callers"] == []
 
-    def test_find_callers_found_no_callers(self, tmp_path):
+    def test_find_incoming_calls_found_no_callers(self, tmp_path):
         """Case 2: function found but nothing calls it → _has_any_in_graph=False."""
         az = self._make_analyzer(tmp_path, "void standalone() {}")
-        result = az.find_callers("standalone")
+        result = az.find_incoming_calls("standalone")
         assert result["_function_found"] is True
         assert result["_has_any_in_graph"] is False
         assert result["callers"] == []
 
-    def test_find_callers_found_has_callers(self, tmp_path):
+    def test_find_incoming_calls_found_has_callers(self, tmp_path):
         """When callers exist they appear in the list normally."""
         az = self._make_analyzer(tmp_path, "void target() {}\nvoid caller() { target(); }")
-        result = az.find_callers("target")
+        result = az.find_incoming_calls("target")
         assert result["_function_found"] is True
         assert result["_has_any_in_graph"] is True
         assert len(result["callers"]) > 0
@@ -593,7 +593,7 @@ class TestCallGraphEmptyResultFlags:
 
 
 # =============================================================================
-# project_only parameter for find_callers / find_callees
+# project_only parameter for find_incoming_calls / find_callees
 # =============================================================================
 
 class TestProjectOnlyFlag:
@@ -665,26 +665,26 @@ class TestProjectOnlyFlag:
         assert "qualified_name" in project_callees[0]
 
     # ------------------------------------------------------------------
-    # find_callers
+    # find_incoming_calls
     # ------------------------------------------------------------------
 
-    def test_find_callers_project_only_default(self, tmp_path):
+    def test_find_incoming_calls_project_only_default(self, tmp_path):
         """Default project_only=True: project callers appear normally."""
         source = "void target() {}\nvoid caller() { target(); }"
         az = self._make_analyzer(tmp_path, source)
-        result = az.find_callers("target", project_only=True)
+        result = az.find_incoming_calls("target", project_only=True)
         assert result["_function_found"] is True
         assert len(result["callers"]) > 0
         for c in result["callers"]:
             # Project callers always have qualified_name
             assert "qualified_name" in c
 
-    def test_find_callers_project_only_false_does_not_break(self, tmp_path):
+    def test_find_incoming_calls_project_only_false_does_not_break(self, tmp_path):
         """project_only=False with only project callers: same result as project_only=True."""
         source = "void target() {}\nvoid caller() { target(); }"
         az = self._make_analyzer(tmp_path, source)
-        result_default = az.find_callers("target", project_only=True)
-        result_all = az.find_callers("target", project_only=False)
+        result_default = az.find_incoming_calls("target", project_only=True)
+        result_all = az.find_incoming_calls("target", project_only=False)
         # No external callers exist here; both should return the same callers
         default_names = {c["qualified_name"] for c in result_default["callers"]}
         all_names = {c["qualified_name"] for c in result_all["callers"] if "qualified_name" in c}
@@ -718,7 +718,7 @@ class TestAutoExpansion:
     the MCP handler re-fetches with project_only=False and annotates the response
     with a search_note field.
 
-    Tests the 4 scenarios for both get_incoming_calls and get_outgoing_calls:
+    Tests the 4 scenarios for both find_incoming_calls and get_outgoing_calls:
       1. project_only + empty + external exist → auto-expand, search_note present
       2. project_only + non-empty             → no auto-expand, no search_note
       3. project_only=False                   → no auto-expand, no search_note
@@ -828,7 +828,7 @@ class TestAutoExpansion:
             restore()
 
     # ------------------------------------------------------------------
-    # get_incoming_calls (find_callers)
+    # find_incoming_calls (find_incoming_calls)
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
@@ -839,7 +839,7 @@ class TestAutoExpansion:
         srv, restore = self._setup_mcp(az)
         try:
             result = await srv._handle_tool_call(
-                "get_incoming_calls", {"function_name": "target"}
+                "find_incoming_calls", {"function_name": "target"}
             )
             payload = json.loads(result[0].text)
             assert "search_note" not in payload, "No search_note when project results exist"
@@ -855,7 +855,7 @@ class TestAutoExpansion:
         srv, restore = self._setup_mcp(az)
         try:
             result = await srv._handle_tool_call(
-                "get_incoming_calls", {"function_name": "standalone"}
+                "find_incoming_calls", {"function_name": "standalone"}
             )
             payload = json.loads(result[0].text)
             assert "search_note" not in payload, "No search_note when genuinely empty"

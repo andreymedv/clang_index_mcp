@@ -625,7 +625,7 @@ responses:
           prototype: "ElementPtr Document::getDocumentElement() const"
       next_steps:
         - "get_class_info('Document') -- see base classes and full details"
-        - "get_functions_called_by('createElement', class_name='Document') -- trace implementation"
+        - "find_outgoing_calls('createElement', class_name='Document') -- trace implementation"
 
   - tool: find_in_file
     default: true
@@ -1004,11 +1004,11 @@ responses:
       error: "Class not found in hierarchy. Use find_symbols_by_pattern to find the correct name."
 
   # =================================================================
-  # get_functions_called_by
+  # find_outgoing_calls
   # =================================================================
 
   # --- PROBE-RC3-01: initialize() callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "initialize"
@@ -1029,7 +1029,7 @@ responses:
           line: 42
 
   # --- PROBE-RC2-03: processData callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "processData"
@@ -1046,7 +1046,7 @@ responses:
           line: 102
 
   # --- PROBE-RC3-03: render() callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "render"
@@ -1063,7 +1063,7 @@ responses:
           line: 135
 
   # --- L-04: Element::setAttribute callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "setAttribute"
@@ -1086,7 +1086,7 @@ responses:
           line: 120
 
   # --- N-01 step 1: ResolveInheritedStyle callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "ResolveInheritedStyle"
@@ -1107,7 +1107,7 @@ responses:
           line: 42
 
   # --- N-01 step 2: GetComputedStyle callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "GetComputedStyle"
@@ -1128,7 +1128,7 @@ responses:
           line: 25
 
   # --- N-03 step 1: HandleKeyPress callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "HandleKeyPress"
@@ -1148,7 +1148,7 @@ responses:
           file: "EditorUI/Public/UI_SelectionManager.h"
           line: 22
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     default: true
     response:
       function: "unknown"
@@ -1157,11 +1157,11 @@ responses:
         - "find_symbols_by_pattern -- possible: search for function name if unknown"
 
   # =================================================================
-  # find_callers
+  # find_incoming_calls
   # =================================================================
 
   # --- M-02 step 2 / O-01 follow-up: ApplyStyle callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "ApplyStyle"
@@ -1186,7 +1186,7 @@ responses:
               column: 8
 
   # --- M-03 step 2: StyleResolver::resolveStyle callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "resolveStyle"
@@ -1219,7 +1219,7 @@ responses:
               column: 8
 
   # --- N-02 step 1: MergeTableCells callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "MergeTableCells"
@@ -1244,7 +1244,7 @@ responses:
               column: 12
 
   # --- N-02 step 2: RecalculateSpans callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "RecalculateSpans"
@@ -1269,7 +1269,7 @@ responses:
               column: 4
 
   # --- N-03 step 2: HandleKeyPress callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "HandleKeyPress"
@@ -1286,7 +1286,7 @@ responses:
               column: 8
 
   # --- O-02 step 2: TableProcessor::addRow callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "addRow"
@@ -1311,7 +1311,7 @@ responses:
               column: 12
 
   # --- PROBE: processEvent callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "processEvent"
@@ -1336,7 +1336,7 @@ responses:
               column: 12
 
   # --- PROBE: myFunction callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "myFunction"
@@ -1353,7 +1353,7 @@ responses:
               column: 4
 
   # --- PROBE: updateUI callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "updateUI"
@@ -1369,7 +1369,7 @@ responses:
               line: 172
               column: 8
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     default: true
     response:
       function: "unknown"

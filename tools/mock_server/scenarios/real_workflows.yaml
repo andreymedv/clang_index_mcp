@@ -65,7 +65,7 @@ scenarios:
     category: "module_discovery"
     query: "What functions does DOM::Element::setAttribute call?"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -102,7 +102,7 @@ scenarios:
           symbol_name:
             type: contains
             value: "ApplyStyle"
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -117,7 +117,7 @@ scenarios:
           class_name:
             type: contains
             value: "StyleResolver"
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -135,12 +135,12 @@ scenarios:
       - "Show callees of ResolveInheritedStyle, then go deeper into GetComputedStyle"
       - "Show functions called by ResolveInheritedStyle, then show callees of GetComputedStyle"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
             value: "ResolveInheritedStyle"
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -150,12 +150,12 @@ scenarios:
     category: "call_chain"
     query: "Who calls MergeTableCells? Then find who calls RecalculateSpans"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
             value: "MergeTableCells"
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -165,12 +165,12 @@ scenarios:
     category: "call_chain"
     query: "What does HandleKeyPress call? Then find all callers of HandleKeyPress"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
             value: "HandleKeyPress"
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -191,7 +191,7 @@ scenarios:
           class_name:
             type: contains
             value: "TableProcessor"
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
