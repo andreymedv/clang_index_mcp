@@ -17,7 +17,7 @@ scenarios:
       - tool: find_symbols_by_pattern
         optional: true
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "DataManager"
       - tool: get_class_info
@@ -33,7 +33,7 @@ scenarios:
       - tool: find_symbols_by_pattern
         optional: true
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "Manager"
       - tool: get_class_hierarchy
@@ -53,7 +53,7 @@ scenarios:
       - tool: find_symbols_by_pattern
         optional: true
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "processEvent"
       - tool: get_functions_called_by
@@ -68,7 +68,7 @@ scenarios:
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "event"
       - tool: find_callers
@@ -106,7 +106,7 @@ scenarios:
       - tool: find_symbols_by_pattern
         optional: true
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "Widget"
       - tool: get_class_info

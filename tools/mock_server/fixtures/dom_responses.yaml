@@ -206,7 +206,7 @@ responses:
   # --- M-02 step 1 / O-01: Search for ApplyStyle ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "ApplyStyle"
     response:
       results:
@@ -224,7 +224,7 @@ responses:
   # --- O-01: Style-related functions ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Style"
       target_type: "functions_and_methods_only"
     response:
@@ -258,7 +258,7 @@ responses:
   # --- P-02: DocumentBuilder search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "DocumentBuilder"
     response:
       results:
@@ -286,7 +286,7 @@ responses:
   # --- Q-03 step 2: Search for DocumentImpl ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "DocumentImpl"
     response:
       results:
@@ -304,7 +304,7 @@ responses:
   # --- Q-01: INodeVisitor search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "INodeVisitor"
     response:
       results:
@@ -327,7 +327,7 @@ responses:
   # --- R-02: Merge functions in TBL_ files ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Merge"
       target_type: "functions_and_methods_only"
       file_name:
@@ -353,7 +353,7 @@ responses:
   # --- PROBE-RC2-01: EventHandler search (models that search before get_class_info) ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "EventHandler"
     response:
       results:
@@ -371,7 +371,7 @@ responses:
   # --- PROBE-RC3-01: initialize search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "initialize"
     response:
       results:
@@ -389,7 +389,7 @@ responses:
   # --- PROBE: processData search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "processData"
     response:
       results:
@@ -402,7 +402,7 @@ responses:
   # --- PROBE: IProcessor search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "IProcessor"
     response:
       results:
@@ -415,7 +415,7 @@ responses:
   # --- PROBE: myFunction search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "myFunction"
     response:
       results:
@@ -428,7 +428,7 @@ responses:
   # --- PROBE: updateUI search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "updateUI"
     response:
       results:
@@ -441,7 +441,7 @@ responses:
   # --- PROBE: render search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "render"
     response:
       results:
@@ -531,7 +531,7 @@ responses:
   # NOTE: Specific DOM::Table fixture before broader TableProcessor
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "DOM::Table"
       target_type: "classes_and_structs_only"
     response:
@@ -544,7 +544,7 @@ responses:
 
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "TableProcessor"
       target_type: "classes_and_structs_only"
     response:
@@ -558,7 +558,7 @@ responses:
   # Broader Table search for general queries
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Table"
       target_type: "classes_and_structs_only"
     response:

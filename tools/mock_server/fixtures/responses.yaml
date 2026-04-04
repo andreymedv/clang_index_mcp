@@ -40,7 +40,7 @@ responses:
   # Search for Manager classes
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Manager"
       target_type: "classes_and_structs_only"
     response:
@@ -64,7 +64,7 @@ responses:
   # Search for Manager pattern (all symbol types)
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Manager"
     response:
       results:
@@ -87,7 +87,7 @@ responses:
   # Search for Widget
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Widget"
     response:
       results:
@@ -110,7 +110,7 @@ responses:
   # Search for functions with "process"
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "process"
       target_type: "functions_and_methods_only"
     response:
@@ -129,7 +129,7 @@ responses:
   # Search for functions with "event"
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "event"
       target_type: "functions_and_methods_only"
     response:
@@ -148,7 +148,7 @@ responses:
   # Empty search result (for testing empty-result hints)
   - tool: find_symbols_by_pattern
     match:
-      pattern: "NonExistentSymbol12345"
+      symbol_name: "NonExistentSymbol12345"
     response:
       results: []
       next_steps:
@@ -292,7 +292,7 @@ responses:
   # Non-existent symbol search — return empty
   - tool: find_symbols_by_pattern
     match:
-      pattern: "myFunction"
+      symbol_name: "myFunction"
     response:
       results: []
       message: "No symbols matching 'myFunction' found in the codebase."

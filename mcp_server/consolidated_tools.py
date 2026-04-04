@@ -215,23 +215,22 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="find_symbols_by_pattern",
             description=(
-                "Discover C++ symbols by name pattern. Supports classes, functions, and methods; "
+                "Discover C++ classes, functions, and methods by name pattern; "
                 "optional filters narrow results by symbol kind, namespace, and file path. "
-                "Use pattern for symbol names only; use file_name for file or directory prefixes; "
+                "Use symbol_name for C++ symbol names only; use file_name for file or directory prefixes; "
                 "use namespace for namespace-scoped searches.\n\n"
                 "Pattern matching (case-insensitive):\n"
                 "- 'DataRecord' — matches in any namespace\n"
                 "- 'storage::DataRecord' — matches namespace suffix\n"
                 "- '.*Manager.*' — regex, matches containing 'Manager'\n"
                 "- '' (empty) — matches ALL symbols; combine with file_name or namespace for enumeration\n\n"
-                "Enumeration via empty pattern + filters:\n"
-                "- pattern='' + file_name='Helper' — all symbols in files with 'Helper' in path\n"
-                "- pattern='' + namespace='project' — all symbols in that namespace\n\n"
-                "Do not encode file paths or namespaces in the pattern when a dedicated filter exists.\n\n"
+                "Enumeration via empty symbol_name + filters:\n"
+                "- symbol_name='' + file_name='Helper' — all symbols in files with 'Helper' in path\n"
+                "- symbol_name='' + namespace='project' — all symbols in that namespace\n\n"
+                "Do not encode file paths or namespaces in the symbol_name when a dedicated filter exists.\n\n"
                 "file_name semantics:\n"
                 "- Substring match only (NOT glob/regex). 'Helper*.h' → use file_name='Helper'\n"
-                "- If the user names a directory/subdirectory, preserve the narrowest path substring "
-                "you know.\n"
+                "- If a directory/subdirectory is known, preserve the narrowest path substring.\n"
                 "- Examples: 'module/' for that subtree, 'module/tests/' for that exact tests dir\n"
                 "- Examples: 'spec/' (files in spec dir), 'SAMPLE_' (files starting with SAMPLE_)\n\n"
                 "Returns qualified_name, kind, and more based on detail level."
@@ -239,7 +238,7 @@ def list_tools_b() -> List[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pattern": {
+                    "symbol_name": {
                         "type": "string",
                         "description": "Symbol name or regex pattern. Empty string matches all.",
                     },
@@ -299,7 +298,7 @@ def list_tools_b() -> List[Tool]:
                         "minimum": 1,
                     },
                 },
-                "required": ["pattern"],
+                "required": ["symbol_name"],
             },
         ),
         Tool(

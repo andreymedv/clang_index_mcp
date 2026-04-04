@@ -99,7 +99,7 @@ scenarios:
       - tool: find_symbols_by_pattern
         optional: true
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "ApplyStyle"
       - tool: find_callers
@@ -236,7 +236,7 @@ scenarios:
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "DocumentBuilder"
 
@@ -285,7 +285,7 @@ scenarios:
       - tool: find_symbols_by_pattern
         optional: true
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "DocumentImpl"
 
@@ -316,7 +316,7 @@ scenarios:
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "Merge"
           target_type:
