@@ -33,39 +33,33 @@ class TestIncrementalAnalysisIntegration(unittest.TestCase):
 
         # Create main.cpp
         self.main_cpp = self.src_dir / "main.cpp"
-        self.main_cpp.write_text(
-            """
+        self.main_cpp.write_text("""
 #include "utils.h"
 
 int main() {
     return add(1, 2);
 }
-"""
-        )
+""")
 
         # Create utils.h
         self.utils_h = self.src_dir / "utils.h"
-        self.utils_h.write_text(
-            """
+        self.utils_h.write_text("""
 #pragma once
 
 int add(int a, int b) {
     return a + b;
 }
-"""
-        )
+""")
 
         # Create utils.cpp
         self.utils_cpp = self.src_dir / "utils.cpp"
-        self.utils_cpp.write_text(
-            """
+        self.utils_cpp.write_text("""
 #include "utils.h"
 
 int multiply(int a, int b) {
     return a * b;
 }
-"""
-        )
+""")
 
         # Create compile_commands.json
         self.cc_file = self.test_dir / "compile_commands.json"
@@ -147,15 +141,13 @@ int multiply(int a, int b) {
         analyzer.index_project()
 
         # Modify utils.cpp
-        self.utils_cpp.write_text(
-            """
+        self.utils_cpp.write_text("""
 #include "utils.h"
 
 int multiply(int a, int b) {
     return a * b * 2;  // Changed
 }
-"""
-        )
+""")
 
         # Create incremental analyzer
         incremental = IncrementalAnalyzer(analyzer)
@@ -187,8 +179,7 @@ int multiply(int a, int b) {
         self.assertIsNotNone(analyzer.dependency_graph)
 
         # Modify utils.h
-        self.utils_h.write_text(
-            """
+        self.utils_h.write_text("""
 #pragma once
 
 int add(int a, int b) {
@@ -198,8 +189,7 @@ int add(int a, int b) {
 int subtract(int a, int b) {  // New function
     return a - b;
 }
-"""
-        )
+""")
 
         # Create incremental analyzer
         incremental = IncrementalAnalyzer(analyzer)
@@ -222,13 +212,11 @@ int subtract(int a, int b) {  // New function
 
         # Add a new file
         new_file = self.src_dir / "new.cpp"
-        new_file.write_text(
-            """
+        new_file.write_text("""
 int divide(int a, int b) {
     return a / b;
 }
-"""
-        )
+""")
 
         # Update compile_commands.json to include new file
         cc_data = json.loads(self.cc_file.read_text())

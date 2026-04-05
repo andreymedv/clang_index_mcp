@@ -35,8 +35,7 @@ def forward_decl_project(tmp_path):
     """
     # Create header with both forward declaration and definition
     header_h = tmp_path / "widgets.h"
-    header_h.write_text(
-        """
+    header_h.write_text("""
 namespace test {
 
 struct BaseWidget {
@@ -54,13 +53,11 @@ struct ConcreteWidget : BaseWidget {
 };
 
 }  // namespace test
-"""
-    )
+""")
 
     # Create source file that uses the widgets
     source_cpp = tmp_path / "main.cpp"
-    source_cpp.write_text(
-        """
+    source_cpp.write_text("""
 #include "widgets.h"
 
 namespace test {
@@ -80,8 +77,7 @@ int main() {
     widget.render();
     return 0;
 }
-"""
-    )
+""")
 
     # Index the project
     analyzer = CppAnalyzer(project_root=str(tmp_path))
@@ -226,8 +222,7 @@ class TestDefinitionWinsInVariousScenarios:
         """Test when definition is indexed before forward declaration."""
         # Definition first (Base must be defined before MyClass for C++ to work)
         definition_h = tmp_path / "definition.h"
-        definition_h.write_text(
-            """
+        definition_h.write_text("""
 struct Base {
     virtual ~Base() = default;
 };
@@ -235,16 +230,13 @@ struct Base {
 struct MyClass : public Base {
     void method();
 };
-"""
-        )
+""")
 
         # Forward declaration second
         forward_h = tmp_path / "forward.h"
-        forward_h.write_text(
-            """
+        forward_h.write_text("""
 struct MyClass;  // Forward declaration
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         # Index definition first
@@ -266,16 +258,13 @@ struct MyClass;  // Forward declaration
         """Test when forward declaration is indexed before definition."""
         # Forward declaration first
         forward_h = tmp_path / "forward.h"
-        forward_h.write_text(
-            """
+        forward_h.write_text("""
 struct MyClass;  // Forward declaration
-"""
-        )
+""")
 
         # Definition second (Base must be defined before MyClass)
         definition_h = tmp_path / "definition.h"
-        definition_h.write_text(
-            """
+        definition_h.write_text("""
 struct Base {
     virtual ~Base() = default;
 };
@@ -283,8 +272,7 @@ struct Base {
 struct MyClass : public Base {
     void method();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         # Index forward declaration first
@@ -316,8 +304,7 @@ struct MyClass : public Base {
 
         # One definition (WidgetBase must be defined before Widget)
         widget_h = tmp_path / "widget.h"
-        widget_h.write_text(
-            """
+        widget_h.write_text("""
 struct WidgetBase {
     virtual ~WidgetBase() = default;
 };
@@ -325,8 +312,7 @@ struct WidgetBase {
 struct Widget : WidgetBase {
     int value;
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         # Index all forward declarations first
@@ -349,8 +335,7 @@ struct Widget : WidgetBase {
     def test_namespaced_forward_declaration(self, tmp_path):
         """Test forward declaration in namespace."""
         header_h = tmp_path / "header.h"
-        header_h.write_text(
-            """
+        header_h.write_text("""
 namespace app {
 namespace ui {
 
@@ -366,8 +351,7 @@ struct Button : ButtonBase {
 
 }  // namespace ui
 }  // namespace app
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         analyzer.index_file(str(header_h))
@@ -440,8 +424,7 @@ class TestRicherDefinitionPreferred:
         # Simulate: a macro generates an empty struct definition,
         # then the real definition with base classes appears later
         macro_h = tmp_path / "macro.h"
-        macro_h.write_text(
-            """
+        macro_h.write_text("""
 #define DECLARE_STRUCT(name) struct name {};
 
 struct WidgetBase {
@@ -450,12 +433,10 @@ struct WidgetBase {
 
 // Macro generates: struct MyWidget {};  (empty, is_definition=true)
 DECLARE_STRUCT(MyWidget)
-"""
-        )
+""")
 
         real_h = tmp_path / "real.h"
-        real_h.write_text(
-            """
+        real_h.write_text("""
 struct WidgetBase {
     virtual ~WidgetBase() = default;
 };
@@ -464,8 +445,7 @@ struct WidgetBase {
 struct MyWidget : WidgetBase {
     void doWork();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         # Index macro-generated first, then real definition
@@ -485,8 +465,7 @@ struct MyWidget : WidgetBase {
     def test_richer_definition_reverse_order(self, tmp_path):
         """Real definition indexed first, empty second - should still keep real."""
         real_h = tmp_path / "real.h"
-        real_h.write_text(
-            """
+        real_h.write_text("""
 struct WidgetBase {
     virtual ~WidgetBase() = default;
 };
@@ -494,15 +473,12 @@ struct WidgetBase {
 struct MyWidget : WidgetBase {
     void doWork();
 };
-"""
-        )
+""")
 
         empty_h = tmp_path / "empty.h"
-        empty_h.write_text(
-            """
+        empty_h.write_text("""
 struct MyWidget {};
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         analyzer.index_file(str(real_h))

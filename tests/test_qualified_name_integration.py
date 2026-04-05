@@ -26,8 +26,7 @@ class TestF1BasicQualifiedNameSupport:
         """Test that classes get correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace ns1 {
     namespace ns2 {
         class MyClass {};
@@ -35,8 +34,7 @@ namespace ns1 {
 }
 
 class GlobalClass {};
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -59,8 +57,7 @@ class GlobalClass {};
         """Test that functions get correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace app {
     namespace utils {
         void helperFunction() {}
@@ -68,8 +65,7 @@ namespace app {
 }
 
 void globalFunction() {}
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -91,8 +87,7 @@ void globalFunction() {}
         """Test that class methods get correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace ui {
     class View {
     public:
@@ -100,8 +95,7 @@ namespace ui {
         void update() {}
     };
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -117,8 +111,7 @@ namespace ui {
         """Test that namespace field is extracted correctly from qualified name."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace a {
     namespace b {
         namespace c {
@@ -126,8 +119,7 @@ namespace a {
         }
     }
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -141,15 +133,13 @@ namespace a {
         """Test that all search tools return qualified_name and namespace fields."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace test {
     class TestClass {};
     void testFunc() {}
     struct TestStruct {};
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -193,15 +183,13 @@ class TestF4OverloadMetadata:
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 template<typename T>
 void genericFunc(T value) {}
 
 // Add instantiation to ensure libclang indexes the template
 template void genericFunc<int>(int);
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -227,15 +215,13 @@ template void genericFunc<int>(int);
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 template<typename T>
 void func(T value) {}
 
 template<>
 void func<int>(int value) {}
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -263,13 +249,11 @@ void func<int>(int value) {}
         """Regular function overloads should not have template_kind set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 void foo(int x) {}
 void foo(double x) {}
 void foo(int x, int y) {}
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -291,8 +275,7 @@ void foo(int x, int y) {}
         """Test template_kind for template class methods."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 template<typename T>
 class Container {
 public:
@@ -304,8 +287,7 @@ class Container<int> {
 public:
     void add(int item) {}
 };
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -328,8 +310,7 @@ class TestF5TemplateArgsQualification:
         """Base classes should store template args with qualification."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace std {
     template<typename T>
     class vector {};
@@ -343,8 +324,7 @@ namespace app {
 
     class MyContainer : public Container<Item> {};
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -369,8 +349,7 @@ namespace app {
         """Nested template arguments should be qualified."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace std {
     template<typename T>
     class vector {};
@@ -384,8 +363,7 @@ namespace app {
 
     class ConfigManager : public Manager<Config> {};
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -405,8 +383,7 @@ class TestF6AnonymousNamespaces:
         """Anonymous namespaces should be represented in qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace {
     class InternalClass {};
     void internalFunc() {}
@@ -417,8 +394,7 @@ namespace app {
         class InternalHelper {};
     }
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -444,8 +420,7 @@ namespace app {
         """Anonymous namespace symbols should be distinct from regular namespace symbols."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace {
     class Helper {};
 }
@@ -453,8 +428,7 @@ namespace {
 namespace util {
     class Helper {};
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -475,8 +449,7 @@ class TestF7NestedClasses:
         """Nested classes should have full qualified names with parent class."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 class Outer {
 public:
     class Inner {
@@ -484,8 +457,7 @@ public:
         class DeepNested {};
     };
 };
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -506,8 +478,7 @@ public:
         """Nested classes in namespaces should include both namespace and parent class."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace app {
     namespace ui {
         class Widget {
@@ -516,8 +487,7 @@ namespace app {
         };
     }
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -531,8 +501,7 @@ namespace app {
         """Methods of nested classes should have correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace core {
     class Database {
     public:
@@ -543,8 +512,7 @@ namespace core {
         };
     };
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -565,8 +533,7 @@ class TestComprehensiveIntegration:
         """Test a complex project with multiple features combined."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace app {
     namespace core {
         template<typename T>
@@ -589,8 +556,7 @@ class GlobalService {
 public:
     class Settings {};
 };
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -632,8 +598,7 @@ public:
         """Test that qualified patterns work across all features."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace app {
     namespace ui {
         class View {};
@@ -645,8 +610,7 @@ namespace app {
 }
 
 class View {};
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -680,13 +644,11 @@ class TestEdgeCases:
         """Empty pattern should return all symbols."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 class A {};
 class B {};
 class C {};
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -698,8 +660,7 @@ class C {};
         """Test deeply nested namespaces and classes."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 namespace n1 {
     namespace n2 {
         namespace n3 {
@@ -711,8 +672,7 @@ namespace n1 {
         }
     }
 }
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -730,8 +690,7 @@ namespace n1 {
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text(
-                """
+            test_file.write_text("""
 template<typename K, typename V>
 class Map {};
 
@@ -740,8 +699,7 @@ void insert(K key, V value) {}
 
 // Add a non-template class to ensure we can test something
 class RegularClass {};
-"""
-            )
+""")
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()

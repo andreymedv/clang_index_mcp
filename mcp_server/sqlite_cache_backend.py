@@ -1061,24 +1061,20 @@ class SqliteCacheBackend:
             stats["total_symbols"] = cursor.fetchone()[0]
 
             # Count by kind
-            cursor = self._conn.execute(
-                """
+            cursor = self._conn.execute("""
                 SELECT kind, COUNT(*) as count
                 FROM symbols
                 GROUP BY kind
                 ORDER BY count DESC
-            """
-            )
+            """)
             stats["by_kind"] = {row["kind"]: row["count"] for row in cursor.fetchall()}
 
             # Project vs dependencies
-            cursor = self._conn.execute(
-                """
+            cursor = self._conn.execute("""
                 SELECT is_project, COUNT(*) as count
                 FROM symbols
                 GROUP BY is_project
-            """
-            )
+            """)
             for row in cursor.fetchall():
                 if row["is_project"]:
                     stats["project_symbols"] = row["count"]
@@ -1534,16 +1530,14 @@ class SqliteCacheBackend:
             stats.update(symbol_stats)
 
             # File statistics
-            cursor = self._conn.execute(
-                """
+            cursor = self._conn.execute("""
                 SELECT
                     COUNT(*) as total_files,
                     SUM(symbol_count) as total_symbols_from_files,
                     AVG(symbol_count) as avg_symbols_per_file,
                     MAX(symbol_count) as max_symbols_in_file
                 FROM file_metadata
-            """
-            )
+            """)
             row = cursor.fetchone()
             stats["file_stats"] = {
                 "total_files": row[0] or 0,
@@ -1553,14 +1547,12 @@ class SqliteCacheBackend:
             }
 
             # Top files by symbol count
-            cursor = self._conn.execute(
-                """
+            cursor = self._conn.execute("""
                 SELECT file_path, symbol_count
                 FROM file_metadata
                 ORDER BY symbol_count DESC
                 LIMIT 10
-            """
-            )
+            """)
             stats["top_files"] = [
                 {"file": row[0], "symbol_count": row[1]} for row in cursor.fetchall()
             ]
@@ -2247,13 +2239,11 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self._conn.execute(
-                """
+            cursor = self._conn.execute("""
                 SELECT caller_usr, callee_usr, file, line, column
                 FROM call_sites
                 ORDER BY file, line
-                """
-            )
+                """)
 
             return [
                 {
@@ -2430,12 +2420,10 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            cursor = self._conn.execute(
-                """
+            cursor = self._conn.execute("""
                 SELECT alias_name, qualified_name, canonical_type
                 FROM type_aliases
-                """
-            )
+                """)
 
             # Build mapping: both short and qualified names point to canonical type
             mappings = {}

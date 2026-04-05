@@ -19,8 +19,7 @@ class TestContinueOnParseErrors:
         """Test that files with syntax errors still get partially indexed."""
         # Create a C++ file with some valid declarations and a syntax error
         test_file = tmp_path / "test_partial.cpp"
-        test_file.write_text(
-            """
+        test_file.write_text("""
 // Valid class declaration
 class ValidClass {
 public:
@@ -43,8 +42,7 @@ class AnotherValidClass {
 public:
     int getValue();
 };
-"""
-        )
+""")
 
         # Create analyzer and index the file
         analyzer = CppAnalyzer(str(tmp_path))
@@ -68,8 +66,7 @@ public:
     def test_continue_parsing_with_undeclared_identifier(self, tmp_path):
         """Test that files with undeclared identifiers still get indexed."""
         test_file = tmp_path / "test_undeclared.cpp"
-        test_file.write_text(
-            """
+        test_file.write_text("""
 // Valid class
 class MyClass {
 public:
@@ -91,8 +88,7 @@ class SecondClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(str(tmp_path))
         success, was_cached = analyzer.index_file(str(test_file))
@@ -111,8 +107,7 @@ public:
     def test_error_message_logged_and_cached(self, tmp_path):
         """Test that error messages are logged and cached for files with errors."""
         test_file = tmp_path / "test_with_errors.cpp"
-        test_file.write_text(
-            """
+        test_file.write_text("""
 class GoodClass {
 public:
     void method();
@@ -127,8 +122,7 @@ class AnotherGoodClass {
 public:
     void anotherMethod();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(str(tmp_path))
 
@@ -164,8 +158,7 @@ public:
     def test_partial_ast_extraction(self, tmp_path):
         """Test that we extract symbols from partial AST before error."""
         test_file = tmp_path / "test_partial_ast.cpp"
-        test_file.write_text(
-            """
+        test_file.write_text("""
 // These should be extracted
 class FirstClass {
 public:
@@ -185,8 +178,7 @@ class ThirdClass {
 public:
     void thirdMethod();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(str(tmp_path))
         success, was_cached = analyzer.index_file(str(test_file))
@@ -206,8 +198,7 @@ public:
         """Test that multiple files with errors are all processed."""
         # Create multiple files with errors
         file1 = tmp_path / "file1.cpp"
-        file1.write_text(
-            """
+        file1.write_text("""
 class Class1 {
 public:
     void method1()  // Missing semicolon
@@ -217,12 +208,10 @@ class Class1Valid {
 public:
     void method();
 };
-"""
-        )
+""")
 
         file2 = tmp_path / "file2.cpp"
-        file2.write_text(
-            """
+        file2.write_text("""
 class Class2 {
 public:
     void method2();
@@ -231,8 +220,7 @@ public:
 void brokenFunction() {
     UndeclaredType x;
 }
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(str(tmp_path))
 

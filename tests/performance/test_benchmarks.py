@@ -34,8 +34,7 @@ class TestPerformanceBenchmarks:
         """Benchmark indexing performance on small project (10 files)"""
         # Create 10 test files
         for i in range(10):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
-                f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
 class TestClass{i} {{
 public:
     void method{i}();
@@ -43,8 +42,7 @@ public:
 }};
 
 void globalFunction{i}() {{}}
-"""
-            )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
 
@@ -65,8 +63,7 @@ void globalFunction{i}() {{}}
         """Benchmark indexing performance on medium project (50 files)"""
         # Create 50 test files
         for i in range(50):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
-                f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
 class TestClass{i} {{
 public:
     void method{i}();
@@ -77,8 +74,7 @@ private:
 
 void globalFunction{i}() {{}}
 void helperFunction{i}() {{}}
-"""
-            )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
 
@@ -98,13 +94,11 @@ void helperFunction{i}() {{}}
         """Benchmark search performance"""
         # Create project with many classes
         for i in range(20):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
-                f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
 class TestClass{i} {{}};
 class AnotherClass{i} {{}};
 class DifferentClass{i} {{}};
-"""
-            )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -125,15 +119,13 @@ class DifferentClass{i} {{}};
         """Benchmark cache save performance"""
         # Create project with moderate size
         for i in range(30):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
-                f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
 class TestClass{i} {{
     void method1();
     void method2();
     void method3();
 }};
-"""
-            )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -151,14 +143,12 @@ class TestClass{i} {{
         """Benchmark cache load performance"""
         # Create and index project
         for i in range(30):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
-                f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
 class TestClass{i} {{
     void method1();
     void method2();
 }};
-"""
-            )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         count1 = analyzer.index_project()
@@ -203,8 +193,7 @@ class TestClass{i} {{
     def test_hierarchy_analysis_performance(self, temp_project_dir):
         """Benchmark class hierarchy analysis performance"""
         # Create deep inheritance hierarchy
-        (temp_project_dir / "src" / "hierarchy.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "hierarchy.cpp").write_text("""
 class Base0 {};
 class Base1 : public Base0 {};
 class Base2 : public Base1 {};
@@ -215,8 +204,7 @@ class Base6 : public Base5 {};
 class Base7 : public Base6 {};
 class Base8 : public Base7 {};
 class Base9 : public Base8 {};
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -234,15 +222,13 @@ class Base9 : public Base8 {};
     def test_call_graph_performance(self, temp_project_dir):
         """Benchmark call graph analysis performance"""
         # Create files with function calls
-        (temp_project_dir / "src" / "calls.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "calls.cpp").write_text("""
 void func1() {}
 void func2() { func1(); }
 void func3() { func2(); func1(); }
 void func4() { func3(); func2(); }
 void func5() { func4(); func3(); }
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()

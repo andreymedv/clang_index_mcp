@@ -19,8 +19,7 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.conn = sqlite3.connect(str(self.db_path))
 
         # Create file_dependencies table
-        self.conn.execute(
-            """
+        self.conn.execute("""
             CREATE TABLE file_dependencies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_file TEXT NOT NULL,
@@ -30,8 +29,7 @@ class TestDependencyGraphBuilder(unittest.TestCase):
                 detected_at REAL NOT NULL,
                 UNIQUE(source_file, included_file)
             )
-        """
-        )
+        """)
         self.conn.execute("CREATE INDEX idx_dep_source ON file_dependencies(source_file)")
         self.conn.execute("CREATE INDEX idx_dep_included ON file_dependencies(included_file)")
         self.conn.commit()
