@@ -383,6 +383,28 @@ def _build_explanation_prompt(
 
     # Case 2: Wrong tool
     if not step_eval["tool_match"]:
+        # Special handling for direction-confusion cases (incoming vs outgoing calls)
+        is_direction_case = (
+            (actual_tool == "find_incoming_calls" and expected_tool == "find_outgoing_calls") or
+            (actual_tool == "find_outgoing_calls" and expected_tool == "find_incoming_calls")
+        )
+        if is_direction_case:
+            return (
+                f"You chose '{actual_tool}' but the expected tool was '{expected_tool}'.\n\n"
+                f"This is a DIRECTION confusion case (callers vs callees). Analyze your reasoning:\n\n"
+                f"1. SEMANTIC MAPPING:\n"
+                f"   - Who is the SUBJECT of the user's query?\n"
+                f"   - In your interpretation, does the subject MAKE calls or RECEIVE calls?\n"
+                f"   - Quote specific words/phrases that indicated direction to you.\n\n"
+                f"2. TOOL DESCRIPTION ANALYSIS:\n"
+                f"   - Quote the EXACT sentence in '{actual_tool}' that matched your interpretation.\n"
+                f"   - Quote the EXACT sentence in '{expected_tool}' that you missed/misunderstood.\n"
+                f"   - Why did the '{expected_tool}' description fail to override your choice?\n\n"
+                f"3. CONFUSION SOURCE:\n"
+                f"   - Was the query phrased in active voice ('X calls Y') or passive voice ('Y is called by X')?\n"
+                f"   - What alternative tool names would be clearer to you?\n\n"
+                f"Be detailed. This helps identify semantic mismatches between natural language and API design."
+            )
         return (
             f"Quote an EXACT part (or parts) of {actual_tool} and {expected_tool} "
             " descriptions and/or hints from previous tools' responses that made you decide "

@@ -133,7 +133,7 @@ scenarios:
     queries:
       - "What does ResolveInheritedStyle call? Then drill down into GetComputedStyle"
       - "Show callees of ResolveInheritedStyle, then go deeper into GetComputedStyle"
-      - "Show functions called by ResolveInheritedStyle, then show callees of GetComputedStyle"
+      - "Show functions that ResolveInheritedStyle calls, then show callees of GetComputedStyle"
     expected_steps:
       - tool: find_outgoing_calls
         params:

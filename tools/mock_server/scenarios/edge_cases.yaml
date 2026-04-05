@@ -26,7 +26,7 @@ scenarios:
   - id: "I-outgoing"
     category: "direction"
     queries:
-      - "What functions are called BY processEvent?"
+      - "What functions does processEvent call?"
       - "Show the dependencies of processEvent — what does it depend on?"
       - "What does processEvent call internally?"
       - "List the outgoing calls from processEvent"
