@@ -113,6 +113,49 @@ def resolve_model_id(model_arg: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Timing statistics
+# ---------------------------------------------------------------------------
+
+def calculate_per_tool_time(results: list[dict]) -> dict:
+    """Calculate average time per tool invocation.
+
+    Returns dict with:
+        - avg_time_per_tool: average wall_time / total_tool_calls across all tests
+        - total_wall_time: sum of all wall_time_seconds
+        - total_tool_calls: sum of all tool calls
+        - test_count: number of tests with timing data
+    """
+    total_wall_time = 0.0
+    total_tool_calls = 0
+    test_count = 0
+
+    for r in results:
+        wall_time = r.get("wall_time_seconds")
+        tool_calls = r.get("total_tool_calls")
+
+        # Only count tests that have both timing and tool call data
+        if wall_time is not None and tool_calls is not None and tool_calls > 0:
+            total_wall_time += wall_time
+            total_tool_calls += tool_calls
+            test_count += 1
+
+    if total_tool_calls == 0:
+        return {
+            "avg_time_per_tool": 0.0,
+            "total_wall_time": 0.0,
+            "total_tool_calls": 0,
+            "test_count": 0,
+        }
+
+    return {
+        "avg_time_per_tool": round(total_wall_time / total_tool_calls, 2),
+        "total_wall_time": round(total_wall_time, 2),
+        "total_tool_calls": total_tool_calls,
+        "test_count": test_count,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Runner helpers
 # ---------------------------------------------------------------------------
 
@@ -165,6 +208,9 @@ def run_scenarios(
             total += s.get("total", 0)
             passed += s.get("passed", 0)
 
+    # Calculate timing statistics
+    time_stats = calculate_per_tool_time(all_results)
+
     # Write merged results
     merged = {
         "model": model_id,
@@ -176,6 +222,7 @@ def run_scenarios(
             "passed": passed,
             "failed": total - passed,
             "pass_rate": round(passed / total, 4) if total else 0.0,
+            "time_stats": time_stats,
         },
     }
     output_path.write_text(json.dumps(merged, indent=2))
@@ -192,20 +239,23 @@ def print_summary_table(summaries: list[dict]) -> None:
         return
 
     print()
-    print("=" * 60)
+    print("=" * 75)
     print("BENCHMARK SUMMARY")
-    print("=" * 60)
-    header = f"{'Model':<40} {'Pass':>6} {'Total':>6} {'Rate':>7}"
+    print("=" * 75)
+    header = f"{'Model':<35} {'Pass':>6} {'Total':>6} {'Rate':>7} {'Time/Tool':>10}"
     print(header)
-    print("-" * 60)
+    print("-" * 75)
 
     best_rate = max(s["pass_rate"] for s in summaries)
     for s in summaries:
         marker = " *" if s["pass_rate"] == best_rate else "  "
         rate_pct = f"{s['pass_rate']*100:.1f}%"
-        print(f"{s['model']:<40} {s['passed']:>6} {s['total']:>6} {rate_pct:>7}{marker}")
+        time_stats = s.get("time_stats", {})
+        avg_time = time_stats.get("avg_time_per_tool", 0.0)
+        time_str = f"{avg_time:.2f}s" if time_stats.get("test_count", 0) > 0 else "-"
+        print(f"{s['model']:<35} {s['passed']:>6} {s['total']:>6} {rate_pct:>7} {time_str:>10}{marker}")
 
-    print("=" * 60)
+    print("=" * 75)
     print("* best result")
 
 
@@ -376,9 +426,17 @@ def main() -> None:
 
         elapsed = time.time() - start
         rate_pct = f"{summary['pass_rate']*100:.1f}%"
+        time_stats = summary.get("time_stats", {})
+        if time_stats.get("test_count", 0) > 0:
+            avg_time = time_stats.get("avg_time_per_tool", 0.0)
+            total_calls = time_stats.get("total_tool_calls", 0)
+            total_wall = time_stats.get("total_wall_time", 0.0)
+            timing_str = f" | {avg_time:.2f}s per tool ({total_calls} calls, {total_wall:.1f}s total)"
+        else:
+            timing_str = ""
         print(
             f"  Result: {summary['passed']}/{summary['total']} ({rate_pct}) "
-            f"in {elapsed:.0f}s"
+            f"in {elapsed:.0f}s{timing_str}"
         )
         summaries.append(summary)
 

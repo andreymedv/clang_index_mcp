@@ -937,6 +937,50 @@ def run_scenario(
 
 
 # ---------------------------------------------------------------------------
+# Timing statistics
+# ---------------------------------------------------------------------------
+
+
+def calculate_per_tool_time(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculate average time per tool invocation.
+
+    Returns dict with:
+        - avg_time_per_tool: average wall_time / total_tool_calls across all tests
+        - total_wall_time: sum of all wall_time_seconds
+        - total_tool_calls: sum of all tool calls
+        - test_count: number of tests with timing data
+    """
+    total_wall_time = 0.0
+    total_tool_calls = 0
+    test_count = 0
+
+    for r in results:
+        wall_time = r.get("wall_time_seconds")
+        tool_calls = r.get("total_tool_calls")
+
+        # Only count tests that have both timing and tool call data
+        if wall_time is not None and tool_calls is not None and tool_calls > 0:
+            total_wall_time += wall_time
+            total_tool_calls += tool_calls
+            test_count += 1
+
+    if total_tool_calls == 0:
+        return {
+            "avg_time_per_tool": 0.0,
+            "total_wall_time": 0.0,
+            "total_tool_calls": 0,
+            "test_count": 0,
+        }
+
+    return {
+        "avg_time_per_tool": round(total_wall_time / total_tool_calls, 2),
+        "total_wall_time": round(total_wall_time, 2),
+        "total_tool_calls": total_tool_calls,
+        "test_count": test_count,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Results export
 # ---------------------------------------------------------------------------
 
@@ -1377,6 +1421,13 @@ def main() -> None:
         tps = total_compl / total_wall if total_wall else 0
         print(f"Tokens:  prompt={total_prompt:,}  completion={total_compl:,}  "
               f"~{tps:.0f} tok/s completion")
+
+    # Print timing statistics
+    time_stats = calculate_per_tool_time(results)
+    if time_stats["test_count"] > 0:
+        print(f"Timing:  {time_stats['avg_time_per_tool']:.2f}s per tool "
+              f"({time_stats['total_tool_calls']} calls, "
+              f"{time_stats['total_wall_time']:.1f}s total)")
 
     # Per-base-scenario variant summary (only if multi-query scenarios exist)
     has_variants = any(r.get("query_variant") for r in results)
