@@ -7,14 +7,16 @@ Requirements: REQ-1.5 (Cache Management)
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
-import time
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+import time
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -28,14 +30,16 @@ class TestCachePersistence:
     def test_cache_persistence_basic(self, temp_project_dir):
         """Test that cache is created and loadable - Task 1.1.9"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "cache_test.cpp").write_text("""
+        (temp_project_dir / "src" / "cache_test.cpp").write_text(
+            """
 class CachedClass {
 public:
     void method();
 };
 
 void cachedFunction() {}
-""")
+"""
+        )
 
         # First indexing - should create cache
         analyzer1 = CppAnalyzer(str(temp_project_dir))
@@ -72,20 +76,22 @@ void cachedFunction() {}
         assert len(funcs2) > 0, "Should find cachedFunction from cache"
 
         # Verify results are the same
-        assert classes1[0]['qualified_name'] == classes2[0]['qualified_name']
-        assert funcs1[0]['qualified_name'] == funcs2[0]['qualified_name']
+        assert classes1[0]["qualified_name"] == classes2[0]["qualified_name"]
+        assert funcs1[0]["qualified_name"] == funcs2[0]["qualified_name"]
 
     def test_cache_invalidation_on_file_change(self, temp_project_dir):
         """Test that cache is invalidated when files change"""
         test_file = temp_project_dir / "src" / "changing.cpp"
 
         # Create initial file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class OriginalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # First indexing
         analyzer1 = CppAnalyzer(str(temp_project_dir))
@@ -99,12 +105,14 @@ public:
         time.sleep(0.1)
 
         # Modify the file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class ModifiedClass {
 public:
     void newMethod();
 };
-""")
+"""
+        )
 
         # Create new analyzer - should detect file change
         analyzer2 = CppAnalyzer(str(temp_project_dir))

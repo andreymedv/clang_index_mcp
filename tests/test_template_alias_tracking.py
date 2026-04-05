@@ -6,10 +6,11 @@ Tests template alias extraction, storage, and parameter handling for C++ templat
 type aliases (template using declarations).
 """
 
+import json
 import os
 import sys
-import json
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
@@ -19,7 +20,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # ============================================================================
 # UT-T1: Template Alias Detection Tests

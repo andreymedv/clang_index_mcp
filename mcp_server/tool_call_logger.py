@@ -16,10 +16,7 @@ from collections import Counter, deque
 from pathlib import Path
 from typing import Any, Dict, List
 
-from mcp_server.smart_fallback import (
-    _PROTOTYPE_PATTERN,
-    _looks_like_signature,
-)
+from mcp_server.smart_fallback import _PROTOTYPE_PATTERN, _looks_like_signature
 
 # Regex metacharacters that distinguish regex patterns from plain names
 _REGEX_META = re.compile(r"[.*+?\[\]{}()|\\^$]")

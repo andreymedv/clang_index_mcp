@@ -6,10 +6,12 @@ Problem: When template<T> class Foo : public T, and class Bar : Foo<Base>,
          get_derived_classes("Base") should find Bar through indirect inheritance.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.symbol_info import get_template_param_base_indices, SymbolInfo
+from mcp_server.symbol_info import SymbolInfo, get_template_param_base_indices
 
 
 @pytest.fixture
@@ -35,8 +37,7 @@ class TestTemplateParamInheritanceTracking:
 
         # TemplateInheritsParam should inherit from param 0 (T)
         indices = analyzer._get_template_param_inheritance_indices("ns::TemplateInheritsParam")
-        assert 0 in indices, \
-            f"TemplateInheritsParam should inherit from param 0, got {indices}"
+        assert 0 in indices, f"TemplateInheritsParam should inherit from param 0, got {indices}"
 
     def test_template_multiple_bases_indices_detection(self, analyzer):
         """Test detection for templates with multiple bases including template param."""
@@ -45,11 +46,9 @@ class TestTemplateParamInheritanceTracking:
         # TemplateMultipleBases inherits from T (param 0) and AnotherBase
         # Only T should be detected as template param base
         indices = analyzer._get_template_param_inheritance_indices("ns::TemplateMultipleBases")
-        assert 0 in indices, \
-            f"TemplateMultipleBases should inherit from param 0, got {indices}"
+        assert 0 in indices, f"TemplateMultipleBases should inherit from param 0, got {indices}"
         # Should only have index 0 (the template param), not other indices
-        assert len(indices) == 1, \
-            f"Should only have one template param base, got {indices}"
+        assert len(indices) == 1, f"Should only have one template param base, got {indices}"
 
 
 class TestGetDerivedClassesWithTemplateParamInheritance:
@@ -63,8 +62,9 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
-        assert "DirectDerived" in derived_names, \
-            f"DirectDerived should be found as directly inheriting from BaseClass. Found: {derived_names}"
+        assert (
+            "DirectDerived" in derived_names
+        ), f"DirectDerived should be found as directly inheriting from BaseClass. Found: {derived_names}"
 
     def test_indirect_inheritance_through_template_param(self, analyzer):
         """Test that classes inheriting via template param are found."""
@@ -76,8 +76,9 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
-        assert "DerivedFromTemplate" in derived_names, \
-            f"DerivedFromTemplate should be found via template param inheritance. Found: {derived_names}"
+        assert (
+            "DerivedFromTemplate" in derived_names
+        ), f"DerivedFromTemplate should be found via template param inheritance. Found: {derived_names}"
 
     def test_indirect_inheritance_with_multiple_bases(self, analyzer):
         """Test template with multiple bases including template param."""
@@ -89,8 +90,9 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
-        assert "DerivedFromTemplateMulti" in derived_names, \
-            f"DerivedFromTemplateMulti should be found via template param inheritance. Found: {derived_names}"
+        assert (
+            "DerivedFromTemplateMulti" in derived_names
+        ), f"DerivedFromTemplateMulti should be found via template param inheritance. Found: {derived_names}"
 
     def test_unrelated_class_not_included(self, analyzer):
         """Verify unrelated classes are not included."""
@@ -99,8 +101,9 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
-        assert "Unrelated" not in derived_names, \
-            f"Unrelated should NOT be found as derived from BaseClass. Found: {derived_names}"
+        assert (
+            "Unrelated" not in derived_names
+        ), f"Unrelated should NOT be found as derived from BaseClass. Found: {derived_names}"
 
     def test_qualified_name_search(self, analyzer):
         """Test with qualified class name."""
@@ -111,8 +114,9 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
 
         # Should still find the derived classes
-        assert "DirectDerived" in derived_names or "DerivedFromTemplate" in derived_names, \
-            f"Should find derived classes with qualified name search. Found: {derived_names}"
+        assert (
+            "DirectDerived" in derived_names or "DerivedFromTemplate" in derived_names
+        ), f"Should find derived classes with qualified name search. Found: {derived_names}"
 
 
 class TestParseTemplateArgs:
@@ -156,7 +160,9 @@ class TestCheckTemplateParamInheritance:
         """Test that unknown template returns False."""
         # Need to index first to populate template_param_bases
         analyzer.index_project()
-        result = analyzer._check_template_param_inheritance("UnknownTemplate<SomeClass>", "SomeClass")
+        result = analyzer._check_template_param_inheritance(
+            "UnknownTemplate<SomeClass>", "SomeClass"
+        )
         assert result is False
 
     def test_matching_template_arg(self, analyzer):
@@ -238,7 +244,11 @@ class TestGetTemplateParamBaseIndices:
     def test_no_template_params(self):
         """Non-template class returns empty list."""
         info = SymbolInfo(
-            name="Foo", kind="struct", file="test.h", line=1, column=1,
+            name="Foo",
+            kind="struct",
+            file="test.h",
+            line=1,
+            column=1,
             base_classes=["Bar"],
             template_parameters=None,
         )
@@ -247,7 +257,11 @@ class TestGetTemplateParamBaseIndices:
     def test_no_base_classes(self):
         """Template with no base classes returns empty list."""
         info = SymbolInfo(
-            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            name="Foo",
+            kind="class_template",
+            file="test.h",
+            line=1,
+            column=1,
             base_classes=[],
             template_parameters='[{"name": "T", "kind": "type"}]',
         )
@@ -256,7 +270,11 @@ class TestGetTemplateParamBaseIndices:
     def test_single_template_param_base(self):
         """template<typename T> class Foo : T -> index 0."""
         info = SymbolInfo(
-            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            name="Foo",
+            kind="class_template",
+            file="test.h",
+            line=1,
+            column=1,
             base_classes=["T"],
             template_parameters='[{"name": "T", "kind": "type"}]',
         )
@@ -265,7 +283,11 @@ class TestGetTemplateParamBaseIndices:
     def test_mixed_bases(self):
         """template<typename T> class Foo : T, Bar -> only T is template param."""
         info = SymbolInfo(
-            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            name="Foo",
+            kind="class_template",
+            file="test.h",
+            line=1,
+            column=1,
             base_classes=["T", "Bar"],
             template_parameters='[{"name": "T", "kind": "type"}]',
         )
@@ -274,7 +296,11 @@ class TestGetTemplateParamBaseIndices:
     def test_multiple_template_param_bases(self):
         """template<typename T, typename U> class Foo : T, U -> indices 0, 1."""
         info = SymbolInfo(
-            name="Foo", kind="class_template", file="test.h", line=1, column=1,
+            name="Foo",
+            kind="class_template",
+            file="test.h",
+            line=1,
+            column=1,
             base_classes=["T", "U"],
             template_parameters='[{"name": "T", "kind": "type"}, {"name": "U", "kind": "type"}]',
         )

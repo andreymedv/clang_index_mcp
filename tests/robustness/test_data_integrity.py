@@ -7,14 +7,16 @@ Requirements: REQ-11.x (Data Integrity)
 Priority: P0 - CRITICAL
 """
 
-import pytest
-import time
-import threading
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+import threading
+import time
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 

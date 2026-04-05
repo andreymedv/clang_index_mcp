@@ -4,11 +4,12 @@ YAML Scenario Loader and Executor
 Loads and executes custom test scenarios defined in YAML format.
 """
 
-import yaml
 import json
-import time
 import re
+import time
 from pathlib import Path
+
+import yaml
 
 
 def run(project_info, server_manager, yaml_path=None):
@@ -24,25 +25,19 @@ def run(project_info, server_manager, yaml_path=None):
         dict: Test results with status, metrics, issues
     """
     if not yaml_path:
-        return {
-            "error": "YAML scenario path required",
-            "metrics": {},
-            "details": {}
-        }
+        return {"error": "YAML scenario path required", "metrics": {}, "details": {}}
 
     start_time = time.time()
-    results = {
-        "metrics": {},
-        "details": {},
-        "steps": []
-    }
+    results = {"metrics": {}, "details": {}, "steps": []}
 
     try:
         # Load YAML scenario
         yaml_path = Path(yaml_path)
         if not yaml_path.exists():
-            results["error"] = f"Scenario file not found: {yaml_path}\n" \
-                             f"  Hint: Place YAML files in .test-scenarios/ directory"
+            results["error"] = (
+                f"Scenario file not found: {yaml_path}\n"
+                f"  Hint: Place YAML files in .test-scenarios/ directory"
+            )
             return results
 
         with open(yaml_path, "r") as f:
@@ -77,7 +72,9 @@ def run(project_info, server_manager, yaml_path=None):
             if tool_name == "wait_for_indexing":
                 timeout = step.get("timeout", 60)
                 if not _wait_for_indexing(server_manager, endpoint, max_wait=timeout):
-                    results["error"] = f"Step {step_num}: Indexing did not complete within {timeout}s"
+                    results["error"] = (
+                        f"Step {step_num}: Indexing did not complete within {timeout}s"
+                    )
                     return results
                 step_results.append({"step": step_num, "tool": tool_name, "success": True})
                 continue
@@ -113,12 +110,14 @@ def run(project_info, server_manager, yaml_path=None):
                     results["error"] = f"Step {step_num}: Expectation failed: {message}"
                     return results
 
-            step_results.append({
-                "step": step_num,
-                "tool": tool_name,
-                "success": True,
-                "response_length": len(response_text)
-            })
+            step_results.append(
+                {
+                    "step": step_num,
+                    "tool": tool_name,
+                    "success": True,
+                    "response_length": len(response_text),
+                }
+            )
 
         # All steps passed
         results["metrics"]["steps_executed"] = len(step_results)
@@ -146,35 +145,55 @@ def _validate_scenario_schema(scenario):
     """
     # Check root structure
     if not isinstance(scenario, dict):
-        return "Invalid YAML scenario: must be a dictionary\n" \
-               "  Hint: Ensure YAML starts with field definitions, not a list"
+        return (
+            "Invalid YAML scenario: must be a dictionary\n"
+            "  Hint: Ensure YAML starts with field definitions, not a list"
+        )
 
     # Check required fields
     if "steps" not in scenario:
-        return "Scenario missing required 'steps' field\n" \
-               "  Hint: Add 'steps:' followed by a list of test steps"
+        return (
+            "Scenario missing required 'steps' field\n"
+            "  Hint: Add 'steps:' followed by a list of test steps"
+        )
 
     # Validate steps
     steps = scenario.get("steps")
     if not isinstance(steps, list):
-        return "Scenario 'steps' must be a list\n" \
-               "  Hint: Use YAML list syntax:\n" \
-               "    steps:\n" \
-               "      - tool: tool_name\n" \
-               "        args: {...}"
+        return (
+            "Scenario 'steps' must be a list\n"
+            "  Hint: Use YAML list syntax:\n"
+            "    steps:\n"
+            "      - tool: tool_name\n"
+            "        args: {...}"
+        )
 
     if len(steps) == 0:
-        return "Scenario must have at least one step\n" \
-               "  Hint: Add at least one tool call in the steps list"
+        return (
+            "Scenario must have at least one step\n"
+            "  Hint: Add at least one tool call in the steps list"
+        )
 
     # Supported MCP tools
     supported_tools = {
-        "set_project_directory", "get_indexing_status", "wait_for_indexing",
-        "search_classes", "search_functions", "search_symbols",
-        "get_class_info", "get_function_signature", "find_in_file",
-        "refresh_project", "get_server_status", "get_class_hierarchy",
-        "get_derived_classes", "find_incoming_calls", "find_callees",
-        "get_call_sites", "get_files_containing_symbol", "get_call_path"
+        "set_project_directory",
+        "get_indexing_status",
+        "wait_for_indexing",
+        "search_classes",
+        "search_functions",
+        "search_symbols",
+        "get_class_info",
+        "get_function_signature",
+        "find_in_file",
+        "refresh_project",
+        "get_server_status",
+        "get_class_hierarchy",
+        "get_derived_classes",
+        "find_incoming_calls",
+        "find_callees",
+        "get_call_sites",
+        "get_files_containing_symbol",
+        "get_call_path",
     }
 
     # Validate each step
@@ -182,13 +201,17 @@ def _validate_scenario_schema(scenario):
         step_num = i + 1
 
         if not isinstance(step, dict):
-            return f"Step {step_num}: must be a dictionary\n" \
-                   f"  Hint: Each step needs 'tool' and optionally 'args', 'expect', 'description'"
+            return (
+                f"Step {step_num}: must be a dictionary\n"
+                f"  Hint: Each step needs 'tool' and optionally 'args', 'expect', 'description'"
+            )
 
         # Check required tool field
         if "tool" not in step:
-            return f"Step {step_num}: missing required 'tool' field\n" \
-                   f"  Hint: Add 'tool: tool_name' to specify which MCP tool to call"
+            return (
+                f"Step {step_num}: missing required 'tool' field\n"
+                f"  Hint: Add 'tool: tool_name' to specify which MCP tool to call"
+            )
 
         tool_name = step.get("tool")
         if not isinstance(tool_name, str):
@@ -196,18 +219,22 @@ def _validate_scenario_schema(scenario):
 
         # Validate tool name
         if tool_name not in supported_tools:
-            return f"Step {step_num}: unknown tool '{tool_name}'\n" \
-                   f"  Supported tools: {', '.join(sorted(supported_tools))}"
+            return (
+                f"Step {step_num}: unknown tool '{tool_name}'\n"
+                f"  Supported tools: {', '.join(sorted(supported_tools))}"
+            )
 
         # Validate args (if present)
         if "args" in step:
             args = step.get("args")
             if not isinstance(args, dict):
-                return f"Step {step_num}: 'args' must be a dictionary\n" \
-                       f"  Hint: Use YAML dictionary syntax:\n" \
-                       f"    args:\n" \
-                       f"      param1: value1\n" \
-                       f"      param2: value2"
+                return (
+                    f"Step {step_num}: 'args' must be a dictionary\n"
+                    f"  Hint: Use YAML dictionary syntax:\n"
+                    f"    args:\n"
+                    f"      param1: value1\n"
+                    f"      param2: value2"
+                )
 
         # Validate expectations (if present)
         if "expect" in step:
@@ -219,15 +246,16 @@ def _validate_scenario_schema(scenario):
         if tool_name == "wait_for_indexing" and "timeout" in step:
             timeout = step.get("timeout")
             if not isinstance(timeout, (int, float)) or timeout <= 0:
-                return f"Step {step_num}: 'timeout' must be a positive number\n" \
-                       f"  Hint: Use timeout: 30 for 30 seconds"
+                return (
+                    f"Step {step_num}: 'timeout' must be a positive number\n"
+                    f"  Hint: Use timeout: 30 for 30 seconds"
+                )
 
     # Validate optional fields
     if "protocol" in scenario:
         protocol = scenario.get("protocol")
         if protocol not in ["http", "sse", "stdio"]:
-            return f"Invalid protocol '{protocol}'\n" \
-                   f"  Supported: http, sse, stdio"
+            return f"Invalid protocol '{protocol}'\n" f"  Supported: http, sse, stdio"
 
     return None
 
@@ -244,12 +272,14 @@ def _validate_expectations(expectations, step_num):
         str: Error message if validation fails, None otherwise
     """
     if not isinstance(expectations, list):
-        return f"Step {step_num}: 'expect' must be a list\n" \
-               f"  Hint: Use YAML list syntax:\n" \
-               f"    expect:\n" \
-               f"      - type: count\n" \
-               f"        operator: '>'\n" \
-               f"        value: 0"
+        return (
+            f"Step {step_num}: 'expect' must be a list\n"
+            f"  Hint: Use YAML list syntax:\n"
+            f"    expect:\n"
+            f"      - type: count\n"
+            f"        operator: '>'\n"
+            f"        value: 0"
+        )
 
     supported_types = ["count", "content_includes", "content_matches", "has_field", "no_error"]
 
@@ -261,26 +291,36 @@ def _validate_expectations(expectations, step_num):
 
         # Check required type field
         if "type" not in expectation:
-            return f"Step {step_num}, expectation {exp_num}: missing required 'type' field\n" \
-                   f"  Supported types: {', '.join(supported_types)}"
+            return (
+                f"Step {step_num}, expectation {exp_num}: missing required 'type' field\n"
+                f"  Supported types: {', '.join(supported_types)}"
+            )
 
         exp_type = expectation.get("type")
         if exp_type not in supported_types:
-            return f"Step {step_num}, expectation {exp_num}: unknown type '{exp_type}'\n" \
-                   f"  Supported types: {', '.join(supported_types)}"
+            return (
+                f"Step {step_num}, expectation {exp_num}: unknown type '{exp_type}'\n"
+                f"  Supported types: {', '.join(supported_types)}"
+            )
 
         # Validate type-specific fields
         if exp_type == "count":
             if "operator" not in expectation:
-                return f"Step {step_num}, expectation {exp_num}: 'count' type requires 'operator' field\n" \
-                       f"  Supported operators: ==, !=, >, >=, <, <="
+                return (
+                    f"Step {step_num}, expectation {exp_num}: 'count' type requires 'operator' field\n"
+                    f"  Supported operators: ==, !=, >, >=, <, <="
+                )
             if "value" not in expectation:
-                return f"Step {step_num}, expectation {exp_num}: 'count' type requires 'value' field"
+                return (
+                    f"Step {step_num}, expectation {exp_num}: 'count' type requires 'value' field"
+                )
 
             operator = expectation.get("operator")
             if operator not in ["==", "!=", ">", ">=", "<", "<="]:
-                return f"Step {step_num}, expectation {exp_num}: invalid operator '{operator}'\n" \
-                       f"  Supported: ==, !=, >, >=, <, <="
+                return (
+                    f"Step {step_num}, expectation {exp_num}: invalid operator '{operator}'\n"
+                    f"  Supported: ==, !=, >, >=, <, <="
+                )
 
             value = expectation.get("value")
             if not isinstance(value, (int, float)):
@@ -288,13 +328,17 @@ def _validate_expectations(expectations, step_num):
 
         elif exp_type == "content_includes":
             if "value" not in expectation:
-                return f"Step {step_num}, expectation {exp_num}: 'content_includes' type requires 'value' field\n" \
-                       f"  Hint: value: 'expected text'"
+                return (
+                    f"Step {step_num}, expectation {exp_num}: 'content_includes' type requires 'value' field\n"
+                    f"  Hint: value: 'expected text'"
+                )
 
         elif exp_type == "content_matches":
             if "symbol_name" not in expectation:
-                return f"Step {step_num}, expectation {exp_num}: 'content_matches' type requires 'symbol_name' field\n" \
-                       f"  Hint: symbol_name: 'regex_pattern'"
+                return (
+                    f"Step {step_num}, expectation {exp_num}: 'content_matches' type requires 'symbol_name' field\n"
+                    f"  Hint: symbol_name: 'regex_pattern'"
+                )
 
             # Validate regex pattern
             pattern = expectation.get("symbol_name")
@@ -305,8 +349,10 @@ def _validate_expectations(expectations, step_num):
 
         elif exp_type == "has_field":
             if "field" not in expectation:
-                return f"Step {step_num}, expectation {exp_num}: 'has_field' type requires 'field' field\n" \
-                       f"  Hint: field: 'field_name'"
+                return (
+                    f"Step {step_num}, expectation {exp_num}: 'has_field' type requires 'field' field\n"
+                    f"  Hint: field: 'field_name'"
+                )
 
     return None
 
@@ -337,11 +383,7 @@ def _wait_for_indexing(server_manager, endpoint, max_wait=60):
     """Wait for indexing to complete"""
     wait_start = time.time()
     while time.time() - wait_start < max_wait:
-        status_response = server_manager.call_tool(
-            endpoint,
-            "get_indexing_status",
-            {}
-        )
+        status_response = server_manager.call_tool(endpoint, "get_indexing_status", {})
 
         if "result" in status_response:
             content = status_response["result"].get("content", [])

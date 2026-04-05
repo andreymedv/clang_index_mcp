@@ -55,7 +55,7 @@ class ResultAnalyzer:
             "status": "PASS",
             "issues": [],
             "metrics": results.get("metrics", {}),
-            "details": results.get("details", {})
+            "details": results.get("details", {}),
         }
 
         # Check for errors in results
@@ -188,7 +188,7 @@ class ResultAnalyzer:
             "test_name": self.test_name,
             "project_name": self.project_name,
             "protocol": self.protocol,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
         with open(self.test_dir / "test-config.json", "w") as f:
             json.dump(config, f, indent=2)

@@ -10,15 +10,14 @@ import json
 import logging
 from uuid import uuid4
 
+import uvicorn
+from mcp.server import Server
+from mcp.server.sse import SseServerTransport
+from mcp.server.streamable_http import StreamableHTTPServerTransport
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
-import uvicorn
-
-from mcp.server import Server
-from mcp.server.sse import SseServerTransport
-from mcp.server.streamable_http import StreamableHTTPServerTransport
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

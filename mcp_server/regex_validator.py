@@ -6,7 +6,7 @@ Detects catastrophic backtracking patterns that could cause exponential time com
 """
 
 import re
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 
 class RegexValidationError(Exception):

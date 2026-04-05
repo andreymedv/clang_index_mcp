@@ -7,14 +7,18 @@ during the indexing process.
 """
 
 import asyncio
-import pytest
 import tempfile
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.state_manager import (
-    AnalyzerStateManager, AnalyzerState, BackgroundIndexer, IndexingProgress
+    AnalyzerState,
+    AnalyzerStateManager,
+    BackgroundIndexer,
+    IndexingProgress,
 )
 
 
@@ -25,16 +29,19 @@ def simple_cpp_project(tmp_path):
     project.mkdir()
 
     # Create main.cpp
-    (project / "main.cpp").write_text("""
+    (project / "main.cpp").write_text(
+        """
 #include "utils.h"
 
 int main() {
     return calculate(5);
 }
-""")
+"""
+    )
 
     # Create utils.h
-    (project / "utils.h").write_text("""
+    (project / "utils.h").write_text(
+        """
 #ifndef UTILS_H
 #define UTILS_H
 
@@ -47,10 +54,12 @@ public:
 };
 
 #endif
-""")
+"""
+    )
 
     # Create utils.cpp
-    (project / "utils.cpp").write_text("""
+    (project / "utils.cpp").write_text(
+        """
 #include "utils.h"
 
 int calculate(int x) {
@@ -64,7 +73,8 @@ int Calculator::add(int a, int b) {
 int Calculator::subtract(int a, int b) {
     return a - b;
 }
-""")
+"""
+    )
 
     return project
 
@@ -84,9 +94,7 @@ async def test_progress_callback_invoked(simple_cpp_project):
 
     # Index with progress callback
     indexed_count = analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=progress_callback
+        force=True, include_dependencies=False, progress_callback=progress_callback
     )
 
     # Verify callback was invoked
@@ -108,9 +116,7 @@ async def test_progress_data_accuracy(simple_cpp_project):
         progress_updates.append(progress)
 
     indexed_count = analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=progress_callback
+        force=True, include_dependencies=False, progress_callback=progress_callback
     )
 
     # Check that we got progress updates
@@ -144,14 +150,12 @@ async def test_progress_increases_monotonically(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=progress_callback
+        force=True, include_dependencies=False, progress_callback=progress_callback
     )
 
     # Check that indexed count never decreases
     for i in range(1, len(progress_updates)):
-        prev = progress_updates[i-1].indexed_files + progress_updates[i-1].failed_files
+        prev = progress_updates[i - 1].indexed_files + progress_updates[i - 1].failed_files
         curr = progress_updates[i].indexed_files + progress_updates[i].failed_files
         assert curr >= prev, f"Progress should not decrease: {prev} -> {curr}"
 
@@ -164,10 +168,7 @@ async def test_background_indexer_progress_integration(simple_cpp_project):
     background_indexer = BackgroundIndexer(analyzer, state_manager)
 
     # Start background indexing
-    indexed_count = await background_indexer.start_indexing(
-        force=True,
-        include_dependencies=False
-    )
+    indexed_count = await background_indexer.start_indexing(force=True, include_dependencies=False)
 
     # Check that state manager has progress information
     progress = state_manager.get_progress()
@@ -190,16 +191,15 @@ async def test_progress_completion_percentage(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=progress_callback
+        force=True, include_dependencies=False, progress_callback=progress_callback
     )
 
     # Verify completion percentage is correct
     for progress in progress_updates:
-        expected_percentage = (progress.indexed_files / progress.total_files * 100.0)
-        assert abs(progress.completion_percentage - expected_percentage) < 0.01, \
-            f"Completion percentage mismatch: {progress.completion_percentage} vs {expected_percentage}"
+        expected_percentage = progress.indexed_files / progress.total_files * 100.0
+        assert (
+            abs(progress.completion_percentage - expected_percentage) < 0.01
+        ), f"Completion percentage mismatch: {progress.completion_percentage} vs {expected_percentage}"
 
 
 @pytest.mark.asyncio
@@ -216,9 +216,7 @@ async def test_progress_callback_exception_handling(simple_cpp_project):
 
     # Indexing should complete despite callback failures
     indexed_count = analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=failing_callback
+        force=True, include_dependencies=False, progress_callback=failing_callback
     )
 
     # Verify indexing completed successfully
@@ -237,9 +235,7 @@ async def test_progress_is_complete_flag(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=progress_callback
+        force=True, include_dependencies=False, progress_callback=progress_callback
     )
 
     # Check that early updates show incomplete
@@ -264,9 +260,7 @@ async def test_progress_to_dict_serialization(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True,
-        include_dependencies=False,
-        progress_callback=progress_callback
+        force=True, include_dependencies=False, progress_callback=progress_callback
     )
 
     assert len(progress_updates) > 0, "Should have progress updates"
@@ -285,5 +279,6 @@ async def test_progress_to_dict_serialization(simple_cpp_project):
 
     # Verify types (should be JSON-serializable)
     import json
+
     json_str = json.dumps(progress_dict)  # Should not throw
     assert len(json_str) > 0

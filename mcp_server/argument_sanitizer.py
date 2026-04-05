@@ -7,7 +7,7 @@ arguments to ensure compatibility with libclang's programmatic interface.
 
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Handle both package and script imports
 try:

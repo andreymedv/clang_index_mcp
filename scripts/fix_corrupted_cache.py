@@ -11,10 +11,10 @@ Usage:
 If project_path is not provided, it will check all cache directories.
 """
 
-import sys
 import os
-import sqlite3
 import shutil
+import sqlite3
+import sys
 from pathlib import Path
 
 # Add parent directory to path

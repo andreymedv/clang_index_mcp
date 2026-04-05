@@ -7,14 +7,16 @@ Requirements: REQ-6.x (Error Handling)
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
 import os
 import stat
 
 # Import test infrastructure
 import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -25,26 +27,32 @@ from mcp_server.cpp_analyzer import CppAnalyzer
 class TestFilePermissionErrors:
     """Test file permission error handling - REQ-6.1"""
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Unix permissions not applicable on Windows")
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Unix permissions not applicable on Windows"
+    )
     def test_file_permission_errors(self, temp_project_dir):
         """Test handling of files with no read permission - Task 1.2.1"""
         # Create a file with no read permissions
         restricted_file = temp_project_dir / "src" / "restricted.cpp"
-        restricted_file.write_text("""
+        restricted_file.write_text(
+            """
 class RestrictedClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Create a normal file
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text("""
+        normal_file.write_text(
+            """
 class NormalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Remove read permission from restricted file
         os.chmod(restricted_file, 0o000)
@@ -83,24 +91,26 @@ class TestMissingFileHandling:
         non_existent = temp_project_dir / "src" / "doesnt_exist.cpp"
         existing = temp_project_dir / "src" / "exists.cpp"
 
-        existing.write_text("""
+        existing.write_text(
+            """
 class ExistingClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         compile_commands = [
             {
                 "directory": str(temp_project_dir),
                 "command": f"g++ -c {non_existent}",
-                "file": str(non_existent)
+                "file": str(non_existent),
             },
             {
                 "directory": str(temp_project_dir),
                 "command": f"g++ -c {existing}",
-                "file": str(existing)
-            }
+                "file": str(existing),
+            },
         ]
 
         cc_file = temp_project_dir / "compile_commands.json"
@@ -135,12 +145,14 @@ class TestMalformedFiles:
 
         # Create normal file for comparison
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text("""
+        normal_file.write_text(
+            """
 class NormalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Create analyzer - should handle empty files gracefully
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -161,12 +173,14 @@ public:
 
         # Create normal file
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text("""
+        normal_file.write_text(
+            """
 class NormalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Create analyzer - should handle null bytes gracefully
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -183,7 +197,8 @@ public:
         """Test handling of C++ files with syntax errors - Task 1.2.8"""
         # Create file with syntax errors
         syntax_error_file = temp_project_dir / "src" / "syntax_error.cpp"
-        syntax_error_file.write_text("""
+        syntax_error_file.write_text(
+            """
 class InvalidSyntax {
     this is not valid C++ code !!!
     missing semicolons
@@ -192,16 +207,19 @@ class InvalidSyntax {
 
 void brokenFunction( {
     // missing closing paren
-""")
+"""
+        )
 
         # Create normal file
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text("""
+        normal_file.write_text(
+            """
 class NormalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Create analyzer - should handle syntax errors gracefully
         analyzer = CppAnalyzer(str(temp_project_dir))

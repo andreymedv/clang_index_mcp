@@ -11,16 +11,17 @@ Performance optimizations for large files:
 - Uses pickle for fast binary serialization of parsed data
 """
 
+import hashlib
 import json
 import os
-import sys
-import subprocess
 import pickle
-import hashlib
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-import time
+import subprocess
+import sys
 import threading
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from clang.cindex import CompilationDatabase
 
 # Try to import orjson for faster JSON parsing (optional)

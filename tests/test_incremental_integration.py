@@ -4,14 +4,14 @@ These tests verify the complete incremental analysis pipeline with real
 CppAnalyzer instances, actual file operations, and full parsing.
 """
 
-import unittest
-import tempfile
-import shutil
 import json
 import os
+import shutil
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
-import sys
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,61 +33,86 @@ class TestIncrementalAnalysisIntegration(unittest.TestCase):
 
         # Create main.cpp
         self.main_cpp = self.src_dir / "main.cpp"
-        self.main_cpp.write_text("""
+        self.main_cpp.write_text(
+            """
 #include "utils.h"
 
 int main() {
     return add(1, 2);
 }
-""")
+"""
+        )
 
         # Create utils.h
         self.utils_h = self.src_dir / "utils.h"
-        self.utils_h.write_text("""
+        self.utils_h.write_text(
+            """
 #pragma once
 
 int add(int a, int b) {
     return a + b;
 }
-""")
+"""
+        )
 
         # Create utils.cpp
         self.utils_cpp = self.src_dir / "utils.cpp"
-        self.utils_cpp.write_text("""
+        self.utils_cpp.write_text(
+            """
 #include "utils.h"
 
 int multiply(int a, int b) {
     return a * b;
 }
-""")
+"""
+        )
 
         # Create compile_commands.json
         self.cc_file = self.test_dir / "compile_commands.json"
-        self.cc_file.write_text(json.dumps([
-            {
-                "directory": str(self.test_dir),
-                "file": str(self.main_cpp),
-                "arguments": ["clang++", "-std=c++17", "-I", str(self.src_dir), str(self.main_cpp)]
-            },
-            {
-                "directory": str(self.test_dir),
-                "file": str(self.utils_cpp),
-                "arguments": ["clang++", "-std=c++17", "-I", str(self.src_dir), str(self.utils_cpp)]
-            }
-        ], indent=2))
+        self.cc_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(self.test_dir),
+                        "file": str(self.main_cpp),
+                        "arguments": [
+                            "clang++",
+                            "-std=c++17",
+                            "-I",
+                            str(self.src_dir),
+                            str(self.main_cpp),
+                        ],
+                    },
+                    {
+                        "directory": str(self.test_dir),
+                        "file": str(self.utils_cpp),
+                        "arguments": [
+                            "clang++",
+                            "-std=c++17",
+                            "-I",
+                            str(self.src_dir),
+                            str(self.utils_cpp),
+                        ],
+                    },
+                ],
+                indent=2,
+            )
+        )
 
         # Create config
         self.config_file = self.test_dir / ".cpp-analyzer-config.json"
-        self.config_file.write_text(json.dumps({
-            "compile_commands": {
-                "compile_commands_path": "compile_commands.json",
-                "enabled": True
-            },
-            "cache": {
-                "enabled": True,
-                "backend": "sqlite"
-            }
-        }, indent=2))
+        self.config_file.write_text(
+            json.dumps(
+                {
+                    "compile_commands": {
+                        "compile_commands_path": "compile_commands.json",
+                        "enabled": True,
+                    },
+                    "cache": {"enabled": True, "backend": "sqlite"},
+                },
+                indent=2,
+            )
+        )
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -97,10 +122,7 @@ int multiply(int a, int b) {
     def test_initial_analysis_then_no_changes(self):
         """Test that no re-analysis occurs when no changes detected."""
         # Initialize analyzer with SQLite backend
-        analyzer = CppAnalyzer(
-            project_root=str(self.test_dir),
-            config_file=str(self.config_file)
-        )
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis
         analyzer.index_project()
@@ -119,22 +141,21 @@ int multiply(int a, int b) {
     def test_source_file_modification(self):
         """Test that modifying a source file triggers re-analysis."""
         # Initialize analyzer
-        analyzer = CppAnalyzer(
-            project_root=str(self.test_dir),
-            config_file=str(self.config_file)
-        )
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis
         analyzer.index_project()
 
         # Modify utils.cpp
-        self.utils_cpp.write_text("""
+        self.utils_cpp.write_text(
+            """
 #include "utils.h"
 
 int multiply(int a, int b) {
     return a * b * 2;  // Changed
 }
-""")
+"""
+        )
 
         # Create incremental analyzer
         incremental = IncrementalAnalyzer(analyzer)
@@ -148,18 +169,16 @@ int multiply(int a, int b) {
         expected_path = os.path.realpath(str(self.utils_cpp))
         # File should be re-analyzed (either as modified or added, both are valid if cache was rebuilt)
         self.assertTrue(
-            expected_path in result.changes.modified_files or expected_path in result.changes.added_files,
+            expected_path in result.changes.modified_files
+            or expected_path in result.changes.added_files,
             f"Expected {expected_path} to be in modified_files or added_files, but found: "
-            f"modified={result.changes.modified_files}, added={result.changes.added_files}"
+            f"modified={result.changes.modified_files}, added={result.changes.added_files}",
         )
 
     def test_header_file_modification_cascade(self):
         """Test that modifying a header triggers re-analysis of dependents."""
         # Initialize analyzer
-        analyzer = CppAnalyzer(
-            project_root=str(self.test_dir),
-            config_file=str(self.config_file)
-        )
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis to build dependency graph
         analyzer.index_project()
@@ -168,7 +187,8 @@ int multiply(int a, int b) {
         self.assertIsNotNone(analyzer.dependency_graph)
 
         # Modify utils.h
-        self.utils_h.write_text("""
+        self.utils_h.write_text(
+            """
 #pragma once
 
 int add(int a, int b) {
@@ -178,7 +198,8 @@ int add(int a, int b) {
 int subtract(int a, int b) {  // New function
     return a - b;
 }
-""")
+"""
+        )
 
         # Create incremental analyzer
         incremental = IncrementalAnalyzer(analyzer)
@@ -194,29 +215,30 @@ int subtract(int a, int b) {  // New function
     def test_new_file_added(self):
         """Test that adding a new file triggers analysis."""
         # Initialize analyzer
-        analyzer = CppAnalyzer(
-            project_root=str(self.test_dir),
-            config_file=str(self.config_file)
-        )
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis
         analyzer.index_project()
 
         # Add a new file
         new_file = self.src_dir / "new.cpp"
-        new_file.write_text("""
+        new_file.write_text(
+            """
 int divide(int a, int b) {
     return a / b;
 }
-""")
+"""
+        )
 
         # Update compile_commands.json to include new file
         cc_data = json.loads(self.cc_file.read_text())
-        cc_data.append({
-            "directory": str(self.test_dir),
-            "file": str(new_file),
-            "arguments": ["clang++", "-std=c++17", str(new_file)]
-        })
+        cc_data.append(
+            {
+                "directory": str(self.test_dir),
+                "file": str(new_file),
+                "arguments": ["clang++", "-std=c++17", str(new_file)],
+            }
+        )
         self.cc_file.write_text(json.dumps(cc_data, indent=2))
 
         # Reload compile commands in analyzer
@@ -235,10 +257,7 @@ int divide(int a, int b) {
     def test_file_deletion(self):
         """Test that deleting a file removes it from cache."""
         # Initialize analyzer
-        analyzer = CppAnalyzer(
-            project_root=str(self.test_dir),
-            config_file=str(self.config_file)
-        )
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis
         analyzer.index_project()
@@ -249,7 +268,9 @@ int divide(int a, int b) {
 
         if file_metadata is None:
             # File wasn't indexed (database locking issue), skip this assertion
-            self.skipTest("File was not indexed due to database contention - skipping deletion test")
+            self.skipTest(
+                "File was not indexed due to database contention - skipping deletion test"
+            )
 
         # Delete utils.cpp
         self.utils_cpp.unlink()
@@ -264,22 +285,28 @@ int divide(int a, int b) {
         self.assertEqual(result.files_removed, 1)
         self.assertIn(utils_cpp_path, result.changes.removed_files)
 
-    @unittest.skipIf(not hasattr(sys, 'real_prefix') and not hasattr(sys, 'base_prefix'),
-                     "Requires libclang - skip in minimal environments")
+    @unittest.skipIf(
+        not hasattr(sys, "real_prefix") and not hasattr(sys, "base_prefix"),
+        "Requires libclang - skip in minimal environments",
+    )
     def test_compile_commands_modification(self):
         """Test that modifying compile_commands.json triggers selective re-analysis."""
         # Initialize analyzer
-        analyzer = CppAnalyzer(
-            project_root=str(self.test_dir),
-            config_file=str(self.config_file)
-        )
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis
         analyzer.index_project()
 
         # Modify compile_commands.json (change flags for main.cpp)
         cc_data = json.loads(self.cc_file.read_text())
-        cc_data[0]["arguments"] = ["clang++", "-std=c++20", "-O3", "-I", str(self.src_dir), str(self.main_cpp)]
+        cc_data[0]["arguments"] = [
+            "clang++",
+            "-std=c++20",
+            "-O3",
+            "-I",
+            str(self.src_dir),
+            str(self.main_cpp),
+        ]
         self.cc_file.write_text(json.dumps(cc_data, indent=2))
 
         # Create incremental analyzer
@@ -314,5 +341,5 @@ class TestIncrementalAnalysisPerformance(unittest.TestCase):
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

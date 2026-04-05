@@ -11,13 +11,15 @@ Requirements: REQ-1.x, REQ-2.x, REQ-3.x
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -31,13 +33,15 @@ class TestBasicIndexing:
     def test_basic_class_indexing(self, temp_project_dir):
         """Test indexing simple class definitions - Task 1.1.1"""
         # Create a simple C++ file with a class
-        (temp_project_dir / "src" / "test_class.cpp").write_text("""
+        (temp_project_dir / "src" / "test_class.cpp").write_text(
+            """
 class SimpleClass {
 public:
     void method();
     int value;
 };
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -51,15 +55,16 @@ public:
 
         # Verify class was found
         assert len(results) > 0, "SimpleClass should be found"
-        assert results[0]['qualified_name'].split("::")[-1] == "SimpleClass"
-        assert results[0]['kind'] == "class"
+        assert results[0]["qualified_name"].split("::")[-1] == "SimpleClass"
+        assert results[0]["kind"] == "class"
         _loc = results[0].get("definition") or results[0].get("declaration") or {}
-        assert "test_class.cpp" in _loc['file']
+        assert "test_class.cpp" in _loc["file"]
 
     def test_basic_function_indexing(self, temp_project_dir):
         """Test indexing simple function definitions - Task 1.1.2"""
         # Create a simple C++ file with functions
-        (temp_project_dir / "src" / "functions.cpp").write_text("""
+        (temp_project_dir / "src" / "functions.cpp").write_text(
+            """
 int add(int a, int b) {
     return a + b;
 }
@@ -67,7 +72,8 @@ int add(int a, int b) {
 void printHello() {
     // print
 }
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -82,11 +88,11 @@ void printHello() {
 
         # Verify functions were found
         assert len(add_results) > 0, "add function should be found"
-        assert add_results[0]['qualified_name'].split("::")[-1] == "add"
-        assert add_results[0]['kind'] == "function"
+        assert add_results[0]["qualified_name"].split("::")[-1] == "add"
+        assert add_results[0]["kind"] == "function"
 
         assert len(hello_results) > 0, "printHello function should be found"
-        assert hello_results[0]['qualified_name'].split("::")[-1] == "printHello"
+        assert hello_results[0]["qualified_name"].split("::")[-1] == "printHello"
 
 
 @pytest.mark.base_functionality
@@ -96,7 +102,8 @@ class TestSearchOperations:
     def test_search_classes_basic(self, temp_project_dir):
         """Test basic class search with patterns - Task 1.1.3"""
         # Create multiple classes
-        (temp_project_dir / "src" / "classes.cpp").write_text("""
+        (temp_project_dir / "src" / "classes.cpp").write_text(
+            """
 class TestClass1 {
 public:
     void method1();
@@ -111,7 +118,8 @@ class OtherClass {
 public:
     void method3();
 };
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -126,19 +134,21 @@ public:
         assert len(all_classes) >= 3, "Should find all three classes"
 
         # Verify search found correct classes
-        test_class_names = [c['qualified_name'].split("::")[-1] for c in test_classes]
+        test_class_names = [c["qualified_name"].split("::")[-1] for c in test_classes]
         assert "TestClass1" in test_class_names
         assert "TestClass2" in test_class_names
 
     def test_search_functions_basic(self, temp_project_dir):
         """Test basic function search with patterns - Task 1.1.4"""
         # Create multiple functions
-        (temp_project_dir / "src" / "functions.cpp").write_text("""
+        (temp_project_dir / "src" / "functions.cpp").write_text(
+            """
 void processData() {}
 void processList() {}
 void handleEvent() {}
 int calculate() { return 0; }
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -153,7 +163,7 @@ int calculate() { return 0; }
         assert len(all_funcs) >= 4, "Should find all four functions"
 
         # Verify search found correct functions
-        process_names = [f['qualified_name'].split("::")[-1] for f in process_funcs]
+        process_names = [f["qualified_name"].split("::")[-1] for f in process_funcs]
         assert "processData" in process_names
         assert "processList" in process_names
 
@@ -163,23 +173,27 @@ int calculate() { return 0; }
         file1 = temp_project_dir / "src" / "file1.cpp"
         file2 = temp_project_dir / "src" / "file2.cpp"
 
-        file1.write_text("""
+        file1.write_text(
+            """
 class ClassInFile1 {
 public:
     void method1();
 };
 
 void functionInFile1() {}
-""")
+"""
+        )
 
-        file2.write_text("""
+        file2.write_text(
+            """
 class ClassInFile2 {
 public:
     void method2();
 };
 
 void functionInFile2() {}
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -196,8 +210,8 @@ void functionInFile2() {}
         assert len(file2_symbols) >= 2, "Should find class and function in file2"
 
         # Verify correct symbols found in each file
-        file1_names = [s['qualified_name'].split("::")[-1] for s in file1_symbols]
-        file2_names = [s['qualified_name'].split("::")[-1] for s in file2_symbols]
+        file1_names = [s["qualified_name"].split("::")[-1] for s in file1_symbols]
+        file2_names = [s["qualified_name"].split("::")[-1] for s in file2_symbols]
 
         assert "ClassInFile1" in file1_names
         assert "functionInFile1" in file1_names
@@ -212,7 +226,8 @@ class TestHierarchyAnalysis:
     def test_get_class_hierarchy_basic(self, temp_project_dir):
         """Test getting inheritance hierarchy for a class - Task 1.1.6"""
         # Create inheritance hierarchy
-        (temp_project_dir / "src" / "hierarchy.cpp").write_text("""
+        (temp_project_dir / "src" / "hierarchy.cpp").write_text(
+            """
 class BaseClass {
 public:
     virtual void baseMethod();
@@ -227,7 +242,8 @@ class FurtherDerived : public DerivedClass {
 public:
     void furtherMethod();
 };
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -246,12 +262,20 @@ public:
 
         # Verify base classes (list of canonical keys into classes dict)
         base_keys = node.get("base_classes", [])
-        base_names = [hierarchy["classes"][k]["qualified_name"].split("::")[-1] for k in base_keys if k in hierarchy["classes"]]
+        base_names = [
+            hierarchy["classes"][k]["qualified_name"].split("::")[-1]
+            for k in base_keys
+            if k in hierarchy["classes"]
+        ]
         assert "BaseClass" in base_names, "Should show BaseClass as base"
 
         # Verify derived classes
         derived_keys = node.get("derived_classes", [])
-        derived_names = [hierarchy["classes"][k]["qualified_name"].split("::")[-1] for k in derived_keys if k in hierarchy["classes"]]
+        derived_names = [
+            hierarchy["classes"][k]["qualified_name"].split("::")[-1]
+            for k in derived_keys
+            if k in hierarchy["classes"]
+        ]
         assert "FurtherDerived" in derived_names, "Should show FurtherDerived as derived"
 
 
@@ -262,7 +286,8 @@ class TestCallGraphAnalysis:
     def test_find_incoming_calls_basic(self, temp_project_dir):
         """Test finding callers of a function - Task 1.1.7"""
         # Create function call relationships
-        (temp_project_dir / "src" / "calls.cpp").write_text("""
+        (temp_project_dir / "src" / "calls.cpp").write_text(
+            """
 void helperFunction() {
     // does something
 }
@@ -278,7 +303,8 @@ void caller2() {
 void unrelatedFunction() {
     // does not call helperFunction
 }
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -289,10 +315,10 @@ void unrelatedFunction() {
 
         # Phase 3: find_incoming_calls now returns dict with 'callers' key
         assert isinstance(result, dict), "find_incoming_calls should return dict (Phase 3)"
-        callers = result['callers']
+        callers = result["callers"]
 
         # Verify callers were found
-        caller_names = [c['qualified_name'].split("::")[-1] for c in callers]
+        caller_names = [c["qualified_name"].split("::")[-1] for c in callers]
         assert "caller1" in caller_names, "caller1 should be in callers list"
         assert "caller2" in caller_names, "caller2 should be in callers list"
         assert "unrelatedFunction" not in caller_names, "unrelatedFunction should not be in callers"
@@ -300,7 +326,8 @@ void unrelatedFunction() {
     def test_find_callees_basic(self, temp_project_dir):
         """Test finding callees of a function - Task 1.1.8"""
         # Create function call relationships
-        (temp_project_dir / "src" / "callees.cpp").write_text("""
+        (temp_project_dir / "src" / "callees.cpp").write_text(
+            """
 void function1() {}
 void function2() {}
 void function3() {}
@@ -310,7 +337,8 @@ void mainFunction() {
     function2();
     // function3 is not called
 }
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -325,7 +353,7 @@ void mainFunction() {
         callees_list = result["callees"]
 
         # Verify callees were found
-        callee_names = [c['qualified_name'].split("::")[-1] for c in callees_list]
+        callee_names = [c["qualified_name"].split("::")[-1] for c in callees_list]
         assert "function1" in callee_names, "function1 should be in callees list"
         assert "function2" in callee_names, "function2 should be in callees list"
         # Note: function3 might or might not be in the list since it's not called

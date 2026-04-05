@@ -8,12 +8,14 @@ Tests the MCP tool layer to ensure proper integration with call site tracking:
 - Response format validation
 """
 
-import pytest
 import json
 from pathlib import Path
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState
+
+import pytest
+
 import mcp_server.cpp_mcp_server as cpp_mcp_server_module
+from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager
 
 
 @pytest.fixture
@@ -45,54 +47,55 @@ class TestGetIncomingCallsToolIntegration:
         """Test that 'callers' key exists for backward compatibility."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        assert 'callers' in result, "Missing 'callers' key (backward compatibility)"
-        assert isinstance(result['callers'], list), "'callers' should be a list"
+        assert "callers" in result, "Missing 'callers' key (backward compatibility)"
+        assert isinstance(result["callers"], list), "'callers' should be a list"
 
     def test_find_incoming_calls_includes_call_sites_key(self, indexed_analyzer):
         """Test that new 'call_sites' key is present (Phase 3)."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        assert 'call_sites' in result, "Missing 'call_sites' key (Phase 3)"
-        assert isinstance(result['call_sites'], list), "'call_sites' should be a list"
+        assert "call_sites" in result, "Missing 'call_sites' key (Phase 3)"
+        assert isinstance(result["call_sites"], list), "'call_sites' should be a list"
 
     def test_find_incoming_calls_includes_total_call_sites(self, indexed_analyzer):
         """Test that 'total_call_sites' count is present."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        assert 'total_call_sites' in result, "Missing 'total_call_sites' key"
-        assert isinstance(result['total_call_sites'], int), "'total_call_sites' should be int"
-        assert result['total_call_sites'] == len(result['call_sites']), \
-            "total_call_sites should match call_sites length"
+        assert "total_call_sites" in result, "Missing 'total_call_sites' key"
+        assert isinstance(result["total_call_sites"], int), "'total_call_sites' should be int"
+        assert result["total_call_sites"] == len(
+            result["call_sites"]
+        ), "total_call_sites should match call_sites length"
 
     def test_find_incoming_calls_includes_function_name(self, indexed_analyzer):
         """Test that 'function' name is included in response."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        assert 'function' in result, "Missing 'function' key"
-        assert result['function'] == 'helper', "Function name mismatch"
+        assert "function" in result, "Missing 'function' key"
+        assert result["function"] == "helper", "Function name mismatch"
 
     def test_call_sites_entries_have_required_fields(self, indexed_analyzer):
         """Test that each call site has all required fields."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        required_fields = ['file', 'line', 'column', 'caller', 'caller_file', 'caller_signature']
+        required_fields = ["file", "line", "column", "caller", "caller_file", "caller_signature"]
 
-        for cs in result['call_sites']:
+        for cs in result["call_sites"]:
             for field in required_fields:
                 assert field in cs, f"Call site missing required field: {field}"
 
             # Verify field types
-            assert isinstance(cs['file'], str), "file should be string"
-            assert isinstance(cs['line'], int), "line should be int"
-            assert isinstance(cs['caller'], str), "caller should be string"
-            assert isinstance(cs['caller_file'], str), "caller_file should be string"
-            assert isinstance(cs['caller_signature'], str), "caller_signature should be string"
+            assert isinstance(cs["file"], str), "file should be string"
+            assert isinstance(cs["line"], int), "line should be int"
+            assert isinstance(cs["caller"], str), "caller should be string"
+            assert isinstance(cs["caller_file"], str), "caller_file should be string"
+            assert isinstance(cs["caller_signature"], str), "caller_signature should be string"
 
     def test_call_sites_sorted_by_file_and_line(self, indexed_analyzer):
         """Test that call sites are sorted by file, then line."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        call_sites = result['call_sites']
+        call_sites = result["call_sites"]
 
         if len(call_sites) > 1:
             for i in range(len(call_sites) - 1):
@@ -100,8 +103,8 @@ class TestGetIncomingCallsToolIntegration:
                 cs2 = call_sites[i + 1]
 
                 # Compare (file, line) tuples
-                pair1 = (cs1['file'], cs1['line'])
-                pair2 = (cs2['file'], cs2['line'])
+                pair1 = (cs1["file"], cs1["line"])
+                pair2 = (cs2["file"], cs2["line"])
 
                 assert pair1 <= pair2, f"Call sites not properly sorted: {pair1} > {pair2}"
 
@@ -109,15 +112,16 @@ class TestGetIncomingCallsToolIntegration:
         """Test that caller function info includes start_line and end_line (in nested location)."""
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        for caller in result['callers']:
+        for caller in result["callers"]:
             # Location info is now nested under 'definition' or 'declaration'
             _caller_loc = caller.get("definition") or caller.get("declaration") or {}
-            assert 'start_line' in _caller_loc, "Missing start_line in location object"
-            assert 'end_line' in _caller_loc, "Missing end_line in location object"
+            assert "start_line" in _caller_loc, "Missing start_line in location object"
+            assert "end_line" in _caller_loc, "Missing end_line in location object"
 
-            if _caller_loc['start_line'] is not None and _caller_loc['end_line'] is not None:
-                assert _caller_loc['start_line'] <= _caller_loc['end_line'], \
-                    "start_line should be <= end_line"
+            if _caller_loc["start_line"] is not None and _caller_loc["end_line"] is not None:
+                assert (
+                    _caller_loc["start_line"] <= _caller_loc["end_line"]
+                ), "start_line should be <= end_line"
 
 
 class TestGetCallSitesTool:
@@ -133,20 +137,27 @@ class TestGetCallSitesTool:
         """Test that each call site has all required fields."""
         result = indexed_analyzer.get_call_sites("single_caller")
 
-        required_fields = ['target', 'target_signature', 'target_file',
-                          'target_kind', 'file', 'line', 'column']
+        required_fields = [
+            "target",
+            "target_signature",
+            "target_file",
+            "target_kind",
+            "file",
+            "line",
+            "column",
+        ]
 
         for cs in result:
             for field in required_fields:
                 assert field in cs, f"Call site missing required field: {field}"
 
             # Verify field types
-            assert isinstance(cs['target'], str), "target should be string"
-            assert isinstance(cs['target_signature'], str), "target_signature should be string"
-            assert isinstance(cs['target_file'], str), "target_file should be string"
-            assert isinstance(cs['target_kind'], str), "target_kind should be string"
-            assert isinstance(cs['file'], str), "file should be string"
-            assert isinstance(cs['line'], int), "line should be int"
+            assert isinstance(cs["target"], str), "target should be string"
+            assert isinstance(cs["target_signature"], str), "target_signature should be string"
+            assert isinstance(cs["target_file"], str), "target_file should be string"
+            assert isinstance(cs["target_kind"], str), "target_kind should be string"
+            assert isinstance(cs["file"], str), "file should be string"
+            assert isinstance(cs["line"], int), "line should be int"
             # column can be int or None
 
     def test_get_call_sites_sorted_by_file_and_line(self, indexed_analyzer):
@@ -158,8 +169,8 @@ class TestGetCallSitesTool:
                 cs1 = result[i]
                 cs2 = result[i + 1]
 
-                pair1 = (cs1['file'], cs1['line'])
-                pair2 = (cs2['file'], cs2['line'])
+                pair1 = (cs1["file"], cs1["line"])
+                pair2 = (cs2["file"], cs2["line"])
 
                 assert pair1 <= pair2, f"Call sites not sorted: {pair1} > {pair2}"
 
@@ -186,16 +197,17 @@ class TestComplementaryTools:
 
         # Get functions that call helper (backward analysis)
         callers_result = indexed_analyzer.find_incoming_calls("helper")
-        callers = {c['qualified_name'].split('::')[-1] for c in callers_result['callers']}
+        callers = {c["qualified_name"].split("::")[-1] for c in callers_result["callers"]}
 
         # For each caller, check that get_call_sites shows helper as target (forward analysis)
         for caller_name in callers:
             call_sites = indexed_analyzer.get_call_sites(caller_name)
-            targets = {cs['target'] for cs in call_sites}
+            targets = {cs["target"] for cs in call_sites}
 
             # This caller should have helper in its targets
-            assert 'helper' in targets or len(call_sites) > 0, \
-                f"{caller_name} calls helper, but get_call_sites doesn't show it"
+            assert (
+                "helper" in targets or len(call_sites) > 0
+            ), f"{caller_name} calls helper, but get_call_sites doesn't show it"
 
 
 class TestResponseFormatJSON:
@@ -235,15 +247,15 @@ class TestRealWorldScenarios:
         # Step 1: Find all callers of helper()
         result = indexed_analyzer.find_incoming_calls("helper")
 
-        assert len(result['callers']) > 0, "Should have at least one caller"
+        assert len(result["callers"]) > 0, "Should have at least one caller"
 
         # Step 2: Check we have call sites with line numbers
-        assert len(result['call_sites']) > 0, "Should have call site data"
+        assert len(result["call_sites"]) > 0, "Should have call site data"
 
         # Step 3: Verify each call site has actionable line number
-        for cs in result['call_sites']:
-            assert cs['line'] > 0, "Line number should be positive"
-            assert cs['file'].endswith('.cpp'), "Should have source file"
+        for cs in result["call_sites"]:
+            assert cs["line"] > 0, "Line number should be positive"
+            assert cs["file"].endswith(".cpp"), "Should have source file"
 
             # In real workflow, you would:
             # - Open cs['file']
@@ -264,9 +276,9 @@ class TestRealWorldScenarios:
 
         # Step 2: Verify we have target function info
         for cs in call_sites:
-            assert 'target' in cs, "Should know what function is called"
-            assert 'target_file' in cs, "Should know where target is defined"
-            assert cs['line'] > 0, "Should know where call occurs"
+            assert "target" in cs, "Should know what function is called"
+            assert "target_file" in cs, "Should know where target is defined"
+            assert cs["line"] > 0, "Should know where call occurs"
 
         # Step 3: Can trace execution flow
         # In real workflow: follow call chain by recursively calling get_call_sites
@@ -283,7 +295,7 @@ class TestPerformance:
         result = indexed_analyzer.find_incoming_calls("helper")
 
         # Should not have duplicate call sites
-        call_site_tuples = [(cs['file'], cs['line']) for cs in result['call_sites']]
+        call_site_tuples = [(cs["file"], cs["line"]) for cs in result["call_sites"]]
         unique_tuples = set(call_site_tuples)
 
         # Some functions might legitimately call from same line (macros, etc.)
@@ -339,9 +351,9 @@ class TestMCPHandlerResponseFormat:
 
         assert len(result) == 1, "Should return exactly one TextContent"
         payload = json.loads(result[0].text)
-        assert isinstance(payload, dict), (
-            "get_call_sites must return a JSON object ({}), not a raw array ([])"
-        )
+        assert isinstance(
+            payload, dict
+        ), "get_call_sites must return a JSON object ({}), not a raw array ([])"
         assert "call_sites" in payload, "Response must have 'call_sites' key"
         assert isinstance(payload["call_sites"], list), "'call_sites' must be a list"
 
@@ -371,9 +383,9 @@ class TestMCPHandlerResponseFormat:
 
         assert len(result) == 1
         payload = json.loads(result[0].text)
-        assert isinstance(payload, dict), (
-            "get_call_path must return a JSON object ({}), not a raw array ([])"
-        )
+        assert isinstance(
+            payload, dict
+        ), "get_call_path must return a JSON object ({}), not a raw array ([])"
         assert "paths" in payload, "Response must have 'paths' key"
         assert isinstance(payload["paths"], list), "'paths' must be a list"
 
@@ -394,5 +406,5 @@ class TestMCPHandlerResponseFormat:
         assert "suggestions" in payload["metadata"]
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

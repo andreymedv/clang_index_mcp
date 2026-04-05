@@ -43,12 +43,7 @@ def run(project_info, server_manager):
         dict: Test results with status, metrics, issues
     """
     start_time = time.time()
-    results = {
-        "metrics": {},
-        "details": {},
-        "steps": [],
-        "protocols": {}
-    }
+    results = {"metrics": {}, "details": {}, "steps": [], "protocols": {}}
 
     protocols = ["http", "sse"]  # stdio requires different approach
 
@@ -66,19 +61,15 @@ def run(project_info, server_manager):
 
             # Test basic tool: set_project_directory
             set_dir_response = server_manager.call_tool(
-                endpoint,
-                "set_project_directory",
-                {"project_path": project_info["path"]}
+                endpoint, "set_project_directory", {"project_path": project_info["path"]}
             )
 
-            protocol_results = {
-                "set_project_directory": "error" not in set_dir_response
-            }
+            protocol_results = {"set_project_directory": "error" not in set_dir_response}
 
             if "error" in set_dir_response:
                 results["protocols"][protocol] = {
                     "status": "FAILED",
-                    "error": f"set_project_directory failed: {set_dir_response['error']}"
+                    "error": f"set_project_directory failed: {set_dir_response['error']}",
                 }
                 print(f"    ✗ {protocol.upper()} failed: set_project_directory error")
                 continue
@@ -88,17 +79,13 @@ def run(project_info, server_manager):
             if not _wait_for_indexing(server_manager, endpoint, max_wait=60):
                 results["protocols"][protocol] = {
                     "status": "FAILED",
-                    "error": "Indexing did not complete"
+                    "error": "Indexing did not complete",
                 }
                 print(f"    ✗ {protocol.upper()} failed: indexing timeout")
                 continue
 
             # Test search_classes
-            classes_response = server_manager.call_tool(
-                endpoint,
-                "search_classes",
-                {"pattern": ""}
-            )
+            classes_response = server_manager.call_tool(endpoint, "search_classes", {"pattern": ""})
 
             protocol_results["search_classes"] = "error" not in classes_response
 
@@ -107,15 +94,15 @@ def run(project_info, server_manager):
                 content = classes_response["result"].get("content", [])
                 if content:
                     classes_text = content[0].get("text", "")
-                    classes_count = classes_text.count("\nclass ") + (1 if classes_text.startswith("class ") else 0)
+                    classes_count = classes_text.count("\nclass ") + (
+                        1 if classes_text.startswith("class ") else 0
+                    )
 
             protocol_results["classes_found"] = classes_count
 
             # Test search_functions
             functions_response = server_manager.call_tool(
-                endpoint,
-                "search_functions",
-                {"pattern": ""}
+                endpoint, "search_functions", {"pattern": ""}
             )
 
             protocol_results["search_functions"] = "error" not in functions_response
@@ -134,10 +121,12 @@ def run(project_info, server_manager):
                 "status": "PASSED",
                 "results": protocol_results,
                 "classes_found": classes_count,
-                "functions_found": functions_count
+                "functions_found": functions_count,
             }
 
-            print(f"    ✓ {protocol.upper()} passed: {classes_count} classes, {functions_count} functions")
+            print(
+                f"    ✓ {protocol.upper()} passed: {classes_count} classes, {functions_count} functions"
+            )
 
         # Step: Compare results across protocols
         results["steps"].append("Comparing results across protocols...")
@@ -160,11 +149,17 @@ def run(project_info, server_manager):
 
                 if classes != baseline_classes or functions != baseline_functions:
                     all_consistent = False
-                    results["details"]["inconsistency"] = f"{protocol} results differ from {first_protocol}"
-                    print(f"    ⚠ Results differ: {protocol} has {classes}/{functions}, {first_protocol} has {baseline_classes}/{baseline_functions}")
+                    results["details"][
+                        "inconsistency"
+                    ] = f"{protocol} results differ from {first_protocol}"
+                    print(
+                        f"    ⚠ Results differ: {protocol} has {classes}/{functions}, {first_protocol} has {baseline_classes}/{baseline_functions}"
+                    )
 
             results["metrics"]["protocols_tested"] = len(results["protocols"])
-            results["metrics"]["protocols_passed"] = sum(1 for p in results["protocols"].values() if p.get("status") == "PASSED")
+            results["metrics"]["protocols_passed"] = sum(
+                1 for p in results["protocols"].values() if p.get("status") == "PASSED"
+            )
             results["metrics"]["results_consistent"] = all_consistent
 
             if all_consistent:
@@ -185,11 +180,7 @@ def _wait_for_indexing(server_manager, endpoint, max_wait=60):
 
     wait_start = time.time()
     while time.time() - wait_start < max_wait:
-        status_response = server_manager.call_tool(
-            endpoint,
-            "get_indexing_status",
-            {}
-        )
+        status_response = server_manager.call_tool(endpoint, "get_indexing_status", {})
 
         if "result" in status_response:
             content = status_response["result"].get("content", [])

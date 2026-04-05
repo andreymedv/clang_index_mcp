@@ -6,13 +6,14 @@ Tests SQLite schema updates, data storage, and retrieval of documentation fields
 """
 
 import os
-import sys
 import sqlite3
+import sys
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -21,10 +22,10 @@ from mcp_server.sqlite_cache_backend import SqliteCacheBackend
 from mcp_server.symbol_info import SymbolInfo
 from tests.utils.test_helpers import temp_compile_commands
 
-
 # ============================================================================
 # UT-4: Schema and Storage Tests
 # ============================================================================
+
 
 class TestDocumentationSchema:
     """Tests for schema updates to support documentation (UT-4)."""
@@ -32,17 +33,24 @@ class TestDocumentationSchema:
     def test_schema_has_brief_column(self, temp_project_dir):
         """UT-4.1: Verify brief column exists in symbols table."""
         # Create a simple project and index it
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Test class
 class TestClass {
 };
-""")
+"""
+        )
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -59,21 +67,28 @@ class TestClass {
         conn.close()
 
         # Verify brief column exists
-        assert 'brief' in columns
-        assert columns['brief'] == 'TEXT'
+        assert "brief" in columns
+        assert columns["brief"] == "TEXT"
 
     def test_schema_has_doc_comment_column(self, temp_project_dir):
         """UT-4.2: Verify doc_comment column exists in symbols table."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class TestClass {
 };
-""")
+"""
+        )
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -88,22 +103,29 @@ class TestClass {
         conn.close()
 
         # Verify doc_comment column exists
-        assert 'doc_comment' in columns
-        assert columns['doc_comment'] == 'TEXT'
+        assert "doc_comment" in columns
+        assert columns["doc_comment"] == "TEXT"
 
     def test_store_and_retrieve_brief(self, temp_project_dir):
         """UT-4.3: Test storing and retrieving brief from database."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// This is the brief description
 class DocumentedClass {
 };
-""")
+"""
+        )
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -111,7 +133,7 @@ class DocumentedClass {
         # Retrieve from analyzer
         results = analyzer.search_classes("DocumentedClass")
         assert len(results) == 1
-        stored_brief = results[0].get('brief')
+        stored_brief = results[0].get("brief")
 
         # Verify it was actually stored in DB
         cache_backend = analyzer.cache_manager.backend
@@ -123,7 +145,8 @@ class DocumentedClass {
 
     def test_store_and_retrieve_doc_comment(self, temp_project_dir):
         """UT-4.4: Test storing and retrieving doc_comment from database."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /**
  * @brief Brief description
  *
@@ -132,20 +155,26 @@ class DocumentedClass {
  */
 class FullyDocumentedClass {
 };
-""")
+"""
+        )
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
         results = analyzer.search_classes("FullyDocumentedClass")
         assert len(results) == 1
-        stored_doc = results[0].get('doc_comment')
+        stored_doc = results[0].get("doc_comment")
 
         # Verify stored in DB
         cache_backend = analyzer.cache_manager.backend
@@ -157,24 +186,31 @@ class FullyDocumentedClass {
 
     def test_null_documentation_storage(self, temp_project_dir):
         """UT-4.5: Test storing NULL values for missing documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class UndocumentedClass {
 };
-""")
+"""
+        )
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
         results = analyzer.search_classes("UndocumentedClass")
         assert len(results) == 1
-        assert results[0].get('brief') is None
-        assert results[0].get('doc_comment') is None
+        assert results[0].get("brief") is None
+        assert results[0].get("doc_comment") is None
 
         # Verify NULL stored in DB (not empty string)
         cache_backend = analyzer.cache_manager.backend
@@ -182,11 +218,13 @@ class UndocumentedClass {
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT brief, doc_comment
             FROM symbols
             WHERE name = 'UndocumentedClass'
-        """)
+        """
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -196,25 +234,32 @@ class UndocumentedClass {
 
     def test_documentation_survives_cache_reload(self, temp_project_dir):
         """UT-4.6: Test that documentation persists across analyzer restarts."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Persistent documentation
 class PersistentClass {
 };
-""")
+"""
+        )
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         # First analyzer - index project
         analyzer1 = CppAnalyzer(str(temp_project_dir))
         analyzer1.index_project()
         results1 = analyzer1.search_classes("PersistentClass")
         assert len(results1) == 1
-        original_brief = results1[0].get('brief')
-        original_doc = results1[0].get('doc_comment')
+        original_brief = results1[0].get("brief")
+        original_doc = results1[0].get("doc_comment")
 
         # Second analyzer - should use cached data
         analyzer2 = CppAnalyzer(str(temp_project_dir))
@@ -222,8 +267,8 @@ class PersistentClass {
         analyzer2.index_project()
         results2 = analyzer2.search_classes("PersistentClass")
         assert len(results2) == 1
-        assert results2[0].get('brief') == original_brief
-        assert results2[0].get('doc_comment') == original_doc
+        assert results2[0].get("brief") == original_brief
+        assert results2[0].get("doc_comment") == original_doc
 
 
 class TestCacheBackendDocumentation:
@@ -246,7 +291,7 @@ class TestCacheBackendDocumentation:
             column=1,
             usr="c:@S@TestClass",
             brief="Brief description here",
-            doc_comment="Full documentation\nwith multiple lines"
+            doc_comment="Full documentation\nwith multiple lines",
         )
 
         backend.save_symbol(symbol)
@@ -275,7 +320,7 @@ class TestCacheBackendDocumentation:
                 column=1,
                 usr=f"c:@S@Class{i}",
                 brief=f"Brief for class {i}",
-                doc_comment=f"Full docs for class {i}"
+                doc_comment=f"Full docs for class {i}",
             )
             for i in range(5)
         ]

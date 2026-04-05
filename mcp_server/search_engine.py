@@ -3,7 +3,9 @@
 import json
 import re
 import threading
-from typing import Dict, List, Optional, Any, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
+
+from .regex_validator import RegexValidator
 from .symbol_info import (
     SymbolInfo,
     build_location_objects,
@@ -11,7 +13,6 @@ from .symbol_info import (
     is_richer_definition,
     omit_empty,
 )
-from .regex_validator import RegexValidator
 
 
 def _build_function_prototype(info: SymbolInfo) -> Optional[str]:

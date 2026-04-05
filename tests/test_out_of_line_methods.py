@@ -9,10 +9,11 @@ are AST children of the namespace, not the class, so parent_class must be
 resolved via semantic_parent or qualified_name prefix matching.
 """
 
-import pytest
-from pathlib import Path
-import sys
 import os
+import sys
+from pathlib import Path
+
+import pytest
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
@@ -20,7 +21,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # =============================================================================
 # C++ fixture code
@@ -171,7 +171,9 @@ class TestOutOfLineMethodsInGetClassInfo:
 
         printer_info = analyzer.get_class_info("Printer")
         assert printer_info is not None
-        printer_methods = {m["qualified_name"].split("::")[-1] for m in printer_info.get("methods", [])}
+        printer_methods = {
+            m["qualified_name"].split("::")[-1] for m in printer_info.get("methods", [])
+        }
         assert "print_value" in printer_methods
 
 
@@ -209,9 +211,9 @@ class TestParentClassPreservedInDedup:
         assert len(add_results) > 0, "No 'add' function found"
         for r in add_results:
             if r.get("qualified_name", "").startswith("mylib::Calculator"):
-                assert r.get("parent_class") == "Calculator", (
-                    f"parent_class should be 'Calculator', got '{r.get('parent_class')}'"
-                )
+                assert (
+                    r.get("parent_class") == "Calculator"
+                ), f"parent_class should be 'Calculator', got '{r.get('parent_class')}'"
                 break
         else:
             pytest.fail("Could not find mylib::Calculator::add in results")

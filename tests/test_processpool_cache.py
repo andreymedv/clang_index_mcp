@@ -5,17 +5,17 @@ Tests concurrent access to SQLite cache from multiple processes.
 Verifies thread-safety, connection isolation, and performance.
 """
 
-import unittest
 import os
+import shutil
 import sys
 import tempfile
-import shutil
-from pathlib import Path
+import unittest
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 from unittest.mock import patch
 
 # Import test infrastructure
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -42,7 +42,7 @@ def worker_write_symbols(args):
                 file=f"/test/worker{worker_id}.cpp",
                 line=i + 1,
                 column=1,
-                usr=f"usr_w{worker_id}_s{i}"
+                usr=f"usr_w{worker_id}_s{i}",
             )
             symbols.append(symbol)
 
@@ -74,7 +74,7 @@ def worker_read_symbols(args):
         if isinstance(backend, SqliteCacheBackend):
             # Read all symbols
             stats = backend.get_symbol_stats()
-            total_symbols = stats.get('total_symbols', 0)
+            total_symbols = stats.get("total_symbols", 0)
             return (worker_id, total_symbols, True, None)
         else:
             return (worker_id, 0, False, "Not using SQLite backend")
@@ -143,16 +143,18 @@ class TestProcessPoolCache(unittest.TestCase):
         # Use ProcessPoolExecutor to write symbols concurrently
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             tasks = [
-                (str(self.temp_project_dir), i, symbols_per_worker)
-                for i in range(num_workers)
+                (str(self.temp_project_dir), i, symbols_per_worker) for i in range(num_workers)
             ]
             results = list(executor.map(worker_write_symbols, tasks))
 
         # Verify all workers succeeded
         for worker_id, count, success, error in results:
             self.assertTrue(success, f"Worker {worker_id} failed: {error}")
-            self.assertEqual(count, symbols_per_worker,
-                f"Worker {worker_id} should have written {symbols_per_worker} symbols")
+            self.assertEqual(
+                count,
+                symbols_per_worker,
+                f"Worker {worker_id} should have written {symbols_per_worker} symbols",
+            )
 
         # Verify total symbol count
         cache_manager = self._create_cache_manager()
@@ -160,10 +162,13 @@ class TestProcessPoolCache(unittest.TestCase):
 
         if isinstance(backend, SqliteCacheBackend):
             stats = backend.get_symbol_stats()
-            total_symbols = stats.get('total_symbols', 0)
+            total_symbols = stats.get("total_symbols", 0)
             expected_total = num_workers * symbols_per_worker
-            self.assertEqual(total_symbols, expected_total,
-                f"Should have {expected_total} total symbols from {num_workers} workers")
+            self.assertEqual(
+                total_symbols,
+                expected_total,
+                f"Should have {expected_total} total symbols from {num_workers} workers",
+            )
 
     def test_concurrent_reads(self):
         """Test concurrent reads from multiple processes"""
@@ -181,7 +186,7 @@ class TestProcessPoolCache(unittest.TestCase):
                     file="/test/test.cpp",
                     line=i + 1,
                     column=1,
-                    usr=f"usr_test_{i}"
+                    usr=f"usr_test_{i}",
                 )
                 symbols.append(symbol)
 
@@ -190,17 +195,15 @@ class TestProcessPoolCache(unittest.TestCase):
         # Now use ProcessPoolExecutor to read concurrently
         num_workers = 4
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            tasks = [
-                (str(self.temp_project_dir), i, symbol_count)
-                for i in range(num_workers)
-            ]
+            tasks = [(str(self.temp_project_dir), i, symbol_count) for i in range(num_workers)]
             results = list(executor.map(worker_read_symbols, tasks))
 
         # Verify all workers succeeded and got correct count
         for worker_id, count, success, error in results:
             self.assertTrue(success, f"Worker {worker_id} failed: {error}")
-            self.assertEqual(count, symbol_count,
-                f"Worker {worker_id} should have read {symbol_count} symbols")
+            self.assertEqual(
+                count, symbol_count, f"Worker {worker_id} should have read {symbol_count} symbols"
+            )
 
     def test_no_database_locked_errors(self):
         """Test that concurrent access doesn't cause database locked errors"""
@@ -216,17 +219,14 @@ class TestProcessPoolCache(unittest.TestCase):
         # Run concurrent writes
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             tasks = [
-                (str(self.temp_project_dir), i, symbols_per_worker)
-                for i in range(num_workers)
+                (str(self.temp_project_dir), i, symbols_per_worker) for i in range(num_workers)
             ]
             results = list(executor.map(worker_write_symbols, tasks))
 
         # Verify NO worker reported lock errors
         for worker_id, count, success, error in results:
-            self.assertTrue(success,
-                f"Worker {worker_id} failed (possible lock error): {error}")
-            self.assertIsNone(error,
-                f"Worker {worker_id} should not have errors")
+            self.assertTrue(success, f"Worker {worker_id} failed (possible lock error): {error}")
+            self.assertIsNone(error, f"Worker {worker_id} should not have errors")
 
     def test_isolated_connections(self):
         """Test that each process gets its own isolated connection"""
@@ -235,16 +235,14 @@ class TestProcessPoolCache(unittest.TestCase):
 
         # Get connection IDs from multiple processes
         with ProcessPoolExecutor(max_workers=4) as executor:
-            conn_ids = list(executor.map(check_connection_id,
-                [str(self.temp_project_dir)] * 4))
+            conn_ids = list(executor.map(check_connection_id, [str(self.temp_project_dir)] * 4))
 
         # All connection IDs should be different (different processes)
         # Note: We can't directly compare IDs across processes, but we can verify
         # they're all non-None and the test succeeds without errors
         for conn_id in conn_ids:
             self.assertIsNotNone(conn_id, "Each process should have a connection")
-            self.assertNotIsInstance(conn_id, str,
-                "Should not have error messages")
+            self.assertNotIsInstance(conn_id, str, "Should not have error messages")
 
 
 class TestProcessPoolPerformance(unittest.TestCase):
@@ -271,8 +269,7 @@ class TestProcessPoolPerformance(unittest.TestCase):
         # Test 1: Sequential writes
         start = time.time()
         for worker_id in range(num_workers):
-            worker_write_symbols((str(self.temp_project_dir), worker_id,
-                symbols_per_worker))
+            worker_write_symbols((str(self.temp_project_dir), worker_id, symbols_per_worker))
         sequential_time = time.time() - start
 
         # Clean up for second test
@@ -284,8 +281,7 @@ class TestProcessPoolPerformance(unittest.TestCase):
         start = time.time()
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             tasks = [
-                (str(self.temp_project_dir), i, symbols_per_worker)
-                for i in range(num_workers)
+                (str(self.temp_project_dir), i, symbols_per_worker) for i in range(num_workers)
             ]
             list(executor.map(worker_write_symbols, tasks))
         parallel_time = time.time() - start
@@ -295,10 +291,13 @@ class TestProcessPoolPerformance(unittest.TestCase):
         # for small workloads, especially on systems with slower process spawning
         # macOS M1 has particularly high process creation overhead, so we allow
         # parallel to be up to 7x slower for these small workloads
-        self.assertLess(parallel_time, sequential_time * 7.0,
+        self.assertLess(
+            parallel_time,
+            sequential_time * 7.0,
             f"Parallel ({parallel_time:.2f}s) should be competitive with "
-            f"sequential ({sequential_time:.2f}s)")
+            f"sequential ({sequential_time:.2f}s)",
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

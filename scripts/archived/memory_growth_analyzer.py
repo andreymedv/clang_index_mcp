@@ -6,18 +6,18 @@ Takes snapshots at regular intervals to identify which data structures
 accumulate memory over time during indexing.
 """
 
-import os
-import sys
-import time
 import gc
-import tracemalloc
-import threading
 import json
+import os
 import pickle
-from pathlib import Path
-from datetime import datetime
+import sys
+import threading
+import time
+import tracemalloc
 from collections import defaultdict
-from typing import Dict, List, Any, Optional
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))

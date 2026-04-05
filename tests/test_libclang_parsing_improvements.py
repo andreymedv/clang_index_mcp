@@ -7,14 +7,15 @@ This test suite covers:
 3. C++ stdlib path detection (commit 4b450ff)
 """
 
-import pytest
-import tempfile
 import os
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+import pytest
+
 from mcp_server.compile_commands_manager import CompileCommandsManager
+from mcp_server.cpp_analyzer import CppAnalyzer
 
 
 class TestSystemHeaderDiagnosticFiltering:
@@ -26,7 +27,9 @@ class TestSystemHeaderDiagnosticFiltering:
 
         # Mock diagnostic from clang built-in header (ARM intrinsics)
         diag = Mock()
-        diag.location.file = "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_acle.h"
+        diag.location.file = (
+            "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_acle.h"
+        )
 
         assert analyzer._is_system_header_diagnostic(diag) is True
 
@@ -36,7 +39,9 @@ class TestSystemHeaderDiagnosticFiltering:
 
         # Mock diagnostic from macOS SDK header
         diag = Mock()
-        diag.location.file = "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk/usr/include/stdio.h"
+        diag.location.file = (
+            "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk/usr/include/stdio.h"
+        )
 
         assert analyzer._is_system_header_diagnostic(diag) is True
 
@@ -100,7 +105,9 @@ class TestSystemHeaderDiagnosticFiltering:
         # System header error (should be filtered)
         system_diag = Mock()
         system_diag.severity = 3  # Error
-        system_diag.location.file = "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_neon.h"
+        system_diag.location.file = (
+            "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_neon.h"
+        )
 
         # Project file error (should be kept)
         project_diag = Mock()
@@ -135,14 +142,18 @@ class TestSystemHeaderDiagnosticFiltering:
         # ARM built-in function errors (from the bug report)
         arm_acle_diag = Mock()
         arm_acle_diag.severity = 3  # Error
-        arm_acle_diag.location.file = "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_acle.h"
+        arm_acle_diag.location.file = (
+            "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_acle.h"
+        )
         arm_acle_diag.location.line = 82
         arm_acle_diag.location.column = 10
         arm_acle_diag.spelling = "use of undeclared identifier '__builtin_arm_chkfeat'"
 
         arm_neon_diag = Mock()
         arm_neon_diag.severity = 3  # Error
-        arm_neon_diag.location.file = "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_neon.h"
+        arm_neon_diag.location.file = (
+            "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_neon.h"
+        )
         arm_neon_diag.location.line = 6376
         arm_neon_diag.location.column = 25
         arm_neon_diag.spelling = "incompatible constant for this __builtin_neon function"
@@ -161,7 +172,7 @@ class TestSystemHeaderDiagnosticFiltering:
 class TestUnknownCursorKindHandling:
     """Test graceful handling of unknown cursor kinds (commit 535cce4)."""
 
-    @patch('mcp_server.cpp_analyzer.diagnostics')
+    @patch("mcp_server.cpp_analyzer.diagnostics")
     def test_process_cursor_handles_unknown_cursor_kind(self, mock_diagnostics, temp_project):
         """Test that unknown cursor kinds don't crash the analyzer."""
         analyzer = CppAnalyzer(temp_project)
@@ -169,7 +180,9 @@ class TestUnknownCursorKindHandling:
         # Mock cursor where accessing .kind raises ValueError
         cursor = Mock()
         # Make accessing cursor.kind raise ValueError (simulating version mismatch)
-        type(cursor).kind = property(lambda self: (_ for _ in ()).throw(ValueError("Unknown cursor kind")))
+        type(cursor).kind = property(
+            lambda self: (_ for _ in ()).throw(ValueError("Unknown cursor kind"))
+        )
         cursor.location.file.name = f"{temp_project}/test.cpp"
         cursor.get_children = Mock(return_value=[])
         cursor.spelling = "test_symbol"
@@ -181,14 +194,17 @@ class TestUnknownCursorKindHandling:
         # Verify get_children was called (to process children after error)
         cursor.get_children.assert_called()
 
-    @patch('mcp_server.cpp_analyzer.diagnostics')
-    def test_process_cursor_continues_with_children_on_unknown_kind(self, mock_diagnostics, temp_project):
+    @patch("mcp_server.cpp_analyzer.diagnostics")
+    def test_process_cursor_continues_with_children_on_unknown_kind(
+        self, mock_diagnostics, temp_project
+    ):
         """Test that processing continues with child nodes when cursor kind is unknown."""
         analyzer = CppAnalyzer(temp_project)
 
         # Mock child cursor that should be processed
         child_cursor = Mock()
         from clang.cindex import CursorKind
+
         child_cursor.kind = CursorKind.FUNCTION_DECL
         child_cursor.location.file.name = f"{temp_project}/test.cpp"
         child_cursor.location.line = 10
@@ -220,7 +236,9 @@ class TestUnknownCursorKindHandling:
 
         # Mock parent cursor where accessing .kind raises ValueError
         parent_cursor = Mock()
-        type(parent_cursor).kind = property(lambda self: (_ for _ in ()).throw(ValueError("Unknown cursor kind")))
+        type(parent_cursor).kind = property(
+            lambda self: (_ for _ in ()).throw(ValueError("Unknown cursor kind"))
+        )
         parent_cursor.location.file.name = f"{temp_project}/test.cpp"
         parent_cursor.spelling = "parent"
         parent_cursor.get_children = Mock(return_value=[child_cursor])
@@ -241,8 +259,9 @@ class TestCppStdlibPathDetection:
 
         args = [
             "-stdlib=libc++",
-            "-isysroot", "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
-            "-I/some/include/path"
+            "-isysroot",
+            "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
+            "-I/some/include/path",
         ]
 
         stdlib_path = manager._detect_cxx_stdlib_path(args)
@@ -256,10 +275,7 @@ class TestCppStdlibPathDetection:
         """Test detection of libstdc++ path."""
         manager = CompileCommandsManager(Path(temp_project))
 
-        args = [
-            "-stdlib=libstdc++",
-            "-I/usr/include"
-        ]
+        args = ["-stdlib=libstdc++", "-I/usr/include"]
 
         stdlib_path = manager._detect_cxx_stdlib_path(args)
 
@@ -271,10 +287,7 @@ class TestCppStdlibPathDetection:
         """Test behavior when no -stdlib flag is present."""
         manager = CompileCommandsManager(Path(temp_project))
 
-        args = [
-            "-I/some/include/path",
-            "-std=c++17"
-        ]
+        args = ["-I/some/include/path", "-std=c++17"]
 
         stdlib_path = manager._detect_cxx_stdlib_path(args)
 
@@ -290,8 +303,9 @@ class TestCppStdlibPathDetection:
         manager = CompileCommandsManager(Path(temp_project))
 
         args = [
-            "-isysroot", "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
-            "-I/some/include/path"
+            "-isysroot",
+            "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
+            "-I/some/include/path",
         ]
 
         stdlib_path = manager._detect_cxx_stdlib_path(args)
@@ -307,8 +321,9 @@ class TestCppStdlibPathDetection:
 
         original_args = [
             "-stdlib=libc++",
-            "-isysroot", "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
-            "-I/some/project/path"
+            "-isysroot",
+            "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk",
+            "-I/some/project/path",
         ]
 
         # The method returns a new list with builtin includes added
@@ -322,14 +337,21 @@ class TestCppStdlibPathDetection:
         assert len(isystem_indices) >= 1, f"Expected at least one -isystem flag in {result_args}"
 
         # If stdlib path was detected, it should appear after -isystem
-        stdlib_related = [result_args[i+1] for i in isystem_indices
-                         if i+1 < len(result_args) and ("c++" in result_args[i+1] or "libc++" in result_args[i+1])]
+        stdlib_related = [
+            result_args[i + 1]
+            for i in isystem_indices
+            if i + 1 < len(result_args)
+            and ("c++" in result_args[i + 1] or "libc++" in result_args[i + 1])
+        ]
 
         # We should find the stdlib path since we provided -stdlib=libc++ and macOS sysroot
-        assert len(stdlib_related) >= 1, f"Expected C++ stdlib path in -isystem arguments: {result_args}"
+        assert (
+            len(stdlib_related) >= 1
+        ), f"Expected C++ stdlib path in -isystem arguments: {result_args}"
 
 
 # Fixtures
+
 
 @pytest.fixture
 def temp_project(tmp_path):

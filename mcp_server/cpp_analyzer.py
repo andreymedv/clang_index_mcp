@@ -6,20 +6,32 @@ This module provides C++ code analysis functionality using libclang bindings.
 It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
-import dataclasses
-import os
-import sys
-import re
-import time
-import threading
 import atexit
+import dataclasses
 import gc
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Set, Callable
-from collections import defaultdict, deque
 import hashlib
 import json
+import os
+import re
+import sys
+import threading
+import time
+from collections import defaultdict, deque
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set
+
+from .cache_manager import CacheManager
+from .call_graph import CallGraphAnalyzer
+from .compile_commands_manager import CompileCommandsManager
+from .cpp_analyzer_config import CppAnalyzerConfig
+from .dependency_graph import DependencyGraphBuilder
+from .file_scanner import FileScanner
+from .header_tracker import HeaderProcessingTracker
+from .project_identity import ProjectIdentity
+from .search_engine import SearchEngine
+from .smart_fallback import FallbackResult, SmartFallback
 from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
@@ -27,17 +39,6 @@ from .symbol_info import (
     is_richer_definition,
     omit_empty,
 )
-from .cache_manager import CacheManager
-from .file_scanner import FileScanner
-from .call_graph import CallGraphAnalyzer
-from .search_engine import SearchEngine
-from .cpp_analyzer_config import CppAnalyzerConfig
-from .compile_commands_manager import CompileCommandsManager
-from .header_tracker import HeaderProcessingTracker
-from .project_identity import ProjectIdentity
-from .dependency_graph import DependencyGraphBuilder
-from .smart_fallback import SmartFallback, FallbackResult
-from datetime import datetime, timedelta
 
 # Handle both package and script imports
 try:
@@ -46,7 +47,7 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 try:
-    from clang.cindex import Index, CursorKind, TranslationUnit, TranslationUnitLoadError
+    from clang.cindex import CursorKind, Index, TranslationUnit, TranslationUnitLoadError
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
@@ -2154,8 +2155,9 @@ class CppAnalyzer:
                 - template_params: JSON string of template parameters (Phase 2.0)
                 - created_at: Unix timestamp
         """
-        import time
         import json
+        import time
+
         from clang.cindex import CursorKind
 
         # Detect if this is a template alias

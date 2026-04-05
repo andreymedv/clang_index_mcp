@@ -7,13 +7,15 @@ Requirements: REQ-1.8 (Progress Reporting)
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -29,14 +31,16 @@ class TestProgressTracking:
         # Create multiple C++ files to index
         for i in range(5):
             file_path = temp_project_dir / "src" / f"file{i}.cpp"
-            file_path.write_text(f"""
+            file_path.write_text(
+                f"""
 class TestClass{i} {{
 public:
     void method{i}();
 }};
 
 void function{i}() {{}}
-""")
+"""
+            )
 
         # Create analyzer
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -49,14 +53,14 @@ void function{i}() {{}}
 
         # Verify statistics are tracked
         stats = analyzer.get_stats()
-        assert 'class_count' in stats, "Stats should include class_count"
-        assert 'function_count' in stats, "Stats should include function_count"
-        assert 'file_count' in stats, "Stats should include file_count"
+        assert "class_count" in stats, "Stats should include class_count"
+        assert "function_count" in stats, "Stats should include function_count"
+        assert "file_count" in stats, "Stats should include file_count"
 
         # Verify counts are reasonable
-        assert stats['class_count'] >= 5, "Should have at least 5 classes"
-        assert stats['function_count'] >= 5, "Should have at least 5 functions"
-        assert stats['file_count'] >= 5, "Should have at least 5 files"
+        assert stats["class_count"] >= 5, "Should have at least 5 classes"
+        assert stats["function_count"] >= 5, "Should have at least 5 functions"
+        assert stats["file_count"] >= 5, "Should have at least 5 files"
 
         # Verify last_index_time is tracked
         assert analyzer.last_index_time > 0, "Should track indexing time"
@@ -67,12 +71,14 @@ void function{i}() {{}}
     def test_progress_with_cache(self, temp_project_dir):
         """Test progress tracking with cache hits"""
         # Create C++ files
-        (temp_project_dir / "src" / "cached.cpp").write_text("""
+        (temp_project_dir / "src" / "cached.cpp").write_text(
+            """
 class CachedClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # First indexing - no cache
         analyzer1 = CppAnalyzer(str(temp_project_dir))
@@ -90,5 +96,5 @@ public:
         stats1 = analyzer1.get_stats()
         stats2 = analyzer2.get_stats()
 
-        assert stats1['class_count'] == stats2['class_count'], "Class count should be same"
-        assert stats1['function_count'] == stats2['function_count'], "Function count should be same"
+        assert stats1["class_count"] == stats2["class_count"], "Class count should be same"
+        assert stats1["function_count"] == stats2["function_count"], "Function count should be same"

@@ -11,9 +11,11 @@ This file tests the complete qualified name implementation:
 Note: F2 (pattern matching) and F3 (leading ::) are tested in test_qualified_search.py
 """
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
+
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 
@@ -24,7 +26,8 @@ class TestF1BasicQualifiedNameSupport:
         """Test that classes get correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     namespace ns2 {
         class MyClass {};
@@ -32,7 +35,8 @@ namespace ns1 {
 }
 
 class GlobalClass {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -55,7 +59,8 @@ class GlobalClass {};
         """Test that functions get correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace utils {
         void helperFunction() {}
@@ -63,7 +68,8 @@ namespace app {
 }
 
 void globalFunction() {}
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -85,7 +91,8 @@ void globalFunction() {}
         """Test that class methods get correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ui {
     class View {
     public:
@@ -93,7 +100,8 @@ namespace ui {
         void update() {}
     };
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -109,7 +117,8 @@ namespace ui {
         """Test that namespace field is extracted correctly from qualified name."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace a {
     namespace b {
         namespace c {
@@ -117,7 +126,8 @@ namespace a {
         }
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -131,13 +141,15 @@ namespace a {
         """Test that all search tools return qualified_name and namespace fields."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace test {
     class TestClass {};
     void testFunc() {}
     struct TestStruct {};
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -181,13 +193,15 @@ class TestF4OverloadMetadata:
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 template<typename T>
 void genericFunc(T value) {}
 
 // Add instantiation to ensure libclang indexes the template
 template void genericFunc<int>(int);
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -197,8 +211,10 @@ template void genericFunc<int>(int);
             if len(results) > 0:
                 # is_template_specialization removed; use template_kind
                 generic = [
-                    r for r in results
-                    if r.get("template_kind") not in ("full_specialization", "partial_specialization")
+                    r
+                    for r in results
+                    if r.get("template_kind")
+                    not in ("full_specialization", "partial_specialization")
                 ]
                 # Generic template (if indexed) should not be a full/partial specialization
                 assert len(generic) >= 0  # May be empty if only specialization indexed
@@ -211,13 +227,15 @@ template void genericFunc<int>(int);
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 template<typename T>
 void func(T value) {}
 
 template<>
 void func<int>(int value) {}
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -229,13 +247,14 @@ void func<int>(int value) {}
             # Verify template_kind is present on all results that have template context
             # (field may be absent for non-template generic functions)
             for result in results:
-                assert "is_template_specialization" not in result, (
-                    "is_template_specialization was removed; use template_kind"
-                )
+                assert (
+                    "is_template_specialization" not in result
+                ), "is_template_specialization was removed; use template_kind"
 
             # Find specializations via template_kind (should be at least one)
             specialized = [
-                r for r in results
+                r
+                for r in results
                 if r.get("template_kind") in ("full_specialization", "partial_specialization")
             ]
             assert len(specialized) >= 1, "Should find at least one specialization"
@@ -244,11 +263,13 @@ void func<int>(int value) {}
         """Regular function overloads should not have template_kind set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 void foo(int x) {}
 void foo(double x) {}
 void foo(int x, int y) {}
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -258,18 +279,20 @@ void foo(int x, int y) {}
 
             # All regular overloads should have no template_kind (or null)
             for result in results:
-                assert "is_template_specialization" not in result, (
-                    "is_template_specialization was removed; use template_kind"
-                )
+                assert (
+                    "is_template_specialization" not in result
+                ), "is_template_specialization was removed; use template_kind"
                 assert result.get("template_kind") not in (
-                    "full_specialization", "partial_specialization"
+                    "full_specialization",
+                    "partial_specialization",
                 ), f"Regular overload should not be a specialization: {result}"
 
     def test_template_class_methods(self):
         """Test template_kind for template class methods."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 template<typename T>
 class Container {
 public:
@@ -281,7 +304,8 @@ class Container<int> {
 public:
     void add(int item) {}
 };
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -292,9 +316,9 @@ public:
 
             # Verify removed fields are absent
             for result in results:
-                assert "is_template_specialization" not in result, (
-                    "is_template_specialization was removed"
-                )
+                assert (
+                    "is_template_specialization" not in result
+                ), "is_template_specialization was removed"
 
 
 class TestF5TemplateArgsQualification:
@@ -304,7 +328,8 @@ class TestF5TemplateArgsQualification:
         """Base classes should store template args with qualification."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace std {
     template<typename T>
     class vector {};
@@ -318,7 +343,8 @@ namespace app {
 
     class MyContainer : public Container<Item> {};
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -343,7 +369,8 @@ namespace app {
         """Nested template arguments should be qualified."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace std {
     template<typename T>
     class vector {};
@@ -357,7 +384,8 @@ namespace app {
 
     class ConfigManager : public Manager<Config> {};
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -377,7 +405,8 @@ class TestF6AnonymousNamespaces:
         """Anonymous namespaces should be represented in qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace {
     class InternalClass {};
     void internalFunc() {}
@@ -388,7 +417,8 @@ namespace app {
         class InternalHelper {};
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -405,14 +435,17 @@ namespace app {
             assert len(results) == 1
             assert "qualified_name" in results[0]
             # Should include app in the qualified name
-            assert "app" in results[0]["qualified_name"].lower() or \
-                   "anonymous" in results[0]["qualified_name"].lower()
+            assert (
+                "app" in results[0]["qualified_name"].lower()
+                or "anonymous" in results[0]["qualified_name"].lower()
+            )
 
     def test_anonymous_namespace_not_confused_with_regular(self):
         """Anonymous namespace symbols should be distinct from regular namespace symbols."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace {
     class Helper {};
 }
@@ -420,7 +453,8 @@ namespace {
 namespace util {
     class Helper {};
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -441,7 +475,8 @@ class TestF7NestedClasses:
         """Nested classes should have full qualified names with parent class."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 class Outer {
 public:
     class Inner {
@@ -449,7 +484,8 @@ public:
         class DeepNested {};
     };
 };
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -470,7 +506,8 @@ public:
         """Nested classes in namespaces should include both namespace and parent class."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace ui {
         class Widget {
@@ -479,7 +516,8 @@ namespace app {
         };
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -493,7 +531,8 @@ namespace app {
         """Methods of nested classes should have correct qualified names."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace core {
     class Database {
     public:
@@ -504,7 +543,8 @@ namespace core {
         };
     };
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -525,7 +565,8 @@ class TestComprehensiveIntegration:
         """Test a complex project with multiple features combined."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace core {
         template<typename T>
@@ -548,7 +589,8 @@ class GlobalService {
 public:
     class Settings {};
 };
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -571,7 +613,8 @@ public:
             results = analyzer.search_functions("process")
             # Should have both generic and specialized versions
             specialized = [
-                r for r in results
+                r
+                for r in results
                 if r.get("template_kind") in ("full_specialization", "partial_specialization")
             ]
             # Note: May or may not detect specialization depending on libclang version
@@ -589,7 +632,8 @@ public:
         """Test that qualified patterns work across all features."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace ui {
         class View {};
@@ -601,7 +645,8 @@ namespace app {
 }
 
 class View {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -635,11 +680,13 @@ class TestEdgeCases:
         """Empty pattern should return all symbols."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 class A {};
 class B {};
 class C {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -651,7 +698,8 @@ class C {};
         """Test deeply nested namespaces and classes."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace n1 {
     namespace n2 {
         namespace n3 {
@@ -663,7 +711,8 @@ namespace n1 {
         }
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -681,7 +730,8 @@ namespace n1 {
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 template<typename K, typename V>
 class Map {};
 
@@ -690,7 +740,8 @@ void insert(K key, V value) {}
 
 // Add a non-template class to ensure we can test something
 class RegularClass {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -699,7 +750,9 @@ class RegularClass {};
             class_results = analyzer.search_classes("Map")
             if len(class_results) > 0:
                 assert "qualified_name" in class_results[0]
-                assert "template_kind" in class_results[0]  # template_kind replaces is_template/_specialization
+                assert (
+                    "template_kind" in class_results[0]
+                )  # template_kind replaces is_template/_specialization
 
             func_results = analyzer.search_functions("insert")
             if len(func_results) > 0:

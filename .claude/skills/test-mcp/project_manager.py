@@ -4,11 +4,11 @@ Project Manager - Manages test project registry and validation
 
 import json
 import os
-import subprocess
 import shutil
-from pathlib import Path
+import subprocess
 from datetime import datetime
-from typing import Dict, Tuple, List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 
 class ProjectManager:
@@ -47,7 +47,7 @@ class ProjectManager:
                         "file_count": 18,
                         "created": datetime.now().isoformat(),
                         "last_validated": None,
-                        "last_used": None
+                        "last_used": None,
                     },
                     "tier2": {
                         "type": "builtin",
@@ -56,9 +56,9 @@ class ProjectManager:
                         "file_count": 5700,
                         "created": datetime.now().isoformat(),
                         "last_validated": None,
-                        "last_used": None
-                    }
-                }
+                        "last_used": None,
+                    },
+                },
             }
 
             with open(self.registry_path, "w") as f:
@@ -106,7 +106,7 @@ class ProjectManager:
         if not project:
             return False, [
                 f"Project '{name}' not found in registry",
-                "  Hint: Run '/test-mcp list-projects' to see available projects"
+                "  Hint: Run '/test-mcp list-projects' to see available projects",
             ]
 
         issues = []
@@ -115,16 +115,22 @@ class ProjectManager:
         project_path = Path(project["path"])
         if not project_path.exists():
             issues.append(f"Directory does not exist: {project_path}")
-            issues.append(f"  Hint: Either restore the directory or remove project with '/test-mcp remove-project project={name}'")
+            issues.append(
+                f"  Hint: Either restore the directory or remove project with '/test-mcp remove-project project={name}'"
+            )
 
         # Check compile_commands.json exists
         compile_commands_path = project_path / project["compile_commands"]
         if not compile_commands_path.exists():
             issues.append(f"compile_commands.json not found: {compile_commands_path}")
             if Path(project_path / "CMakeLists.txt").exists():
-                issues.append(f"  Hint: Run 'cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON' in {project_path}")
+                issues.append(
+                    f"  Hint: Run 'cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON' in {project_path}"
+                )
             else:
-                issues.append(f"  Hint: Check compile_commands path in registry or create it manually")
+                issues.append(
+                    f"  Hint: Check compile_commands path in registry or create it manually"
+                )
         else:
             # Validate it's valid JSON
             try:
@@ -132,14 +138,18 @@ class ProjectManager:
                     json.load(f)
             except json.JSONDecodeError:
                 issues.append(f"compile_commands.json is not valid JSON")
-                issues.append(f"  Hint: Regenerate compile_commands.json with cmake or check for corruption")
+                issues.append(
+                    f"  Hint: Regenerate compile_commands.json with cmake or check for corruption"
+                )
 
         # Check for C++ files
         if project_path.exists():
             cpp_files = list(project_path.rglob("*.cpp")) + list(project_path.rglob("*.cc"))
             if not cpp_files:
                 issues.append("No C++ source files found")
-                issues.append(f"  Hint: Verify project path is correct or check if files have different extensions (.cxx, .c++)")
+                issues.append(
+                    f"  Hint: Verify project path is correct or check if files have different extensions (.cxx, .c++)"
+                )
 
         # Update last_validated timestamp if valid
         if not issues:
@@ -171,7 +181,7 @@ class ProjectManager:
         name: Optional[str] = None,
         commit: Optional[str] = None,
         tag: Optional[str] = None,
-        build_dir: str = "build"
+        build_dir: str = "build",
     ) -> Tuple[bool, str, str]:
         """
         Clone and configure a project from GitHub
@@ -202,52 +212,65 @@ class ProjectManager:
 
         # Check if project already exists
         if self.get_project(name):
-            return False, (
-                f"Project '{name}' already exists in registry\n"
-                f"  Hint: Use '/test-mcp remove-project project={name}' to remove it first\n"
-                f"        or choose a different name with 'name=different-name'"
-            ), name
+            return (
+                False,
+                (
+                    f"Project '{name}' already exists in registry\n"
+                    f"  Hint: Use '/test-mcp remove-project project={name}' to remove it first\n"
+                    f"        or choose a different name with 'name=different-name'"
+                ),
+                name,
+            )
 
         # Determine clone destination
         clone_dest = self.registry_path.parent / name
 
         # Check if git is available
         if not shutil.which("git"):
-            return False, (
-                "git not found in PATH\n"
-                "  Hint: Install git:\n"
-                "    Ubuntu/Debian: sudo apt-get install git\n"
-                "    macOS: brew install git\n"
-                "    Windows: download from https://git-scm.com/"
-            ), name
+            return (
+                False,
+                (
+                    "git not found in PATH\n"
+                    "  Hint: Install git:\n"
+                    "    Ubuntu/Debian: sudo apt-get install git\n"
+                    "    macOS: brew install git\n"
+                    "    Windows: download from https://git-scm.com/"
+                ),
+                name,
+            )
 
         # Clone repository
         print(f"Cloning {url} to {clone_dest}...")
         try:
             clone_cmd = ["git", "clone", url, str(clone_dest)]
             result = subprocess.run(
-                clone_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
+                clone_cmd, capture_output=True, text=True, timeout=300  # 5 minute timeout
             )
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
-                return False, (
-                    f"Git clone failed:\n{error_msg}\n"
-                    f"  Hint: Check if:\n"
-                    f"    - URL is correct and accessible\n"
-                    f"    - Repository is public or you have access\n"
-                    f"    - Network connection is working"
-                ), name
+                return (
+                    False,
+                    (
+                        f"Git clone failed:\n{error_msg}\n"
+                        f"  Hint: Check if:\n"
+                        f"    - URL is correct and accessible\n"
+                        f"    - Repository is public or you have access\n"
+                        f"    - Network connection is working"
+                    ),
+                    name,
+                )
 
         except subprocess.TimeoutExpired:
-            return False, (
-                "Git clone timed out (>5 minutes)\n"
-                "  Hint: Repository may be too large or network is slow\n"
-                "        Try cloning manually first"
-            ), name
+            return (
+                False,
+                (
+                    "Git clone timed out (>5 minutes)\n"
+                    "  Hint: Repository may be too large or network is slow\n"
+                    "        Try cloning manually first"
+                ),
+                name,
+            )
         except Exception as e:
             return False, f"Git clone error: {e}", name
 
@@ -258,11 +281,7 @@ class ProjectManager:
             try:
                 checkout_cmd = ["git", "checkout", ref]
                 result = subprocess.run(
-                    checkout_cmd,
-                    cwd=clone_dest,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
+                    checkout_cmd, cwd=clone_dest, capture_output=True, text=True, timeout=30
                 )
 
                 if result.returncode != 0:
@@ -279,10 +298,7 @@ class ProjectManager:
         # Get current commit hash
         try:
             result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=clone_dest,
-                capture_output=True,
-                text=True
+                ["git", "rev-parse", "HEAD"], cwd=clone_dest, capture_output=True, text=True
             )
             commit_hash = result.stdout.strip()
         except Exception:
@@ -295,8 +311,7 @@ class ProjectManager:
         if CMakeHelper.detect_cmake_project(clone_dest):
             print("CMakeLists.txt detected, configuring with CMake...")
             success, message, compile_commands_path = CMakeHelper.configure_project(
-                clone_dest,
-                build_dir=build_dir
+                clone_dest, build_dir=build_dir
             )
 
             if not success:
@@ -305,9 +320,7 @@ class ProjectManager:
                 return False, f"CMake configuration failed: {message}", name
 
             # Get relative path for compile_commands.json
-            compile_commands_rel_path = str(
-                compile_commands_path.relative_to(clone_dest)
-            )
+            compile_commands_rel_path = str(compile_commands_path.relative_to(clone_dest))
 
             # Get file count from compile_commands.json
             file_count = CMakeHelper.get_file_count(compile_commands_path)
@@ -331,7 +344,7 @@ class ProjectManager:
             "disk_usage_mb": disk_usage_mb,
             "created": datetime.now().isoformat(),
             "last_validated": datetime.now().isoformat(),
-            "last_used": None
+            "last_used": None,
         }
 
         # Add tag if specified
@@ -350,7 +363,11 @@ class ProjectManager:
         with open(self.registry_path, "w") as f:
             json.dump(registry, f, indent=2)
 
-        return True, f"Project '{name}' setup complete ({file_count} files, {disk_usage_mb:.1f} MB)", name
+        return (
+            True,
+            f"Project '{name}' setup complete ({file_count} files, {disk_usage_mb:.1f} MB)",
+            name,
+        )
 
     def remove_project(self, name: str, delete_files: bool = False) -> Tuple[bool, str]:
         """

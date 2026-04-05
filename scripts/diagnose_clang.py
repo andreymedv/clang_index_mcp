@@ -9,10 +9,10 @@ Usage:
     python3 scripts/diagnose_clang.py --fix
 """
 
-import sys
+import argparse
 import os
 import subprocess
-import argparse
+import sys
 from pathlib import Path
 
 
@@ -231,7 +231,8 @@ def provide_manual_solutions():
     """Print manual solution steps"""
     print_section("Manual Solutions for Common Issues")
 
-    print("""
+    print(
+        """
 1. ISSUE: ImportError when importing clang.cindex
    SOLUTION:
    - Reinstall libclang: pip install --force-reinstall libclang
@@ -265,7 +266,8 @@ def provide_manual_solutions():
    - Ensure IDE uses same Python interpreter
    - Check LD_LIBRARY_PATH or DYLD_LIBRARY_PATH environment variable
    - Restart IDE after installing libclang
-""")
+"""
+    )
 
 
 def run_comprehensive_test():
@@ -273,10 +275,10 @@ def run_comprehensive_test():
     print_section("Running Comprehensive Clang Test")
 
     try:
-        from clang.cindex import CursorKind, Index
-
         # Create temp test file
         import tempfile
+
+        from clang.cindex import CursorKind, Index
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
             f.write("class TestClass { public: void method(); };")

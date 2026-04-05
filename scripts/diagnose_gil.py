@@ -13,11 +13,11 @@ Usage:
     python scripts/diagnose_gil.py [project_root]
 """
 
-import sys
 import os
+import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -25,8 +25,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def parse_file_worker(file_path: str):
     """Worker function to parse a single file (for ProcessPoolExecutor)."""
-    from mcp_server.cpp_analyzer import CppAnalyzer
     import tempfile
+
+    from mcp_server.cpp_analyzer import CppAnalyzer
 
     # Create a minimal analyzer just for this file
     # Use a unique temp directory for cache to avoid conflicts
@@ -132,7 +133,8 @@ def main():
     print("\n" + "=" * 80)
     print("ANALYSIS:")
     print("=" * 80)
-    print("""
+    print(
+        """
 If ProcessPoolExecutor is significantly faster (1.5x+), the GIL is likely the bottleneck.
 This happens because:
 1. ThreadPoolExecutor uses Python threads (limited by GIL)
@@ -143,7 +145,8 @@ Recommendations if GIL is the bottleneck:
 - Switch to ProcessPoolExecutor for parallel parsing
 - Reduce worker count for ThreadPoolExecutor (less contention)
 - Optimize Python code between libclang calls
-    """)
+    """
+    )
 
 
 if __name__ == "__main__":

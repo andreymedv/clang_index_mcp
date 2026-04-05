@@ -12,8 +12,8 @@ Usage:
     python scripts/test_issue_10.py
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add parent directory to path

@@ -5,7 +5,6 @@ Unit tests for mcp_server/suggestions.py — conditional next-step suggestions.
 from mcp_server import suggestions
 from mcp_server.state_manager import EnhancedQueryResult
 
-
 # ---------------------------------------------------------------------------
 # for_get_class_info
 # ---------------------------------------------------------------------------
@@ -225,9 +224,10 @@ def test_find_incoming_calls_non_dict_result_no_hints():
 
 def test_find_incoming_calls_non_empty_with_qualified_name_still_no_hints():
     result_data = {"callers": [{"caller": "main", "file": "a.cpp", "line": 10}]}
-    assert suggestions.for_find_incoming_calls(
-        "build", result_data, qualified_name="NS::Cls::build"
-    ) == []
+    assert (
+        suggestions.for_find_incoming_calls("build", result_data, qualified_name="NS::Cls::build")
+        == []
+    )
 
 
 def test_find_incoming_calls_non_empty_without_qualified_name_still_no_hints():
@@ -256,9 +256,12 @@ def test_get_outgoing_calls_non_dict_result_no_hints():
 
 def test_get_outgoing_calls_non_empty_with_qualified_name_still_no_hints():
     result_data = {"callees": [{"callee": "helper", "file": "b.cpp", "line": 5}]}
-    assert suggestions.for_get_outgoing_calls(
-        "builder", result_data, qualified_name="NS::Doc::builder"
-    ) == []
+    assert (
+        suggestions.for_get_outgoing_calls(
+            "builder", result_data, qualified_name="NS::Doc::builder"
+        )
+        == []
+    )
 
 
 def test_get_outgoing_calls_non_empty_without_qualified_name_still_no_hints():

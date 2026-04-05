@@ -6,21 +6,23 @@ Performance tests for MCP server and analyzer.
 Requirements: P1 - High Priority
 """
 
-import pytest
-import time
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+import time
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.cache_manager import CacheManager
-from mcp_server.symbol_info import SymbolInfo
+from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+from mcp_server.symbol_info import SymbolInfo
 
 
 @pytest.mark.slow
@@ -32,7 +34,8 @@ class TestPerformanceBenchmarks:
         """Benchmark indexing performance on small project (10 files)"""
         # Create 10 test files
         for i in range(10):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
+                f"""
 class TestClass{i} {{
 public:
     void method{i}();
@@ -40,7 +43,8 @@ public:
 }};
 
 void globalFunction{i}() {{}}
-""")
+"""
+            )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
 
@@ -53,13 +57,16 @@ void globalFunction{i}() {{}}
         assert elapsed < 10.0, f"Indexing 10 files should take less than 10s, took {elapsed:.2f}s"
 
         # Log performance
-        print(f"\nSmall project indexing: {count} files in {elapsed:.2f}s ({count/elapsed:.1f} files/sec)")
+        print(
+            f"\nSmall project indexing: {count} files in {elapsed:.2f}s ({count/elapsed:.1f} files/sec)"
+        )
 
     def test_indexing_performance_medium_project(self, temp_project_dir):
         """Benchmark indexing performance on medium project (50 files)"""
         # Create 50 test files
         for i in range(50):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
+                f"""
 class TestClass{i} {{
 public:
     void method{i}();
@@ -70,7 +77,8 @@ private:
 
 void globalFunction{i}() {{}}
 void helperFunction{i}() {{}}
-""")
+"""
+            )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
 
@@ -82,17 +90,21 @@ void helperFunction{i}() {{}}
         assert count >= 50, "Should index all files"
         assert elapsed < 30.0, f"Indexing 50 files should take less than 30s, took {elapsed:.2f}s"
 
-        print(f"\nMedium project indexing: {count} files in {elapsed:.2f}s ({count/elapsed:.1f} files/sec)")
+        print(
+            f"\nMedium project indexing: {count} files in {elapsed:.2f}s ({count/elapsed:.1f} files/sec)"
+        )
 
     def test_search_performance(self, temp_project_dir):
         """Benchmark search performance"""
         # Create project with many classes
         for i in range(20):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
+                f"""
 class TestClass{i} {{}};
 class AnotherClass{i} {{}};
 class DifferentClass{i} {{}};
-""")
+"""
+            )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -113,13 +125,15 @@ class DifferentClass{i} {{}};
         """Benchmark cache save performance"""
         # Create project with moderate size
         for i in range(30):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
+                f"""
 class TestClass{i} {{
     void method1();
     void method2();
     void method3();
 }};
-""")
+"""
+            )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -137,12 +151,14 @@ class TestClass{i} {{
         """Benchmark cache load performance"""
         # Create and index project
         for i in range(30):
-            (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"""
+            (temp_project_dir / "src" / f"file{i}.cpp").write_text(
+                f"""
 class TestClass{i} {{
     void method1();
     void method2();
 }};
-""")
+"""
+            )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         count1 = analyzer.index_project()
@@ -171,7 +187,9 @@ class TestClass{i} {{
         analyzer.index_project()
 
         # Modify one file
-        (temp_project_dir / "src" / "file0.cpp").write_text("class TestClass0 {};\nclass NewClass {};")
+        (temp_project_dir / "src" / "file0.cpp").write_text(
+            "class TestClass0 {};\nclass NewClass {};"
+        )
 
         # Benchmark incremental refresh
         start = time.time()
@@ -185,7 +203,8 @@ class TestClass{i} {{
     def test_hierarchy_analysis_performance(self, temp_project_dir):
         """Benchmark class hierarchy analysis performance"""
         # Create deep inheritance hierarchy
-        (temp_project_dir / "src" / "hierarchy.cpp").write_text("""
+        (temp_project_dir / "src" / "hierarchy.cpp").write_text(
+            """
 class Base0 {};
 class Base1 : public Base0 {};
 class Base2 : public Base1 {};
@@ -196,7 +215,8 @@ class Base6 : public Base5 {};
 class Base7 : public Base6 {};
 class Base8 : public Base7 {};
 class Base9 : public Base8 {};
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -214,13 +234,15 @@ class Base9 : public Base8 {};
     def test_call_graph_performance(self, temp_project_dir):
         """Benchmark call graph analysis performance"""
         # Create files with function calls
-        (temp_project_dir / "src" / "calls.cpp").write_text("""
+        (temp_project_dir / "src" / "calls.cpp").write_text(
+            """
 void func1() {}
 void func2() { func1(); }
 void func3() { func2(); func1(); }
 void func4() { func3(); func2(); }
 void func5() { func4(); func3(); }
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -251,7 +273,7 @@ class TestCacheBenchmarks:
                     file=f"/test/file{i % 100}.cpp",
                     line=i * 10 + 1,
                     column=1,
-                    usr=f"usr_class_{i}"
+                    usr=f"usr_class_{i}",
                 )
             else:
                 symbol = SymbolInfo(
@@ -260,7 +282,7 @@ class TestCacheBenchmarks:
                     file=f"/test/file{i % 100}.cpp",
                     line=i * 10 + 1,
                     column=1,
-                    usr=f"usr_func_{i}"
+                    usr=f"usr_func_{i}",
                 )
             symbols.append(symbol)
         return symbols
@@ -283,9 +305,13 @@ class TestCacheBenchmarks:
             throughput = len(symbols) / elapsed
             # Use conservative threshold that works across different environments
             # 5000 symbols/sec is ideal but 1000 is acceptable minimum
-            assert throughput > 1000, f"Throughput should be >1000 symbols/sec, was {throughput:.0f}"
+            assert (
+                throughput > 1000
+            ), f"Throughput should be >1000 symbols/sec, was {throughput:.0f}"
 
-            print(f"\nBulk write performance: {throughput:.0f} symbols/sec ({elapsed*1000:.2f}ms for {len(symbols)} symbols)")
+            print(
+                f"\nBulk write performance: {throughput:.0f} symbols/sec ({elapsed*1000:.2f}ms for {len(symbols)} symbols)"
+            )
         finally:
             cache_manager.close()
 
@@ -314,7 +340,9 @@ class TestCacheBenchmarks:
             avg_time = sum(search_times) / len(search_times)
             assert avg_time < 5.0, f"Average FTS search should be <5ms, was {avg_time:.2f}ms"
 
-            print(f"\nFTS search performance: {avg_time:.2f}ms average (min: {min(search_times):.2f}ms, max: {max(search_times):.2f}ms)")
+            print(
+                f"\nFTS search performance: {avg_time:.2f}ms average (min: {min(search_times):.2f}ms, max: {max(search_times):.2f}ms)"
+            )
         finally:
             cache_manager.close()
 
@@ -356,4 +384,6 @@ class TestScalabilityBenchmarks:
         assert count >= 100
         assert elapsed < 60.0, f"100 files should index in <60s, took {elapsed:.2f}s"
 
-        print(f"\nMany small files: {count} files in {elapsed:.2f}s ({count/elapsed:.1f} files/sec)")
+        print(
+            f"\nMany small files: {count} files in {elapsed:.2f}s ({count/elapsed:.1f} files/sec)"
+        )

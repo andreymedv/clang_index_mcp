@@ -123,15 +123,9 @@ class TestSignaturePattern(unittest.TestCase):
 
     def test_case_insensitive(self):
         """Test that signature matching is case-insensitive."""
-        results_lower = self.search_engine.search_functions(
-            ".*", signature_pattern="std::string"
-        )
-        results_upper = self.search_engine.search_functions(
-            ".*", signature_pattern="STD::STRING"
-        )
-        results_mixed = self.search_engine.search_functions(
-            ".*", signature_pattern="Std::String"
-        )
+        results_lower = self.search_engine.search_functions(".*", signature_pattern="std::string")
+        results_upper = self.search_engine.search_functions(".*", signature_pattern="STD::STRING")
+        results_mixed = self.search_engine.search_functions(".*", signature_pattern="Std::String")
         names_lower = {r["qualified_name"].split("::")[-1] for r in results_lower}
         names_upper = {r["qualified_name"].split("::")[-1] for r in results_upper}
         names_mixed = {r["qualified_name"].split("::")[-1] for r in results_mixed}
@@ -168,9 +162,7 @@ class TestSignaturePattern(unittest.TestCase):
 
     def test_no_match_returns_empty(self):
         """Test that non-matching pattern returns empty results."""
-        results = self.search_engine.search_functions(
-            ".*", signature_pattern="NonExistentType"
-        )
+        results = self.search_engine.search_functions(".*", signature_pattern="NonExistentType")
         self.assertEqual(len(results), 0)
 
     def test_empty_signature_excluded(self):
@@ -186,18 +178,14 @@ class TestSignaturePattern(unittest.TestCase):
 
     def test_none_preserves_existing_behavior(self):
         """Test that signature_pattern=None returns all matching functions (no filtering)."""
-        results_with_none = self.search_engine.search_functions(
-            ".*", signature_pattern=None
-        )
+        results_with_none = self.search_engine.search_functions(".*", signature_pattern=None)
         results_default = self.search_engine.search_functions(".*")
         self.assertEqual(len(results_with_none), len(results_default))
 
     def test_combined_with_name_pattern(self):
         """Test that signature_pattern AND name pattern are both applied (AND logic)."""
         # Name pattern: starts with "get" or "set"
-        results = self.search_engine.search_functions(
-            "get.*", signature_pattern="std::string"
-        )
+        results = self.search_engine.search_functions("get.*", signature_pattern="std::string")
         names = {r["qualified_name"].split("::")[-1] for r in results}
         # Only getWidget matches both "get.*" name AND "std::string" in signature
         self.assertEqual(names, {"getWidget"})
@@ -205,9 +193,7 @@ class TestSignaturePattern(unittest.TestCase):
     def test_combined_with_max_results(self):
         """Test that signature_pattern works correctly with max_results truncation."""
         # Get all functions with "void" in signature (should be processData, setCallback)
-        results_all = self.search_engine.search_functions(
-            ".*", signature_pattern="void"
-        )
+        results_all = self.search_engine.search_functions(".*", signature_pattern="void")
         self.assertGreaterEqual(len(results_all), 2)
 
         # Now limit to 1 result
@@ -312,9 +298,7 @@ class TestSignaturePatternSearchSymbols(unittest.TestCase):
 
     def test_search_symbols_filters_functions_only(self):
         """Test that signature_pattern filters functions but classes remain unaffected."""
-        results = self.search_engine.search_symbols(
-            ".*", signature_pattern="std::string"
-        )
+        results = self.search_engine.search_symbols(".*", signature_pattern="std::string")
         # Classes should still be returned (signature_pattern doesn't apply to classes)
         self.assertEqual(len(results["classes"]), 1)
         self.assertEqual(results["classes"][0]["qualified_name"].split("::")[-1], "StringProcessor")
@@ -330,9 +314,7 @@ class TestSignaturePatternSearchSymbols(unittest.TestCase):
 
     def test_search_symbols_no_function_match(self):
         """Test that non-matching signature_pattern empties functions but keeps classes."""
-        results = self.search_engine.search_symbols(
-            ".*", signature_pattern="NonExistentType"
-        )
+        results = self.search_engine.search_symbols(".*", signature_pattern="NonExistentType")
         # Classes should still be returned
         self.assertEqual(len(results["classes"]), 1)
         # No functions match

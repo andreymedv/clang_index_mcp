@@ -12,6 +12,7 @@ Tests the complete integration of type alias tracking through:
 import os
 import sys
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
@@ -21,7 +22,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # ============================================================================
 # IT-1: search_classes Type Expansion Integration

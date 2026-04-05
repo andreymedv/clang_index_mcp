@@ -79,10 +79,10 @@ int calculate_sum(int a, int b) {
 
 int main() {
     std::cout << get_greeting() << std::endl;
-    
+
     int result = calculate_sum(5, 3);
     std::cout << "5 + 3 = " << result << std::endl;
-    
+
     return 0;
 }
 ```
