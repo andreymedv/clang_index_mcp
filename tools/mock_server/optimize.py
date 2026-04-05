@@ -152,6 +152,10 @@ def run_tests(
 
     passed = sum(1 for r in all_results if r.get("overall_pass"))
     total = len(all_results)
+
+    # Calculate per-tool time statistics
+    time_stats = calculate_per_tool_time(all_results)
+
     merged = {
         "results": all_results,
         "summary": {
@@ -159,6 +163,7 @@ def run_tests(
             "passed": passed,
             "failed": total - passed,
             "pass_rate": round(passed / total, 3) if total > 0 else 0,
+            "time_stats": time_stats,
         },
     }
 
@@ -166,6 +171,45 @@ def run_tests(
         json.dump(merged, f, indent=2, ensure_ascii=False)
 
     return merged
+
+
+def calculate_per_tool_time(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculate average time per tool invocation.
+
+    Returns dict with:
+        - avg_time_per_tool: average wall_time / total_tool_calls across all tests
+        - total_wall_time: sum of all wall_time_seconds
+        - total_tool_calls: sum of all tool calls
+        - test_count: number of tests with timing data
+    """
+    total_wall_time = 0.0
+    total_tool_calls = 0
+    test_count = 0
+
+    for r in results:
+        wall_time = r.get("wall_time_seconds")
+        tool_calls = r.get("total_tool_calls")
+
+        # Only count tests that have both timing and tool call data
+        if wall_time is not None and tool_calls is not None and tool_calls > 0:
+            total_wall_time += wall_time
+            total_tool_calls += tool_calls
+            test_count += 1
+
+    if total_tool_calls == 0:
+        return {
+            "avg_time_per_tool": 0.0,
+            "total_wall_time": 0.0,
+            "total_tool_calls": 0,
+            "test_count": 0,
+        }
+
+    return {
+        "avg_time_per_tool": round(total_wall_time / total_tool_calls, 2),
+        "total_wall_time": round(total_wall_time, 2),
+        "total_tool_calls": total_tool_calls,
+        "test_count": test_count,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +314,17 @@ def build_compact_report(report: Dict[str, Any]) -> str:
         f"({summary.get('pass_rate', 0) * 100:.1f}%)",
     ]
 
+    # Add time stats if available
+    time_stats = summary.get("time_stats")
+    if time_stats and time_stats.get("test_count", 0) > 0:
+        avg_time = time_stats.get("avg_time_per_tool", 0)
+        total_time = time_stats.get("total_wall_time", 0)
+        total_calls = time_stats.get("total_tool_calls", 0)
+        lines.append(
+            f"Avg time per tool: {avg_time:.2f}s "
+            f"({total_calls} calls, {total_time:.1f}s total)"
+        )
+
     if not patterns:
         lines.append("All scenarios passed. No failures to analyze.")
         return "\n".join(lines)
@@ -336,8 +391,21 @@ def compare_results(
         f"After:  {a_summary.get('passed', 0)}/{a_summary.get('total', 0)} "
         f"({a_rate * 100:.1f}%)",
         f"Delta:  {delta * 100:+.1f}%",
-        "",
     ]
+
+    # Add time stats comparison if available
+    b_time = b_summary.get("time_stats")
+    a_time = a_summary.get("time_stats")
+    if b_time and a_time:
+        b_avg = b_time.get("avg_time_per_tool", 0)
+        a_avg = a_time.get("avg_time_per_tool", 0)
+        time_delta = a_avg - b_avg
+        lines.append(
+            f"Time:   {b_avg:.2f}s -> {a_avg:.2f}s per tool "
+            f"({time_delta:+.2f}s)"
+        )
+
+    lines.append("")
 
     before_by_id = {r["scenario_id"]: r for r in before.get("results", [])}
     after_by_id = {r["scenario_id"]: r for r in after.get("results", [])}
@@ -477,6 +545,21 @@ def cmd_run(args: argparse.Namespace) -> None:
     )
 
     print(f"\nResults saved: {results_path}")
+
+    # Print time statistics
+    summary = report.get("summary", {})
+    time_stats = summary.get("time_stats")
+    if time_stats and time_stats.get("test_count", 0) > 0:
+        avg_time = time_stats.get("avg_time_per_tool", 0)
+        total_time = time_stats.get("total_wall_time", 0)
+        total_calls = time_stats.get("total_tool_calls", 0)
+        test_count = time_stats.get("test_count", 0)
+        print()
+        print("Timing Statistics:")
+        print(f"  Average time per tool invocation: {avg_time:.2f}s")
+        print(f"  Total wall time: {total_time:.1f}s ({test_count} tests)")
+        print(f"  Total tool invocations: {total_calls}")
+
     print()
     compact = build_compact_report(report)
     print(compact)
