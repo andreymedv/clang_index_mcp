@@ -33,13 +33,11 @@ class TestDocumentationSchema:
     def test_schema_has_brief_column(self, temp_project_dir):
         """UT-4.1: Verify brief column exists in symbols table."""
         # Create a simple project and index it
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Test class
 class TestClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -72,12 +70,10 @@ class TestClass {
 
     def test_schema_has_doc_comment_column(self, temp_project_dir):
         """UT-4.2: Verify doc_comment column exists in symbols table."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -108,13 +104,11 @@ class TestClass {
 
     def test_store_and_retrieve_brief(self, temp_project_dir):
         """UT-4.3: Test storing and retrieving brief from database."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// This is the brief description
 class DocumentedClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -145,8 +139,7 @@ class DocumentedClass {
 
     def test_store_and_retrieve_doc_comment(self, temp_project_dir):
         """UT-4.4: Test storing and retrieving doc_comment from database."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * @brief Brief description
  *
@@ -155,8 +148,7 @@ class DocumentedClass {
  */
 class FullyDocumentedClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -186,12 +178,10 @@ class FullyDocumentedClass {
 
     def test_null_documentation_storage(self, temp_project_dir):
         """UT-4.5: Test storing NULL values for missing documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class UndocumentedClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -218,13 +208,11 @@ class UndocumentedClass {
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT brief, doc_comment
             FROM symbols
             WHERE name = 'UndocumentedClass'
-        """
-        )
+        """)
         row = cursor.fetchone()
         conn.close()
 
@@ -234,13 +222,11 @@ class UndocumentedClass {
 
     def test_documentation_survives_cache_reload(self, temp_project_dir):
         """UT-4.6: Test that documentation persists across analyzer restarts."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Persistent documentation
 class PersistentClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,

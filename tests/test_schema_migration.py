@@ -27,21 +27,17 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table (normally created by schema.sql)
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """
-        )
-        conn.execute(
-            """
+        """)
+        conn.execute("""
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """
-        )
+        """)
         conn.commit()
 
         # Run migration
@@ -56,23 +52,19 @@ class TestSchemaMigration(unittest.TestCase):
         self.assertEqual(migration.get_current_version(), 3)
 
         # Verify file_dependencies table exists
-        cursor = conn.execute(
-            """
+        cursor = conn.execute("""
             SELECT name FROM sqlite_master
             WHERE type='table' AND name='file_dependencies'
-        """
-        )
+        """)
         tables = cursor.fetchall()
         self.assertEqual(len(tables), 1)
         self.assertEqual(tables[0][0], "file_dependencies")
 
         # Verify indexes exist
-        cursor = conn.execute(
-            """
+        cursor = conn.execute("""
             SELECT name FROM sqlite_master
             WHERE type='index' AND tbl_name='file_dependencies'
-        """
-        )
+        """)
         indexes = cursor.fetchall()
         index_names = {row[0] for row in indexes}
 
@@ -92,21 +84,17 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """
-        )
-        conn.execute(
-            """
+        """)
+        conn.execute("""
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """
-        )
+        """)
         conn.commit()
 
         # First migration
@@ -127,21 +115,17 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """
-        )
-        conn.execute(
-            """
+        """)
+        conn.execute("""
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """
-        )
+        """)
         conn.commit()
 
         # Apply migration
@@ -172,45 +156,37 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version and migrate
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """
-        )
-        conn.execute(
-            """
+        """)
+        conn.execute("""
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """
-        )
+        """)
         conn.commit()
 
         migration = SchemaMigration(conn)
         migration.migrate()
 
         # Insert first dependency
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO file_dependencies
             (source_file, included_file, detected_at)
             VALUES ('main.cpp', 'header.h', 12345.0)
-        """
-        )
+        """)
         conn.commit()
 
         # Try to insert duplicate (should fail)
         with self.assertRaises(sqlite3.IntegrityError):
-            conn.execute(
-                """
+            conn.execute("""
                 INSERT INTO file_dependencies
                 (source_file, included_file, detected_at)
                 VALUES ('main.cpp', 'header.h', 12346.0)
-            """
-            )
+            """)
             conn.commit()
 
         conn.close()
@@ -220,21 +196,17 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """
-        )
-        conn.execute(
-            """
+        """)
+        conn.execute("""
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """
-        )
+        """)
         conn.commit()
 
         # Apply migration

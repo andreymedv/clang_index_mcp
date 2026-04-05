@@ -31,16 +31,14 @@ class TestBriefCommentExtraction:
     def test_extract_brief_doxygen_single_line(self, temp_project_dir):
         """UT-1.1: Extract brief from Doxygen single-line comment (///)."""
         # Create source file with Doxygen single-line comment
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Parses C++ source files and extracts symbols
 class Parser {
 public:
     /// Initializes the parser with default settings
     Parser();
 };
-"""
-        )
+""")
 
         # Create compile commands
         temp_compile_commands(
@@ -69,8 +67,7 @@ public:
 
     def test_extract_brief_doxygen_multiline(self, temp_project_dir):
         """UT-1.2: Extract brief from Doxygen multi-line comment (/** */)."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * @brief Manages HTTP request handling
  *
@@ -80,8 +77,7 @@ class RequestHandler {
 public:
     void process();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -107,15 +103,13 @@ public:
 
     def test_extract_brief_qt_style(self, temp_project_dir):
         """UT-1.3: Extract brief from Qt-style comment (/*!)."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /*! Stores application configuration */
 class Config {
 public:
     void load();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -138,13 +132,11 @@ public:
 
     def test_extract_brief_fallback_from_raw_comment(self, temp_project_dir):
         """UT-1.4: Extract brief from raw comment when brief_comment unavailable."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 // Simple comment without Doxygen markup
 class SimpleClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -168,13 +160,11 @@ class SimpleClass {
     def test_brief_length_limit(self, temp_project_dir):
         """UT-1.5: Brief should be truncated to max 200 characters."""
         very_long_brief = "A" * 250  # Create 250-char comment
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            f"""
+        (temp_project_dir / "src" / "test.cpp").write_text(f"""
 /// {very_long_brief}
 class LongBriefClass {{
 }};
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -197,12 +187,10 @@ class LongBriefClass {{
 
     def test_brief_null_when_no_documentation(self, temp_project_dir):
         """UT-1.6: Brief should be NULL when no documentation exists."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class UndocumentedClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -233,8 +221,7 @@ class TestFullDocumentationExtraction:
 
     def test_extract_full_doc_doxygen(self, temp_project_dir):
         """UT-2.1: Extract complete Doxygen documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * @brief Database manager
  *
@@ -249,8 +236,7 @@ class TestFullDocumentationExtraction:
  */
 class DatabaseManager {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -282,13 +268,11 @@ class DatabaseManager {
         long_doc += " * " + ("This is a very long documentation. " * 200)  # ~7000 chars
         long_doc += "\n */"
 
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            f"""
+        (temp_project_dir / "src" / "test.cpp").write_text(f"""
 {long_doc}
 class LongDocsClass {{
 }};
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -311,12 +295,10 @@ class LongDocsClass {{
 
     def test_doc_comment_null_when_missing(self, temp_project_dir):
         """UT-2.3: doc_comment should be NULL when no documentation exists."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class NoDocsClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -338,8 +320,7 @@ class NoDocsClass {
 
     def test_doc_comment_preserves_structure(self, temp_project_dir):
         """UT-2.4: Documentation should preserve formatting and structure."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * First paragraph.
  *
@@ -350,8 +331,7 @@ class NoDocsClass {
  * @return Result value
  */
 void documentedFunction(int x, int y);
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -387,13 +367,11 @@ class TestCommentTypeSupport:
 
     def test_doxygen_triple_slash(self, temp_project_dir):
         """UT-3.1: Support /// Doxygen style."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Doxygen single-line
 class DoxygenSlash {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -415,15 +393,13 @@ class DoxygenSlash {
 
     def test_doxygen_multiline_star(self, temp_project_dir):
         """UT-3.2: Support /** ... */ Doxygen style."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * Doxygen multi-line
  */
 class DoxygenStar {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -445,13 +421,11 @@ class DoxygenStar {
 
     def test_qt_style_exclamation(self, temp_project_dir):
         """UT-3.3: Support /*! ... */ Qt style."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /*! Qt style documentation */
 class QtStyle {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -473,8 +447,7 @@ class QtStyle {
 
     def test_mixed_comment_styles(self, temp_project_dir):
         """UT-3.4: Handle mixed comment styles in same file."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Doxygen style
 class Style1 {
 };
@@ -486,8 +459,7 @@ class Style2 {
 /*! Qt style */
 class Style3 {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,

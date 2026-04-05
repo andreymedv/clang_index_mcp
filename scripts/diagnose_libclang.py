@@ -136,8 +136,7 @@ def suggest_solutions():
     print("SOLUTIONS FOR MACOS SDK ISSUES")
     print("=" * 70)
 
-    print(
-        """
+    print("""
 If libclang can't find system headers (like stdbool.h), try these solutions:
 
 1. Install Xcode Command Line Tools (if not already installed):
@@ -171,8 +170,7 @@ If libclang can't find system headers (like stdbool.h), try these solutions:
    - Check your Xcode/CLT version: clang --version
    - Install matching libclang version via pip
    - Example: pip install libclang==14.0.0  (match your clang version)
-"""
-    )
+""")
 
 
 def main():

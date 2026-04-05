@@ -24,8 +24,7 @@ def multi_namespace_project(tmp_path):
 
     # Create ns1::View and ns1::Controller
     ns1_header = project / "ns1.h"
-    ns1_header.write_text(
-        """
+    ns1_header.write_text("""
 namespace ns1 {
     class View {
     public:
@@ -39,13 +38,11 @@ namespace ns1 {
 
     void handleEvent();
 }
-"""
-    )
+""")
 
     # Create ns2::View and ns2::Controller
     ns2_header = project / "ns2.h"
-    ns2_header.write_text(
-        """
+    ns2_header.write_text("""
 namespace ns2 {
     class View {
     public:
@@ -59,21 +56,18 @@ namespace ns2 {
 
     void handleEvent();
 }
-"""
-    )
+""")
 
     # Create global namespace View
     global_header = project / "global.h"
-    global_header.write_text(
-        """
+    global_header.write_text("""
 class View {
 public:
     void show();
 };
 
 void handleEvent();
-"""
-    )
+""")
 
     return project
 
@@ -287,8 +281,7 @@ def nested_namespace_project(tmp_path):
 
     # outer::builders namespace with multiple classes
     outer_builders = project / "outer_builders.h"
-    outer_builders.write_text(
-        """
+    outer_builders.write_text("""
 namespace outer {
     namespace builders {
         class TextWidget {
@@ -304,13 +297,11 @@ namespace outer {
         void initialize();
     }
 }
-"""
-    )
+""")
 
     # Standalone builders namespace (different from outer::builders)
     item_builder = project / "item_builder.h"
-    item_builder.write_text(
-        """
+    item_builder.write_text("""
 namespace builders {
     class XmlWidget {
     public:
@@ -319,13 +310,11 @@ namespace builders {
 
     void setup();
 }
-"""
-    )
+""")
 
     # Deeply nested namespace
     deep_nested = project / "deep_nested.h"
-    deep_nested.write_text(
-        """
+    deep_nested.write_text("""
 namespace TopLevel {
     namespace outer {
         namespace builders {
@@ -336,8 +325,7 @@ namespace TopLevel {
         }
     }
 }
-"""
-    )
+""")
 
     return project
 

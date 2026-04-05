@@ -30,8 +30,7 @@ def large_cpp_project(tmp_path):
     # Create 50 files to ensure indexing takes measurable time
     for i in range(50):
         header = project / f"module_{i}.h"
-        header.write_text(
-            f"""
+        header.write_text(f"""
 #ifndef MODULE_{i}_H
 #define MODULE_{i}_H
 
@@ -50,12 +49,10 @@ public:
 }};
 
 #endif
-"""
-        )
+""")
 
         source = project / f"module_{i}.cpp"
-        source.write_text(
-            f"""
+        source.write_text(f"""
 #include "module_{i}.h"
 
 int Module{i}::calculate_{i}(int x) {{
@@ -74,8 +71,7 @@ Module{i}* Module{i}::getInstance() {{
 void Helper{i}::assist() {{
     // Helper implementation
 }}
-"""
-        )
+""")
 
     return project
 

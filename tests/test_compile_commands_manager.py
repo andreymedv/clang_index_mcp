@@ -630,8 +630,7 @@ class TestCompileCommandsManagerIntegration(unittest.TestCase):
         (self.project_root / "tests").mkdir()
 
         # Create source files
-        (self.project_root / "src" / "main.cpp").write_text(
-            """
+        (self.project_root / "src" / "main.cpp").write_text("""
 #include "utils.h"
 #include <iostream>
 
@@ -639,31 +638,25 @@ int main() {
     std::cout << Hello World << std::endl;
     return 0;
 }
-"""
-        )
+""")
 
-        (self.project_root / "src" / "utils.cpp").write_text(
-            """
+        (self.project_root / "src" / "utils.cpp").write_text("""
 #include "utils.h"
 #include <string>
 
 std::string get_message() {
     return "Hello World";
 }
-"""
-        )
+""")
 
-        (self.project_root / "include" / "utils.h").write_text(
-            """
+        (self.project_root / "include" / "utils.h").write_text("""
 #pragma once
 #include <string>
 
 std::string get_message();
-"""
-        )
+""")
 
-        (self.project_root / "tests" / "test_utils.cpp").write_text(
-            """
+        (self.project_root / "tests" / "test_utils.cpp").write_text("""
 #include "utils.h"
 #include <cassert>
 
@@ -672,8 +665,7 @@ int main() {
     assert(msg == "Hello World");
     return 0;
 }
-"""
-        )
+""")
 
     def tearDown(self):
         """Clean up test fixtures."""
