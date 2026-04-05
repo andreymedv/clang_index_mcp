@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Debug why declarations aren't in file_index"""
 
+import sys
 import tempfile
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -42,18 +42,22 @@ with tempfile.TemporaryDirectory() as tmpdir:
     src.mkdir()
 
     # Create header with declarations
-    (src / "functions.h").write_text("""
+    (src / "functions.h").write_text(
+        """
 int add(int a, int b);
 int subtract(int a, int b);
-""")
+"""
+    )
 
     # Create source with definitions
-    (src / "functions.cpp").write_text("""
+    (src / "functions.cpp").write_text(
+        """
 #include "functions.h"
 
 int add(int a, int b) { return a + b; }
 int subtract(int a, int b) { return a - b; }
-""")
+"""
+    )
 
     # Index
     analyzer = CppAnalyzer(str(project))

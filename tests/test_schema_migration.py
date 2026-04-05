@@ -1,10 +1,11 @@
 """Unit tests for database schema migration."""
 
-import unittest
+import shutil
 import sqlite3
 import tempfile
-import shutil
+import unittest
 from pathlib import Path
+
 from mcp_server.schema_migrations import SchemaMigration
 
 
@@ -26,17 +27,21 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table (normally created by schema.sql)
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """)
+        """
+        )
         conn.commit()
 
         # Run migration
@@ -51,27 +56,31 @@ class TestSchemaMigration(unittest.TestCase):
         self.assertEqual(migration.get_current_version(), 3)
 
         # Verify file_dependencies table exists
-        cursor = conn.execute("""
+        cursor = conn.execute(
+            """
             SELECT name FROM sqlite_master
             WHERE type='table' AND name='file_dependencies'
-        """)
+        """
+        )
         tables = cursor.fetchall()
         self.assertEqual(len(tables), 1)
-        self.assertEqual(tables[0][0], 'file_dependencies')
+        self.assertEqual(tables[0][0], "file_dependencies")
 
         # Verify indexes exist
-        cursor = conn.execute("""
+        cursor = conn.execute(
+            """
             SELECT name FROM sqlite_master
             WHERE type='index' AND tbl_name='file_dependencies'
-        """)
+        """
+        )
         indexes = cursor.fetchall()
         index_names = {row[0] for row in indexes}
 
         expected_indexes = {
-            'idx_dep_source',
-            'idx_dep_included',
-            'idx_dep_direct',
-            'idx_dep_detected'
+            "idx_dep_source",
+            "idx_dep_included",
+            "idx_dep_direct",
+            "idx_dep_detected",
         }
 
         self.assertTrue(expected_indexes.issubset(index_names))
@@ -83,17 +92,21 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """)
+        """
+        )
         conn.commit()
 
         # First migration
@@ -114,17 +127,21 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """)
+        """
+        )
         conn.commit()
 
         # Apply migration
@@ -138,8 +155,12 @@ class TestSchemaMigration(unittest.TestCase):
         # Verify columns
         column_names = {col[1] for col in columns}
         expected_columns = {
-            'id', 'source_file', 'included_file',
-            'is_direct', 'include_depth', 'detected_at'
+            "id",
+            "source_file",
+            "included_file",
+            "is_direct",
+            "include_depth",
+            "detected_at",
         }
 
         self.assertEqual(column_names, expected_columns)
@@ -151,37 +172,45 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version and migrate
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """)
+        """
+        )
         conn.commit()
 
         migration = SchemaMigration(conn)
         migration.migrate()
 
         # Insert first dependency
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO file_dependencies
             (source_file, included_file, detected_at)
             VALUES ('main.cpp', 'header.h', 12345.0)
-        """)
+        """
+        )
         conn.commit()
 
         # Try to insert duplicate (should fail)
         with self.assertRaises(sqlite3.IntegrityError):
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO file_dependencies
                 (source_file, included_file, detected_at)
                 VALUES ('main.cpp', 'header.h', 12346.0)
-            """)
+            """
+            )
             conn.commit()
 
         conn.close()
@@ -191,17 +220,21 @@ class TestSchemaMigration(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
 
         # Create schema_version table
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
                 applied_at REAL NOT NULL,
                 description TEXT NOT NULL
             )
-        """)
-        conn.execute("""
+        """
+        )
+        conn.execute(
+            """
             INSERT OR IGNORE INTO schema_version (version, applied_at, description)
             VALUES (1, julianday('now'), 'Initial schema')
-        """)
+        """
+        )
         conn.commit()
 
         # Apply migration
@@ -220,10 +253,10 @@ class TestSchemaMigration(unittest.TestCase):
 
         # Check that migration 2 has description
         migration_2 = [h for h in history if h[0] == 2][0]
-        self.assertIn('002', migration_2[2])  # Description should contain '002'
+        self.assertIn("002", migration_2[2])  # Description should contain '002'
 
         conn.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

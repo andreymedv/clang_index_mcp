@@ -7,8 +7,8 @@ Usage:
     /test-mcp setup-project url=<url> [name=<name>] [commit=<tag>]
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
 # Add skill directory to path for imports
@@ -22,16 +22,10 @@ from test_runner import TestRunner
 def main():
     """Main entry point for the skill"""
     parser = argparse.ArgumentParser(
-        description="MCP Server Testing Skill",
-        usage="%(prog)s <command> [options]"
+        description="MCP Server Testing Skill", usage="%(prog)s <command> [options]"
     )
 
-    parser.add_argument(
-        "command",
-        nargs="?",
-        default="help",
-        help="Command to execute"
-    )
+    parser.add_argument("command", nargs="?", default="help", help="Command to execute")
 
     # Parse known args to allow flexible parameter passing
     args, unknown = parser.parse_known_args()
@@ -89,7 +83,9 @@ def handle_test(params):
     test_name = params.get("test")
     if not test_name:
         print("Error: test parameter required")
-        print("Usage: /test-mcp test=<scenario> [tier=1|2] [protocol=http] [scenario=path/to/file.yaml]")
+        print(
+            "Usage: /test-mcp test=<scenario> [tier=1|2] [protocol=http] [scenario=path/to/file.yaml]"
+        )
         sys.exit(1)
 
     tier = params.get("tier", "1")
@@ -109,10 +105,7 @@ def handle_test(params):
 
     runner = TestRunner()
     result = runner.run_test(
-        test_name=test_name,
-        project=project,
-        protocol=protocol,
-        scenario_path=scenario_path
+        test_name=test_name, project=project, protocol=protocol, scenario_path=scenario_path
     )
 
     # Output result (formatted by TestRunner)
@@ -124,7 +117,9 @@ def handle_setup_project(params):
     url = params.get("url")
     if not url:
         print("Error: url parameter required")
-        print("Usage: /test-mcp setup-project url=<github-url> [name=<name>] [commit=<hash>] [tag=<tag>]")
+        print(
+            "Usage: /test-mcp setup-project url=<github-url> [name=<name>] [commit=<hash>] [tag=<tag>]"
+        )
         sys.exit(1)
 
     name = params.get("name")
@@ -143,11 +138,7 @@ def handle_setup_project(params):
 
     pm = ProjectManager()
     success, message, project_name = pm.setup_project(
-        url=url,
-        name=name,
-        commit=commit,
-        tag=tag,
-        build_dir=build_dir
+        url=url, name=name, commit=commit, tag=tag, build_dir=build_dir
     )
 
     if success:

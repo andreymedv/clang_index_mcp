@@ -7,10 +7,10 @@ Tests the SSE protocol support for the MCP server.
 
 import asyncio
 import json
-import pytest
-import httpx
 from pathlib import Path
 
+import httpx
+import pytest
 
 # Test configuration
 TEST_HOST = "127.0.0.1"
@@ -25,13 +25,15 @@ async def sse_server():
     Starts the server in the background and yields the base URL.
     """
     # Import MCP Server class (not the instance, to avoid libclang init)
-    from mcp.server import Server
-    from mcp_server.http_server import MCPHTTPServer
     import socket
+
+    from mcp.server import Server
+
+    from mcp_server.http_server import MCPHTTPServer
 
     # Find an available port dynamically to avoid conflicts
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
+        s.bind(("", 0))
         s.listen(1)
         port = s.getsockname()[1]
 
@@ -47,6 +49,7 @@ async def sse_server():
     @mock_server.call_tool()
     async def call_tool(name: str, arguments: dict):
         from mcp.types import TextContent
+
         return [TextContent(type="text", text=json.dumps({"status": "ok", "tool": name}))]
 
     # Create SSE server instance with mock server
@@ -182,16 +185,10 @@ async def test_sse_with_messages_endpoint(sse_server):
         assert session_id is not None, "Should receive session ID from endpoint event"
 
         # Now POST to messages endpoint with session ID (MCP SDK SSE protocol)
-        request_data = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {}
-        }
+        request_data = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
 
         response = await client.post(
-            f"{sse_server}/messages?session_id={session_id}",
-            json=request_data
+            f"{sse_server}/messages?session_id={session_id}", json=request_data
         )
 
         # Should respond (various status codes are valid at protocol level)

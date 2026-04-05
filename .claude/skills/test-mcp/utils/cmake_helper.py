@@ -2,10 +2,10 @@
 CMake Helper - Utilities for CMake project configuration
 """
 
-import subprocess
-import shutil
-from pathlib import Path
 import json
+import shutil
+import subprocess
+from pathlib import Path
 
 
 class CMakeHelper:
@@ -60,9 +60,11 @@ class CMakeHelper:
         # Build cmake command
         cmake_args = [
             "cmake",
-            "-B", str(build_path),
-            "-S", str(project_path),
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            "-B",
+            str(build_path),
+            "-S",
+            str(project_path),
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ]
 
         # Add extra args if provided
@@ -76,7 +78,7 @@ class CMakeHelper:
                 cwd=project_path,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
             )
 
             if result.returncode != 0:

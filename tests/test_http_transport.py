@@ -7,11 +7,12 @@ Tests the HTTP/Streamable HTTP protocol support for the MCP server.
 
 import asyncio
 import json
-import pytest
-import httpx
-from pathlib import Path
-import tempfile
 import os
+import tempfile
+from pathlib import Path
+
+import httpx
+import pytest
 
 # Test configuration
 TEST_HOST = "127.0.0.1"
@@ -26,13 +27,15 @@ async def http_server():
     Starts the server in the background and yields the base URL.
     """
     # Import MCP Server class (not the instance, to avoid libclang init)
-    from mcp.server import Server
-    from mcp_server.http_server import MCPHTTPServer
     import socket
+
+    from mcp.server import Server
+
+    from mcp_server.http_server import MCPHTTPServer
 
     # Find an available port dynamically to avoid conflicts
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
+        s.bind(("", 0))
         s.listen(1)
         port = s.getsockname()[1]
 
@@ -48,6 +51,7 @@ async def http_server():
     @mock_server.call_tool()
     async def call_tool(name: str, arguments: dict):
         from mcp.types import TextContent
+
         return [TextContent(type="text", text=json.dumps({"status": "ok", "tool": name}))]
 
     # Create HTTP server instance with mock server
@@ -113,7 +117,7 @@ async def test_http_messages_endpoint_invalid_json(http_server):
         response = await client.post(
             f"{http_server}/messages",
             content=b"invalid json{",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         assert response.status_code == 400
@@ -128,17 +132,9 @@ async def test_http_session_creation(http_server):
     """Test that sessions are created and session IDs are returned."""
     async with httpx.AsyncClient() as client:
         # Make a request without session ID
-        request_data = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {}
-        }
+        request_data = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
 
-        response = await client.post(
-            f"{http_server}/messages",
-            json=request_data
-        )
+        response = await client.post(f"{http_server}/messages", json=request_data)
 
         # Should get a session ID header
         assert "Mcp-Session-Id" in response.headers
@@ -147,9 +143,7 @@ async def test_http_session_creation(http_server):
 
         # Make another request with the same session ID
         response2 = await client.post(
-            f"{http_server}/messages",
-            json=request_data,
-            headers={"Mcp-Session-Id": session_id}
+            f"{http_server}/messages", json=request_data, headers={"Mcp-Session-Id": session_id}
         )
 
         # Should get the same session ID back
@@ -163,15 +157,8 @@ async def test_http_concurrent_sessions(http_server):
         # Create multiple sessions concurrently
         tasks = []
         for i in range(5):
-            request_data = {
-                "jsonrpc": "2.0",
-                "id": i,
-                "method": "initialize",
-                "params": {}
-            }
-            tasks.append(
-                client.post(f"{http_server}/messages", json=request_data)
-            )
+            request_data = {"jsonrpc": "2.0", "id": i, "method": "initialize", "params": {}}
+            tasks.append(client.post(f"{http_server}/messages", json=request_data))
 
         responses = await asyncio.gather(*tasks)
 
@@ -191,18 +178,9 @@ async def test_http_concurrent_sessions(http_server):
 async def test_http_tool_list_request(http_server):
     """Test listing tools via HTTP."""
     async with httpx.AsyncClient() as client:
-        request_data = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/list",
-            "params": {}
-        }
+        request_data = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
 
-        response = await client.post(
-            f"{http_server}/messages",
-            json=request_data,
-            timeout=10.0
-        )
+        response = await client.post(f"{http_server}/messages", json=request_data, timeout=10.0)
 
         # Should respond (200/406/500 are all valid)
         # 406 = Not Acceptable (MCP transport validation)

@@ -8,8 +8,8 @@ Requirements verified:
 - orjson>=3.0.0 (optional from [performance] extras) - Checked by test_optional_dependencies()
 """
 
-import sys
 import os
+import sys
 
 
 def test_imports():

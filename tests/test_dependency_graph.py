@@ -1,10 +1,11 @@
 """Unit tests for DependencyGraphBuilder."""
 
-import unittest
+import shutil
 import sqlite3
 import tempfile
-import shutil
+import unittest
 from pathlib import Path
+
 from mcp_server.dependency_graph import DependencyGraphBuilder
 
 
@@ -18,7 +19,8 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.conn = sqlite3.connect(str(self.db_path))
 
         # Create file_dependencies table
-        self.conn.execute("""
+        self.conn.execute(
+            """
             CREATE TABLE file_dependencies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_file TEXT NOT NULL,
@@ -28,13 +30,10 @@ class TestDependencyGraphBuilder(unittest.TestCase):
                 detected_at REAL NOT NULL,
                 UNIQUE(source_file, included_file)
             )
-        """)
-        self.conn.execute(
-            "CREATE INDEX idx_dep_source ON file_dependencies(source_file)"
+        """
         )
-        self.conn.execute(
-            "CREATE INDEX idx_dep_included ON file_dependencies(included_file)"
-        )
+        self.conn.execute("CREATE INDEX idx_dep_source ON file_dependencies(source_file)")
+        self.conn.execute("CREATE INDEX idx_dep_included ON file_dependencies(included_file)")
         self.conn.commit()
 
         self.builder = DependencyGraphBuilder(self.conn)
@@ -54,11 +53,14 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.assertEqual(count, 2)
 
         # Verify database
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT included_file FROM file_dependencies
             WHERE source_file = ?
             ORDER BY included_file
-        """, (source,))
+        """,
+            (source,),
+        )
 
         result = [row[0] for row in cursor.fetchall()]
         self.assertEqual(result, ["/project/config.h", "/project/utils.h"])
@@ -74,10 +76,13 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.builder.update_dependencies(source, ["/project/new.h"])
 
         # Verify only new dependency exists
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT included_file FROM file_dependencies
             WHERE source_file = ?
-        """, (source,))
+        """,
+            (source,),
+        )
 
         result = [row[0] for row in cursor.fetchall()]
         self.assertEqual(result, ["/project/new.h"])
@@ -169,10 +174,13 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.assertEqual(removed, 3)
 
         # Verify no dependencies remain
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT COUNT(*) FROM file_dependencies
             WHERE source_file = ? OR included_file = ?
-        """, (source, source))
+        """,
+            (source, source),
+        )
 
         self.assertEqual(cursor.fetchone()[0], 0)
 
@@ -189,13 +197,9 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         """Test getting stats from populated dependency graph."""
         # Setup: 2 source files with varying includes
         self.builder.update_dependencies(
-            "/project/main.cpp",
-            ["/project/a.h", "/project/b.h", "/project/c.h"]
+            "/project/main.cpp", ["/project/a.h", "/project/b.h", "/project/c.h"]
         )
-        self.builder.update_dependencies(
-            "/project/test.cpp",
-            ["/project/a.h"]
-        )
+        self.builder.update_dependencies("/project/test.cpp", ["/project/a.h"])
 
         stats = self.builder.get_dependency_stats()
 
@@ -245,9 +249,12 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.assertEqual(count, 2)
 
         # Verify database
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT COUNT(*) FROM file_dependencies WHERE source_file = ?
-        """, (source,))
+        """,
+            (source,),
+        )
 
         self.assertEqual(cursor.fetchone()[0], 2)
 
@@ -267,5 +274,5 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.assertIn(source, dependents)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

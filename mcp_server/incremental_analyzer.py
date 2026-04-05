@@ -20,9 +20,9 @@ Usage:
 
 import os
 import time
-from typing import Set, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Callable, Optional, Set
 
 # Handle both package and script imports
 try:
@@ -385,8 +385,9 @@ class IncrementalAnalyzer:
 
             if use_processes:
                 # ProcessPoolExecutor: use worker function (same as index_project)
-                from mcp_server.cpp_analyzer import _process_file_worker
                 from pathlib import Path
+
+                from mcp_server.cpp_analyzer import _process_file_worker
 
                 # Get project configuration for workers
                 project_root = str(self.analyzer.project_root)

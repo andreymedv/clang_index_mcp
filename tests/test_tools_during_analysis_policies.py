@@ -6,17 +6,16 @@ Tests that query behavior policies (allow_partial, block, reject) work correctly
 and can be configured via config file and environment variables.
 """
 
-import os
 import json
-import pytest
+import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-from mcp_server.state_manager import (
-    AnalyzerStateManager, AnalyzerState, QueryBehaviorPolicy
-)
+from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager, QueryBehaviorPolicy
 
 
 @pytest.fixture
@@ -50,9 +49,7 @@ def test_config_file_query_behavior(temp_project_with_config):
     """Test reading query_behavior from config file"""
     # Create config file with block policy
     config_file = temp_project_with_config / ".cpp-analyzer-config.json"
-    config_data = {
-        "query_behavior": "block"
-    }
+    config_data = {"query_behavior": "block"}
     config_file.write_text(json.dumps(config_data))
 
     # Load config
@@ -65,9 +62,7 @@ def test_config_file_query_behavior(temp_project_with_config):
 def test_config_file_reject_policy(temp_project_with_config):
     """Test reject policy from config file"""
     config_file = temp_project_with_config / ".cpp-analyzer-config.json"
-    config_data = {
-        "query_behavior": "reject"
-    }
+    config_data = {"query_behavior": "reject"}
     config_file.write_text(json.dumps(config_data))
 
     config = CppAnalyzerConfig(temp_project_with_config)
@@ -79,13 +74,11 @@ def test_env_var_overrides_config_file(temp_project_with_config):
     """Test that CPP_ANALYZER_QUERY_BEHAVIOR env var overrides config file"""
     # Create config file with allow_partial
     config_file = temp_project_with_config / ".cpp-analyzer-config.json"
-    config_data = {
-        "query_behavior": "allow_partial"
-    }
+    config_data = {"query_behavior": "allow_partial"}
     config_file.write_text(json.dumps(config_data))
 
     # Set environment variable to block
-    with patch.dict(os.environ, {'CPP_ANALYZER_QUERY_BEHAVIOR': 'block'}):
+    with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "block"}):
         config = CppAnalyzerConfig(temp_project_with_config)
         policy = config.get_query_behavior_policy()
         assert policy == "block", "Env var should override config file"
@@ -93,7 +86,7 @@ def test_env_var_overrides_config_file(temp_project_with_config):
 
 def test_env_var_case_insensitive(temp_project_with_config):
     """Test that env var is case-insensitive"""
-    with patch.dict(os.environ, {'CPP_ANALYZER_QUERY_BEHAVIOR': 'BLOCK'}):
+    with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "BLOCK"}):
         config = CppAnalyzerConfig(temp_project_with_config)
         policy = config.get_query_behavior_policy()
         assert policy == "block", "Env var should be case-insensitive"
@@ -102,9 +95,7 @@ def test_env_var_case_insensitive(temp_project_with_config):
 def test_invalid_config_value_defaults_to_allow_partial(temp_project_with_config):
     """Test that invalid config value defaults to allow_partial"""
     config_file = temp_project_with_config / ".cpp-analyzer-config.json"
-    config_data = {
-        "query_behavior": "invalid_value"
-    }
+    config_data = {"query_behavior": "invalid_value"}
     config_file.write_text(json.dumps(config_data))
 
     config = CppAnalyzerConfig(temp_project_with_config)
@@ -115,12 +106,10 @@ def test_invalid_config_value_defaults_to_allow_partial(temp_project_with_config
 def test_invalid_env_var_falls_back_to_config(temp_project_with_config):
     """Test that invalid env var falls back to config file"""
     config_file = temp_project_with_config / ".cpp-analyzer-config.json"
-    config_data = {
-        "query_behavior": "reject"
-    }
+    config_data = {"query_behavior": "reject"}
     config_file.write_text(json.dumps(config_data))
 
-    with patch.dict(os.environ, {'CPP_ANALYZER_QUERY_BEHAVIOR': 'invalid'}):
+    with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "invalid"}):
         config = CppAnalyzerConfig(temp_project_with_config)
         policy = config.get_query_behavior_policy()
         assert policy == "reject", "Invalid env var should fall back to config"
@@ -141,7 +130,7 @@ def test_priority_order_env_config_default(temp_project_with_config):
     assert config.get_query_behavior_policy() == "block"
 
     # Test 3: Env overrides config
-    with patch.dict(os.environ, {'CPP_ANALYZER_QUERY_BEHAVIOR': 'reject'}):
+    with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "reject"}):
         config = CppAnalyzerConfig(temp_project_with_config)
         assert config.get_query_behavior_policy() == "reject"
 
@@ -201,7 +190,7 @@ def test_example_config_includes_query_behavior(temp_project_with_config):
     config = CppAnalyzerConfig(temp_project_with_config)
 
     # Create example config
-    example_path = config.create_example_config(location='project')
+    example_path = config.create_example_config(location="project")
 
     # Read it back
     with open(example_path) as f:
@@ -298,7 +287,11 @@ def test_policy_enforcement_logic_simulation():
                 return True
 
             # If not ready for queries, allow (will be caught by other checks)
-            if state not in (AnalyzerState.INDEXING, AnalyzerState.INDEXED, AnalyzerState.REFRESHING):
+            if state not in (
+                AnalyzerState.INDEXING,
+                AnalyzerState.INDEXED,
+                AnalyzerState.REFRESHING,
+            ):
                 return True
 
             # Check policy

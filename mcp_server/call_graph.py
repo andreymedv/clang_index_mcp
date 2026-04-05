@@ -1,6 +1,7 @@
 """Call graph analysis for C++ code."""
 
-from typing import Dict, List, Set, Optional, Any
+from typing import Any, Dict, List, Optional, Set
+
 from .symbol_info import SymbolInfo
 
 

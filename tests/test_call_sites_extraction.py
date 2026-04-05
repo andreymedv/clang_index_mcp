@@ -13,12 +13,14 @@ Tests call site tracking with line-level precision, covering:
 """
 
 import json
-import pytest
 from pathlib import Path
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.call_graph import CallSite
-from mcp_server.state_manager import AnalyzerStateManager, AnalyzerState
+
+import pytest
+
 import mcp_server.cpp_mcp_server as cpp_mcp_server_module
+from mcp_server.call_graph import CallSite
+from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager
 
 
 @pytest.fixture
@@ -52,10 +54,10 @@ class TestBasicCallSiteExtraction:
 
         # Verify call site details
         cs = call_sites[0]
-        assert cs['target'] == 'helper', f"Expected target 'helper', got {cs['target']}"
-        assert cs['line'] == 14, f"Expected line 14, got {cs['line']}"
-        assert cs['file'].endswith('call_sites_basic.cpp')
-        assert cs['column'] is not None, "Column should be set"
+        assert cs["target"] == "helper", f"Expected target 'helper', got {cs['target']}"
+        assert cs["line"] == 14, f"Expected line 14, got {cs['line']}"
+        assert cs["file"].endswith("call_sites_basic.cpp")
+        assert cs["column"] is not None, "Column should be set"
 
     def test_call_site_stored_in_database(self, analyzer):
         """Test that call sites are persisted to SQLite database."""
@@ -70,10 +72,10 @@ class TestBasicCallSiteExtraction:
 
         caller_usr = None
         for func in functions:
-            symbols = analyzer.function_index.get(func['qualified_name'].split("::")[-1], [])
+            symbols = analyzer.function_index.get(func["qualified_name"].split("::")[-1], [])
             _func_loc = func.get("definition") or func.get("declaration") or {}
             for sym in symbols:
-                if sym.file == _func_loc.get('file') and sym.line == _func_loc.get('line'):
+                if sym.file == _func_loc.get("file") and sym.line == _func_loc.get("line"):
                     caller_usr = sym.usr
                     break
 
@@ -83,7 +85,7 @@ class TestBasicCallSiteExtraction:
         db_call_sites = backend.get_call_sites_for_caller(caller_usr)
 
         assert len(db_call_sites) > 0, "No call sites found in database"
-        assert db_call_sites[0]['line'] == 14
+        assert db_call_sites[0]["line"] == 14
 
 
 class TestMultipleCallsToSameFunction:
@@ -96,15 +98,15 @@ class TestMultipleCallsToSameFunction:
         call_sites = analyzer.get_call_sites("multiple_calls")
 
         # Should have 2 call sites to validate()
-        validate_calls = [cs for cs in call_sites if cs['target'] == 'validate']
+        validate_calls = [cs for cs in call_sites if cs["target"] == "validate"]
         assert len(validate_calls) == 2, f"Expected 2 calls to validate, got {len(validate_calls)}"
 
         # Verify both line numbers
-        lines = sorted([cs['line'] for cs in validate_calls])
+        lines = sorted([cs["line"] for cs in validate_calls])
         assert lines == [19, 21], f"Expected lines [19, 21], got {lines}"
 
         # Verify both point to same file
-        assert all(cs['file'].endswith('call_sites_basic.cpp') for cs in validate_calls)
+        assert all(cs["file"].endswith("call_sites_basic.cpp") for cs in validate_calls)
 
     def test_call_sites_sorted_by_line(self, analyzer):
         """Test that call sites are returned sorted by line number."""
@@ -113,7 +115,7 @@ class TestMultipleCallsToSameFunction:
         call_sites = analyzer.get_call_sites("multiple_calls")
 
         # Extract line numbers
-        lines = [cs['line'] for cs in call_sites]
+        lines = [cs["line"] for cs in call_sites]
 
         # Should be sorted
         assert lines == sorted(lines), f"Call sites not sorted: {lines}"
@@ -129,11 +131,11 @@ class TestControlFlowCalls:
         call_sites = analyzer.get_call_sites("conditional_calls")
 
         # Should have 2 calls to helper() (one in each branch)
-        helper_calls = [cs for cs in call_sites if cs['target'] == 'helper']
+        helper_calls = [cs for cs in call_sites if cs["target"] == "helper"]
         assert len(helper_calls) == 2, f"Expected 2 calls to helper, got {len(helper_calls)}"
 
         # Verify line numbers (if and else branches)
-        lines = sorted([cs['line'] for cs in helper_calls])
+        lines = sorted([cs["line"] for cs in helper_calls])
         assert lines == [27, 29], f"Expected lines [27, 29], got {lines}"
 
 
@@ -151,11 +153,11 @@ class TestMethodCalls:
         assert len(call_sites) >= 2, f"Expected at least 2 call sites, got {len(call_sites)}"
 
         # Check for member function call to validate()
-        validate_calls = [cs for cs in call_sites if 'validate' in cs['target']]
+        validate_calls = [cs for cs in call_sites if "validate" in cs["target"]]
         assert len(validate_calls) >= 1, "Should have call to validate()"
 
         # Check for free function call to helper()
-        helper_calls = [cs for cs in call_sites if cs['target'] == 'helper']
+        helper_calls = [cs for cs in call_sites if cs["target"] == "helper"]
         assert len(helper_calls) >= 1, "Should have call to helper()"
 
 
@@ -169,7 +171,7 @@ class TestFunctionPointersVsCalls:
         call_sites = analyzer.get_call_sites("function_pointer_test")
 
         # Count calls to callback_func
-        callback_calls = [cs for cs in call_sites if cs['target'] == 'callback_func']
+        callback_calls = [cs for cs in call_sites if cs["target"] == "callback_func"]
 
         # Should have 2 calls: fn() and direct callback_func()
         # Assignment (line ~15) should NOT be counted
@@ -177,7 +179,7 @@ class TestFunctionPointersVsCalls:
         assert len(callback_calls) >= 1, "Should have at least the direct call"
 
         # Verify line numbers don't include assignment line
-        lines = [cs['line'] for cs in callback_calls]
+        lines = [cs["line"] for cs in callback_calls]
         assert 15 not in lines, "Function pointer assignment should not be tracked"
 
     def test_direct_call_is_tracked(self, analyzer):
@@ -187,8 +189,8 @@ class TestFunctionPointersVsCalls:
         call_sites = analyzer.get_call_sites("function_pointer_test")
 
         # Should have call to callback_func on line 21
-        callback_calls = [cs for cs in call_sites if cs['target'] == 'callback_func']
-        assert any(cs['line'] == 21 for cs in callback_calls), "Direct call on line 21 not found"
+        callback_calls = [cs for cs in call_sites if cs["target"] == "callback_func"]
+        assert any(cs["line"] == 21 for cs in callback_calls), "Direct call on line 21 not found"
 
 
 class TestLambdaCalls:
@@ -203,7 +205,7 @@ class TestLambdaCalls:
         call_sites = analyzer.get_call_sites("lambda_test")
 
         # Should track call to external_func from within lambda (line 27)
-        external_calls = [cs for cs in call_sites if cs['target'] == 'external_func']
+        external_calls = [cs for cs in call_sites if cs["target"] == "external_func"]
 
         # May or may not capture lambda's internal call depending on libclang behavior
         # This is a best-effort test
@@ -221,11 +223,13 @@ class TestRecursiveCalls:
         call_sites = analyzer.get_call_sites("recursive")
 
         # Should have a recursive call to itself
-        recursive_calls = [cs for cs in call_sites if cs['target'] == 'recursive']
+        recursive_calls = [cs for cs in call_sites if cs["target"] == "recursive"]
         assert len(recursive_calls) >= 1, "Recursive call not tracked"
 
         # Verify line number
-        assert any(cs['line'] == 49 for cs in recursive_calls), "Recursive call on line 49 not found"
+        assert any(
+            cs["line"] == 49 for cs in recursive_calls
+        ), "Recursive call on line 49 not found"
 
 
 class TestTemplateCalls:
@@ -245,7 +249,7 @@ class TestTemplateCalls:
         call_sites = analyzer.get_call_sites("template_caller")
 
         # Should have calls to process_template (possibly multiple instantiations)
-        template_calls = [cs for cs in call_sites if 'process_template' in cs['target']]
+        template_calls = [cs for cs in call_sites if "process_template" in cs["target"]]
 
         # This is a best-effort test - templates may not be tracked
         # depending on libclang version and how it handles instantiations
@@ -253,11 +257,14 @@ class TestTemplateCalls:
             # Log for visibility but don't fail
             # Template instantiations are a known edge case in C++ AST analysis
             import warnings
+
             warnings.warn("Template calls not tracked - this is a known limitation with libclang")
         else:
             # If they are tracked, verify line numbers are reasonable
-            lines = [cs['line'] for cs in template_calls]
-            assert any(40 <= line <= 41 for line in lines), f"Expected lines around 40-41, got {lines}"
+            lines = [cs["line"] for cs in template_calls]
+            assert any(
+                40 <= line <= 41 for line in lines
+            ), f"Expected lines around 40-41, got {lines}"
 
 
 class TestMCPToolIntegration:
@@ -274,22 +281,22 @@ class TestMCPToolIntegration:
         assert isinstance(result, dict), "find_incoming_calls should return dict"
 
         # Should have required keys
-        assert 'function' in result
-        assert 'callers' in result
-        assert 'call_sites' in result
-        assert 'total_call_sites' in result
+        assert "function" in result
+        assert "callers" in result
+        assert "call_sites" in result
+        assert "total_call_sites" in result
 
         # function name should match
-        assert result['function'] == 'helper'
+        assert result["function"] == "helper"
 
         # callers should be a list
-        assert isinstance(result['callers'], list)
+        assert isinstance(result["callers"], list)
 
         # call_sites should be a list
-        assert isinstance(result['call_sites'], list)
+        assert isinstance(result["call_sites"], list)
 
         # total_call_sites should match length
-        assert result['total_call_sites'] == len(result['call_sites'])
+        assert result["total_call_sites"] == len(result["call_sites"])
 
     def test_find_incoming_calls_call_sites_have_required_fields(self, analyzer):
         """Test that call_sites entries have all required fields."""
@@ -297,18 +304,18 @@ class TestMCPToolIntegration:
 
         result = analyzer.find_incoming_calls("helper")
 
-        if result['call_sites']:
-            cs = result['call_sites'][0]
+        if result["call_sites"]:
+            cs = result["call_sites"][0]
 
             # Verify all required fields present
-            required_fields = ['file', 'line', 'caller', 'caller_file', 'caller_signature']
+            required_fields = ["file", "line", "caller", "caller_file", "caller_signature"]
             for field in required_fields:
                 assert field in cs, f"Missing required field: {field}"
 
             # Verify types
-            assert isinstance(cs['file'], str)
-            assert isinstance(cs['line'], int)
-            assert isinstance(cs['caller'], str)
+            assert isinstance(cs["file"], str)
+            assert isinstance(cs["line"], int)
+            assert isinstance(cs["caller"], str)
 
     def test_get_call_sites_returns_correct_format(self, analyzer):
         """Test that get_call_sites returns properly formatted results."""
@@ -323,8 +330,14 @@ class TestMCPToolIntegration:
             cs = call_sites[0]
 
             # Verify all required fields
-            required_fields = ['target', 'target_signature', 'target_file',
-                             'target_kind', 'file', 'line']
+            required_fields = [
+                "target",
+                "target_signature",
+                "target_file",
+                "target_kind",
+                "file",
+                "line",
+            ]
             for field in required_fields:
                 assert field in cs, f"Missing required field: {field}"
 
@@ -340,9 +353,9 @@ class TestCallSiteAccuracy:
         call_sites = analyzer.get_call_sites("single_caller")
 
         # Verify the call to helper() is on line 14 (as per fixture)
-        helper_call = next((cs for cs in call_sites if cs['target'] == 'helper'), None)
+        helper_call = next((cs for cs in call_sites if cs["target"] == "helper"), None)
         assert helper_call is not None, "Call to helper not found"
-        assert helper_call['line'] == 14, f"Expected line 14, got {helper_call['line']}"
+        assert helper_call["line"] == 14, f"Expected line 14, got {helper_call['line']}"
 
     def test_column_numbers_are_positive(self, analyzer):
         """Test that column numbers are positive integers when present."""
@@ -351,8 +364,8 @@ class TestCallSiteAccuracy:
         call_sites = analyzer.get_call_sites("single_caller")
 
         for cs in call_sites:
-            if cs['column'] is not None:
-                assert cs['column'] > 0, f"Column should be positive, got {cs['column']}"
+            if cs["column"] is not None:
+                assert cs["column"] > 0, f"Column should be positive, got {cs['column']}"
 
 
 class TestPartiallyQualifiedNameLookup:
@@ -370,10 +383,9 @@ class TestPartiallyQualifiedNameLookup:
         # Processor::process() calls helper() — should be found with bare name
         result = analyzer.find_incoming_calls("helper")
         caller_names = [c["qualified_name"] for c in result["callers"]]
-        assert any("process" in n or "single_caller" in n or "nested_calls" in n
-                   for n in caller_names), (
-            f"Expected callers of helper(), got: {caller_names}"
-        )
+        assert any(
+            "process" in n or "single_caller" in n or "nested_calls" in n for n in caller_names
+        ), f"Expected callers of helper(), got: {caller_names}"
 
     def test_find_incoming_calls_partial_name_class_method(self, analyzer):
         """Partially qualified 'ClassName::method' finds callers via suffix matching."""
@@ -393,9 +405,7 @@ class TestPartiallyQualifiedNameLookup:
         # Processor::process() calls validate() and helper()
         result = analyzer.find_callees("Processor::process")
         callee_names = [c["qualified_name"] for c in result["callees"]]
-        assert callee_names, (
-            f"Processor::process should have callees, got: {callee_names}"
-        )
+        assert callee_names, f"Processor::process should have callees, got: {callee_names}"
 
     def test_get_call_sites_partial_name(self, analyzer):
         """Partially qualified name works for get_call_sites."""
@@ -483,16 +493,17 @@ class TestCallGraphAnalyzer:
         cs = CallSite("caller", "callee", "test.cpp", 42, 10)
         d = cs.to_dict()
 
-        assert d['caller_usr'] == "caller"
-        assert d['callee_usr'] == "callee"
-        assert d['file'] == "test.cpp"
-        assert d['line'] == 42
-        assert d['column'] == 10
+        assert d["caller_usr"] == "caller"
+        assert d["callee_usr"] == "callee"
+        assert d["file"] == "test.cpp"
+        assert d["line"] == 42
+        assert d["column"] == 10
 
 
 # =============================================================================
 # Three-case empty-result logic for find_incoming_calls / find_callees
 # =============================================================================
+
 
 class TestCallGraphEmptyResultFlags:
     """
@@ -512,9 +523,10 @@ class TestCallGraphEmptyResultFlags:
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
-        temp_compile_commands(tmp_path, [
-            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
-        ])
+        temp_compile_commands(
+            tmp_path,
+            [{"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}],
+        )
         az = CppAnalyzer(str(tmp_path))
         az.index_project()
         return az
@@ -596,6 +608,7 @@ class TestCallGraphEmptyResultFlags:
 # project_only parameter for find_incoming_calls / find_callees
 # =============================================================================
 
+
 class TestProjectOnlyFlag:
     """
     Verify that project_only=True/False controls inclusion of external symbols.
@@ -611,9 +624,10 @@ class TestProjectOnlyFlag:
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
-        temp_compile_commands(tmp_path, [
-            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
-        ])
+        temp_compile_commands(
+            tmp_path,
+            [{"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}],
+        )
         az = CppAnalyzer(str(tmp_path))
         az.index_project()
         return az
@@ -632,9 +646,9 @@ class TestProjectOnlyFlag:
         assert result["_has_any_in_graph"] is True
         # All returned callees must be project symbols
         for c in result["callees"]:
-            assert c.get("is_project") is not False, (
-                f"Expected only project callees with project_only=True, got: {c}"
-            )
+            assert (
+                c.get("is_project") is not False
+            ), f"Expected only project callees with project_only=True, got: {c}"
 
     def test_find_callees_project_only_false_includes_external(self, tmp_path):
         """project_only=False: external callees are included with readable metadata."""
@@ -701,14 +715,15 @@ class TestProjectOnlyFlag:
         # the opaque USR string (the whole point is to replace USRs with names).
         for ext in external:
             if "qualified_name" in ext:
-                assert "usr" not in ext, (
-                    f"External callee with qualified_name should not expose raw usr: {ext}"
-                )
+                assert (
+                    "usr" not in ext
+                ), f"External callee with qualified_name should not expose raw usr: {ext}"
 
 
 # =============================================================================
 # Auto-expansion: project_only=True empty → auto-expand to include external
 # =============================================================================
+
 
 class TestAutoExpansion:
     """
@@ -731,9 +746,10 @@ class TestAutoExpansion:
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
-        temp_compile_commands(tmp_path, [
-            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
-        ])
+        temp_compile_commands(
+            tmp_path,
+            [{"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}],
+        )
         az = CppAnalyzer(str(tmp_path))
         az.index_project()
         return az
@@ -765,9 +781,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv._handle_tool_call(
-                "get_outgoing_calls", {"function_name": "caller"}
-            )
+            result = await srv._handle_tool_call("get_outgoing_calls", {"function_name": "caller"})
             payload = json.loads(result[0].text)
             assert "search_note" in payload, "Expected search_note for auto-expansion"
             assert "Auto-expanded" in payload["search_note"]
@@ -785,9 +799,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv._handle_tool_call(
-                "get_outgoing_calls", {"function_name": "caller"}
-            )
+            result = await srv._handle_tool_call("get_outgoing_calls", {"function_name": "caller"})
             payload = json.loads(result[0].text)
             assert "search_note" not in payload, "No search_note when project results exist"
             assert len(payload["callees"]) > 0
@@ -818,9 +830,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv._handle_tool_call(
-                "get_outgoing_calls", {"function_name": "leaf"}
-            )
+            result = await srv._handle_tool_call("get_outgoing_calls", {"function_name": "leaf"})
             payload = json.loads(result[0].text)
             assert "search_note" not in payload, "No search_note when genuinely empty"
             assert payload["callees"] == []
@@ -838,9 +848,7 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv._handle_tool_call(
-                "find_incoming_calls", {"function_name": "target"}
-            )
+            result = await srv._handle_tool_call("find_incoming_calls", {"function_name": "target"})
             payload = json.loads(result[0].text)
             assert "search_note" not in payload, "No search_note when project results exist"
             assert len(payload["callers"]) > 0
@@ -870,16 +878,14 @@ class TestAutoExpansion:
         az = self._make_analyzer(tmp_path, source)
         srv, restore = self._setup_mcp(az)
         try:
-            result = await srv._handle_tool_call(
-                "get_outgoing_calls", {"function_name": "caller"}
-            )
+            result = await srv._handle_tool_call("get_outgoing_calls", {"function_name": "caller"})
             payload = json.loads(result[0].text)
             assert "search_note" in payload
             # Should not have metadata.suggestions (the old hint to retry)
             metadata = payload.get("metadata", {})
-            assert "suggestions" not in metadata, (
-                "Auto-expanded results should not have metadata.suggestions"
-            )
+            assert (
+                "suggestions" not in metadata
+            ), "Auto-expanded results should not have metadata.suggestions"
         finally:
             restore()
 
@@ -907,6 +913,7 @@ class TestAutoExpansion:
 # Template-mediated call tracking (cplusplus_mcp-fcd)
 # =============================================================================
 
+
 class TestTemplateMediated:
     """
     Verify that calls to external template functions (e.g. std::make_shared<ProjectClass>)
@@ -923,9 +930,10 @@ class TestTemplateMediated:
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
-        temp_compile_commands(tmp_path, [
-            {"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}
-        ])
+        temp_compile_commands(
+            tmp_path,
+            [{"file": "main.cpp", "directory": str(tmp_path), "arguments": ["-std=c++17"]}],
+        )
         az = CppAnalyzer(str(tmp_path))
         az.index_project()
         return az
@@ -986,19 +994,17 @@ void factory_direct() {
         callee_names = [c["qualified_name"] for c in result["callees"]]
         # Find the make_shared entry and verify it includes Sensor
         make_shared = [n for n in callee_names if "make_shared" in n]
-        assert any("Sensor" in n for n in make_shared), (
-            f"make_shared display name should include 'Sensor', got: {make_shared}"
-        )
+        assert any(
+            "Sensor" in n for n in make_shared
+        ), f"make_shared display name should include 'Sensor', got: {make_shared}"
 
     def test_make_shared_is_template_mediated_flag(self, tmp_path):
         """Template-mediated callees should have is_project=False, is_template_mediated=True."""
         az = self._make_analyzer(tmp_path, self.TEMPLATE_MEDIATED_SOURCE)
         result = az.find_callees("factory_shared", project_only=True)
-        tmpl_entries = [c for c in result["callees"]
-                        if c.get("is_template_mediated") is True]
+        tmpl_entries = [c for c in result["callees"] if c.get("is_template_mediated") is True]
         assert tmpl_entries, (
-            f"Expected at least one template-mediated callee, "
-            f"got: {result['callees']}"
+            f"Expected at least one template-mediated callee, " f"got: {result['callees']}"
         )
         for entry in tmpl_entries:
             assert entry.get("is_project") is False
@@ -1037,9 +1043,9 @@ void factory_direct() {
         make_shared = [n for n in callee_names if "make_shared" in n]
         assert make_shared, f"make_shared should appear in callees: {callee_names}"
         # At least one should have the specialized name with Sensor
-        assert any("Sensor" in n for n in make_shared), (
-            f"Expected specialized name with 'Sensor', got: {make_shared}"
-        )
+        assert any(
+            "Sensor" in n for n in make_shared
+        ), f"Expected specialized name with 'Sensor', got: {make_shared}"
 
     def test_y6j_regression(self, tmp_path):
         """Project template calls should still work correctly after template-mediated changes."""
@@ -1056,9 +1062,9 @@ void caller() {
         # find_callees should find identity() as a project function
         result = az.find_callees("caller", project_only=True)
         callee_names = [c["qualified_name"] for c in result["callees"]]
-        assert any("identity" in n for n in callee_names), (
-            f"Project template function 'identity' should appear in callees: {callee_names}"
-        )
+        assert any(
+            "identity" in n for n in callee_names
+        ), f"Project template function 'identity' should appear in callees: {callee_names}"
 
     def test_get_call_sites_includes_template_mediated(self, tmp_path):
         """get_call_sites should include template-mediated calls."""
@@ -1087,5 +1093,5 @@ void caller() {
         assert callee_names or site_targets, "At least one tool should return results"
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

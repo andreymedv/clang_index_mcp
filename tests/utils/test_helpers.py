@@ -9,20 +9,22 @@ files, configurations, and setting up test analyzers.
 import json
 import os
 import shutil
-import tempfile
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 
 # Add the mcp_server directory to the path
 import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Try to import CppAnalyzer, gracefully handle missing clang
 try:
     from mcp_server.cpp_analyzer import CppAnalyzer
+
     CLANG_AVAILABLE = True
 except SystemExit:
     # clang.cindex not available
@@ -196,7 +198,7 @@ def setup_test_analyzer(
     source_files: Optional[Dict[str, str]] = None,
     compile_commands: Optional[List[Dict[str, Any]]] = None,
     config: Optional[Dict[str, Any]] = None,
-    index_immediately: bool = True
+    index_immediately: bool = True,
 ) -> CppAnalyzer:
     """
     Set up a complete test analyzer with project structure, files, and configuration.
@@ -262,7 +264,7 @@ def create_simple_cpp_file(
     filename: str,
     classes: Optional[List[str]] = None,
     functions: Optional[List[str]] = None,
-    includes: Optional[List[str]] = None
+    includes: Optional[List[str]] = None,
 ) -> str:
     """
     Generate a simple C++ file with specified elements.
@@ -337,7 +339,7 @@ def cleanup_temp_analyzer(analyzer: CppAnalyzer):
         finally:
             cleanup_temp_analyzer(analyzer)
     """
-    if hasattr(analyzer, 'project_root'):
+    if hasattr(analyzer, "project_root"):
         project_path = Path(analyzer.project_root)
-        if project_path.exists() and 'tmp' in str(project_path):
+        if project_path.exists() and "tmp" in str(project_path):
             shutil.rmtree(project_path, ignore_errors=True)

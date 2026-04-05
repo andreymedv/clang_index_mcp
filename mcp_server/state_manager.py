@@ -6,11 +6,11 @@ Provides thread-safe state tracking and progress monitoring for the analyzer.
 """
 
 import asyncio
-from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime
-from threading import Lock, Event
-from typing import Optional, Any, List
+from enum import Enum
+from threading import Event, Lock
+from typing import Any, List, Optional
 
 
 class AnalyzerState(Enum):

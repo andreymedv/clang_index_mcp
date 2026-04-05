@@ -11,6 +11,7 @@ Tests the complete integration of template alias tracking through:
 import os
 import sys
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
@@ -20,7 +21,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # ============================================================================
 # IT-T1: get_type_alias_info Template Alias Integration
@@ -69,9 +69,7 @@ using Ptr = std::shared_ptr<T>;
         assert len(result["aliases"]) >= 1
 
         # Find WidgetAlias in results
-        widget_alias = next(
-            (a for a in result["aliases"] if a["name"] == "WidgetAlias"), None
-        )
+        widget_alias = next((a for a in result["aliases"] if a["name"] == "WidgetAlias"), None)
         assert widget_alias is not None
         # Simple alias should NOT have is_template_alias flag (or it should be False)
         assert widget_alias.get("is_template_alias", False) is False

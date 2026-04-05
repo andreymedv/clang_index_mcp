@@ -12,8 +12,9 @@ were not being indexed, even though libclang correctly exposes them.
 """
 
 import os
-import pytest
 import shutil
+
+import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 
@@ -25,9 +26,7 @@ class TestMacroTypeAlias:
     def macro_alias_project(self, tmp_path):
         """Create a test project with macro-generated type aliases."""
         # Copy the macro_alias fixtures to temp directory
-        fixture_dir = os.path.join(
-            os.path.dirname(__file__), "fixtures", "macro_alias"
-        )
+        fixture_dir = os.path.join(os.path.dirname(__file__), "fixtures", "macro_alias")
 
         # Copy all files
         for filename in os.listdir(fixture_dir):
@@ -51,9 +50,9 @@ class TestMacroTypeAlias:
         result = analyzer.get_type_alias_info("DataBuilderUPtr")
 
         # Should NOT have an error - the type alias should be found
-        assert "error" not in result or "not found" not in result.get("error", "").lower(), (
-            f"DataBuilderUPtr should be found, but got: {result}"
-        )
+        assert (
+            "error" not in result or "not found" not in result.get("error", "").lower()
+        ), f"DataBuilderUPtr should be found, but got: {result}"
 
     def test_macro_type_alias_canonical(self, analyzer):
         """Test that macro-expanded type alias has correct canonical type."""
@@ -62,9 +61,9 @@ class TestMacroTypeAlias:
         if "error" not in result:
             # Should resolve to unique_ptr<DataBuilder, ...>
             canonical = result.get("canonical_type", "")
-            assert "unique_ptr" in canonical.lower() or "DataBuilder" in canonical, (
-                f"Canonical type should contain unique_ptr or DataBuilder, got: {canonical}"
-            )
+            assert (
+                "unique_ptr" in canonical.lower() or "DataBuilder" in canonical
+            ), f"Canonical type should contain unique_ptr or DataBuilder, got: {canonical}"
 
     def test_macro_type_alias_in_search(self, analyzer):
         """Test that macro-expanded type aliases appear in search results."""
@@ -75,10 +74,7 @@ class TestMacroTypeAlias:
         builder_funcs = [f for f in functions if "DataBuilder" in f.get("qualified_name", "")]
 
         # At least one should have DataBuilderUPtr in prototype
-        has_uptr_return = any(
-            "DataBuilderUPtr" in f.get("prototype", "")
-            for f in builder_funcs
-        )
+        has_uptr_return = any("DataBuilderUPtr" in f.get("prototype", "") for f in builder_funcs)
 
         assert has_uptr_return, (
             f"Expected DataBuilder::builder to return DataBuilderUPtr, "
@@ -92,8 +88,12 @@ class TestMacroTypeAlias:
         result_const = analyzer.get_type_alias_info("DataBuilderConstUPtr")
 
         # Both should be found
-        uptr_found = "error" not in result_uptr or "not found" not in result_uptr.get("error", "").lower()
-        const_found = "error" not in result_const or "not found" not in result_const.get("error", "").lower()
+        uptr_found = (
+            "error" not in result_uptr or "not found" not in result_uptr.get("error", "").lower()
+        )
+        const_found = (
+            "error" not in result_const or "not found" not in result_const.get("error", "").lower()
+        )
 
         assert uptr_found, f"DataBuilderUPtr should be found: {result_uptr}"
         assert const_found, f"DataBuilderConstUPtr should be found: {result_const}"
@@ -103,7 +103,7 @@ class TestMacroTypeAlias:
         # Query the cache directly to check file location
         aliases = analyzer.cache_manager.backend.conn.execute(
             "SELECT alias_name, file, line FROM type_aliases WHERE alias_name = ?",
-            ("DataBuilderUPtr",)
+            ("DataBuilderUPtr",),
         ).fetchall()
 
         assert len(aliases) > 0, "DataBuilderUPtr should be in the cache"
@@ -124,9 +124,7 @@ class TestMacroTypeAliasDebug:
     @pytest.fixture
     def macro_alias_project(self, tmp_path):
         """Create a test project with macro-generated type aliases."""
-        fixture_dir = os.path.join(
-            os.path.dirname(__file__), "fixtures", "macro_alias"
-        )
+        fixture_dir = os.path.join(os.path.dirname(__file__), "fixtures", "macro_alias")
         for filename in os.listdir(fixture_dir):
             src = os.path.join(fixture_dir, filename)
             dst = os.path.join(tmp_path, filename)

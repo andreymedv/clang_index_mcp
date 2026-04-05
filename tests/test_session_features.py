@@ -5,10 +5,10 @@ Comprehensive test suite for all features added in this session:
 2. Cache invalidation when compilation arguments change
 3. Failure tracking and intelligent retry logic
 """
-import sys
-import json
-import tempfile
 import hashlib
+import json
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -17,17 +17,19 @@ import pytest
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
 from mcp_server.cache_manager import CacheManager
+from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
 from mcp_server.symbol_info import SymbolInfo
 
-
 # Skip all tests in this module - it's designed to be run standalone
-pytestmark = pytest.mark.skip(reason="This module is designed to be run standalone via: python tests/test_session_features.py")
+pytestmark = pytest.mark.skip(
+    reason="This module is designed to be run standalone via: python tests/test_session_features.py"
+)
 
 
 class SessionTestResults:
     """Track test results (renamed from TestResults to avoid pytest collection)"""
+
     def __init__(self):
         self.passed = 0
         self.failed = 0
@@ -67,7 +69,7 @@ def test_config_validation(results):
             valid_dir = tmpdir_path / "valid"
             valid_dir.mkdir()
             valid_config = valid_dir / ".cpp-analyzer-config.json"
-            with open(valid_config, 'w') as f:
+            with open(valid_config, "w") as f:
                 json.dump({"max_file_size_mb": 20}, f)
 
             config = CppAnalyzerConfig(valid_dir)
@@ -81,7 +83,7 @@ def test_config_validation(results):
             invalid_dir = tmpdir_path / "invalid"
             invalid_dir.mkdir()
             invalid_config = invalid_dir / ".cpp-analyzer-config.json"
-            with open(invalid_config, 'w') as f:
+            with open(invalid_config, "w") as f:
                 json.dump([{"file": "test.cpp"}], f)
 
             config = CppAnalyzerConfig(invalid_dir)
@@ -107,7 +109,7 @@ def test_config_validation(results):
             retry_dir = tmpdir_path / "retry"
             retry_dir.mkdir()
             retry_config = retry_dir / ".cpp-analyzer-config.json"
-            with open(retry_config, 'w') as f:
+            with open(retry_config, "w") as f:
                 json.dump({"max_parse_retries": 5}, f)
 
             config = CppAnalyzerConfig(retry_dir)
@@ -132,18 +134,13 @@ def test_cache_args_invalidation(results):
         file_path = str(test_file)
         file_hash = hashlib.md5(test_file.read_bytes()).hexdigest()
 
-        symbols = [SymbolInfo(
-            name="Test",
-            kind="class",
-            file=file_path,
-            line=1,
-            column=7,
-            is_project=True
-        )]
+        symbols = [
+            SymbolInfo(name="Test", kind="class", file=file_path, line=1, column=7, is_project=True)
+        ]
 
         # Test 2.1: Save with args1
         try:
-            args1 = ['-std=c++11', '-I/usr/include']
+            args1 = ["-std=c++11", "-I/usr/include"]
             args1_hash = hashlib.md5(" ".join(sorted(args1)).encode()).hexdigest()
 
             success = cache_mgr.save_file_cache(file_path, symbols, file_hash, args1_hash)
@@ -156,14 +153,14 @@ def test_cache_args_invalidation(results):
         try:
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args1_hash)
             assert cache_data is not None, "Cache should load with matching args"
-            assert len(cache_data['symbols']) == 1, "Should have 1 symbol"
+            assert len(cache_data["symbols"]) == 1, "Should have 1 symbol"
             results.record_pass("Load cache with matching args succeeds")
         except Exception as e:
             results.record_fail("Load cache with matching args succeeds", str(e))
 
         # Test 2.3: Load with different args (should invalidate)
         try:
-            args2 = ['-std=c++17', '-I/usr/include']
+            args2 = ["-std=c++17", "-I/usr/include"]
             args2_hash = hashlib.md5(" ".join(sorted(args2)).encode()).hexdigest()
 
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args2_hash)
@@ -174,8 +171,8 @@ def test_cache_args_invalidation(results):
 
         # Test 2.4: Args order shouldn't matter (sorted)
         try:
-            args3a = ['-I/usr/include', '-std=c++11']
-            args3b = ['-std=c++11', '-I/usr/include']
+            args3a = ["-I/usr/include", "-std=c++11"]
+            args3b = ["-std=c++11", "-I/usr/include"]
             hash3a = hashlib.md5(" ".join(sorted(args3a)).encode()).hexdigest()
             hash3b = hashlib.md5(" ".join(sorted(args3b)).encode()).hexdigest()
 
@@ -215,8 +212,13 @@ def test_failure_tracking(results):
         # Test 3.1: Save failure
         try:
             success = cache_mgr.save_file_cache(
-                file_path, [], file_hash, args_hash,
-                success=False, error_message="Parse error", retry_count=0
+                file_path,
+                [],
+                file_hash,
+                args_hash,
+                success=False,
+                error_message="Parse error",
+                retry_count=0,
             )
             assert success, "Save failure should succeed"
             results.record_pass("Save failure to cache")
@@ -227,9 +229,9 @@ def test_failure_tracking(results):
         try:
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args_hash)
             assert cache_data is not None, "Failure cache should load"
-            assert cache_data['success'] == False, "Should be marked as failed"
-            assert cache_data['error_message'] == "Parse error", "Error message should match"
-            assert cache_data['retry_count'] == 0, "Retry count should be 0"
+            assert cache_data["success"] == False, "Should be marked as failed"
+            assert cache_data["error_message"] == "Parse error", "Error message should match"
+            assert cache_data["retry_count"] == 0, "Retry count should be 0"
             results.record_pass("Load failure from cache")
         except Exception as e:
             results.record_fail("Load failure from cache", str(e))
@@ -237,11 +239,16 @@ def test_failure_tracking(results):
         # Test 3.3: Increment retry count
         try:
             cache_mgr.save_file_cache(
-                file_path, [], file_hash, args_hash,
-                success=False, error_message="Parse error", retry_count=1
+                file_path,
+                [],
+                file_hash,
+                args_hash,
+                success=False,
+                error_message="Parse error",
+                retry_count=1,
             )
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args_hash)
-            assert cache_data['retry_count'] == 1, "Retry count should increment"
+            assert cache_data["retry_count"] == 1, "Retry count should increment"
             results.record_pass("Retry count increments")
         except Exception as e:
             results.record_fail("Retry count increments", str(e))
@@ -250,27 +257,40 @@ def test_failure_tracking(results):
         try:
             for i in range(2, 5):
                 cache_mgr.save_file_cache(
-                    file_path, [], file_hash, args_hash,
-                    success=False, error_message="Parse error", retry_count=i
+                    file_path,
+                    [],
+                    file_hash,
+                    args_hash,
+                    success=False,
+                    error_message="Parse error",
+                    retry_count=i,
                 )
                 cache_data = cache_mgr.load_file_cache(file_path, file_hash, args_hash)
-                assert cache_data['retry_count'] == i, f"Retry count should be {i}"
+                assert cache_data["retry_count"] == i, f"Retry count should be {i}"
             results.record_pass("Multiple retries tracked correctly")
         except Exception as e:
             results.record_fail("Multiple retries tracked correctly", str(e))
 
         # Test 3.5: Success overwrites failure
         try:
-            symbols = [SymbolInfo(name="Test", kind="class", file=file_path,
-                                 line=1, column=1, is_project=True)]
+            symbols = [
+                SymbolInfo(
+                    name="Test", kind="class", file=file_path, line=1, column=1, is_project=True
+                )
+            ]
             cache_mgr.save_file_cache(
-                file_path, symbols, file_hash, args_hash,
-                success=True, error_message=None, retry_count=0
+                file_path,
+                symbols,
+                file_hash,
+                args_hash,
+                success=True,
+                error_message=None,
+                retry_count=0,
             )
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args_hash)
-            assert cache_data['success'] == True, "Should be marked as success"
-            assert cache_data['retry_count'] == 0, "Retry count should reset"
-            assert len(cache_data['symbols']) == 1, "Should have symbols"
+            assert cache_data["success"] == True, "Should be marked as success"
+            assert cache_data["retry_count"] == 0, "Retry count should reset"
+            assert len(cache_data["symbols"]) == 1, "Should have symbols"
             results.record_pass("Success overwrites previous failures")
         except Exception as e:
             results.record_fail("Success overwrites previous failures", str(e))
@@ -279,13 +299,18 @@ def test_failure_tracking(results):
         try:
             long_error = "A" * 500
             cache_mgr.save_file_cache(
-                file_path, [], file_hash, args_hash,
-                success=False, error_message=long_error, retry_count=0
+                file_path,
+                [],
+                file_hash,
+                args_hash,
+                success=False,
+                error_message=long_error,
+                retry_count=0,
             )
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args_hash)
             # The truncation happens in cpp_analyzer.py ([:200]), not cache_manager
             # So here we just verify the message is saved
-            assert cache_data['error_message'] is not None, "Error message should be saved"
+            assert cache_data["error_message"] is not None, "Error message should be saved"
             results.record_pass("Error messages are saved")
         except Exception as e:
             results.record_fail("Error messages are saved", str(e))
@@ -319,9 +344,7 @@ def test_error_logging(results):
             try:
                 raise ValueError("Test error")
             except Exception as e:
-                success = cache_mgr.log_parse_error(
-                    "/tmp/test.cpp", e, "hash1", "args1", 0
-                )
+                success = cache_mgr.log_parse_error("/tmp/test.cpp", e, "hash1", "args1", 0)
             assert success, "Error logging should succeed"
             results.record_pass("Log parse error")
         except Exception as e:
@@ -331,8 +354,8 @@ def test_error_logging(results):
         try:
             errors = cache_mgr.get_parse_errors()
             assert len(errors) == 1, "Should have 1 error"
-            assert errors[0]['error_type'] == 'ValueError', "Error type should match"
-            assert errors[0]['file_path'] == '/tmp/test.cpp', "File path should match"
+            assert errors[0]["error_type"] == "ValueError", "Error type should match"
+            assert errors[0]["file_path"] == "/tmp/test.cpp", "File path should match"
             results.record_pass("Retrieve parse errors")
         except Exception as e:
             results.record_fail("Retrieve parse errors", str(e))
@@ -340,7 +363,7 @@ def test_error_logging(results):
         # Test 4.3: Error summary
         try:
             summary = cache_mgr.get_error_summary()
-            assert summary['total_errors'] >= 1, "Should have at least 1 error"
+            assert summary["total_errors"] >= 1, "Should have at least 1 error"
             # Note: error_tracker returns 'errors_by_type' not 'error_types'
             # and doesn't track unique files
             results.record_pass("Error summary generation")
@@ -358,7 +381,7 @@ def test_error_logging(results):
 
             filtered = cache_mgr.get_parse_errors(file_path_filter="file1")
             assert len(filtered) == 1, "Should filter to 1 error"
-            assert "file1.cpp" in filtered[0]['file_path'], "Should match file1"
+            assert "file1.cpp" in filtered[0]["file_path"], "Should match file1"
             results.record_pass("Filter errors by file path")
         except Exception as e:
             results.record_fail("Filter errors by file path", str(e))
@@ -388,7 +411,7 @@ def test_integration(results):
         try:
             # Create config with custom retry count
             config_file = tmpdir_path / ".cpp-analyzer-config.json"
-            with open(config_file, 'w') as f:
+            with open(config_file, "w") as f:
                 json.dump({"max_parse_retries": 3}, f)
 
             config = CppAnalyzerConfig(tmpdir_path)
@@ -405,15 +428,20 @@ def test_integration(results):
             args_hash = hashlib.md5(b"-std=c++17").hexdigest()
 
             cache_mgr.save_file_cache(
-                file_path, [], file_hash, args_hash,
-                success=False, error_message="Test error", retry_count=2
+                file_path,
+                [],
+                file_hash,
+                args_hash,
+                success=False,
+                error_message="Test error",
+                retry_count=2,
             )
 
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args_hash)
-            assert cache_data['retry_count'] == 2, "Retry count should be 2"
+            assert cache_data["retry_count"] == 2, "Retry count should be 2"
 
             # With max_retries=3, retry_count=2 means we can retry once more
-            can_retry = cache_data['retry_count'] < config.config.get("max_parse_retries")
+            can_retry = cache_data["retry_count"] < config.config.get("max_parse_retries")
             assert can_retry, "Should be able to retry one more time"
 
             results.record_pass("Config + Cache Manager integration")
@@ -425,8 +453,13 @@ def test_integration(results):
             # Save a failure with args1
             args1_hash = hashlib.md5(b"-std=c++11").hexdigest()
             cache_mgr.save_file_cache(
-                file_path, [], file_hash, args1_hash,
-                success=False, error_message="Error with c++11", retry_count=2
+                file_path,
+                [],
+                file_hash,
+                args1_hash,
+                success=False,
+                error_message="Error with c++11",
+                retry_count=2,
             )
 
             # Change args - cache should be invalidated
@@ -436,13 +469,18 @@ def test_integration(results):
 
             # Save new failure with new args
             cache_mgr.save_file_cache(
-                file_path, [], file_hash, args2_hash,
-                success=False, error_message="Error with c++17", retry_count=0
+                file_path,
+                [],
+                file_hash,
+                args2_hash,
+                success=False,
+                error_message="Error with c++17",
+                retry_count=0,
             )
 
             cache_data = cache_mgr.load_file_cache(file_path, file_hash, args2_hash)
             assert cache_data is not None, "New failure should be cached"
-            assert cache_data['retry_count'] == 0, "Retry count should reset with new args"
+            assert cache_data["retry_count"] == 0, "Retry count should reset with new args"
 
             results.record_pass("Failure tracking + Args change integration")
         except Exception as e:

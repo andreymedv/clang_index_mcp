@@ -5,18 +5,18 @@ Debug script for Issue #8: Check why ThreadPoolExecutor doesn't extract headers
 This script adds detailed logging to understand the indexing flow.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add parent directory to path to import mcp_server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server import diagnostics
-
 # Enable debug logging
 import logging
+
+from mcp_server import diagnostics
+from mcp_server.cpp_analyzer import CppAnalyzer
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 

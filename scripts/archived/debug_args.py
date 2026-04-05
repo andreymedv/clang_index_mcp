@@ -6,9 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import json
+
 from mcp_server.compile_commands_manager import CompileCommandsManager
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-import json
 
 project_root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
 

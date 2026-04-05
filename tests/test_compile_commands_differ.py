@@ -1,10 +1,11 @@
 """Unit tests for CompileCommandsDiffer."""
 
-import unittest
+import shutil
 import sqlite3
 import tempfile
-import shutil
+import unittest
 from pathlib import Path
+
 from mcp_server.compile_commands_differ import CompileCommandsDiffer
 
 
@@ -18,7 +19,8 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         self.conn = sqlite3.connect(str(self.db_path))
 
         # Create file_metadata table
-        self.conn.execute("""
+        self.conn.execute(
+            """
             CREATE TABLE file_metadata (
                 file_path TEXT PRIMARY KEY,
                 file_hash TEXT NOT NULL,
@@ -26,7 +28,8 @@ class TestCompileCommandsDiffer(unittest.TestCase):
                 indexed_at REAL NOT NULL,
                 symbol_count INTEGER DEFAULT 0
             )
-        """)
+        """
+        )
         self.conn.commit()
 
         # Create mock backend
@@ -44,10 +47,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
     def test_compute_diff_no_changes(self):
         """Test diff when no changes."""
-        commands = {
-            "main.cpp": ["-std=c++17", "-O2"],
-            "utils.cpp": ["-std=c++17"]
-        }
+        commands = {"main.cpp": ["-std=c++17", "-O2"], "utils.cpp": ["-std=c++17"]}
 
         added, removed, changed = self.differ.compute_diff(commands, commands)
 
@@ -57,14 +57,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
     def test_compute_diff_added_file(self):
         """Test detecting added file."""
-        old_commands = {
-            "main.cpp": ["-std=c++17"]
-        }
+        old_commands = {"main.cpp": ["-std=c++17"]}
 
-        new_commands = {
-            "main.cpp": ["-std=c++17"],
-            "new.cpp": ["-std=c++17"]
-        }
+        new_commands = {"main.cpp": ["-std=c++17"], "new.cpp": ["-std=c++17"]}
 
         added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
 
@@ -74,14 +69,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
     def test_compute_diff_removed_file(self):
         """Test detecting removed file."""
-        old_commands = {
-            "main.cpp": ["-std=c++17"],
-            "old.cpp": ["-std=c++17"]
-        }
+        old_commands = {"main.cpp": ["-std=c++17"], "old.cpp": ["-std=c++17"]}
 
-        new_commands = {
-            "main.cpp": ["-std=c++17"]
-        }
+        new_commands = {"main.cpp": ["-std=c++17"]}
 
         added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
 
@@ -91,13 +81,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
     def test_compute_diff_changed_args(self):
         """Test detecting changed compilation arguments."""
-        old_commands = {
-            "main.cpp": ["-std=c++17", "-O2"]
-        }
+        old_commands = {"main.cpp": ["-std=c++17", "-O2"]}
 
-        new_commands = {
-            "main.cpp": ["-std=c++20", "-O3"]
-        }
+        new_commands = {"main.cpp": ["-std=c++20", "-O3"]}
 
         added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
 
@@ -110,13 +96,13 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         old_commands = {
             "main.cpp": ["-std=c++17", "-O2"],
             "utils.cpp": ["-std=c++17"],
-            "old.cpp": ["-std=c++11"]
+            "old.cpp": ["-std=c++11"],
         }
 
         new_commands = {
             "main.cpp": ["-std=c++20", "-O3"],  # Changed
-            "utils.cpp": ["-std=c++17"],        # Unchanged
-            "new.cpp": ["-std=c++17"]           # Added
+            "utils.cpp": ["-std=c++17"],  # Unchanged
+            "new.cpp": ["-std=c++17"],  # Added
             # old.cpp removed
         }
 
@@ -155,20 +141,20 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
     def test_store_current_commands(self):
         """Test storing compilation commands."""
-        commands = {
-            "main.cpp": ["-std=c++17", "-O2"],
-            "utils.cpp": ["-std=c++17"]
-        }
+        commands = {"main.cpp": ["-std=c++17", "-O2"], "utils.cpp": ["-std=c++17"]}
 
         stored = self.differ.store_current_commands(commands)
 
         self.assertEqual(stored, 2)
 
         # Verify stored in database
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT file_path, compile_args_hash FROM file_metadata
             WHERE file_path IN (?, ?)
-        """, ("main.cpp", "utils.cpp"))
+        """,
+            ("main.cpp", "utils.cpp"),
+        )
 
         results = cursor.fetchall()
         self.assertEqual(len(results), 2)
@@ -180,9 +166,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
     def test_get_stored_commands_hash(self):
         """Test retrieving stored command hash."""
-        commands = {
-            "main.cpp": ["-std=c++17", "-O2"]
-        }
+        commands = {"main.cpp": ["-std=c++17", "-O2"]}
 
         self.differ.store_current_commands(commands)
 
@@ -202,9 +186,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
     def test_has_args_changed_same(self):
         """Test has_args_changed with same args."""
         # Store initial commands
-        commands = {
-            "main.cpp": ["-std=c++17", "-O2"]
-        }
+        commands = {"main.cpp": ["-std=c++17", "-O2"]}
         self.differ.store_current_commands(commands)
 
         # Check if changed (should be False)
@@ -215,9 +197,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
     def test_has_args_changed_different(self):
         """Test has_args_changed with different args."""
         # Store initial commands
-        commands = {
-            "main.cpp": ["-std=c++17", "-O2"]
-        }
+        commands = {"main.cpp": ["-std=c++17", "-O2"]}
         self.differ.store_current_commands(commands)
 
         # Check with different args (should be True)
@@ -235,10 +215,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
     def test_clear_stored_commands(self):
         """Test clearing all stored commands."""
         # Store commands
-        commands = {
-            "main.cpp": ["-std=c++17"],
-            "utils.cpp": ["-std=c++17"]
-        }
+        commands = {"main.cpp": ["-std=c++17"], "utils.cpp": ["-std=c++17"]}
         self.differ.store_current_commands(commands)
 
         # Clear
@@ -247,14 +224,16 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         self.assertEqual(cleared, 2)
 
         # Verify cleared
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT COUNT(*) FROM file_metadata
             WHERE compile_args_hash IS NOT NULL
-        """)
+        """
+        )
 
         count = cursor.fetchone()[0]
         self.assertEqual(count, 0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

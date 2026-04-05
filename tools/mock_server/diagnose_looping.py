@@ -51,12 +51,19 @@ LOOP_SCENARIOS = {
 }
 
 EMPTY_RESULTS = {
-    "find_symbols_by_pattern": json.dumps({"results": [], "next_steps": [
-        "Try a broader pattern",
-        "Use find_in_file to search within a specific file",
-    ]}),
+    "find_symbols_by_pattern": json.dumps(
+        {
+            "results": [],
+            "next_steps": [
+                "Try a broader pattern",
+                "Use find_in_file to search within a specific file",
+            ],
+        }
+    ),
     "find_in_file": json.dumps({"symbols": [], "message": "No symbols found in specified file"}),
-    "find_outgoing_calls": json.dumps({"callees": [], "message": "Function not found or has no recorded calls"}),
+    "find_outgoing_calls": json.dumps(
+        {"callees": [], "message": "Function not found or has no recorded calls"}
+    ),
 }
 
 
@@ -146,14 +153,18 @@ def run_diagnosis(scenario_id, scenario):
         print(f"\n  ❌ Wrong tool: expected {scenario['expected_tool']}, got {tool_name}")
 
     # --- Step 2: Ask why the first tool was chosen ---
-    messages.append({"role": "assistant", "content": None, "tool_calls": assistant_msg["tool_calls"]})
+    messages.append(
+        {"role": "assistant", "content": None, "tool_calls": assistant_msg["tool_calls"]}
+    )
     # Add empty tool result to complete the conversation
     empty_result = EMPTY_RESULTS.get(tool_name, '{"result": "empty"}')
-    messages.append({
-        "role": "tool",
-        "tool_call_id": assistant_msg["tool_calls"][0]["id"],
-        "content": empty_result,
-    })
+    messages.append(
+        {
+            "role": "tool",
+            "tool_call_id": assistant_msg["tool_calls"][0]["id"],
+            "content": empty_result,
+        }
+    )
 
     print("\n[Step 2] Asking model why it chose that tool...")
     explanation_q1 = (
@@ -168,7 +179,9 @@ def run_diagnosis(scenario_id, scenario):
 
     # --- Step 3: Get second tool call (after empty result) ---
     print("[Step 3] Getting second tool call (after empty result)...")
-    messages_for_step3 = messages + [{"role": "user", "content": "Please continue to answer the original question."}]
+    messages_for_step3 = messages + [
+        {"role": "user", "content": "Please continue to answer the original question."}
+    ]
     resp2 = chat(messages_for_step3, tools=tools_schema)
     tool_name2, tool_args2, assistant_msg2 = extract_tool_call(resp2)
 

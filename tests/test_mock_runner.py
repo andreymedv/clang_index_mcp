@@ -106,11 +106,13 @@ def test_collect_posthoc_explanations_processes_calls_in_reverse_message_order(m
     calls = []
 
     def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
-        calls.append({
-            "message_count": len(messages),
-            "last_role": messages[-1]["role"],
-            "prompt": explanation_prompt,
-        })
+        calls.append(
+            {
+                "message_count": len(messages),
+                "last_role": messages[-1]["role"],
+                "prompt": explanation_prompt,
+            }
+        )
         return f"because-{len(calls)}"
 
     monkeypatch.setattr(runner, "_request_explanation", fake_request)
@@ -152,11 +154,13 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
     calls = []
 
     def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
-        calls.append({
-            "message_count": len(messages),
-            "last_role": messages[-1]["role"],
-            "prompt": explanation_prompt,
-        })
+        calls.append(
+            {
+                "message_count": len(messages),
+                "last_role": messages[-1]["role"],
+                "prompt": explanation_prompt,
+            }
+        )
         return "because-no-tool"
 
     monkeypatch.setattr(runner, "_request_explanation", fake_request)
@@ -201,7 +205,7 @@ def test_run_scenario_explain_all_adds_posthoc_explanation(monkeypatch):
                                     "id": "call-1",
                                     "function": {
                                         "name": "find_symbols_by_pattern",
-                                        "arguments": "{\"pattern\": \"Widget\"}",
+                                        "arguments": '{"pattern": "Widget"}',
                                     },
                                 }
                             ],
@@ -277,11 +281,13 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
     prompts = []
 
     def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
-        prompts.append({
-            "message_count": len(messages),
-            "last_role": messages[-1]["role"],
-            "prompt": explanation_prompt,
-        })
+        prompts.append(
+            {
+                "message_count": len(messages),
+                "last_role": messages[-1]["role"],
+                "prompt": explanation_prompt,
+            }
+        )
         return "posthoc no-tool explanation"
 
     monkeypatch.setattr(runner, "_request_explanation", fake_request)

@@ -115,10 +115,14 @@ def run_tests(
         cmd = [
             sys.executable,
             str(RUNNER_PATH),
-            "--scenarios", str(sf),
-            "--output", output_path,
-            "--lm-url", lm_url,
-            "--token", token,
+            "--scenarios",
+            str(sf),
+            "--output",
+            output_path,
+            "--lm-url",
+            lm_url,
+            "--token",
+            token,
         ]
         if model:
             cmd.extend(["--model", model])
@@ -244,26 +248,32 @@ def extract_failure_patterns(report: Dict[str, Any]) -> List[FailurePattern]:
                         actual = assertion.get("actual")
                         expected = assertion.get("expected", "")
                         if expected == "absent":
-                            param_issues.append({
-                                "param": pname,
-                                "issue": "unexpected",
-                                "actual": actual,
-                                "expected": "absent",
-                            })
+                            param_issues.append(
+                                {
+                                    "param": pname,
+                                    "issue": "unexpected",
+                                    "actual": actual,
+                                    "expected": "absent",
+                                }
+                            )
                         elif actual is None:
-                            param_issues.append({
-                                "param": pname,
-                                "issue": "missing",
-                                "actual": None,
-                                "expected": expected,
-                            })
+                            param_issues.append(
+                                {
+                                    "param": pname,
+                                    "issue": "missing",
+                                    "actual": None,
+                                    "expected": expected,
+                                }
+                            )
                         else:
-                            param_issues.append({
-                                "param": pname,
-                                "issue": "wrong_value",
-                                "actual": actual,
-                                "expected": expected,
-                            })
+                            param_issues.append(
+                                {
+                                    "param": pname,
+                                    "issue": "wrong_value",
+                                    "actual": actual,
+                                    "expected": expected,
+                                }
+                            )
                 failure_type = "wrong_param"
 
             pattern = FailurePattern(
@@ -321,8 +331,7 @@ def build_compact_report(report: Dict[str, Any]) -> str:
         total_time = time_stats.get("total_wall_time", 0)
         total_calls = time_stats.get("total_tool_calls", 0)
         lines.append(
-            f"Avg time per tool: {avg_time:.2f}s "
-            f"({total_calls} calls, {total_time:.1f}s total)"
+            f"Avg time per tool: {avg_time:.2f}s " f"({total_calls} calls, {total_time:.1f}s total)"
         )
 
     if not patterns:
@@ -400,10 +409,7 @@ def compare_results(
         b_avg = b_time.get("avg_time_per_tool", 0)
         a_avg = a_time.get("avg_time_per_tool", 0)
         time_delta = a_avg - b_avg
-        lines.append(
-            f"Time:   {b_avg:.2f}s -> {a_avg:.2f}s per tool "
-            f"({time_delta:+.2f}s)"
-        )
+        lines.append(f"Time:   {b_avg:.2f}s -> {a_avg:.2f}s per tool " f"({time_delta:+.2f}s)")
 
     lines.append("")
 
@@ -619,9 +625,7 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --- run ---
-    p_run = subparsers.add_parser(
-        "run", help="Run test scenarios and produce analysis report"
-    )
+    p_run = subparsers.add_parser("run", help="Run test scenarios and produce analysis report")
     p_run.add_argument("--model", type=str, default=None, help="LM Studio model ID")
     p_run.add_argument(
         "--scenarios-dir",
@@ -660,24 +664,18 @@ def main() -> None:
     p_run.set_defaults(func=cmd_run)
 
     # --- analyze ---
-    p_analyze = subparsers.add_parser(
-        "analyze", help="Analyze existing results file"
-    )
+    p_analyze = subparsers.add_parser("analyze", help="Analyze existing results file")
     p_analyze.add_argument("results_file", help="Path to results JSON")
     p_analyze.set_defaults(func=cmd_analyze)
 
     # --- compare ---
-    p_compare = subparsers.add_parser(
-        "compare", help="Compare before/after results"
-    )
+    p_compare = subparsers.add_parser("compare", help="Compare before/after results")
     p_compare.add_argument("before_file", help="Before results JSON")
     p_compare.add_argument("after_file", help="After results JSON")
     p_compare.set_defaults(func=cmd_compare)
 
     # --- apply ---
-    p_apply = subparsers.add_parser(
-        "apply", help="Apply suggestions from JSON file"
-    )
+    p_apply = subparsers.add_parser("apply", help="Apply suggestions from JSON file")
     p_apply.add_argument("suggestions_file", help="Path to suggestions JSON")
     p_apply.add_argument(
         "--dry-run",
@@ -687,9 +685,7 @@ def main() -> None:
     p_apply.set_defaults(func=cmd_apply)
 
     # --- restore ---
-    p_restore = subparsers.add_parser(
-        "restore", help="Restore consolidated_tools.py from backup"
-    )
+    p_restore = subparsers.add_parser("restore", help="Restore consolidated_tools.py from backup")
     p_restore.set_defaults(func=cmd_restore)
 
     args = parser.parse_args()

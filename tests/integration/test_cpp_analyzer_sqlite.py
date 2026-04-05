@@ -7,16 +7,16 @@ Requirements: REQ-1.5 (Cache Management)
 Priority: P1
 """
 
-import unittest
 import os
+import shutil
 import sys
 import tempfile
-import shutil
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # Import test infrastructure
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -42,7 +42,8 @@ class TestCppAnalyzerSQLiteIntegration(unittest.TestCase):
         """Test full indexing cycle with SQLite backend"""
         # Create test C++ file
         test_file = self.temp_project_dir / "src" / "test.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class TestClass {
 public:
     void method();
@@ -52,7 +53,8 @@ public:
 void testFunction() {
     TestClass obj;
 }
-""")
+"""
+        )
 
         # Enable SQLite backend
         # First indexing - should create SQLite cache
@@ -63,8 +65,9 @@ void testFunction() {
         self.assertGreater(count1, 0, "Should have indexed at least one file")
 
         # Verify SQLite backend is being used
-        self.assertIsInstance(analyzer1.cache_manager.backend, SqliteCacheBackend,
-            "Should use SQLite backend")
+        self.assertIsInstance(
+            analyzer1.cache_manager.backend, SqliteCacheBackend, "Should use SQLite backend"
+        )
 
         # Verify symbols were indexed
         classes1 = analyzer1.search_classes("TestClass")
@@ -90,20 +93,22 @@ void testFunction() {
         self.assertEqual(len(funcs2), func_count1, "Should find same number of functions")
 
         # Verify results match
-        self.assertEqual(classes1[0]['qualified_name'], classes2[0]['qualified_name'])
-        self.assertEqual(funcs1[0]['qualified_name'], funcs2[0]['qualified_name'])
+        self.assertEqual(classes1[0]["qualified_name"], classes2[0]["qualified_name"])
+        self.assertEqual(funcs1[0]["qualified_name"], funcs2[0]["qualified_name"])
 
     def test_incremental_file_update_sqlite(self):
         """Test incremental update when file changes with SQLite"""
         test_file = self.temp_project_dir / "src" / "changing.cpp"
 
         # Create initial file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class OriginalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # First indexing
         analyzer1 = CppAnalyzer(str(self.temp_project_dir))
@@ -114,12 +119,14 @@ public:
         self.assertGreater(len(original), 0, "Should find OriginalClass")
 
         # Modify the file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class ModifiedClass {
 public:
     void newMethod();
 };
-""")
+"""
+        )
 
         # Re-index - should detect file change
         analyzer2 = CppAnalyzer(str(self.temp_project_dir))
@@ -136,16 +143,20 @@ public:
         """Test cache invalidation when config file changes"""
         # Create test file
         test_file = self.temp_project_dir / "src" / "test.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class TestClass {};
-""")
+"""
+        )
 
         # Create config file
         config_file = self.temp_project_dir / ".clang_index"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 [files]
 patterns = ["*.cpp"]
-""")
+"""
+        )
 
         # First indexing
         analyzer1 = CppAnalyzer(str(self.temp_project_dir))
@@ -154,12 +165,15 @@ patterns = ["*.cpp"]
 
         # Modify config file
         import time
+
         time.sleep(0.1)  # Ensure timestamp difference
-        config_file.write_text("""
+        config_file.write_text(
+            """
 [files]
 patterns = ["*.cpp", "*.h"]
 exclude = ["test/*"]
-""")
+"""
+        )
 
         # Re-index - should invalidate cache due to config change
         analyzer2 = CppAnalyzer(str(self.temp_project_dir))
@@ -172,7 +186,8 @@ exclude = ["test/*"]
     def test_sqlite_backend_preserves_all_symbol_data(self):
         """Test that SQLite backend preserves all symbol fields"""
         test_file = self.temp_project_dir / "src" / "detailed.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 namespace MyNamespace {
     class BaseClass {};
 
@@ -189,7 +204,8 @@ namespace MyNamespace {
         obj.publicMethod();
     }
 }
-""")
+"""
+        )
 
         # Index project
         analyzer1 = CppAnalyzer(str(self.temp_project_dir))
@@ -202,10 +218,10 @@ namespace MyNamespace {
         derived = derived_results[0]
 
         # Verify all fields are preserved
-        self.assertEqual(derived['qualified_name'].split("::")[-1], "DerivedClass")
-        self.assertEqual(derived['kind'], "class")
+        self.assertEqual(derived["qualified_name"].split("::")[-1], "DerivedClass")
+        self.assertEqual(derived["kind"], "class")
         _derived_loc = derived.get("definition") or derived.get("declaration") or {}
-        self.assertIn("detailed.cpp", _derived_loc['file'])
+        self.assertIn("detailed.cpp", _derived_loc["file"])
 
         # Create new analyzer - load from cache
         analyzer2 = CppAnalyzer(str(self.temp_project_dir))
@@ -218,12 +234,12 @@ namespace MyNamespace {
         derived2 = derived_results2[0]
 
         # Verify all fields match
-        self.assertEqual(derived2['qualified_name'], derived['qualified_name'])
-        self.assertEqual(derived2['kind'], derived['kind'])
+        self.assertEqual(derived2["qualified_name"], derived["qualified_name"])
+        self.assertEqual(derived2["kind"], derived["kind"])
         _loc1 = derived.get("definition") or derived.get("declaration") or {}
         _loc2 = derived2.get("definition") or derived2.get("declaration") or {}
-        self.assertEqual(_loc2['file'], _loc1['file'])
-        self.assertEqual(_loc2['line'], _loc1['line'])
+        self.assertEqual(_loc2["file"], _loc1["file"])
+        self.assertEqual(_loc2["line"], _loc1["line"])
 
     def test_large_project_performance(self):
         """Test SQLite backend with moderately large project"""
@@ -232,10 +248,9 @@ namespace MyNamespace {
         # Create multiple files with multiple classes
         for i in range(20):
             test_file = self.temp_project_dir / "src" / f"file{i}.cpp"
-            classes = "\n".join([
-                f"class File{i}Class{j} {{ public: void method{j}(); }};"
-                for j in range(10)
-            ])
+            classes = "\n".join(
+                [f"class File{i}Class{j} {{ public: void method{j}(); }};" for j in range(10)]
+            )
             test_file.write_text(classes)
 
         # Measure cold start (first indexing)
@@ -262,5 +277,5 @@ namespace MyNamespace {
         self.assertGreater(len(results), 0, "Should find indexed class")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

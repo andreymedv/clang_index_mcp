@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Test script to verify compile_commands cache works with multiple builds."""
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
+
+from mcp_server.cache_manager import CacheManager
 from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.project_identity import ProjectIdentity
-from mcp_server.cache_manager import CacheManager
+
 
 def test_multiple_builds():
     """Test that different compile_commands.json paths get different caches."""
@@ -29,7 +31,7 @@ def test_multiple_builds():
             {
                 "directory": str(build_debug),
                 "command": "g++ -g -DDEBUG main.cpp",
-                "file": str(project_root / "src" / "main.cpp")
+                "file": str(project_root / "src" / "main.cpp"),
             }
         ]
         (build_debug / "compile_commands.json").write_text(json.dumps(debug_cc))
@@ -39,7 +41,7 @@ def test_multiple_builds():
             {
                 "directory": str(build_release),
                 "command": "g++ -O3 -DNDEBUG main.cpp",
-                "file": str(project_root / "src" / "main.cpp")
+                "file": str(project_root / "src" / "main.cpp"),
             }
         ]
         (build_release / "compile_commands.json").write_text(json.dumps(release_cc))
@@ -47,11 +49,11 @@ def test_multiple_builds():
         # Create configs pointing to different compile_commands.json
         debug_config = {
             "compile_commands_enabled": True,
-            "compile_commands_path": "build.debug/compile_commands.json"
+            "compile_commands_path": "build.debug/compile_commands.json",
         }
         release_config = {
             "compile_commands_enabled": True,
-            "compile_commands_path": "build.release/compile_commands.json"
+            "compile_commands_path": "build.release/compile_commands.json",
         }
 
         debug_config_path = project_root / ".cpp-analyzer-config-debug.json"
@@ -71,33 +73,42 @@ def test_multiple_builds():
         release_analyzer = CppAnalyzer(str(project_root), str(release_config_path))
 
         # Get cache paths
-        debug_cc_path = debug_analyzer.compile_commands_manager.project_root / debug_analyzer.compile_commands_manager.compile_commands_path
-        release_cc_path = release_analyzer.compile_commands_manager.project_root / release_analyzer.compile_commands_manager.compile_commands_path
+        debug_cc_path = (
+            debug_analyzer.compile_commands_manager.project_root
+            / debug_analyzer.compile_commands_manager.compile_commands_path
+        )
+        release_cc_path = (
+            release_analyzer.compile_commands_manager.project_root
+            / release_analyzer.compile_commands_manager.compile_commands_path
+        )
 
         print(f"\nDebug compile_commands.json:   {debug_cc_path}")
         print(f"Release compile_commands.json: {release_cc_path}")
 
         debug_cc_cache = debug_analyzer.compile_commands_manager._get_compile_commands_cache_path()
-        release_cc_cache = release_analyzer.compile_commands_manager._get_compile_commands_cache_path()
+        release_cc_cache = (
+            release_analyzer.compile_commands_manager._get_compile_commands_cache_path()
+        )
 
         print(f"\nDebug cache:   {debug_cc_cache}")
         print(f"Release cache: {release_cc_cache}")
 
         # Verify they're different
-        assert debug_cc_cache != release_cc_cache, \
-            "Different compile_commands.json should get different cache files!"
+        assert (
+            debug_cc_cache != release_cc_cache
+        ), "Different compile_commands.json should get different cache files!"
 
         # Verify they're both in .mcp_cache
-        assert ".mcp_cache" in str(debug_cc_cache), \
-            "Debug cache should be in .mcp_cache"
-        assert ".mcp_cache" in str(release_cc_cache), \
-            "Release cache should be in .mcp_cache"
+        assert ".mcp_cache" in str(debug_cc_cache), "Debug cache should be in .mcp_cache"
+        assert ".mcp_cache" in str(release_cc_cache), "Release cache should be in .mcp_cache"
 
         # Verify they're in compile_commands subdirectory
-        assert debug_cc_cache.parent.name == "compile_commands", \
-            "Cache should be in compile_commands subdirectory"
-        assert release_cc_cache.parent.name == "compile_commands", \
-            "Cache should be in compile_commands subdirectory"
+        assert (
+            debug_cc_cache.parent.name == "compile_commands"
+        ), "Cache should be in compile_commands subdirectory"
+        assert (
+            release_cc_cache.parent.name == "compile_commands"
+        ), "Cache should be in compile_commands subdirectory"
 
         print("\n✅ SUCCESS: Different builds get different compile_commands caches!")
         print(f"   Debug uses:   {debug_cc_cache.name}")

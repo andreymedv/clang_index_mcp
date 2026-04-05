@@ -7,14 +7,16 @@ Requirements: REQ-1.6 (Compile Commands Support)
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
 import json
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -30,7 +32,8 @@ class TestCompileCommands:
         """Test loading valid compile_commands.json - Task 1.1.10"""
         # Create a simple C++ file (no includes needed)
         src_file = temp_project_dir / "src" / "main.cpp"
-        src_file.write_text("""
+        src_file.write_text(
+            """
 class TestClass {
 public:
     void method();
@@ -39,14 +42,15 @@ public:
 int main() {
     return 0;
 }
-""")
+"""
+        )
 
         # Create compile_commands.json
         compile_commands = [
             {
                 "directory": str(temp_project_dir),
                 "command": f"g++ -std=c++17 -c {src_file}",
-                "file": str(src_file)
+                "file": str(src_file),
             }
         ]
 
@@ -58,8 +62,8 @@ int main() {
 
         # Verify compile commands are enabled
         stats = analyzer.get_compile_commands_stats()
-        assert stats.get('enabled', False), "Compile commands should be enabled"
-        assert stats.get('compile_commands_count', 0) > 0, "Should have loaded compile commands"
+        assert stats.get("enabled", False), "Compile commands should be enabled"
+        assert stats.get("compile_commands_count", 0) > 0, "Should have loaded compile commands"
 
         # Index the project
         indexed_count = analyzer.index_project()
@@ -77,12 +81,14 @@ int main() {
     def test_missing_compile_commands_fallback(self, temp_project_dir):
         """Test fallback behavior when compile_commands.json is missing"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "simple.cpp").write_text("""
+        (temp_project_dir / "src" / "simple.cpp").write_text(
+            """
 class SimpleClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # No compile_commands.json created
 
@@ -106,7 +112,8 @@ public:
         """
         # Create main source file that will be in compile_commands.json
         main_cpp = temp_project_dir / "src" / "main.cpp"
-        main_cpp.write_text("""
+        main_cpp.write_text(
+            """
 class MainClass {
 public:
     void mainMethod();
@@ -116,32 +123,37 @@ int main() {
     MainClass obj;
     return 0;
 }
-""")
+"""
+        )
 
         # Create a header file that is NOT in compile_commands.json
         header_file = temp_project_dir / "src" / "extra.h"
-        header_file.write_text("""
+        header_file.write_text(
+            """
 class ExtraClass {
 public:
     void extraMethod();
 };
-""")
+"""
+        )
 
         # Create another source file that is NOT in compile_commands.json
         extra_cpp = temp_project_dir / "src" / "extra.cpp"
-        extra_cpp.write_text("""
+        extra_cpp.write_text(
+            """
 class AnotherClass {
 public:
     void anotherMethod();
 };
-""")
+"""
+        )
 
         # Create compile_commands.json with ONLY main.cpp
         compile_commands = [
             {
                 "directory": str(temp_project_dir),
                 "arguments": ["-std=c++17", "-c", str(main_cpp)],
-                "file": str(main_cpp)
+                "file": str(main_cpp),
             }
         ]
 
@@ -153,12 +165,14 @@ public:
 
         # Verify compile commands are loaded
         stats = analyzer.get_compile_commands_stats()
-        assert stats.get('enabled', False), "Compile commands should be enabled"
-        assert stats.get('compile_commands_count', 0) == 1, "Should have exactly 1 compile command"
+        assert stats.get("enabled", False), "Compile commands should be enabled"
+        assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # CRITICAL TEST: Verify that _find_cpp_files returns ONLY files from compile_commands.json
         files_to_index = analyzer._find_cpp_files(include_dependencies=True)
-        assert len(files_to_index) == 1, f"Should find exactly 1 file from compile_commands.json, found {len(files_to_index)}"
+        assert (
+            len(files_to_index) == 1
+        ), f"Should find exactly 1 file from compile_commands.json, found {len(files_to_index)}"
 
         main_cpp_str = str(main_cpp.resolve())
         assert files_to_index[0] == main_cpp_str, "The one file should be main.cpp"
@@ -174,10 +188,12 @@ public:
         header_file_str = str(header_file.resolve())
         extra_cpp_str = str(extra_cpp.resolve())
 
-        assert header_file_str not in analyzer.file_hashes, \
-            "extra.h should NOT be attempted (not in compile_commands.json)"
-        assert extra_cpp_str not in analyzer.file_hashes, \
-            "extra.cpp should NOT be attempted (not in compile_commands.json)"
+        assert (
+            header_file_str not in analyzer.file_hashes
+        ), "extra.h should NOT be attempted (not in compile_commands.json)"
+        assert (
+            extra_cpp_str not in analyzer.file_hashes
+        ), "extra.cpp should NOT be attempted (not in compile_commands.json)"
 
         # If main.cpp was successfully parsed, verify no symbols from other files
         if indexed_count > 0:
@@ -198,12 +214,14 @@ public:
         """
         # Create a simple source file
         src_file = temp_project_dir / "src" / "test.cpp"
-        src_file.write_text("""
+        src_file.write_text(
+            """
 class TestClass {
 public:
     void testMethod();
 };
-""")
+"""
+        )
 
         # Create compile_commands.json with COMMAND STRING (not arguments array)
         # This simulates the real-world format from CMake/make
@@ -214,7 +232,7 @@ public:
             {
                 "directory": str(temp_project_dir),
                 "command": f"/usr/bin/c++ -std=c++17 -I{temp_project_dir}/include -DTEST_DEFINE -o {output_file} -c {src_file}",
-                "file": str(src_file)
+                "file": str(src_file),
             }
         ]
 
@@ -226,8 +244,8 @@ public:
 
         # Verify compile commands are loaded
         stats = analyzer.get_compile_commands_stats()
-        assert stats.get('enabled', False), "Compile commands should be enabled"
-        assert stats.get('compile_commands_count', 0) == 1, "Should have exactly 1 compile command"
+        assert stats.get("enabled", False), "Compile commands should be enabled"
+        assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # Get the parsed arguments for the file
         args = analyzer.compile_commands_manager.get_compile_args(src_file)
@@ -239,18 +257,18 @@ public:
         # The first argument should NOT be the compiler path
         # It should be a compilation flag like -std=c++17
         first_arg = args[0]
-        assert not first_arg.startswith('/usr/bin/'), \
-            f"First argument should not be compiler path, got: {first_arg}"
-        assert first_arg.startswith('-'), \
-            f"First argument should be a flag, got: {first_arg}"
+        assert not first_arg.startswith(
+            "/usr/bin/"
+        ), f"First argument should not be compiler path, got: {first_arg}"
+        assert first_arg.startswith("-"), f"First argument should be a flag, got: {first_arg}"
 
         # Verify expected flags are present
-        assert '-std=c++17' in args, "Should have -std=c++17 flag"
-        assert '-DTEST_DEFINE' in args, "Should have -DTEST_DEFINE flag"
-        assert f'-I{temp_project_dir}/include' in args, "Should have include path"
+        assert "-std=c++17" in args, "Should have -std=c++17 flag"
+        assert "-DTEST_DEFINE" in args, "Should have -DTEST_DEFINE flag"
+        assert f"-I{temp_project_dir}/include" in args, "Should have include path"
 
         # Verify unwanted arguments were filtered out
-        assert '-c' not in args, "Should NOT have -c flag (compile-only)"
-        assert '-o' not in args, "Should NOT have -o flag (output file)"
+        assert "-c" not in args, "Should NOT have -c flag (compile-only)"
+        assert "-o" not in args, "Should NOT have -o flag (output file)"
         assert str(output_file) not in args, "Should NOT have output file path"
         assert str(src_file) not in args, "Should NOT have source file path"

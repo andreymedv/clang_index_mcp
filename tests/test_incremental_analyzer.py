@@ -1,12 +1,13 @@
 """Unit tests for IncrementalAnalyzer."""
 
-import unittest
-import tempfile
 import shutil
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, call
-from mcp_server.incremental_analyzer import IncrementalAnalyzer, AnalysisResult
+from unittest.mock import MagicMock, Mock, call, patch
+
 from mcp_server.change_scanner import ChangeSet
+from mcp_server.incremental_analyzer import AnalysisResult, IncrementalAnalyzer
 
 
 class TestAnalysisResult(unittest.TestCase):
@@ -25,10 +26,7 @@ class TestAnalysisResult(unittest.TestCase):
     def test_result_string_representation(self):
         """Test string representation."""
         result = AnalysisResult(
-            files_analyzed=5,
-            files_removed=2,
-            elapsed_seconds=1.234,
-            changes=ChangeSet()
+            files_analyzed=5, files_removed=2, elapsed_seconds=1.234, changes=ChangeSet()
         )
 
         str_repr = str(result)
@@ -57,7 +55,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
         # Mock config
         self.analyzer.config.get_compile_commands_config.return_value = {
-            'compile_commands_path': 'compile_commands.json'
+            "compile_commands_path": "compile_commands.json"
         }
 
         # Mock cache backend
@@ -79,7 +77,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
     def test_no_changes_detected(self):
         """Test analysis when no changes detected."""
         # Mock scanner to return empty changeset
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = ChangeSet()
 
             result = self.incremental.perform_incremental_analysis()
@@ -95,7 +93,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         modified_file = str(self.test_dir / "main.cpp")
         changeset.modified_files = {modified_file}
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             result = self.incremental.perform_incremental_analysis()
@@ -116,10 +114,11 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         dependent1 = str(self.test_dir / "main.cpp")
         dependent2 = str(self.test_dir / "test.cpp")
         self.analyzer.dependency_graph.find_transitive_dependents.return_value = {
-            dependent1, dependent2
+            dependent1,
+            dependent2,
         }
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             result = self.incremental.perform_incremental_analysis()
@@ -143,7 +142,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         new_file = str(self.test_dir / "new.cpp")
         changeset.added_files = {new_file}
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             result = self.incremental.perform_incremental_analysis()
@@ -159,7 +158,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         removed_file = str(self.test_dir / "deleted.cpp")
         changeset.removed_files = {removed_file}
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             result = self.incremental.perform_incremental_analysis()
@@ -184,14 +183,11 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         file2 = str(self.test_dir / "utils.cpp")
         file3 = str(self.test_dir / "new.cpp")
 
-        old_commands = {
-            file1: ["-std=c++17", "-O2"],
-            file2: ["-std=c++17"]
-        }
+        old_commands = {file1: ["-std=c++17", "-O2"], file2: ["-std=c++17"]}
 
         new_commands = {
             file1: ["-std=c++20", "-O3"],  # Changed
-            file3: ["-std=c++17"]          # Added (file2 removed)
+            file3: ["-std=c++17"],  # Added (file2 removed)
         }
 
         # Setup the file_to_command_map with a custom mock that tracks copy calls
@@ -205,14 +201,14 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.compile_commands_manager._load_compile_commands = Mock()
 
         # Mock the differ
-        with patch('mcp_server.incremental_analyzer.CompileCommandsDiffer') as mock_differ_class:
+        with patch("mcp_server.incremental_analyzer.CompileCommandsDiffer") as mock_differ_class:
             mock_differ = Mock()
             mock_differ_class.return_value = mock_differ
 
             # Differ returns: added={file3}, removed={file2}, changed={file1}
             mock_differ.compute_diff.return_value = ({file3}, {file2}, {file1})
 
-            with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+            with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
                 mock_scan.return_value = changeset
 
                 result = self.incremental.perform_incremental_analysis()
@@ -240,10 +236,11 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         dependent1 = str(self.test_dir / "test1.cpp")
         dependent2 = str(self.test_dir / "test2.cpp")
         self.analyzer.dependency_graph.find_transitive_dependents.return_value = {
-            dependent1, dependent2
+            dependent1,
+            dependent2,
         }
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             result = self.incremental.perform_incremental_analysis()
@@ -265,7 +262,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         header_file = str(self.test_dir / "utils.h")
         changeset.modified_headers = {header_file}
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             result = self.incremental.perform_incremental_analysis()
@@ -288,7 +285,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         files = {
             str(self.test_dir / "success.cpp"),
             str(self.test_dir / "fail.cpp"),
-            str(self.test_dir / "success2.cpp")
+            str(self.test_dir / "success2.cpp"),
         }
 
         start_time = time.time()
@@ -321,15 +318,13 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # Mock dependency graph to return empty set
         self.analyzer.dependency_graph.find_transitive_dependents.return_value = set()
 
-        with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
 
             self.incremental.perform_incremental_analysis()
 
             # Verify header tracker was invalidated
-            self.analyzer.header_tracker.invalidate_header.assert_called_once_with(
-                header_file
-            )
+            self.analyzer.header_tracker.invalidate_header.assert_called_once_with(header_file)
 
     def test_compile_commands_hash_updated(self):
         """Test compile_commands_hash is updated after change."""
@@ -338,7 +333,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
         # Create compile_commands.json
         cc_file = self.test_dir / "compile_commands.json"
-        cc_file.write_text('[]')
+        cc_file.write_text("[]")
 
         # Mock empty commands
         self.analyzer.compile_commands_manager.file_to_command_map = {}
@@ -346,12 +341,12 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # Mock _get_file_hash
         self.analyzer._get_file_hash = Mock(return_value="new_hash")
 
-        with patch('mcp_server.incremental_analyzer.CompileCommandsDiffer') as mock_differ_class:
+        with patch("mcp_server.incremental_analyzer.CompileCommandsDiffer") as mock_differ_class:
             mock_differ = Mock()
             mock_differ_class.return_value = mock_differ
             mock_differ.compute_diff.return_value = (set(), set(), set())
 
-            with patch.object(self.incremental.scanner, 'scan_for_changes') as mock_scan:
+            with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
                 mock_scan.return_value = changeset
 
                 self.incremental.perform_incremental_analysis()
@@ -360,5 +355,5 @@ class TestIncrementalAnalyzer(unittest.TestCase):
                 self.assertEqual(self.analyzer.compile_commands_hash, "new_hash")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

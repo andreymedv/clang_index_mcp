@@ -9,6 +9,7 @@ Covers Phase 1 scope: simple non-template aliases.
 import os
 import sys
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
@@ -18,7 +19,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # ============================================================================
 # UT-1: Alias Extraction Tests

@@ -7,10 +7,10 @@ human-readable qualified names, preserving template arguments.
 import pytest
 
 from mcp_server.cpp_analyzer import (
-    _usr_to_display_name,
-    _decode_usr_type,
-    _decode_template_args,
     _decode_class_ref,
+    _decode_template_args,
+    _decode_usr_type,
+    _usr_to_display_name,
 )
 
 # ---- Primitive type decoding ------------------------------------------------
@@ -222,8 +222,7 @@ class TestRealWorldUSRs:
         )
         result = _usr_to_display_name(usr)
         assert result == (
-            "std::unique_ptr<ns::SomeClass, std::default_delete<type>>"
-            "::unique_ptr"
+            "std::unique_ptr<ns::SomeClass, std::default_delete<type>>" "::unique_ptr"
         )
 
 

@@ -4,10 +4,11 @@ Tests the header extraction first-win strategy and thread safety
 as documented in REQUIREMENTS.md Section 11.
 """
 
-import pytest
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+import pytest
 
 from mcp_server.header_tracker import HeaderProcessingTracker
 

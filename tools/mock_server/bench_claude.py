@@ -255,6 +255,7 @@ def main():
         files_to_run = [args.scenarios_file or "probes_rootcauses"]
 
     import datetime
+
     run_ts = datetime.datetime.now().isoformat(timespec="seconds")
 
     print(f"Model: {args.model}")

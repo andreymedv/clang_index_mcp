@@ -7,13 +7,14 @@ Responsibilities:
 - Handle cleanup
 """
 
+import os
+import signal
 import subprocess
 import time
-import requests
-import signal
-import os
 from pathlib import Path
 from typing import Dict, Optional
+
+import requests
 
 
 class ServerManager:
@@ -70,9 +71,13 @@ class ServerManager:
             RuntimeError: If server fails to start within timeout
         """
         cmd = [
-            "python", "-m", "mcp_server.cpp_mcp_server",
-            "--transport", protocol,
-            "--port", str(self.port)
+            "python",
+            "-m",
+            "mcp_server.cpp_mcp_server",
+            "--transport",
+            protocol,
+            "--port",
+            str(self.port),
         ]
 
         env = os.environ.copy()
@@ -87,7 +92,7 @@ class ServerManager:
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            text=True
+            text=True,
         )
 
         # Wait for server to be ready
@@ -100,7 +105,7 @@ class ServerManager:
             "pid": self.server_process.pid,
             "endpoint": endpoint,
             "protocol": protocol,
-            "status": "running"
+            "status": "running",
         }
 
     def _start_sse_server(self, timeout: int) -> Dict:
@@ -202,17 +207,11 @@ class ServerManager:
                 "params": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {
-                        "name": "mcp-test-client",
-                        "version": "0.1.0"
-                    }
-                }
+                    "clientInfo": {"name": "mcp-test-client", "version": "0.1.0"},
+                },
             }
 
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
+            headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
             # For HTTP, include session ID if available
             if self.protocol == "http" and self.session_id:
@@ -240,16 +239,15 @@ class ServerManager:
                 return False
 
             # Step 2: Send initialized notification (no response expected)
-            initialized_notification = {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized"
-            }
+            initialized_notification = {"jsonrpc": "2.0", "method": "notifications/initialized"}
 
             headers_notify = headers.copy()
             if self.protocol == "http" and self.session_id:
                 headers_notify["mcp-session-id"] = self.session_id
 
-            response = requests.post(url, json=initialized_notification, headers=headers_notify, timeout=30)
+            response = requests.post(
+                url, json=initialized_notification, headers=headers_notify, timeout=30
+            )
 
             # Notification may return empty response or 200 OK
             print(f"✓ MCP session initialized successfully")
@@ -290,16 +288,10 @@ class ServerManager:
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments
-            }
+            "params": {"name": tool_name, "arguments": arguments},
         }
 
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
         # For HTTP protocol, include session ID if we have one
         # Server will create a new session if not provided

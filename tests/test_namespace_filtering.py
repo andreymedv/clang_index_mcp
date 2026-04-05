@@ -6,8 +6,10 @@ These tests verify that the namespace parameter correctly filters search results
 to disambiguate when multiple namespaces have the same class/function name.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 
@@ -411,9 +413,7 @@ def test_unique_namespace_exact_match(nested_namespace_project):
 
     # TopLevel::outer::builders is unique - no other namespace ends with it
     results = analyzer.search_classes("", namespace="TopLevel::outer::builders")
-    assert (
-        len(results) == 1
-    ), f"Expected 1 class in TopLevel::outer::builders, got {len(results)}"
+    assert len(results) == 1, f"Expected 1 class in TopLevel::outer::builders, got {len(results)}"
     assert results[0]["qualified_name"].split("::")[-1] == "PdfWidget"
 
     # Standalone "builders" namespace is also matchable exactly

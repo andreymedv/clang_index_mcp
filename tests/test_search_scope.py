@@ -6,7 +6,8 @@ the old project_only boolean in the MCP tool interface.
 """
 
 import pytest
-from mcp_server.cpp_mcp_server import _parse_search_scope, _VALID_SEARCH_SCOPES
+
+from mcp_server.cpp_mcp_server import _VALID_SEARCH_SCOPES, _parse_search_scope
 
 
 class TestParseSearchScope:
@@ -45,9 +46,11 @@ class TestParseSearchScope:
 
     def test_other_arguments_ignored(self):
         """Other arguments in the dict are ignored."""
-        result = _parse_search_scope({
-            "pattern": ".*",
-            "search_scope": "include_external_libraries",
-            "max_results": 10,
-        })
+        result = _parse_search_scope(
+            {
+                "pattern": ".*",
+                "search_scope": "include_external_libraries",
+                "max_results": 10,
+            }
+        )
         assert result is False
