@@ -245,17 +245,19 @@ def _align_steps(
                 results.append(step_eval)
             elif is_optional:
                 # Optional step not matched — skip it (don't consume call)
-                results.append({
-                    "step": i + 1,
-                    "expected_tool": expected["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "optional": True,
-                    "skipped_optional": True,
-                    "call_index": None,
-                })
+                results.append(
+                    {
+                        "step": i + 1,
+                        "expected_tool": expected["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "optional": True,
+                        "skipped_optional": True,
+                        "call_index": None,
+                    }
+                )
             else:
                 # Required step, wrong tool — consume call, report mismatch
                 call_idx += 1
@@ -263,28 +265,32 @@ def _align_steps(
         else:
             # No more recorded calls
             if is_optional:
-                results.append({
-                    "step": i + 1,
-                    "expected_tool": expected["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "optional": True,
-                    "skipped_optional": True,
-                    "call_index": None,
-                })
+                results.append(
+                    {
+                        "step": i + 1,
+                        "expected_tool": expected["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "optional": True,
+                        "skipped_optional": True,
+                        "call_index": None,
+                    }
+                )
             else:
-                results.append({
-                    "step": i + 1,
-                    "expected_tool": expected["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "missing": True,
-                    "call_index": None,
-                })
+                results.append(
+                    {
+                        "step": i + 1,
+                        "expected_tool": expected["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "missing": True,
+                        "call_index": None,
+                    }
+                )
 
     # Attach discovery skip count to first result for reporting
     if discovery_skipped and results:
@@ -385,9 +391,8 @@ def _build_explanation_prompt(
     if not step_eval["tool_match"]:
         # Special handling for direction-confusion cases (incoming vs outgoing calls)
         is_direction_case = (
-            (actual_tool == "find_incoming_calls" and expected_tool == "find_outgoing_calls") or
-            (actual_tool == "find_outgoing_calls" and expected_tool == "find_incoming_calls")
-        )
+            actual_tool == "find_incoming_calls" and expected_tool == "find_outgoing_calls"
+        ) or (actual_tool == "find_outgoing_calls" and expected_tool == "find_incoming_calls")
         if is_direction_case:
             return (
                 f"You chose '{actual_tool}' but the expected tool was '{expected_tool}'.\n\n"
@@ -536,17 +541,21 @@ def _find_interesting_calls(
         call_index = step_eval.get("call_index")
         if call_index is None:
             if _is_step_mismatch(step_eval):
-                interesting.append({
-                    "call_record": None,
-                    "step_eval": step_eval,
-                })
+                interesting.append(
+                    {
+                        "call_record": None,
+                        "step_eval": step_eval,
+                    }
+                )
             continue
         step_calls.add(call_index)
         if _is_step_mismatch(step_eval):
-            interesting.append({
-                "call_record": recorded_calls[call_index],
-                "step_eval": step_eval,
-            })
+            interesting.append(
+                {
+                    "call_record": recorded_calls[call_index],
+                    "step_eval": step_eval,
+                }
+            )
 
     for call_index, call_record in enumerate(recorded_calls):
         if call_index in step_calls or call_index in matched_call_indexes:
@@ -593,7 +602,7 @@ def _collect_posthoc_explanations(
             message_index = call_record.get("message_index")
             if message_index is None:
                 continue
-            truncated_messages = messages[:message_index + 1]
+            truncated_messages = messages[: message_index + 1]
 
         prompt = _build_explanation_prompt(step_eval or {}, call_record)
         explanation_text = _request_explanation(
@@ -712,21 +721,22 @@ def run_scenario(
             # Check if LLM should have called a tool but didn't
             if explain_failures and next_expected_idx < len(expected_steps):
                 # Skip any remaining optional steps to find next required
-                while (
-                    next_expected_idx < len(expected_steps)
-                    and expected_steps[next_expected_idx].get("optional")
-                ):
-                    step_results.append({
-                        "step": next_expected_idx + 1,
-                        "expected_tool": expected_steps[next_expected_idx]["tool"],
-                        "actual_tool": None,
-                        "tool_match": False,
-                        "param_assertions": {},
-                        "params_pass": False,
-                        "optional": True,
-                        "skipped_optional": True,
-                        "call_index": None,
-                    })
+                while next_expected_idx < len(expected_steps) and expected_steps[
+                    next_expected_idx
+                ].get("optional"):
+                    step_results.append(
+                        {
+                            "step": next_expected_idx + 1,
+                            "expected_tool": expected_steps[next_expected_idx]["tool"],
+                            "actual_tool": None,
+                            "tool_match": False,
+                            "param_assertions": {},
+                            "params_pass": False,
+                            "optional": True,
+                            "skipped_optional": True,
+                            "call_index": None,
+                        }
+                    )
                     next_expected_idx += 1
 
                 if next_expected_idx < len(expected_steps):
@@ -800,8 +810,12 @@ def run_scenario(
                     if not step_eval["params_pass"]:
                         prompt = _build_explanation_prompt(step_eval, call_record)
                         explanation = _request_explanation(
-                            client, model, messages, prompt,
-                            temperature=temperature, max_tokens=2048,
+                            client,
+                            model,
+                            messages,
+                            prompt,
+                            temperature=temperature,
+                            max_tokens=2048,
                         )
                         step_eval["llm_explanation"] = explanation
                         step_results.append(step_eval)
@@ -811,33 +825,42 @@ def run_scenario(
                     next_expected_idx += 1
                 elif expected.get("optional"):
                     # Optional step not matched — skip it, try next
-                    step_results.append({
-                        "step": next_expected_idx + 1,
-                        "expected_tool": expected["tool"],
-                        "actual_tool": None,
-                        "tool_match": False,
-                        "param_assertions": {},
-                        "params_pass": False,
-                        "optional": True,
-                        "skipped_optional": True,
-                        "call_index": None,
-                    })
+                    step_results.append(
+                        {
+                            "step": next_expected_idx + 1,
+                            "expected_tool": expected["tool"],
+                            "actual_tool": None,
+                            "tool_match": False,
+                            "param_assertions": {},
+                            "params_pass": False,
+                            "optional": True,
+                            "skipped_optional": True,
+                            "call_index": None,
+                        }
+                    )
                     next_expected_idx += 1
                     # Re-evaluate same call against next expected step
                     if next_expected_idx < len(expected_steps):
                         expected2 = expected_steps[next_expected_idx]
                         step_eval2 = evaluate_step(
-                            expected2, tool_name, tool_args,
+                            expected2,
+                            tool_name,
+                            tool_args,
                         )
                         step_eval2["step"] = next_expected_idx + 1
                         step_eval2["call_index"] = call_record["call_index"]
                         if not step_eval2["tool_match"] or not step_eval2["params_pass"]:
                             prompt = _build_explanation_prompt(
-                                step_eval2, call_record,
+                                step_eval2,
+                                call_record,
                             )
                             explanation = _request_explanation(
-                                client, model, messages, prompt,
-                                temperature=temperature, max_tokens=2048,
+                                client,
+                                model,
+                                messages,
+                                prompt,
+                                temperature=temperature,
+                                max_tokens=2048,
                             )
                             step_eval2["llm_explanation"] = explanation
                             step_results.append(step_eval2)
@@ -849,8 +872,12 @@ def run_scenario(
                     # Required step, wrong tool — fail
                     prompt = _build_explanation_prompt(step_eval, call_record)
                     explanation = _request_explanation(
-                        client, model, messages, prompt,
-                        temperature=temperature, max_tokens=2048,
+                        client,
+                        model,
+                        messages,
+                        prompt,
+                        temperature=temperature,
+                        max_tokens=2048,
                     )
                     step_eval["llm_explanation"] = explanation
                     step_results.append(step_eval)
@@ -876,29 +903,33 @@ def run_scenario(
         for i in range(next_expected_idx, len(expected_steps)):
             is_opt = expected_steps[i].get("optional", False)
             if is_opt:
-                step_results.append({
-                    "step": i + 1,
-                    "expected_tool": expected_steps[i]["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "optional": True,
-                    "skipped_optional": True,
-                    "call_index": None,
-                })
+                step_results.append(
+                    {
+                        "step": i + 1,
+                        "expected_tool": expected_steps[i]["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "optional": True,
+                        "skipped_optional": True,
+                        "call_index": None,
+                    }
+                )
             else:
-                step_results.append({
-                    "step": i + 1,
-                    "expected_tool": expected_steps[i]["tool"],
-                    "actual_tool": None,
-                    "tool_match": False,
-                    "param_assertions": {},
-                    "params_pass": False,
-                    "missing": True,
-                    "skipped": True,
-                    "call_index": None,
-                })
+                step_results.append(
+                    {
+                        "step": i + 1,
+                        "expected_tool": expected_steps[i]["tool"],
+                        "actual_tool": None,
+                        "tool_match": False,
+                        "param_assertions": {},
+                        "params_pass": False,
+                        "missing": True,
+                        "skipped": True,
+                        "call_index": None,
+                    }
+                )
 
     # Overall pass: all required (non-optional) steps matched
     required_steps = [s for s in step_results if not s.get("skipped_optional")]
@@ -1057,7 +1088,8 @@ Tool selection rules:
 - Use trace_execution_path only when both source and target functions are known and the request asks for call paths between them.
 """
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = (
+    """\
 You are a C++ code analysis assistant. You have access to tools that can \
 search and analyze an indexed C++ codebase.
 
@@ -1068,7 +1100,9 @@ Use the available tools to answer the user's question. Be precise with tool \
 arguments -- use class/function names, not signatures. For regex patterns, \
 remember that patterns are anchored (matched against full name).
 
-""" + TOOL_SELECTION_RULES + """
+"""
+    + TOOL_SELECTION_RULES
+    + """
 
 When you need a tool, you MUST emit a native tool call via the tool-calling \
 API. Do NOT write tool invocations as plain text, markdown, code fences, or \
@@ -1077,6 +1111,7 @@ the actual tool call instead.
 
 When you find what you need, provide a concise answer summarizing the results.
 """
+)
 
 # Short addition for --validate-intent mode.
 # Intentionally brief to avoid distracting small models from the main task.
@@ -1431,8 +1466,10 @@ def main() -> None:
     total = len(results)
     print(f"\n{'=' * 50}")
     if clarified:
-        print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%), "
-              f"{clarified} clarification requested")
+        print(
+            f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%), "
+            f"{clarified} clarification requested"
+        )
     else:
         print(f"Results: {passed}/{total} passed ({passed / total * 100:.0f}%)")
 
@@ -1441,15 +1478,19 @@ def main() -> None:
     total_compl = sum(r["tokens"]["total_completion"] for r in results)
     if total_prompt:
         tps = total_compl / total_wall if total_wall else 0
-        print(f"Tokens:  prompt={total_prompt:,}  completion={total_compl:,}  "
-              f"~{tps:.0f} tok/s completion")
+        print(
+            f"Tokens:  prompt={total_prompt:,}  completion={total_compl:,}  "
+            f"~{tps:.0f} tok/s completion"
+        )
 
     # Print timing statistics
     time_stats = calculate_per_tool_time(results)
     if time_stats["test_count"] > 0:
-        print(f"Timing:  {time_stats['avg_time_per_tool']:.2f}s per tool "
-              f"({time_stats['total_tool_calls']} calls, "
-              f"{time_stats['total_wall_time']:.1f}s total)")
+        print(
+            f"Timing:  {time_stats['avg_time_per_tool']:.2f}s per tool "
+            f"({time_stats['total_tool_calls']} calls, "
+            f"{time_stats['total_wall_time']:.1f}s total)"
+        )
 
     # Per-base-scenario variant summary (only if multi-query scenarios exist)
     has_variants = any(r.get("query_variant") for r in results)

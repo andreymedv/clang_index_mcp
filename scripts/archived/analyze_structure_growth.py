@@ -6,11 +6,11 @@ Runs indexing on a subset of files and measures which structures
 accumulate the most memory.
 """
 
+import gc
 import os
 import sys
-import gc
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

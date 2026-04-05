@@ -5,15 +5,16 @@ Very detailed debug script for Issue #8
 Patches the analyzer to add debug output for symbol collection.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add parent directory to path to import mcp_server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
 import threading
+
+from mcp_server.cpp_analyzer import CppAnalyzer
 
 # Patch _bulk_write_symbols to add debug output
 original_bulk_write = CppAnalyzer._bulk_write_symbols

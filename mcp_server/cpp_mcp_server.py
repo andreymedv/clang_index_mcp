@@ -8,8 +8,8 @@ Focused on specific queries rather than bulk data dumps.
 
 import asyncio
 import json
-import sys
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 # Import diagnostics early
@@ -25,10 +25,7 @@ except ImportError:
     sys.exit(1)
 
 from mcp.server import Server
-from mcp.types import (
-    Tool,
-    TextContent,
-)
+from mcp.types import TextContent, Tool
 
 
 def find_and_configure_libclang():
@@ -51,8 +48,8 @@ def find_and_configure_libclang():
     if Config.loaded:
         return True
 
-    import platform
     import glob
+    import platform
     import shutil
     import subprocess
 
@@ -214,32 +211,32 @@ if not find_and_configure_libclang():
 # Import the Python analyzer and state manager
 try:
     # Try package import first (when run as module)
+    from mcp_server import suggestions
     from mcp_server.cpp_analyzer import CppAnalyzer
+    from mcp_server.session_manager import SessionManager
     from mcp_server.state_manager import (
-        AnalyzerStateManager,
         AnalyzerState,
-        IndexingProgress,
+        AnalyzerStateManager,
         BackgroundIndexer,
         EnhancedQueryResult,
+        IndexingProgress,
         QueryBehaviorPolicy,
     )
-    from mcp_server.session_manager import SessionManager
     from mcp_server.tool_call_logger import ToolCallLogger
-    from mcp_server import suggestions
 except ImportError:
     # Fall back to direct import (when run as script)
+    import suggestions  # type: ignore[no-redef]
     from cpp_analyzer import CppAnalyzer  # type: ignore[no-redef]
+    from session_manager import SessionManager  # type: ignore[no-redef]
     from state_manager import (  # type: ignore[no-redef]
-        AnalyzerStateManager,
         AnalyzerState,
-        IndexingProgress,
+        AnalyzerStateManager,
         BackgroundIndexer,
         EnhancedQueryResult,
+        IndexingProgress,
         QueryBehaviorPolicy,
     )
-    from session_manager import SessionManager  # type: ignore[no-redef]
     from tool_call_logger import ToolCallLogger  # type: ignore[no-redef]
-    import suggestions  # type: ignore[no-redef]
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -587,8 +584,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
 
                         # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
                         # Without this, get_indexing_status returns 0 files even though cache is loaded
-                        from .state_manager import IndexingProgress
                         from datetime import datetime
+
+                        from .state_manager import IndexingProgress
 
                         # Create progress object from cached data
                         total_files = len(analyzer.file_index)

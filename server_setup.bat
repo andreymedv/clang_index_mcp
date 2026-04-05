@@ -82,7 +82,7 @@ if exist "lib\windows\libclang.dll" (
     echo ✓ libclang.dll ready for self-contained operation!
 ) else (
     echo ⚠️  Download failed. Checking for system libclang...
-    
+
     REM Fallback: Try to copy from system LLVM installation
     if exist "C:\Program Files\LLVM\bin\libclang.dll" (
         echo Found system libclang! Copying to lib\windows\...

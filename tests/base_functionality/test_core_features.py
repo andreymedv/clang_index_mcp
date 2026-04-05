@@ -11,13 +11,15 @@ Requirements: REQ-1.x, REQ-2.x, REQ-3.x
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -51,10 +53,10 @@ public:
 
         # Verify class was found
         assert len(results) > 0, "SimpleClass should be found"
-        assert results[0]['qualified_name'].split("::")[-1] == "SimpleClass"
-        assert results[0]['kind'] == "class"
+        assert results[0]["qualified_name"].split("::")[-1] == "SimpleClass"
+        assert results[0]["kind"] == "class"
         _loc = results[0].get("definition") or results[0].get("declaration") or {}
-        assert "test_class.cpp" in _loc['file']
+        assert "test_class.cpp" in _loc["file"]
 
     def test_basic_function_indexing(self, temp_project_dir):
         """Test indexing simple function definitions - Task 1.1.2"""
@@ -82,11 +84,11 @@ void printHello() {
 
         # Verify functions were found
         assert len(add_results) > 0, "add function should be found"
-        assert add_results[0]['qualified_name'].split("::")[-1] == "add"
-        assert add_results[0]['kind'] == "function"
+        assert add_results[0]["qualified_name"].split("::")[-1] == "add"
+        assert add_results[0]["kind"] == "function"
 
         assert len(hello_results) > 0, "printHello function should be found"
-        assert hello_results[0]['qualified_name'].split("::")[-1] == "printHello"
+        assert hello_results[0]["qualified_name"].split("::")[-1] == "printHello"
 
 
 @pytest.mark.base_functionality
@@ -126,7 +128,7 @@ public:
         assert len(all_classes) >= 3, "Should find all three classes"
 
         # Verify search found correct classes
-        test_class_names = [c['qualified_name'].split("::")[-1] for c in test_classes]
+        test_class_names = [c["qualified_name"].split("::")[-1] for c in test_classes]
         assert "TestClass1" in test_class_names
         assert "TestClass2" in test_class_names
 
@@ -153,7 +155,7 @@ int calculate() { return 0; }
         assert len(all_funcs) >= 4, "Should find all four functions"
 
         # Verify search found correct functions
-        process_names = [f['qualified_name'].split("::")[-1] for f in process_funcs]
+        process_names = [f["qualified_name"].split("::")[-1] for f in process_funcs]
         assert "processData" in process_names
         assert "processList" in process_names
 
@@ -196,8 +198,8 @@ void functionInFile2() {}
         assert len(file2_symbols) >= 2, "Should find class and function in file2"
 
         # Verify correct symbols found in each file
-        file1_names = [s['qualified_name'].split("::")[-1] for s in file1_symbols]
-        file2_names = [s['qualified_name'].split("::")[-1] for s in file2_symbols]
+        file1_names = [s["qualified_name"].split("::")[-1] for s in file1_symbols]
+        file2_names = [s["qualified_name"].split("::")[-1] for s in file2_symbols]
 
         assert "ClassInFile1" in file1_names
         assert "functionInFile1" in file1_names
@@ -246,12 +248,20 @@ public:
 
         # Verify base classes (list of canonical keys into classes dict)
         base_keys = node.get("base_classes", [])
-        base_names = [hierarchy["classes"][k]["qualified_name"].split("::")[-1] for k in base_keys if k in hierarchy["classes"]]
+        base_names = [
+            hierarchy["classes"][k]["qualified_name"].split("::")[-1]
+            for k in base_keys
+            if k in hierarchy["classes"]
+        ]
         assert "BaseClass" in base_names, "Should show BaseClass as base"
 
         # Verify derived classes
         derived_keys = node.get("derived_classes", [])
-        derived_names = [hierarchy["classes"][k]["qualified_name"].split("::")[-1] for k in derived_keys if k in hierarchy["classes"]]
+        derived_names = [
+            hierarchy["classes"][k]["qualified_name"].split("::")[-1]
+            for k in derived_keys
+            if k in hierarchy["classes"]
+        ]
         assert "FurtherDerived" in derived_names, "Should show FurtherDerived as derived"
 
 
@@ -289,10 +299,10 @@ void unrelatedFunction() {
 
         # Phase 3: find_incoming_calls now returns dict with 'callers' key
         assert isinstance(result, dict), "find_incoming_calls should return dict (Phase 3)"
-        callers = result['callers']
+        callers = result["callers"]
 
         # Verify callers were found
-        caller_names = [c['qualified_name'].split("::")[-1] for c in callers]
+        caller_names = [c["qualified_name"].split("::")[-1] for c in callers]
         assert "caller1" in caller_names, "caller1 should be in callers list"
         assert "caller2" in caller_names, "caller2 should be in callers list"
         assert "unrelatedFunction" not in caller_names, "unrelatedFunction should not be in callers"
@@ -325,7 +335,7 @@ void mainFunction() {
         callees_list = result["callees"]
 
         # Verify callees were found
-        callee_names = [c['qualified_name'].split("::")[-1] for c in callees_list]
+        callee_names = [c["qualified_name"].split("::")[-1] for c in callees_list]
         assert "function1" in callee_names, "function1 should be in callees list"
         assert "function2" in callee_names, "function2 should be in callees list"
         # Note: function3 might or might not be in the list since it's not called

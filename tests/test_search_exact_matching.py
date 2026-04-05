@@ -11,7 +11,7 @@ import sys
 import unittest
 
 # Add the mcp_server directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from mcp_server.search_engine import SearchEngine
 from mcp_server.symbol_info import SymbolInfo
@@ -43,7 +43,7 @@ class TestSearchEnginePatternDetection(unittest.TestCase):
             with self.subTest(pattern=pattern):
                 self.assertTrue(
                     SearchEngine._is_pattern(pattern),
-                    f"Expected '{pattern}' to be detected as a pattern"
+                    f"Expected '{pattern}' to be detected as a pattern",
                 )
 
     def test_is_pattern_plain_text(self):
@@ -63,7 +63,7 @@ class TestSearchEnginePatternDetection(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertFalse(
                     SearchEngine._is_pattern(text),
-                    f"Expected '{text}' to be plain text, not a pattern"
+                    f"Expected '{text}' to be plain text, not a pattern",
                 )
 
 
@@ -90,8 +90,9 @@ class TestSearchEngineMatching(unittest.TestCase):
             with self.subTest(pattern=pattern, name=name):
                 result = SearchEngine._matches(pattern, name)
                 self.assertEqual(
-                    result, expected,
-                    f"_matches('{pattern}', '{name}') returned {result}, expected {expected}"
+                    result,
+                    expected,
+                    f"_matches('{pattern}', '{name}') returned {result}, expected {expected}",
                 )
 
     def test_pattern_match_with_regex(self):
@@ -103,30 +104,25 @@ class TestSearchEngineMatching(unittest.TestCase):
             (".*View.*", "ListView", True),
             (".*View.*", "PreviewPanel", True),
             (".*View.*", "MyClass", False),
-
             # Prefix matching with .*
             ("View.*", "View", True),
             ("View.*", "ViewManager", True),
             ("View.*", "ViewPort", True),
             ("View.*", "ListView", False),  # Doesn't start with View
-
             # Suffix matching with .*
             (".*View", "View", True),
             (".*View", "ListView", True),
             (".*View", "TreeView", True),
             (".*View", "ViewManager", False),  # Doesn't end with View
-
             # Function name patterns
             ("get.*", "getValue", True),
             ("get.*", "getWidth", True),
             ("get.*", "getter", True),
             ("get.*", "setValue", False),
-
             # Character classes
             ("test[123]", "test1", True),
             ("test[123]", "test2", True),
             ("test[123]", "test4", False),
-
             # Quantifiers
             ("x+", "x", True),
             ("x+", "xx", True),
@@ -137,8 +133,9 @@ class TestSearchEngineMatching(unittest.TestCase):
             with self.subTest(pattern=pattern, name=name):
                 result = SearchEngine._matches(pattern, name)
                 self.assertEqual(
-                    result, expected,
-                    f"_matches('{pattern}', '{name}') returned {result}, expected {expected}"
+                    result,
+                    expected,
+                    f"_matches('{pattern}', '{name}') returned {result}, expected {expected}",
                 )
 
 
@@ -153,7 +150,9 @@ class TestSearchEngineIntegration(unittest.TestCase):
             "ViewManager": [self._create_class_info("ViewManager", "MyProject/ViewManager.h", 20)],
             "ListView": [self._create_class_info("ListView", "MyProject/ListView.h", 30)],
             "TreeView": [self._create_class_info("TreeView", "MyProject/TreeView.h", 40)],
-            "PreviewPanel": [self._create_class_info("PreviewPanel", "MyProject/PreviewPanel.h", 50)],
+            "PreviewPanel": [
+                self._create_class_info("PreviewPanel", "MyProject/PreviewPanel.h", 50)
+            ],
             "MyClass": [self._create_class_info("MyClass", "MyProject/MyClass.h", 60)],
         }
 
@@ -162,18 +161,21 @@ class TestSearchEngineIntegration(unittest.TestCase):
             "getValue": [self._create_function_info("getValue", "MyProject/utils.cpp", 100)],
             "getWidth": [self._create_function_info("getWidth", "MyProject/utils.cpp", 110)],
             "setValue": [self._create_function_info("setValue", "MyProject/utils.cpp", 120)],
-            "processData": [self._create_function_info("processData", "MyProject/processor.cpp", 130)],
+            "processData": [
+                self._create_function_info("processData", "MyProject/processor.cpp", 130)
+            ],
         }
 
         # Create search engine with lock
         import threading
+
         self.index_lock = threading.RLock()
         self.search_engine = SearchEngine(
             class_index=self.class_symbols,
             function_index=self.function_symbols,
             file_index={},
             usr_index={},
-            index_lock=self.index_lock
+            index_lock=self.index_lock,
         )
 
     def _create_class_info(self, name, file, line):
@@ -227,7 +229,11 @@ class TestSearchEngineIntegration(unittest.TestCase):
         results = self.search_engine.search_classes("View")
 
         # Should return only "View", not "ViewManager", "ListView", etc.
-        self.assertEqual(len(results), 1, f"Expected 1 result, got {len(results)}: {[r['qualified_name'].split('::')[-1] for r in results]}")
+        self.assertEqual(
+            len(results),
+            1,
+            f"Expected 1 result, got {len(results)}: {[r['qualified_name'].split('::')[-1] for r in results]}",
+        )
         self.assertEqual(results[0]["qualified_name"].split("::")[-1], "View")
 
     def test_search_classes_pattern_any(self):
@@ -311,10 +317,11 @@ class TestSearchEngineIntegration(unittest.TestCase):
             with self.subTest(pattern=pattern):
                 results = self.search_engine.search_classes(pattern)
                 self.assertEqual(
-                    len(results), expected_count,
-                    f"Pattern '{pattern}' returned {len(results)} results, expected {expected_count}"
+                    len(results),
+                    expected_count,
+                    f"Pattern '{pattern}' returned {len(results)} results, expected {expected_count}",
                 )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

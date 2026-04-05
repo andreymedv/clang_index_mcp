@@ -7,12 +7,12 @@ Tests that the server can start with different transport configurations.
 
 import asyncio
 import subprocess
-import time
-import pytest
-import httpx
 import sys
+import time
 from pathlib import Path
 
+import httpx
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -24,9 +24,7 @@ class TestTransportSelection:
     def test_help_output(self):
         """Test that help output includes transport options."""
         result = subprocess.run(
-            ["python3", "-m", "mcp_server.cpp_mcp_server", "--help"],
-            capture_output=True,
-            text=True
+            ["python3", "-m", "mcp_server.cpp_mcp_server", "--help"], capture_output=True, text=True
         )
 
         assert result.returncode == 0
@@ -38,6 +36,7 @@ class TestTransportSelection:
     def test_invalid_transport(self):
         """Test that invalid transport option is rejected."""
         import os
+
         env = os.environ.copy()
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
         result = subprocess.run(
@@ -45,7 +44,7 @@ class TestTransportSelection:
             capture_output=True,
             text=True,
             timeout=5,
-            env=env
+            env=env,
         )
 
         assert result.returncode != 0
@@ -58,6 +57,7 @@ class TestStdioTransport:
     def test_stdio_default(self):
         """Test that server starts with default stdio transport."""
         import os
+
         # Disable session resume to avoid loading large projects during tests
         env = os.environ.copy()
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
@@ -68,7 +68,7 @@ class TestStdioTransport:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env
+            env=env,
         )
 
         try:
@@ -97,6 +97,7 @@ class TestStdioTransport:
     def test_stdio_explicit(self):
         """Test that server starts with explicit stdio transport."""
         import os
+
         # Disable session resume to avoid loading large projects during tests
         env = os.environ.copy()
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
@@ -107,7 +108,7 @@ class TestStdioTransport:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env
+            env=env,
         )
 
         try:
@@ -141,6 +142,7 @@ class TestHTTPTransportIntegration:
     async def test_http_server_start(self):
         """Test that HTTP server starts and responds."""
         import os
+
         # Disable session resume to avoid loading large projects during tests
         env = os.environ.copy()
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
@@ -148,14 +150,19 @@ class TestHTTPTransportIntegration:
         # Start server in subprocess
         proc = subprocess.Popen(
             [
-                "python3", "-m", "mcp_server.cpp_mcp_server",
-                "--transport", "http",
-                "--port", "18100",
-                "--host", "127.0.0.1"
+                "python3",
+                "-m",
+                "mcp_server.cpp_mcp_server",
+                "--transport",
+                "http",
+                "--port",
+                "18100",
+                "--host",
+                "127.0.0.1",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env
+            env=env,
         )
 
         # Wait for server to start
@@ -198,6 +205,7 @@ class TestSSETransportIntegration:
     async def test_sse_server_start(self):
         """Test that SSE server starts and responds."""
         import os
+
         # Disable session resume to avoid loading large projects during tests
         env = os.environ.copy()
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
@@ -205,14 +213,19 @@ class TestSSETransportIntegration:
         # Start server in subprocess
         proc = subprocess.Popen(
             [
-                "python3", "-m", "mcp_server.cpp_mcp_server",
-                "--transport", "sse",
-                "--port", "18101",
-                "--host", "127.0.0.1"
+                "python3",
+                "-m",
+                "mcp_server.cpp_mcp_server",
+                "--transport",
+                "sse",
+                "--port",
+                "18101",
+                "--host",
+                "127.0.0.1",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env
+            env=env,
         )
 
         # Wait for server to start

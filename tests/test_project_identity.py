@@ -1,9 +1,10 @@
 """Unit tests for ProjectIdentity class."""
 
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
-import shutil
+
 from mcp_server.project_identity import ProjectIdentity
 
 
@@ -47,6 +48,7 @@ class TestProjectIdentity(unittest.TestCase):
         """Test that paths are resolved to absolute."""
         # Use relative path
         import os
+
         orig_dir = os.getcwd()
         try:
             os.chdir(self.test_dir)
@@ -93,7 +95,7 @@ class TestProjectIdentity(unittest.TestCase):
 
         # Should be 16 hex characters
         self.assertEqual(len(hash_value), 16)
-        self.assertTrue(all(c in '0123456789abcdef' for c in hash_value))
+        self.assertTrue(all(c in "0123456789abcdef" for c in hash_value))
 
     def test_cache_directory_name(self):
         """Test cache directory name generation."""
@@ -230,5 +232,5 @@ class TestProjectIdentity(unittest.TestCase):
         self.assertEqual(restored.get_cache_directory_name(), original.get_cache_directory_name())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

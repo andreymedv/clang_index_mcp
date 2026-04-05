@@ -5,13 +5,6 @@ Pytest configuration and shared fixtures for Clang Index MCP test suite.
 This module provides pytest fixtures that can be used across all test modules.
 """
 
-import os
-import shutil
-import tempfile
-from pathlib import Path
-from typing import Dict, Any
-import pytest
-
 # ============================================================================
 # Multiprocessing Configuration (FIX FOR ISSUE #002)
 # ============================================================================
@@ -20,31 +13,40 @@ import pytest
 # tests. Python 3.12+ warns about fork() in multi-threaded processes.
 # Prevents deadlocks with ProcessPoolExecutor (Python 3.12+ fork() warning)
 import multiprocessing
-if multiprocessing.get_start_method(allow_none=True) != 'spawn':
-    multiprocessing.set_start_method('spawn', force=True)
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Any, Dict
+
+import pytest
+
+if multiprocessing.get_start_method(allow_none=True) != "spawn":
+    multiprocessing.set_start_method("spawn", force=True)
 
 # Add the mcp_server directory to the path
 import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.cpp_analyzer import CppAnalyzer
 from mcp_server.compile_commands_manager import CompileCommandsManager
+from mcp_server.cpp_analyzer import CppAnalyzer
 
 # Import test helpers
 from tests.utils.test_helpers import (
-    temp_project,
+    cleanup_temp_analyzer,
+    setup_test_analyzer,
     temp_compile_commands,
     temp_config_file,
-    setup_test_analyzer,
-    cleanup_temp_analyzer
+    temp_project,
 )
-
 
 # ============================================================================
 # Session-scoped Fixtures (Created once per test session)
 # ============================================================================
+
 
 @pytest.fixture(scope="session")
 def session_temp_dir():
@@ -64,6 +66,7 @@ def session_temp_dir():
 # ============================================================================
 # Function-scoped Fixtures (Created for each test function)
 # ============================================================================
+
 
 @pytest.fixture(autouse=True)
 def cleanup_cache_dirs(request):
@@ -156,6 +159,7 @@ def cache_dir(temp_dir):
 # Analyzer Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def analyzer(temp_project_dir):
     """
@@ -177,7 +181,7 @@ def analyzer(temp_project_dir):
     analyzer_instance = CppAnalyzer(str(temp_project_dir))
     yield analyzer_instance
     # Close analyzer and clean up cache
-    if hasattr(analyzer_instance, 'cache_manager'):
+    if hasattr(analyzer_instance, "cache_manager"):
         analyzer_instance.cache_manager.close()
     # Clean up cache directory
     project_root = Path(__file__).parent.parent
@@ -229,13 +233,16 @@ void globalFunction();
 """)
 
     # Create compile_commands.json
-    temp_compile_commands(temp_project_dir, [
-        {
-            "file": "src/main.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17", "-I", "include"]
-        }
-    ])
+    temp_compile_commands(
+        temp_project_dir,
+        [
+            {
+                "file": "src/main.cpp",
+                "directory": str(temp_project_dir),
+                "arguments": ["-std=c++17", "-I", "include"],
+            }
+        ],
+    )
 
     # Create and index analyzer
     analyzer_instance = CppAnalyzer(str(temp_project_dir))
@@ -243,7 +250,7 @@ void globalFunction();
 
     yield analyzer_instance
     # Close analyzer and clean up cache
-    if hasattr(analyzer_instance, 'cache_manager'):
+    if hasattr(analyzer_instance, "cache_manager"):
         analyzer_instance.cache_manager.close()
     # Clean up cache directory
     project_root = Path(__file__).parent.parent
@@ -258,6 +265,7 @@ void globalFunction();
 # ============================================================================
 # Compile Commands Manager Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def compile_commands_manager(temp_project_dir):
@@ -295,14 +303,14 @@ def compile_commands_file(temp_project_dir):
             "file": str(temp_project_dir / "src" / "main.cpp"),
             "directory": str(temp_project_dir),
             "arguments": ["-std=c++17", "-I", "include"],
-            "command": "clang++ -std=c++17 -I include src/main.cpp"
+            "command": "clang++ -std=c++17 -I include src/main.cpp",
         },
         {
             "file": str(temp_project_dir / "src" / "utils.cpp"),
             "directory": str(temp_project_dir),
             "arguments": ["-std=c++17", "-I", "include"],
-            "command": "clang++ -std=c++17 -I include src/utils.cpp"
-        }
+            "command": "clang++ -std=c++17 -I include src/utils.cpp",
+        },
     ]
 
     compile_commands_path = temp_compile_commands(temp_project_dir, compile_commands)
@@ -312,6 +320,7 @@ def compile_commands_file(temp_project_dir):
 # ============================================================================
 # Configuration Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def config_file(temp_project_dir):
@@ -330,7 +339,7 @@ def config_file(temp_project_dir):
         "max_file_size_mb": 10,
         "excluded_patterns": ["*/build/*", "*/test/*"],
         "include_dependencies": False,
-        "cache_enabled": True
+        "cache_enabled": True,
     }
 
     config_path = temp_config_file(temp_project_dir, config)
@@ -340,6 +349,7 @@ def config_file(temp_project_dir):
 # ============================================================================
 # Sample C++ Code Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def simple_cpp_class():
@@ -432,39 +442,24 @@ T max(const T& a, const T& b) {
 # Pytest Hooks and Configuration
 # ============================================================================
 
+
 def pytest_configure(config):
     """
     Pytest configuration hook.
 
     Registers custom markers.
     """
-    config.addinivalue_line(
-        "markers", "base_functionality: Tests for core MCP server features"
-    )
-    config.addinivalue_line(
-        "markers", "error_handling: Tests for error handling and recovery"
-    )
+    config.addinivalue_line("markers", "base_functionality: Tests for core MCP server features")
+    config.addinivalue_line("markers", "error_handling: Tests for error handling and recovery")
     config.addinivalue_line(
         "markers", "security: Security-related tests (path traversal, injection, etc.)"
     )
-    config.addinivalue_line(
-        "markers", "robustness: Data integrity and atomic operations tests"
-    )
-    config.addinivalue_line(
-        "markers", "edge_case: Boundary conditions and edge case tests"
-    )
-    config.addinivalue_line(
-        "markers", "platform: Platform-specific tests (Windows, Unix, macOS)"
-    )
-    config.addinivalue_line(
-        "markers", "slow: Tests that take significant time to run"
-    )
-    config.addinivalue_line(
-        "markers", "critical: P0 critical tests that must pass"
-    )
-    config.addinivalue_line(
-        "markers", "workflow: Cross-tool workflow integration tests"
-    )
+    config.addinivalue_line("markers", "robustness: Data integrity and atomic operations tests")
+    config.addinivalue_line("markers", "edge_case: Boundary conditions and edge case tests")
+    config.addinivalue_line("markers", "platform: Platform-specific tests (Windows, Unix, macOS)")
+    config.addinivalue_line("markers", "slow: Tests that take significant time to run")
+    config.addinivalue_line("markers", "critical: P0 critical tests that must pass")
+    config.addinivalue_line("markers", "workflow: Cross-tool workflow integration tests")
 
 
 def pytest_collection_modifyitems(config, items):

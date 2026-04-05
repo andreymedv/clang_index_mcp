@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Debug cursor location vs extent"""
 
+import sys
 import tempfile
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from clang.cindex import Index, CursorKind
+from clang.cindex import CursorKind, Index
 
 # Create test files
 with tempfile.TemporaryDirectory() as tmpdir:

@@ -12,9 +12,9 @@ Helper functions use two strategies:
 """
 
 import re
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 
@@ -93,9 +93,7 @@ class TestVirtualMethodExtraction:
         results = virtual_analyzer.search_functions("process")
 
         # Find IHandler::process (pure virtual)
-        ihandler_process = [
-            r for r in results if r.get("parent_class") == "IHandler"
-        ]
+        ihandler_process = [r for r in results if r.get("parent_class") == "IHandler"]
         assert len(ihandler_process) >= 1, "Should find IHandler::process"
 
         method = ihandler_process[0]
@@ -183,8 +181,7 @@ class TestGetClassInfoVirtualMethods:
 
         # Find process method by qualified_name suffix
         process_methods = [
-            m for m in methods
-            if m.get("qualified_name", "").split("::")[-1] == "process"
+            m for m in methods if m.get("qualified_name", "").split("::")[-1] == "process"
         ]
         assert len(process_methods) >= 1, "Should have process method"
 

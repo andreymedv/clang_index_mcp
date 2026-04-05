@@ -11,6 +11,7 @@ Tests the complete integration of template alias tracking through:
 import os
 import sys
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
@@ -20,7 +21,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # ============================================================================
 # IT-T1: get_type_alias_info Template Alias Integration
@@ -33,8 +33,7 @@ class TestGetTypeAliasInfoTemplateIntegration:
     def test_get_type_alias_info_returns_template_flag(self, temp_project_dir):
         """IT-T1.1: get_type_alias_info returns is_template_alias flag for template aliases."""
         # Create class with both simple and template aliases
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 #include <memory>
 
 class Widget {};
@@ -45,8 +44,7 @@ using WidgetAlias = Widget;
 // Template alias
 template<typename T>
 using Ptr = std::shared_ptr<T>;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -69,9 +67,7 @@ using Ptr = std::shared_ptr<T>;
         assert len(result["aliases"]) >= 1
 
         # Find WidgetAlias in results
-        widget_alias = next(
-            (a for a in result["aliases"] if a["name"] == "WidgetAlias"), None
-        )
+        widget_alias = next((a for a in result["aliases"] if a["name"] == "WidgetAlias"), None)
         assert widget_alias is not None
         # Simple alias should NOT have is_template_alias flag (or it should be False)
         assert widget_alias.get("is_template_alias", False) is False
@@ -79,8 +75,7 @@ using Ptr = std::shared_ptr<T>;
     def test_get_type_alias_info_returns_template_params(self, temp_project_dir):
         """IT-T1.2: get_type_alias_info returns template_params for template aliases."""
         # Create class used in template alias
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 #include <memory>
 
 class Data {};
@@ -91,8 +86,7 @@ using DataPtr = std::shared_ptr<T>;
 
 // Instantiation (creates relationship to Data)
 using SpecificPtr = DataPtr<Data>;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -134,8 +128,7 @@ using SpecificPtr = DataPtr<Data>;
 
     def test_template_vs_simple_alias_distinction(self, temp_project_dir):
         """IT-T1.3: MCP tools clearly distinguish template from simple aliases."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 #include <memory>
 #include <vector>
 
@@ -151,8 +144,7 @@ using ItemPtr = std::shared_ptr<T>;
 // Another template alias
 template<typename T>
 using ItemVec = std::vector<T>;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -170,13 +162,11 @@ using ItemVec = std::vector<T>;
 
         # Query all aliases
         analyzer.cache_manager.backend._ensure_connected()
-        cursor = analyzer.cache_manager.backend.conn.execute(
-            """
+        cursor = analyzer.cache_manager.backend.conn.execute("""
             SELECT alias_name, is_template_alias, template_params
             FROM type_aliases
             ORDER BY alias_name
-            """
-        )
+            """)
         rows = cursor.fetchall()
 
         # Should have all 3 aliases
@@ -210,16 +200,14 @@ class TestNamespaceScopedTemplateAliasIntegration:
 
     def test_namespace_scoped_template_alias_query(self, temp_project_dir):
         """IT-T2.1: Query namespace-scoped template alias through MCP tools."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 #include <memory>
 
 namespace utils {
     template<typename T>
     using UniquePtr = std::unique_ptr<T>;
 }
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -270,8 +258,7 @@ class TestMultipleTemplateParametersIntegration:
 
     def test_multiple_type_parameters(self, temp_project_dir):
         """IT-T3.1: Template alias with multiple type parameters."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 #include <utility>
 #include <map>
 
@@ -282,8 +269,7 @@ using Pair = std::pair<T, U>;
 // Two type parameters (map)
 template<typename K, typename V>
 using Map = std::map<K, V>;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -322,14 +308,12 @@ using Map = std::map<K, V>;
 
     def test_mixed_type_and_non_type_parameters(self, temp_project_dir):
         """IT-T3.2: Template alias with mixed type and non-type parameters."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 #include <array>
 
 template<typename T, int N>
 using Array = std::array<T, N>;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,

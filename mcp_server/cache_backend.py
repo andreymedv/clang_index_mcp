@@ -1,8 +1,9 @@
 """Cache backend protocol/interface for C++ analyzer."""
 
 import sqlite3
-from typing import Protocol, Dict, List, Optional, Any, runtime_checkable
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+
 from .symbol_info import SymbolInfo
 
 

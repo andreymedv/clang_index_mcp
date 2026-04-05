@@ -1,11 +1,12 @@
 """Unit tests for ChangeScanner and ChangeSet."""
 
 import os
-import unittest
-import tempfile
 import shutil
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
+
 from mcp_server.change_scanner import ChangeScanner, ChangeSet, ChangeType
 
 
@@ -74,7 +75,7 @@ class TestChangeScanner(unittest.TestCase):
 
         # Mock config
         self.analyzer.config.get_compile_commands_config.return_value = {
-            'compile_commands_path': 'compile_commands.json'
+            "compile_commands_path": "compile_commands.json"
         }
 
         # Create scanner
@@ -132,14 +133,14 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.file_scanner.find_cpp_files.return_value = [modified_file]
 
         # Mock file hash to indicate change
-        self.analyzer._get_file_hash.return_value = 'new_hash'
+        self.analyzer._get_file_hash.return_value = "new_hash"
 
         # Mock empty headers
         self.analyzer.header_tracker.get_processed_headers.return_value = {}
 
         # Create backend mock with old hash
         backend_mock = Mock()
-        backend_mock.get_file_metadata = Mock(return_value={'file_hash': 'old_hash'})
+        backend_mock.get_file_metadata = Mock(return_value={"file_hash": "old_hash"})
         backend_mock.conn = Mock()
         backend_mock.conn.execute.return_value.fetchall.return_value = []
         self.analyzer.cache_manager.backend = backend_mock
@@ -161,12 +162,10 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.file_scanner.find_cpp_files.return_value = []
 
         # Mock header tracker with old hash
-        self.analyzer.header_tracker.get_processed_headers.return_value = {
-            header_file: 'old_hash'
-        }
+        self.analyzer.header_tracker.get_processed_headers.return_value = {header_file: "old_hash"}
 
         # Mock file hash to indicate change
-        self.analyzer._get_file_hash.return_value = 'new_hash'
+        self.analyzer._get_file_hash.return_value = "new_hash"
 
         # Mock empty cached files
         backend_mock = Mock()
@@ -190,9 +189,7 @@ class TestChangeScanner(unittest.TestCase):
         # Mock cached files to include deleted file
         backend_mock = Mock()
         backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = [
-            (deleted_file,)
-        ]
+        backend_mock.conn.execute.return_value.fetchall.return_value = [(deleted_file,)]
         self.analyzer.cache_manager.backend = backend_mock
 
         # Mock empty headers
@@ -207,7 +204,7 @@ class TestChangeScanner(unittest.TestCase):
     def test_detect_compile_commands_changed(self):
         """Test detection of compile_commands.json change."""
         cc_file = self.test_dir / "compile_commands.json"
-        cc_file.write_text('[]')
+        cc_file.write_text("[]")
 
         # Mock file scanner
         self.analyzer.file_scanner.find_cpp_files.return_value = []
@@ -233,14 +230,14 @@ class TestChangeScanner(unittest.TestCase):
 
         # Mock cache with matching hash
         self.analyzer.cache_manager.backend.get_file_metadata.return_value = {
-            'file_hash': 'same_hash'
+            "file_hash": "same_hash"
         }
-        self.analyzer._get_file_hash.return_value = 'same_hash'
+        self.analyzer._get_file_hash.return_value = "same_hash"
 
         change_type = self.scanner._check_file_change(file_path)
 
         self.assertEqual(change_type, ChangeType.UNCHANGED)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

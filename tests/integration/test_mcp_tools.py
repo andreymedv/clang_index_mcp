@@ -6,13 +6,15 @@ Tests for MCP server tools using the CppAnalyzer directly.
 Requirements: P1 - High Priority, P2 - Nice to Have
 """
 
-import pytest
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -96,7 +98,9 @@ class Derived : public Base {};
         results = analyzer.search_classes("Derived", include_base_classes=False)
         assert len(results) >= 1
         derived = results[0]
-        assert "base_classes" not in derived, "base_classes should be absent when include_base_classes=False"
+        assert (
+            "base_classes" not in derived
+        ), "base_classes should be absent when include_base_classes=False"
 
     def test_search_classes_include_base_classes_no_inheritance(self, temp_project_dir):
         """Test search_classes with include_base_classes=False on class with no bases."""
@@ -356,16 +360,16 @@ void main() {
         assert callees_result is not None
         # find_callees now returns dict with 'callees' key (matching find_incoming_calls pattern)
         assert isinstance(callees_result, dict)
-        assert 'callees' in callees_result
-        assert isinstance(callees_result['callees'], list)
+        assert "callees" in callees_result
+        assert isinstance(callees_result["callees"], list)
 
         # Get callers (functions that call process)
         callers_result = analyzer.find_incoming_calls("process")
         assert callers_result is not None
         # Phase 3: find_incoming_calls now returns dict with 'callers' key
         assert isinstance(callers_result, dict)
-        assert 'callers' in callers_result
-        assert isinstance(callers_result['callers'], list)
+        assert "callers" in callers_result
+        assert isinstance(callers_result["callers"], list)
 
     def test_regex_validation_in_search(self, temp_project_dir):
         """Test that ReDoS patterns are rejected in search"""
@@ -528,6 +532,7 @@ class TestMCPServerToolsAdditional:
 
         # Test with file instead of directory
         import tempfile
+
         with tempfile.NamedTemporaryFile() as tmp:
             # This might succeed (treats parent directory as project)
             # or fail - either is acceptable error handling
@@ -542,8 +547,8 @@ class TestMCPServerToolsAdditional:
     def test_error_when_analyzer_not_initialized(self):
         """Test error handling when operations are called without initialization"""
         # Create analyzer but don't index
-        import tempfile
         import shutil
+        import tempfile
         from pathlib import Path
 
         temp_dir = tempfile.mkdtemp()
@@ -587,10 +592,10 @@ class TestMCPServerToolsAdditional:
 
         # Test various dangerous patterns
         dangerous_patterns = [
-            "(a+)+b",           # Nested quantifiers
-            "(a*)*c",           # Nested star quantifiers
-            "(a|a)*b",          # Alternation with quantifiers
-            "(x+x+)+y",         # Multiple nested quantifiers
+            "(a+)+b",  # Nested quantifiers
+            "(a*)*c",  # Nested star quantifiers
+            "(a|a)*b",  # Alternation with quantifiers
+            "(x+x+)+y",  # Multiple nested quantifiers
         ]
 
         for pattern in dangerous_patterns:

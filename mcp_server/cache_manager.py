@@ -1,18 +1,19 @@
 """Cache management for C++ analyzer."""
 
-import json
 import hashlib
-import time
-import sys
-import traceback
+import json
 import sqlite3
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+import sys
+import time
+import traceback
 from collections import defaultdict
-from .symbol_info import SymbolInfo
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 from .cache_backend import CacheBackend
 from .error_tracking import ErrorTracker, RecoveryManager
 from .project_identity import ProjectIdentity
+from .symbol_info import SymbolInfo
 
 # Handle both package and script imports
 try:

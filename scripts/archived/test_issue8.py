@@ -6,8 +6,8 @@ This script tests whether headers and their symbols are properly indexed
 and preserved after refresh operations.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add parent directory to path to import mcp_server

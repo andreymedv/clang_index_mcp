@@ -56,9 +56,9 @@ def run(project_info, server_manager):
             "symptoms": [
                 "Boost headers fail to parse",
                 "Missing symbols in boost namespace",
-                "Parse errors in boost/mpl/ and boost/fusion/"
-            ]
-        }
+                "Parse errors in boost/mpl/ and boost/fusion/",
+            ],
+        },
     }
 
     try:
@@ -70,9 +70,7 @@ def run(project_info, server_manager):
         results["steps"].append("Setting project directory (tier2 - large project)...")
         print(f"  Setting project directory: {project_info['path']}")
         response = server_manager.call_tool(
-            endpoint,
-            "set_project_directory",
-            {"project_path": project_info["path"]}
+            endpoint, "set_project_directory", {"project_path": project_info["path"]}
         )
 
         # Check for errors in JSON-RPC response
@@ -97,11 +95,7 @@ def run(project_info, server_manager):
         last_status_update = 0
 
         while time.time() - wait_start < max_wait:
-            status_response = server_manager.call_tool(
-                endpoint,
-                "get_indexing_status",
-                {}
-            )
+            status_response = server_manager.call_tool(endpoint, "get_indexing_status", {})
 
             # Check for errors
             if "error" in status_response:
@@ -118,6 +112,7 @@ def run(project_info, server_manager):
                     # Parse JSON status to check is_fully_indexed
                     try:
                         import json
+
                         status_json = json.loads(status_text)
                         is_fully_indexed = status_json.get("is_fully_indexed", False)
                         state = status_json.get("state", "unknown")
@@ -129,9 +124,13 @@ def run(project_info, server_manager):
                             if progress:
                                 files_done = progress.get("files_processed", 0)
                                 files_total = progress.get("total_files", 0)
-                                print(f"  [{elapsed}s] Progress: {files_done}/{files_total} files indexed...")
+                                print(
+                                    f"  [{elapsed}s] Progress: {files_done}/{files_total} files indexed..."
+                                )
                             else:
-                                print(f"  [{elapsed}s] State: {state}, fully_indexed: {is_fully_indexed}")
+                                print(
+                                    f"  [{elapsed}s] State: {state}, fully_indexed: {is_fully_indexed}"
+                                )
                             last_status_update = time.time()
 
                         # Check if indexing is complete (must be is_fully_indexed=true)
@@ -145,21 +144,26 @@ def run(project_info, server_manager):
                         # Fallback to old text-based check if JSON parsing fails
                         if time.time() - last_status_update > 30:
                             elapsed = int(time.time() - wait_start)
-                            print(f"  [{elapsed}s] Status: {status_text[:100]}... (JSON parse error: {e})")
+                            print(
+                                f"  [{elapsed}s] Status: {status_text[:100]}... (JSON parse error: {e})"
+                            )
                             last_status_update = time.time()
 
             time.sleep(2)  # Check every 2 seconds
 
         if not indexing_complete:
             elapsed_min = (time.time() - wait_start) / 60
-            results["error"] = f"Indexing did not complete within {max_wait/60:.0f} minutes (waited {elapsed_min:.1f}min). Last status: {results['details'].get('last_status', 'unknown')}"
+            results["error"] = (
+                f"Indexing did not complete within {max_wait/60:.0f} minutes (waited {elapsed_min:.1f}min). Last status: {results['details'].get('last_status', 'unknown')}"
+            )
             return results
 
         # Extract file count from status
         status_text = results["details"].get("indexing_status", "")
         # Try to parse file count (format: "X files indexed")
         import re
-        file_match = re.search(r'(\d+)\s+files?\s+indexed', status_text, re.IGNORECASE)
+
+        file_match = re.search(r"(\d+)\s+files?\s+indexed", status_text, re.IGNORECASE)
         if file_match:
             results["metrics"]["files_indexed"] = int(file_match.group(1))
             results["metrics"]["total_files"] = project_info.get("file_count", "unknown")
@@ -168,9 +172,7 @@ def run(project_info, server_manager):
         results["steps"].append("Searching for boost::mpl symbols...")
         print("  Searching for boost::mpl::vector...")
         mpl_response = server_manager.call_tool(
-            endpoint,
-            "search_symbols",
-            {"pattern": "boost::mpl::vector", "project_only": False}
+            endpoint, "search_symbols", {"pattern": "boost::mpl::vector", "project_only": False}
         )
 
         if "error" in mpl_response:
@@ -190,9 +192,7 @@ def run(project_info, server_manager):
         results["steps"].append("Searching for boost::fusion symbols...")
         print("  Searching for boost::fusion::vector...")
         fusion_response = server_manager.call_tool(
-            endpoint,
-            "search_symbols",
-            {"pattern": "boost::fusion::vector", "project_only": False}
+            endpoint, "search_symbols", {"pattern": "boost::fusion::vector", "project_only": False}
         )
 
         if "error" in fusion_response:
@@ -212,14 +212,18 @@ def run(project_info, server_manager):
         results["steps"].append("Checking for parse errors...")
         # Note: This would require a dedicated MCP tool to expose parse error logs
         # For now, we check if symbols were found as a proxy
-        results["details"]["parse_error_check"] = "Manual check required - no automated parse error log access"
+        results["details"][
+            "parse_error_check"
+        ] = "Manual check required - no automated parse error log access"
 
         # Calculate total duration
         results["metrics"]["duration_s"] = round(time.time() - start_time, 1)
         results["metrics"]["duration_min"] = round(results["metrics"]["duration_s"] / 60, 1)
 
         # Determine success/failure based on Issue #13 criteria
-        boost_found = results["metrics"].get("boost_mpl_found", 0) + results["metrics"].get("boost_fusion_found", 0)
+        boost_found = results["metrics"].get("boost_mpl_found", 0) + results["metrics"].get(
+            "boost_fusion_found", 0
+        )
         if boost_found > 0:
             results["details"]["issue_13_status"] = "FIXED - Boost symbols found successfully"
             print(f"  ✓ Issue #13 appears FIXED: Found {boost_found} boost symbols")

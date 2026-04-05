@@ -9,10 +9,10 @@ Usage:
     python3 scripts/diagnose_clang.py --fix
 """
 
-import sys
+import argparse
 import os
 import subprocess
-import argparse
+import sys
 from pathlib import Path
 
 
@@ -273,10 +273,10 @@ def run_comprehensive_test():
     print_section("Running Comprehensive Clang Test")
 
     try:
-        from clang.cindex import CursorKind, Index
-
         # Create temp test file
         import tempfile
+
+        from clang.cindex import CursorKind, Index
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
             f.write("class TestClass { public: void method(); };")

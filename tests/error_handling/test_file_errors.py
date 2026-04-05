@@ -7,14 +7,16 @@ Requirements: REQ-6.x (Error Handling)
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
 import os
 import stat
 
 # Import test infrastructure
 import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -25,7 +27,9 @@ from mcp_server.cpp_analyzer import CppAnalyzer
 class TestFilePermissionErrors:
     """Test file permission error handling - REQ-6.1"""
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Unix permissions not applicable on Windows")
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Unix permissions not applicable on Windows"
+    )
     def test_file_permission_errors(self, temp_project_dir):
         """Test handling of files with no read permission - Task 1.2.1"""
         # Create a file with no read permissions
@@ -94,13 +98,13 @@ public:
             {
                 "directory": str(temp_project_dir),
                 "command": f"g++ -c {non_existent}",
-                "file": str(non_existent)
+                "file": str(non_existent),
             },
             {
                 "directory": str(temp_project_dir),
                 "command": f"g++ -c {existing}",
-                "file": str(existing)
-            }
+                "file": str(existing),
+            },
         ]
 
         cc_file = temp_project_dir / "compile_commands.json"

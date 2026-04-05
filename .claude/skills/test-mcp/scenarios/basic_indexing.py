@@ -37,11 +37,7 @@ def run(project_info, server_manager):
         dict: Test results with status, metrics, issues
     """
     start_time = time.time()
-    results = {
-        "metrics": {},
-        "details": {},
-        "steps": []
-    }
+    results = {"metrics": {}, "details": {}, "steps": []}
 
     try:
         endpoint = server_manager.server_process and f"http://localhost:{server_manager.port}"
@@ -51,9 +47,7 @@ def run(project_info, server_manager):
         # Step 1: Set project directory
         results["steps"].append("Setting project directory...")
         response = server_manager.call_tool(
-            endpoint,
-            "set_project_directory",
-            {"project_path": project_info["path"]}
+            endpoint, "set_project_directory", {"project_path": project_info["path"]}
         )
 
         # Check for errors in JSON-RPC response
@@ -76,11 +70,7 @@ def run(project_info, server_manager):
         indexing_complete = False
 
         while time.time() - wait_start < max_wait:
-            status_response = server_manager.call_tool(
-                endpoint,
-                "get_indexing_status",
-                {}
-            )
+            status_response = server_manager.call_tool(endpoint, "get_indexing_status", {})
 
             # Check for errors
             if "error" in status_response:
@@ -97,6 +87,7 @@ def run(project_info, server_manager):
                     # Parse JSON status to check is_fully_indexed
                     try:
                         import json
+
                         status_json = json.loads(status_text)
                         is_fully_indexed = status_json.get("is_fully_indexed", False)
 
@@ -107,7 +98,7 @@ def run(project_info, server_manager):
                             break
                     except (json.JSONDecodeError, Exception):
                         # Fallback: old text-based check if JSON parsing fails
-                        if "is_fully_indexed\": true" in status_text:
+                        if 'is_fully_indexed": true' in status_text:
                             indexing_complete = True
                             results["details"]["indexing_status"] = status_text
                             break
@@ -115,7 +106,9 @@ def run(project_info, server_manager):
             time.sleep(1)
 
         if not indexing_complete:
-            results["error"] = f"Indexing did not complete within {max_wait}s. Last status: {results['details'].get('last_status', 'unknown')}"
+            results["error"] = (
+                f"Indexing did not complete within {max_wait}s. Last status: {results['details'].get('last_status', 'unknown')}"
+            )
             return results
 
         # Step 3: Verify file count
@@ -128,9 +121,7 @@ def run(project_info, server_manager):
         # Step 4: Test search_classes
         results["steps"].append("Testing search_classes...")
         classes_response = server_manager.call_tool(
-            endpoint,
-            "search_classes",
-            {"pattern": ""}  # Empty pattern to get all classes
+            endpoint, "search_classes", {"pattern": ""}  # Empty pattern to get all classes
         )
 
         # Check for errors
@@ -143,16 +134,16 @@ def run(project_info, server_manager):
                 classes_text = content[0].get("text", "")
                 results["details"]["classes_response"] = classes_text[:500]  # Store first 500 chars
                 # Count classes in response (simplified - count lines starting with "class")
-                class_count = classes_text.count("\nclass ") + (1 if classes_text.startswith("class ") else 0)
+                class_count = classes_text.count("\nclass ") + (
+                    1 if classes_text.startswith("class ") else 0
+                )
                 results["metrics"]["classes_found"] = class_count
                 results["metrics"]["expected_classes"] = 5
 
         # Step 5: Test search_functions
         results["steps"].append("Testing search_functions...")
         functions_response = server_manager.call_tool(
-            endpoint,
-            "search_functions",
-            {"pattern": ""}  # Empty pattern to get all functions
+            endpoint, "search_functions", {"pattern": ""}  # Empty pattern to get all functions
         )
 
         # Check for errors
@@ -163,7 +154,9 @@ def run(project_info, server_manager):
             content = functions_response["result"].get("content", [])
             if content:
                 functions_text = content[0].get("text", "")
-                results["details"]["functions_response"] = functions_text[:500]  # Store first 500 chars
+                results["details"]["functions_response"] = functions_text[
+                    :500
+                ]  # Store first 500 chars
                 # Count functions (simplified)
                 function_count = functions_text.count("\n") + 1 if functions_text else 0
                 results["metrics"]["functions_found"] = function_count

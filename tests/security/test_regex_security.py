@@ -7,18 +7,20 @@ Requirements: REQ-10.2 (Regex Security)
 Priority: P0 - CRITICAL
 """
 
-import pytest
-import time
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+import time
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.regex_validator import RegexValidator, RegexValidationError
+from mcp_server.regex_validator import RegexValidationError, RegexValidator
 
 
 @pytest.mark.security

@@ -21,7 +21,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 # ---------------------------------------------------------------
 # Passthrough: tools delegated to internal handlers without translation

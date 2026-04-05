@@ -6,13 +6,15 @@ symbols defined in files matching the specified name.
 Works with any file type (.h, .cpp, .cc, etc.).
 """
 
-import pytest
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -80,10 +82,12 @@ public:
 
         # Search for classes in MyClass.h only
         myclass_results = analyzer.search_classes(".*", file_name="MyClass.h")
-        assert len(myclass_results) == 2, f"Should find exactly 2 classes in MyClass.h, found {len(myclass_results)}"
+        assert (
+            len(myclass_results) == 2
+        ), f"Should find exactly 2 classes in MyClass.h, found {len(myclass_results)}"
 
         # Verify only classes from MyClass.h are returned
-        class_names = [r['qualified_name'].split('::')[-1] for r in myclass_results]
+        class_names = [r["qualified_name"].split("::")[-1] for r in myclass_results]
         assert "MyClass" in class_names, "MyClass should be found"
         assert "AnotherClass" in class_names, "AnotherClass should be found"
         assert "OtherClass" not in class_names, "OtherClass should NOT be found"
@@ -92,7 +96,9 @@ public:
         # Verify file paths
         for result in myclass_results:
             _res_loc = result.get("definition") or result.get("declaration") or {}
-            assert _res_loc['file'].endswith("MyClass.h"), f"Result file should be MyClass.h, got {_res_loc['file']}"
+            assert _res_loc["file"].endswith(
+                "MyClass.h"
+            ), f"Result file should be MyClass.h, got {_res_loc['file']}"
 
     def test_search_classes_with_partial_path(self, temp_project_dir):
         """Test file_name filter with partial paths"""
@@ -120,12 +126,12 @@ public:
         # Filter by full filename only
         helper_results = analyzer.search_classes(".*", file_name="Helper.h")
         assert len(helper_results) == 1
-        assert helper_results[0]['qualified_name'].split('::')[-1] == "HelperClass"
+        assert helper_results[0]["qualified_name"].split("::")[-1] == "HelperClass"
 
         # Filter by partial path
         utils_results = analyzer.search_classes(".*", file_name="utils/Helper.h")
         assert len(utils_results) == 1
-        assert utils_results[0]['qualified_name'].split('::')[-1] == "HelperClass"
+        assert utils_results[0]["qualified_name"].split("::")[-1] == "HelperClass"
 
     def test_search_functions_with_file_name_filter(self, temp_project_dir):
         """Test filtering functions by header file"""
@@ -168,15 +174,16 @@ int divide(int a, int b) { return a / b; }
 
         # Search for all functions
         all_results = analyzer.search_functions(".*")
-        all_names = [r['qualified_name'].split('::')[-1] for r in all_results]
+        all_names = [r["qualified_name"].split("::")[-1] for r in all_results]
 
         # Search for functions in functions.h only
         functions_h_results = analyzer.search_functions(".*", file_name="functions.h")
-        functions_h_names = [r['qualified_name'].split('::')[-1] for r in functions_h_results]
+        functions_h_names = [r["qualified_name"].split("::")[-1] for r in functions_h_results]
 
         # Verify only functions from functions.h are returned
-        assert "add" in functions_h_names or "subtract" in functions_h_names, \
-            "Should find functions declared in functions.h"
+        assert (
+            "add" in functions_h_names or "subtract" in functions_h_names
+        ), "Should find functions declared in functions.h"
 
         # Functions defined only in .cpp should not match when filtering by .h
         # Note: This depends on whether declarations or definitions are indexed
@@ -185,8 +192,9 @@ int divide(int a, int b) { return a / b; }
             # Check that at least one location is in functions.h
             _decl_file = (result.get("declaration") or {}).get("file", "")
             _def_file = (result.get("definition") or {}).get("file", "")
-            assert _decl_file.endswith("functions.h") or _def_file.endswith("functions.h"), \
-                f"Result should have a location in functions.h, got decl={_decl_file}, def={_def_file}"
+            assert _decl_file.endswith("functions.h") or _def_file.endswith(
+                "functions.h"
+            ), f"Result should have a location in functions.h, got decl={_decl_file}, def={_def_file}"
 
     def test_search_classes_no_filter_returns_all(self, temp_project_dir):
         """Test that omitting file_name returns all classes"""
@@ -201,7 +209,7 @@ int divide(int a, int b) { return a / b; }
 
         # Search without filter
         all_results = analyzer.search_classes(".*")
-        class_names = [r['qualified_name'].split('::')[-1] for r in all_results]
+        class_names = [r["qualified_name"].split("::")[-1] for r in all_results]
 
         # Should find all classes
         assert "A" in class_names
@@ -224,6 +232,7 @@ int divide(int a, int b) { return a / b; }
         # On case-sensitive filesystems, wrong case should not match
         # (This test may behave differently on Windows/macOS)
         import platform
+
         if platform.system() == "Linux":
             wrong_results = analyzer.search_classes(".*", file_name="myclass.h")
             assert len(wrong_results) == 0, "Case-sensitive match should fail on Linux"
@@ -261,17 +270,19 @@ public:
         # Search for commonMethod in Multi.h only
         results = analyzer.search_functions("commonMethod", file_name="Multi.h")
         assert len(results) == 2, "Should find commonMethod in both ClassA and ClassB"
-        class_names = [r['parent_class'] for r in results]
+        class_names = [r["parent_class"] for r in results]
         assert "ClassA" in class_names
         assert "ClassB" in class_names
         assert "ClassC" not in class_names
 
         # Search for commonMethod in Multi.h AND ClassA only
-        results = analyzer.search_functions("commonMethod", class_name="ClassA", file_name="Multi.h")
+        results = analyzer.search_functions(
+            "commonMethod", class_name="ClassA", file_name="Multi.h"
+        )
         assert len(results) == 1, "Should find only ClassA::commonMethod"
-        assert results[0]['parent_class'] == "ClassA"
+        assert results[0]["parent_class"] == "ClassA"
         _res_loc = results[0].get("definition") or results[0].get("declaration") or {}
-        assert _res_loc['file'].endswith("Multi.h")
+        assert _res_loc["file"].endswith("Multi.h")
 
     def test_search_functions_with_qualified_class_name(self, temp_project_dir):
         """Test that class_name filter works with qualified names (namespace::class)
@@ -324,15 +335,15 @@ public:
         # Search with simple name should work
         results_my_method = analyzer.search_functions("myMethod", class_name="MyClass")
         assert len(results_my_method) == 1, "Should find myMethod"
-        assert results_my_method[0]['parent_class'] == "MyClass"
+        assert results_my_method[0]["parent_class"] == "MyClass"
 
         # Qualified class name for unique method should also work
         results_my_method_qualified = analyzer.search_functions(
             "myMethod", class_name="OuterNS::InnerNS::MyClass"
         )
         assert len(results_my_method_qualified) == 1, "Qualified class_name should work"
-        assert results_my_method_qualified[0]['parent_class'] == "MyClass"
-        assert "OuterNS::InnerNS::MyClass" in results_my_method_qualified[0]['qualified_name']
+        assert results_my_method_qualified[0]["parent_class"] == "MyClass"
+        assert "OuterNS::InnerNS::MyClass" in results_my_method_qualified[0]["qualified_name"]
 
     def test_file_name_filter_with_cpp_source_files(self, temp_project_dir):
         """Test that header_file parameter works with .cpp source files too"""
@@ -361,21 +372,21 @@ public:
         # Filter by .cpp file
         cpp_results = analyzer.search_classes(".*", file_name="source.cpp")
         assert len(cpp_results) == 1
-        assert cpp_results[0]['qualified_name'].split('::')[-1] == "SourceClass"
+        assert cpp_results[0]["qualified_name"].split("::")[-1] == "SourceClass"
         _cpp_loc = cpp_results[0].get("definition") or cpp_results[0].get("declaration") or {}
-        assert _cpp_loc['file'].endswith("source.cpp")
+        assert _cpp_loc["file"].endswith("source.cpp")
 
         # Filter by .h file
         h_results = analyzer.search_classes(".*", file_name="header.h")
         assert len(h_results) == 1
-        assert h_results[0]['qualified_name'].split('::')[-1] == "HeaderClass"
+        assert h_results[0]["qualified_name"].split("::")[-1] == "HeaderClass"
         _h_loc = h_results[0].get("definition") or h_results[0].get("declaration") or {}
-        assert _h_loc['file'].endswith("header.h")
+        assert _h_loc["file"].endswith("header.h")
 
         # Verify functions work too
         func_results = analyzer.search_functions("standaloneFunction", file_name="source.cpp")
         assert len(func_results) == 1
-        assert func_results[0]['qualified_name'].split('::')[-1] == "standaloneFunction"
+        assert func_results[0]["qualified_name"].split("::")[-1] == "standaloneFunction"
 
     def test_file_name_filter_returns_empty_for_nonexistent_file(self, temp_project_dir):
         """Test that filtering by nonexistent file returns empty results"""
@@ -408,7 +419,7 @@ class TestClassThree {};
         # Search for TestClass* in Test.h only
         results = analyzer.search_classes("TestClass.*", file_name="Test.h")
         assert len(results) == 2
-        names = [r['qualified_name'].split('::')[-1] for r in results]
+        names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "TestClassOne" in names
         assert "TestClassTwo" in names
         assert "TestClassThree" not in names
@@ -416,7 +427,7 @@ class TestClassThree {};
         # Verify OtherClass is excluded by pattern
         results = analyzer.search_classes("Other.*", file_name="Test.h")
         assert len(results) == 1
-        assert results[0]['qualified_name'].split('::')[-1] == "OtherClass"
+        assert results[0]["qualified_name"].split("::")[-1] == "OtherClass"
 
     def test_file_name_filter_with_absolute_path(self, temp_project_dir):
         """Test file_name filter with absolute path"""
@@ -432,7 +443,7 @@ class TestClassThree {};
         # Search with absolute path
         results = analyzer.search_classes(".*", file_name=abs_path)
         assert len(results) == 1
-        assert results[0]['qualified_name'].split('::')[-1] == "AbsClass"
+        assert results[0]["qualified_name"].split("::")[-1] == "AbsClass"
 
     def test_file_name_filter_none_behaves_as_no_filter(self, temp_project_dir):
         """Test that file_name=None behaves same as omitting parameter"""
@@ -451,8 +462,8 @@ class TestClassThree {};
 
         # Should return same results
         assert len(results_no_param) == len(results_none)
-        names_no_param = sorted([r['qualified_name'].split('::')[-1] for r in results_no_param])
-        names_none = sorted([r['qualified_name'].split('::')[-1] for r in results_none])
+        names_no_param = sorted([r["qualified_name"].split("::")[-1] for r in results_no_param])
+        names_none = sorted([r["qualified_name"].split("::")[-1] for r in results_none])
         assert names_no_param == names_none
 
     def test_file_name_filter_with_duplicate_basenames(self, temp_project_dir):
@@ -471,17 +482,17 @@ class TestClassThree {};
         # Search by basename only - should match both
         results = analyzer.search_classes(".*", file_name="Common.h")
         assert len(results) == 2, "Should match both Common.h files"
-        names = sorted([r['qualified_name'].split('::')[-1] for r in results])
+        names = sorted([r["qualified_name"].split("::")[-1] for r in results])
         assert names == ["Module1Class", "Module2Class"]
 
         # Search by partial path - should match only one
         results = analyzer.search_classes(".*", file_name="module1/Common.h")
         assert len(results) == 1
-        assert results[0]['qualified_name'].split('::')[-1] == "Module1Class"
+        assert results[0]["qualified_name"].split("::")[-1] == "Module1Class"
 
         results = analyzer.search_classes(".*", file_name="module2/Common.h")
         assert len(results) == 1
-        assert results[0]['qualified_name'].split('::')[-1] == "Module2Class"
+        assert results[0]["qualified_name"].split("::")[-1] == "Module2Class"
 
     def test_search_functions_standalone_vs_methods(self, temp_project_dir):
         """Test file_name filter with both standalone functions and methods"""
@@ -505,7 +516,7 @@ void otherFunc();
 
         # Search all functions in Mixed.h
         results = analyzer.search_functions(".*", file_name="Mixed.h")
-        names = [r['qualified_name'].split('::')[-1] for r in results]
+        names = [r["qualified_name"].split("::")[-1] for r in results]
 
         # Should find both standalone and method
         assert "standaloneFunc" in names or "classMethod" in names
@@ -514,7 +525,7 @@ void otherFunc();
         # Verify all results are from Mixed.h
         for result in results:
             _res_loc = result.get("definition") or result.get("declaration") or {}
-            assert _res_loc['file'].endswith("Mixed.h")
+            assert _res_loc["file"].endswith("Mixed.h")
 
     def test_header_file_empty_string_behaves_as_no_filter(self, temp_project_dir):
         """Test that empty string for header_file returns all results"""
@@ -545,7 +556,7 @@ void otherFunc();
         # Should only find classes from Project.h
         for result in results:
             _res_loc = result.get("definition") or result.get("declaration") or {}
-            assert _res_loc['file'].endswith("Project.h")
+            assert _res_loc["file"].endswith("Project.h")
 
     def test_multiple_classes_same_file_filtered_correctly(self, temp_project_dir):
         """Test that all classes from filtered file are returned"""
@@ -565,7 +576,7 @@ class Class5 {};
         results = analyzer.search_classes(".*", file_name="Many.h")
         assert len(results) == 5, "Should find all 5 classes"
 
-        names = sorted([r['qualified_name'].split("::")[-1] for r in results])
+        names = sorted([r["qualified_name"].split("::")[-1] for r in results])
         assert names == ["Class1", "Class2", "Class3", "Class4", "Class5"]
 
     def test_empty_pattern_with_file_name_returns_all_symbols_in_file(self, temp_project_dir):
@@ -591,13 +602,15 @@ class OtherClass {};
         results = analyzer.search_classes("", file_name="Target.h")
         assert len(results) == 3, f"Should find all 3 classes in Target.h, found {len(results)}"
 
-        names = sorted([r['qualified_name'].split('::')[-1] for r in results])
+        names = sorted([r["qualified_name"].split("::")[-1] for r in results])
         assert names == ["ClassB", "StructA", "StructC"]
 
         # Verify no classes from Other.h are included
         for result in results:
             _res_loc = result.get("definition") or result.get("declaration") or {}
-            assert _res_loc['file'].endswith("Target.h"), f"Found unexpected file: {_res_loc['file']}"
+            assert _res_loc["file"].endswith(
+                "Target.h"
+            ), f"Found unexpected file: {_res_loc['file']}"
 
     def test_empty_pattern_with_file_name_functions(self, temp_project_dir):
         """Test that empty pattern with file_name filter works for functions too."""
@@ -615,7 +628,7 @@ int funcC(int x) { return x; }
         results = analyzer.search_functions("", file_name="functions.cpp")
         assert len(results) == 3, f"Should find all 3 functions, found {len(results)}"
 
-        names = sorted([r['qualified_name'].split('::')[-1] for r in results])
+        names = sorted([r["qualified_name"].split("::")[-1] for r in results])
         assert names == ["funcA", "funcB", "funcC"]
 
     def test_empty_pattern_search_symbols_all_types(self, temp_project_dir):
@@ -641,13 +654,13 @@ class ClassD {
         assert "functions" in results
 
         # Check classes
-        class_names = sorted([c['qualified_name'].split('::')[-1] for c in results['classes']])
+        class_names = sorted([c["qualified_name"].split("::")[-1] for c in results["classes"]])
         assert "ClassA" in class_names
         assert "StructB" in class_names
         assert "ClassD" in class_names
 
         # Check functions (note: methodE might not be in function index depending on definition-wins)
-        func_names = [f['qualified_name'].split('::')[-1] for f in results['functions']]
+        func_names = [f["qualified_name"].split("::")[-1] for f in results["functions"]]
         assert "functionC" in func_names
 
     def test_empty_pattern_search_symbols_filtered_by_type(self, temp_project_dir):
@@ -666,15 +679,15 @@ void functionC();
         results = analyzer.search_symbols("", project_only=True, symbol_types=["class", "struct"])
 
         # Should have classes but empty functions
-        assert len(results['classes']) >= 2
-        assert len(results['functions']) == 0
+        assert len(results["classes"]) >= 2
+        assert len(results["functions"]) == 0
 
         # Search with empty pattern, only functions
         results = analyzer.search_symbols("", project_only=True, symbol_types=["function"])
 
         # Should have functions but empty classes
-        assert len(results['functions']) >= 1
-        assert len(results['classes']) == 0
+        assert len(results["functions"]) >= 1
+        assert len(results["classes"]) == 0
 
     def test_empty_pattern_find_in_file(self, temp_project_dir):
         """Test that empty pattern with find_in_file returns all symbols in that file."""
@@ -696,7 +709,7 @@ void testFunc2() {}
         # Should find all symbols in that file
         assert len(results) >= 3, f"Should find at least 3 symbols, found {len(results)}"
 
-        names = sorted([r['qualified_name'].split('::')[-1] for r in results])
+        names = sorted([r["qualified_name"].split("::")[-1] for r in results])
         assert "TestClass" in names
         assert "testFunc1" in names
         assert "testFunc2" in names
@@ -720,6 +733,6 @@ void moduleFunc() {}
 
         # Should find all symbols
         assert len(results) >= 2
-        names = [r['qualified_name'].split('::')[-1] for r in results]
+        names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "ModuleClass" in names
         assert "moduleFunc" in names

@@ -319,7 +319,7 @@ Once configured, you can use the C++ analyzer in your conversations with Claude:
    ```
    "Use the cpp-analyzer tool to set the project directory to /path/to/your/cpp/project"
    ```
-   
+
    **Note:** The initial indexing might take a long time for very large projects (several minutes for codebases with thousands of files). The server will cache the results for faster subsequent queries.
 
 2. Then you can ask questions like:

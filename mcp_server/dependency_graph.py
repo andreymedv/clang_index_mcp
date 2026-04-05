@@ -25,7 +25,7 @@ Usage:
 import sqlite3
 import time
 from pathlib import Path
-from typing import List, Set, Dict, Union
+from typing import Dict, List, Set, Union
 
 try:
     from clang.cindex import TranslationUnit

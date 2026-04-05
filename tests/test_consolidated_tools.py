@@ -112,6 +112,7 @@ class TestListToolsB:
             "target_function",
         }
 
+
 # ---------------------------------------------------------------
 # Output filtering
 # ---------------------------------------------------------------
@@ -765,11 +766,7 @@ class TestModuleImports:
 
     def test_module_imports(self) -> None:
         """consolidated_tools module should be importable."""
-        from mcp_server.consolidated_tools import (
-            TOOL_NAMES,
-            handle_tool_call_b,
-            list_tools_b,
-        )
+        from mcp_server.consolidated_tools import TOOL_NAMES, handle_tool_call_b, list_tools_b
 
         assert callable(list_tools_b)
         assert callable(handle_tool_call_b)  # type: ignore[arg-type]

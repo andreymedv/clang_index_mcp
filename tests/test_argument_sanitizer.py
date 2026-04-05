@@ -12,14 +12,14 @@ Test Coverage:
 - REQ-5.8.4: Rule types
 """
 
-import sys
-import os
-import tempfile
 import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 
 # Add mcp_server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mcp_server'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mcp_server"))
 
 from argument_sanitizer import ArgumentSanitizer
 
@@ -33,20 +33,20 @@ class TestRuleLoading:
 
         # Should have loaded default rules
         info = sanitizer.get_rules_info()
-        assert info['rule_count'] > 0, "Should load default rules"
-        assert info['version'] == '1.0', "Should have version 1.0"
+        assert info["rule_count"] > 0, "Should load default rules"
+        assert info["version"] == "1.0", "Should have version 1.0"
 
         # Verify some expected rules exist
-        rule_ids = [r['id'] for r in info['rules']]
-        assert 'pch-winvalid' in rule_ids
-        assert 'color-diagnostics' in rule_ids
-        assert 'debug-info' in rule_ids
+        rule_ids = [r["id"] for r in info["rules"]]
+        assert "pch-winvalid" in rule_ids
+        assert "color-diagnostics" in rule_ids
+        assert "debug-info" in rule_ids
 
         print("[OK] REQ-5.8.1.1: Default rules loaded successfully")
 
     def test_req_5_8_1_2_custom_rules_loading(self):
         """REQ-5.8.1.2: Load and append custom rules"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             custom_rules = {
                 "version": "1.0",
                 "rules": [
@@ -54,9 +54,9 @@ class TestRuleLoading:
                         "id": "my-custom-rule",
                         "type": "exact_match",
                         "patterns": ["-my-custom-flag"],
-                        "description": "Custom test rule"
+                        "description": "Custom test rule",
                     }
-                ]
+                ],
             }
             json.dump(custom_rules, f)
             custom_file = f.name
@@ -65,17 +65,17 @@ class TestRuleLoading:
             sanitizer = ArgumentSanitizer(custom_rules_file=Path(custom_file))
 
             info = sanitizer.get_rules_info()
-            rule_ids = [r['id'] for r in info['rules']]
+            rule_ids = [r["id"] for r in info["rules"]]
 
             # Should have both default and custom rules
-            assert 'pch-winvalid' in rule_ids, "Should have default rules"
-            assert 'my-custom-rule' in rule_ids, "Should have custom rules"
+            assert "pch-winvalid" in rule_ids, "Should have default rules"
+            assert "my-custom-rule" in rule_ids, "Should have custom rules"
 
             # Test that custom rule works
-            result = sanitizer.sanitize(['-std=c++17', '-my-custom-flag', '-Wall'])
-            assert '-my-custom-flag' not in result, "Custom rule should remove flag"
-            assert '-std=c++17' in result
-            assert '-Wall' in result
+            result = sanitizer.sanitize(["-std=c++17", "-my-custom-flag", "-Wall"])
+            assert "-my-custom-flag" not in result, "Custom rule should remove flag"
+            assert "-std=c++17" in result
+            assert "-Wall" in result
 
             print("[OK] REQ-5.8.1.2: Custom rules loaded and appended successfully")
 
@@ -89,7 +89,7 @@ class TestRuleLoading:
 
         # Should still have default rules
         info = sanitizer.get_rules_info()
-        assert info['rule_count'] > 0, "Should fall back to default rules"
+        assert info["rule_count"] > 0, "Should fall back to default rules"
 
         print("[OK] REQ-5.8.1.3: Gracefully handles missing rule files")
 
@@ -101,16 +101,16 @@ class TestRuleTypes:
         """REQ-5.8.4.1: exact_match rule type"""
         sanitizer = ArgumentSanitizer()
 
-        args = ['-std=c++17', '-g', '-Wall', '-O0', '-Werror']
+        args = ["-std=c++17", "-g", "-Wall", "-O0", "-Werror"]
         result = sanitizer.sanitize(args)
 
         # exact_match rules should remove -g and -O0
-        assert '-g' not in result
-        assert '-O0' not in result
+        assert "-g" not in result
+        assert "-O0" not in result
         # But keep others
-        assert '-std=c++17' in result
-        assert '-Wall' in result
-        assert '-Werror' in result
+        assert "-std=c++17" in result
+        assert "-Wall" in result
+        assert "-Werror" in result
 
         print("[OK] REQ-5.8.4.1: exact_match rule works correctly")
 
@@ -119,21 +119,21 @@ class TestRuleTypes:
         sanitizer = ArgumentSanitizer()
 
         args = [
-            '-std=c++17',
-            '-fconstexpr-steps=10000',
-            '-fconstexpr-depth=512',
-            '-ftemplate-depth=768',
-            '-Wall'
+            "-std=c++17",
+            "-fconstexpr-steps=10000",
+            "-fconstexpr-depth=512",
+            "-ftemplate-depth=768",
+            "-Wall",
         ]
         result = sanitizer.sanitize(args)
 
         # prefix_match rules should remove all -fconstexpr* and -ftemplate-depth*
-        assert not any('-fconstexpr-steps' in arg for arg in result)
-        assert not any('-fconstexpr-depth' in arg for arg in result)
-        assert not any('-ftemplate-depth' in arg for arg in result)
+        assert not any("-fconstexpr-steps" in arg for arg in result)
+        assert not any("-fconstexpr-depth" in arg for arg in result)
+        assert not any("-ftemplate-depth" in arg for arg in result)
         # But keep others
-        assert '-std=c++17' in result
-        assert '-Wall' in result
+        assert "-std=c++17" in result
+        assert "-Wall" in result
 
         print("[OK] REQ-5.8.4.2: prefix_match rule works correctly")
 
@@ -142,21 +142,21 @@ class TestRuleTypes:
         sanitizer = ArgumentSanitizer()
 
         # Test with value
-        args = ['-std=c++17', '-include-pch', '/path/to/file.pch', '-Wall']
+        args = ["-std=c++17", "-include-pch", "/path/to/file.pch", "-Wall"]
         result = sanitizer.sanitize(args)
 
-        assert '-include-pch' not in result
-        assert '/path/to/file.pch' not in result
-        assert '-std=c++17' in result
-        assert '-Wall' in result
+        assert "-include-pch" not in result
+        assert "/path/to/file.pch" not in result
+        assert "-std=c++17" in result
+        assert "-Wall" in result
 
         # Test without value (flag at end)
-        args = ['-std=c++17', '-Wall', '-include-pch']
+        args = ["-std=c++17", "-Wall", "-include-pch"]
         result = sanitizer.sanitize(args)
 
-        assert '-include-pch' not in result
-        assert '-std=c++17' in result
-        assert '-Wall' in result
+        assert "-include-pch" not in result
+        assert "-std=c++17" in result
+        assert "-Wall" in result
 
         print("[OK] REQ-5.8.4.3: flag_with_optional_value rule works correctly")
 
@@ -164,21 +164,16 @@ class TestRuleTypes:
         """REQ-5.8.4.4: xclang_sequence rule type"""
         sanitizer = ArgumentSanitizer()
 
-        args = [
-            '-std=c++17',
-            '-Xclang', '-include-pch',
-            '-Xclang', '/path/to/file.pch',
-            '-Wall'
-        ]
+        args = ["-std=c++17", "-Xclang", "-include-pch", "-Xclang", "/path/to/file.pch", "-Wall"]
         result = sanitizer.sanitize(args)
 
         # Should remove entire sequence
-        assert '-Xclang' not in result
-        assert '-include-pch' not in result
-        assert '/path/to/file.pch' not in result
+        assert "-Xclang" not in result
+        assert "-include-pch" not in result
+        assert "/path/to/file.pch" not in result
         # But keep others
-        assert '-std=c++17' in result
-        assert '-Wall' in result
+        assert "-std=c++17" in result
+        assert "-Wall" in result
 
         print("[OK] REQ-5.8.4.4: xclang_sequence rule works correctly")
 
@@ -187,31 +182,21 @@ class TestRuleTypes:
         sanitizer = ArgumentSanitizer()
 
         # Should remove when file contains 'pch'
-        args = [
-            '-std=c++17',
-            '-Xclang', '-include',
-            '-Xclang', 'cmake_pch.hxx',
-            '-Wall'
-        ]
+        args = ["-std=c++17", "-Xclang", "-include", "-Xclang", "cmake_pch.hxx", "-Wall"]
         result = sanitizer.sanitize(args)
 
-        assert 'cmake_pch.hxx' not in result
-        assert '-Xclang' not in result
-        assert '-include' not in result
+        assert "cmake_pch.hxx" not in result
+        assert "-Xclang" not in result
+        assert "-include" not in result
 
         # Should NOT remove when file doesn't contain 'pch'
-        args = [
-            '-std=c++17',
-            '-Xclang', '-include',
-            '-Xclang', 'config.h',
-            '-Wall'
-        ]
+        args = ["-std=c++17", "-Xclang", "-include", "-Xclang", "config.h", "-Wall"]
         result = sanitizer.sanitize(args)
 
         # This should be kept (no 'pch' in filename)
         # Note: -Xclang -include -Xclang config.h is unusual but valid
-        assert 'config.h' in result
-        assert '-include' in result
+        assert "config.h" in result
+        assert "-include" in result
 
         print("[OK] REQ-5.8.4.5: xclang_conditional_sequence rule works correctly")
 
@@ -220,18 +205,14 @@ class TestRuleTypes:
         sanitizer = ArgumentSanitizer()
 
         # Test with value
-        args = [
-            '-std=c++17',
-            '-Xclang', '-fmodules-cache-path', '/path/to/cache',
-            '-Wall'
-        ]
+        args = ["-std=c++17", "-Xclang", "-fmodules-cache-path", "/path/to/cache", "-Wall"]
         result = sanitizer.sanitize(args)
 
-        assert '-Xclang' not in result
-        assert '-fmodules-cache-path' not in result
-        assert '/path/to/cache' not in result
-        assert '-std=c++17' in result
-        assert '-Wall' in result
+        assert "-Xclang" not in result
+        assert "-fmodules-cache-path" not in result
+        assert "/path/to/cache" not in result
+        assert "-std=c++17" in result
+        assert "-Wall" in result
 
         print("[OK] REQ-5.8.4.6: xclang_option_with_value rule works correctly")
 
@@ -243,16 +224,16 @@ class TestRuleApplication:
         """REQ-5.8.2.1: Process arguments sequentially"""
         sanitizer = ArgumentSanitizer()
 
-        args = ['-g', '-std=c++17', '-O0', '-Wall', '-fPIC']
+        args = ["-g", "-std=c++17", "-O0", "-Wall", "-fPIC"]
         result = sanitizer.sanitize(args)
 
         # All matching flags should be removed in order
-        assert '-g' not in result
-        assert '-O0' not in result
-        assert '-fPIC' not in result
+        assert "-g" not in result
+        assert "-O0" not in result
+        assert "-fPIC" not in result
 
         # Non-matching flags should remain in order
-        assert result.index('-std=c++17') < result.index('-Wall')
+        assert result.index("-std=c++17") < result.index("-Wall")
 
         print("[OK] REQ-5.8.2.1: Sequential processing works correctly")
 
@@ -260,12 +241,7 @@ class TestRuleApplication:
         """REQ-5.8.2.2: Arguments with no matching rule are preserved"""
         sanitizer = ArgumentSanitizer()
 
-        args = [
-            '-std=c++17',
-            '-DTEST_DEFINE',
-            '-I/usr/include',
-            '-Wunknown-custom-warning'
-        ]
+        args = ["-std=c++17", "-DTEST_DEFINE", "-I/usr/include", "-Wunknown-custom-warning"]
         result = sanitizer.sanitize(args)
 
         # All should be preserved (no rules match these)
@@ -275,7 +251,7 @@ class TestRuleApplication:
 
     def test_req_5_8_2_3_first_matching_rule_wins(self):
         """REQ-5.8.2.3: First matching rule is applied"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             # Create overlapping rules - first should win
             custom_rules = {
                 "version": "1.0",
@@ -284,15 +260,15 @@ class TestRuleApplication:
                         "id": "rule1",
                         "type": "prefix_match",
                         "patterns": ["-ftest"],
-                        "description": "Remove -ftest* flags"
+                        "description": "Remove -ftest* flags",
                     },
                     {
                         "id": "rule2",
                         "type": "exact_match",
                         "patterns": ["-ftest-specific"],
-                        "description": "This should not be reached"
-                    }
-                ]
+                        "description": "This should not be reached",
+                    },
+                ],
             }
             json.dump(custom_rules, f)
             custom_file = f.name
@@ -301,11 +277,11 @@ class TestRuleApplication:
             # Load only custom rules (no defaults) for this test
             sanitizer = ArgumentSanitizer(rules_file=Path(custom_file))
 
-            args = ['-std=c++17', '-ftest-specific', '-Wall']
+            args = ["-std=c++17", "-ftest-specific", "-Wall"]
             result = sanitizer.sanitize(args)
 
             # First rule (prefix_match) should match and remove
-            assert '-ftest-specific' not in result
+            assert "-ftest-specific" not in result
 
             print("[OK] REQ-5.8.2.3: First matching rule is applied")
 
@@ -321,52 +297,62 @@ class TestComplexScenarios:
         sanitizer = ArgumentSanitizer()
 
         args = [
-            '/usr/bin/clang++',  # Will be removed by earlier parsing
-            '-std=c++17',
-            '-DTEST',
-            '-I/project/include',
-            '-isystem', '/system/include',
-            '-g', '-Wall', '-Wextra', '-Werror',
-            '-O0', '-m64', '-ggdb',
-            '-fcolor-diagnostics',
-            '-fconstexpr-steps=11000000',
-            '-ftemplate-depth=768',
-            '-fPIC',
-            '-fvisibility-inlines-hidden',
-            '-Winvalid-pch',
-            '-Xclang', '-include-pch',
-            '-Xclang', '/build/pch.pch',
-            '-Xclang', '-include',
-            '-Xclang', '/build/cmake_pch.hxx'
+            "/usr/bin/clang++",  # Will be removed by earlier parsing
+            "-std=c++17",
+            "-DTEST",
+            "-I/project/include",
+            "-isystem",
+            "/system/include",
+            "-g",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-O0",
+            "-m64",
+            "-ggdb",
+            "-fcolor-diagnostics",
+            "-fconstexpr-steps=11000000",
+            "-ftemplate-depth=768",
+            "-fPIC",
+            "-fvisibility-inlines-hidden",
+            "-Winvalid-pch",
+            "-Xclang",
+            "-include-pch",
+            "-Xclang",
+            "/build/pch.pch",
+            "-Xclang",
+            "-include",
+            "-Xclang",
+            "/build/cmake_pch.hxx",
         ]
 
         result = sanitizer.sanitize(args)
 
         # Should keep essential flags
-        assert '-std=c++17' in result
-        assert '-DTEST' in result
-        assert '-I/project/include' in result
-        assert '-isystem' in result
-        assert '/system/include' in result
-        assert '-Wall' in result
-        assert '-Wextra' in result
-        assert '-Werror' in result
+        assert "-std=c++17" in result
+        assert "-DTEST" in result
+        assert "-I/project/include" in result
+        assert "-isystem" in result
+        assert "/system/include" in result
+        assert "-Wall" in result
+        assert "-Wextra" in result
+        assert "-Werror" in result
 
         # Should remove all problematic flags
-        assert '-g' not in result
-        assert '-O0' not in result
-        assert '-m64' not in result
-        assert '-ggdb' not in result
-        assert '-fcolor-diagnostics' not in result
-        assert not any('-fconstexpr-steps' in arg for arg in result)
-        assert not any('-ftemplate-depth' in arg for arg in result)
-        assert '-fPIC' not in result
-        assert '-fvisibility-inlines-hidden' not in result
-        assert '-Winvalid-pch' not in result
-        assert '-Xclang' not in result
-        assert '-include-pch' not in result
-        assert '/build/pch.pch' not in result
-        assert 'cmake_pch.hxx' not in result
+        assert "-g" not in result
+        assert "-O0" not in result
+        assert "-m64" not in result
+        assert "-ggdb" not in result
+        assert "-fcolor-diagnostics" not in result
+        assert not any("-fconstexpr-steps" in arg for arg in result)
+        assert not any("-ftemplate-depth" in arg for arg in result)
+        assert "-fPIC" not in result
+        assert "-fvisibility-inlines-hidden" not in result
+        assert "-Winvalid-pch" not in result
+        assert "-Xclang" not in result
+        assert "-include-pch" not in result
+        assert "/build/pch.pch" not in result
+        assert "cmake_pch.hxx" not in result
 
         print("[OK] Complex CMake PCH removal works correctly")
 
@@ -381,7 +367,7 @@ def run_all_tests():
         TestRuleLoading(),
         TestRuleTypes(),
         TestRuleApplication(),
-        TestComplexScenarios()
+        TestComplexScenarios(),
     ]
 
     total_tests = 0
@@ -392,7 +378,7 @@ def run_all_tests():
         print("-" * 70)
 
         for method_name in dir(test_class):
-            if method_name.startswith('test_'):
+            if method_name.startswith("test_"):
                 total_tests += 1
                 try:
                     method = getattr(test_class, method_name)
@@ -403,6 +389,7 @@ def run_all_tests():
                 except Exception as e:
                     print(f"[X] {method_name}: Unexpected error: {e}")
                     import traceback
+
                     traceback.print_exc()
 
     print("\n" + "=" * 70)

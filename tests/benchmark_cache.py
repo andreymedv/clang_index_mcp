@@ -5,11 +5,11 @@ Benchmark suite for comparing JSON and SQLite cache backends.
 Measures startup time, search performance, and write throughput.
 """
 
-import time
-import tempfile
-import shutil
 import os
+import shutil
 import sys
+import tempfile
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,8 +18,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from mcp_server.cache_manager import CacheManager
-from mcp_server.symbol_info import SymbolInfo
 from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+from mcp_server.symbol_info import SymbolInfo
 
 
 def generate_test_symbols(count):
@@ -33,7 +33,7 @@ def generate_test_symbols(count):
                 file=f"/test/file{i % 100}.cpp",
                 line=i * 10 + 1,
                 column=1,
-                usr=f"usr_class_{i}"
+                usr=f"usr_class_{i}",
             )
         else:
             symbol = SymbolInfo(
@@ -42,7 +42,7 @@ def generate_test_symbols(count):
                 file=f"/test/file{i % 100}.cpp",
                 line=i * 10 + 1,
                 column=1,
-                usr=f"usr_func_{i}"
+                usr=f"usr_func_{i}",
             )
         symbols.append(symbol)
     return symbols
@@ -77,9 +77,9 @@ def benchmark_bulk_write(backend, symbol_count):
     throughput = symbol_count / elapsed if elapsed > 0 else 0
 
     return {
-        'symbol_count': symbol_count,
-        'elapsed_ms': elapsed * 1000,
-        'throughput_per_sec': throughput
+        "symbol_count": symbol_count,
+        "elapsed_ms": elapsed * 1000,
+        "throughput_per_sec": throughput,
     }
 
 
@@ -105,11 +105,11 @@ def benchmark_fts5_search(backend, symbol_count, query_count=100):
     max_time = max(search_times)
 
     return {
-        'query_count': query_count,
-        'avg_ms': avg_time,
-        'min_ms': min_time,
-        'max_ms': max_time,
-        'p95_ms': sorted(search_times)[int(0.95 * len(search_times))]
+        "query_count": query_count,
+        "avg_ms": avg_time,
+        "min_ms": min_time,
+        "max_ms": max_time,
+        "p95_ms": sorted(search_times)[int(0.95 * len(search_times))],
     }
 
 
@@ -118,18 +118,10 @@ def benchmark_cache_save(cache_manager, symbol_count):
     class_index, function_index, file_hashes = generate_test_indexes(symbol_count)
 
     start = time.time()
-    cache_manager.save_cache(
-        class_index,
-        function_index,
-        file_hashes,
-        100  # indexed_file_count
-    )
+    cache_manager.save_cache(class_index, function_index, file_hashes, 100)  # indexed_file_count
     elapsed = time.time() - start
 
-    return {
-        'symbol_count': symbol_count,
-        'elapsed_ms': elapsed * 1000
-    }
+    return {"symbol_count": symbol_count, "elapsed_ms": elapsed * 1000}
 
 
 def benchmark_cache_load(cache_manager):
@@ -148,10 +140,7 @@ def benchmark_cache_load(cache_manager):
     else:
         symbol_count = 0
 
-    return {
-        'symbol_count': symbol_count,
-        'elapsed_ms': elapsed * 1000
-    }
+    return {"symbol_count": symbol_count, "elapsed_ms": elapsed * 1000}
 
 
 def run_benchmarks():
@@ -188,7 +177,9 @@ def run_benchmarks():
                 print(f"  Bulk Write:")
                 print(f"    Time: {write_results['elapsed_ms']:.2f} ms")
                 print(f"    Throughput: {write_results['throughput_per_sec']:.0f} symbols/sec")
-                print(f"    Status: {'[PASS] PASS' if write_results['throughput_per_sec'] > 5000 else '[ERROR] FAIL'}")
+                print(
+                    f"    Status: {'[PASS] PASS' if write_results['throughput_per_sec'] > 5000 else '[ERROR] FAIL'}"
+                )
 
             # Benchmark FTS5 search
             if symbol_count <= 100000:
@@ -198,7 +189,9 @@ def run_benchmarks():
                 print(f"    Min: {search_results['min_ms']:.2f} ms")
                 print(f"    Max: {search_results['max_ms']:.2f} ms")
                 print(f"    P95: {search_results['p95_ms']:.2f} ms")
-                print(f"    Status: {'[PASS] PASS' if search_results['avg_ms'] < 5.0 else '[WARNING]  WARN'}")
+                print(
+                    f"    Status: {'[PASS] PASS' if search_results['avg_ms'] < 5.0 else '[WARNING]  WARN'}"
+                )
 
             # Benchmark cache save/load
             save_results = benchmark_cache_save(cache_manager, symbol_count)
@@ -213,7 +206,7 @@ def run_benchmarks():
             # Get database size
             if isinstance(backend, SqliteCacheBackend):
                 stats = backend.get_symbol_stats()
-                db_size_mb = stats.get('db_size_mb', 0)
+                db_size_mb = stats.get("db_size_mb", 0)
                 print(f"  Database Size: {db_size_mb:.2f} MB")
                 expected_size = symbol_count * 0.0003  # ~300 bytes per symbol
                 print(f"    Status: {'[PASS] PASS' if db_size_mb < 50 else '[WARNING]  WARN'}")

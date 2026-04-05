@@ -1,10 +1,16 @@
 """Edge Case Tests - Scale
 Tests for large projects. REQ-12.6, Priority: P2"""
+
+import os
+import sys
+
 import pytest
-import sys, os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-if project_root not in sys.path: sys.path.insert(0, project_root)
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 from mcp_server.cpp_analyzer import CppAnalyzer
+
 
 @pytest.mark.edge_case
 @pytest.mark.slow

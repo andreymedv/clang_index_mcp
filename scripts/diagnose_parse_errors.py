@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError  # noqa: E402
+
 from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 

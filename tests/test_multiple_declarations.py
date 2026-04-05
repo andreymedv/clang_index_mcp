@@ -8,9 +8,10 @@ Tests cover:
 - EC-9: Processing order independence (determinism)
 """
 
-import pytest
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -42,15 +43,15 @@ class Parser;  // Line 3
         analyzer.index_file(str(fwd2_h))
 
         # Should store first forward declaration
-        assert 'Parser' in analyzer.class_index
-        parser_symbols = analyzer.class_index['Parser']
+        assert "Parser" in analyzer.class_index
+        parser_symbols = analyzer.class_index["Parser"]
         assert len(parser_symbols) == 1
 
         parser_info = parser_symbols[0]
         assert parser_info.start_line == 3
         assert parser_info.end_line == 3  # Forward decl is single line
         # File should be fwd1.h (processed first)
-        assert 'fwd1.h' in parser_info.file
+        assert "fwd1.h" in parser_info.file
 
 
 class TestForwardDeclarationPlusRealClass:
@@ -79,11 +80,11 @@ class QString {  // Lines 3-5
         analyzer.index_file(str(forward_h))
 
         # Verify forward declaration is initially stored
-        assert 'QString' in analyzer.class_index
-        qstring_symbols = analyzer.class_index['QString']
+        assert "QString" in analyzer.class_index
+        qstring_symbols = analyzer.class_index["QString"]
         assert len(qstring_symbols) == 1
         initial_info = qstring_symbols[0]
-        assert 'forward.h' in initial_info.file
+        assert "forward.h" in initial_info.file
         assert initial_info.start_line == 3
         assert initial_info.end_line == 3  # Single line
         assert not initial_info.is_definition
@@ -92,11 +93,11 @@ class QString {  // Lines 3-5
         analyzer.index_file(str(qstring_h))
 
         # Definition should replace forward declaration
-        qstring_symbols = analyzer.class_index['QString']
+        qstring_symbols = analyzer.class_index["QString"]
         assert len(qstring_symbols) == 1  # Still only one symbol
 
         replaced_info = qstring_symbols[0]
-        assert 'QString.h' in replaced_info.file
+        assert "QString.h" in replaced_info.file
         assert replaced_info.start_line == 3
         assert replaced_info.end_line == 5  # Multi-line class, not single line!
         assert replaced_info.is_definition
@@ -124,21 +125,21 @@ class QString;  // Line 3
         analyzer.index_file(str(qstring_h))
 
         # Verify definition is stored
-        qstring_symbols = analyzer.class_index['QString']
+        qstring_symbols = analyzer.class_index["QString"]
         assert len(qstring_symbols) == 1
         initial_info = qstring_symbols[0]
-        assert 'QString.h' in initial_info.file
+        assert "QString.h" in initial_info.file
         assert initial_info.is_definition
 
         # Now index forward declaration
         analyzer.index_file(str(forward_h))
 
         # Definition should be kept (forward decl ignored)
-        qstring_symbols = analyzer.class_index['QString']
+        qstring_symbols = analyzer.class_index["QString"]
         assert len(qstring_symbols) == 1
 
         kept_info = qstring_symbols[0]
-        assert 'QString.h' in kept_info.file  # Still the definition
+        assert "QString.h" in kept_info.file  # Still the definition
         assert kept_info.start_line == 3
         assert kept_info.end_line == 5  # Still multi-line
         assert kept_info.is_definition
@@ -179,12 +180,12 @@ void processData(int x) {  // Lines 3-5
         analyzer.index_file(str(util_cpp))
 
         # Definition should win
-        assert 'processData' in analyzer.function_index
-        func_symbols = analyzer.function_index['processData']
+        assert "processData" in analyzer.function_index
+        func_symbols = analyzer.function_index["processData"]
         assert len(func_symbols) == 1
 
         func_info = func_symbols[0]
-        assert 'util.cpp' in func_info.file
+        assert "util.cpp" in func_info.file
         assert func_info.start_line == 3
         assert func_info.end_line == 5  # Full function body
         assert func_info.is_definition
@@ -212,11 +213,11 @@ int calculate(int a, int b) {  // Lines 3-5
         analyzer.index_file(str(api_h))
 
         # Check that declaration is initially stored
-        assert 'calculate' in analyzer.function_index
-        func_symbols = analyzer.function_index['calculate']
+        assert "calculate" in analyzer.function_index
+        func_symbols = analyzer.function_index["calculate"]
         assert len(func_symbols) == 1
         initial_info = func_symbols[0]
-        assert 'api.h' in initial_info.file
+        assert "api.h" in initial_info.file
         assert initial_info.start_line == 3
         assert initial_info.end_line == 3  # Declaration only
         assert not initial_info.is_definition
@@ -225,11 +226,11 @@ int calculate(int a, int b) {  // Lines 3-5
         analyzer.index_file(str(api_cpp))
 
         # Definition should replace declaration
-        func_symbols = analyzer.function_index['calculate']
+        func_symbols = analyzer.function_index["calculate"]
         assert len(func_symbols) == 1
 
         replaced_info = func_symbols[0]
-        assert 'api.cpp' in replaced_info.file
+        assert "api.cpp" in replaced_info.file
         assert replaced_info.start_line == 3
         assert replaced_info.end_line == 5  # Full function body
         assert replaced_info.is_definition
@@ -261,7 +262,7 @@ class Data {  // Lines 3-5
         analyzer1.index_file(str(fwd_h))
         analyzer1.index_file(str(data_h))
 
-        data_symbols1 = analyzer1.class_index['Data']
+        data_symbols1 = analyzer1.class_index["Data"]
         assert len(data_symbols1) == 1
         data_info1 = data_symbols1[0]
 
@@ -270,17 +271,17 @@ class Data {  // Lines 3-5
         analyzer2.index_file(str(data_h))
         analyzer2.index_file(str(fwd_h))
 
-        data_symbols2 = analyzer2.class_index['Data']
+        data_symbols2 = analyzer2.class_index["Data"]
         assert len(data_symbols2) == 1
         data_info2 = data_symbols2[0]
 
         # Both should have the definition, regardless of order
-        assert 'data.h' in data_info1.file
+        assert "data.h" in data_info1.file
         assert data_info1.start_line == 3
         assert data_info1.end_line == 5  # Multi-line class
         assert data_info1.is_definition
 
-        assert 'data.h' in data_info2.file
+        assert "data.h" in data_info2.file
         assert data_info2.start_line == 3
         assert data_info2.end_line == 5  # Multi-line class
         assert data_info2.is_definition
@@ -327,11 +328,11 @@ public:
         analyzer.index_file(str(qstring_h))
 
         # Real class definition should win
-        qstring_symbols = analyzer.class_index['QString']
+        qstring_symbols = analyzer.class_index["QString"]
         assert len(qstring_symbols) == 1
 
         qstring_info = qstring_symbols[0]
-        assert 'QString.h' in qstring_info.file
+        assert "QString.h" in qstring_info.file
         assert qstring_info.start_line == 3
         assert qstring_info.end_line == 10  # Full class, not forward decl!
         assert qstring_info.is_definition
