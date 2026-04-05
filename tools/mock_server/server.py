@@ -79,12 +79,8 @@ async def run_sse(port: int, fixtures_path: str | Path | None = None) -> None:
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request):  # type: ignore[no-untyped-def]
-        async with sse.connect_sse(
-            request.scope, request.receive, request._send
-        ) as streams:
-            await app_server.run(
-                streams[0], streams[1], app_server.create_initialization_options()
-            )
+        async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+            await app_server.run(streams[0], streams[1], app_server.create_initialization_options())
 
     starlette_app = Starlette(
         routes=[
@@ -104,15 +100,11 @@ async def run_stdio(fixtures_path: str | Path | None = None) -> None:
 
     app_server = create_server(fixtures_path)
     async with stdio_server() as (read_stream, write_stream):
-        await app_server.run(
-            read_stream, write_stream, app_server.create_initialization_options()
-        )
+        await app_server.run(read_stream, write_stream, app_server.create_initialization_options())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Mock MCP server with canned responses"
-    )
+    parser = argparse.ArgumentParser(description="Mock MCP server with canned responses")
     parser.add_argument(
         "--port",
         type=int,

@@ -2,12 +2,14 @@
   "version": "1.0",
   "description": "Default argument sanitization rules for libclang compatibility",
   "comment": "These rules remove compiler flags that cause libclang parsing failures or are incompatible with programmatic use",
-
   "rules": [
     {
       "id": "pch-winvalid",
       "type": "exact_match",
-      "patterns": ["-Winvalid-pch", "-Wno-invalid-pch"],
+      "patterns": [
+        "-Winvalid-pch",
+        "-Wno-invalid-pch"
+      ],
       "description": "Remove PCH-related warning flags"
     },
     {
@@ -25,19 +27,40 @@
     {
       "id": "debug-info",
       "type": "exact_match",
-      "patterns": ["-g", "-ggdb", "-g0", "-g1", "-g2", "-g3", "-fno-limit-debug-info"],
+      "patterns": [
+        "-g",
+        "-ggdb",
+        "-g0",
+        "-g1",
+        "-g2",
+        "-g3",
+        "-fno-limit-debug-info"
+      ],
       "description": "Remove debug information flags that don't affect AST"
     },
     {
       "id": "optimization",
       "type": "exact_match",
-      "patterns": ["-O0", "-O1", "-O2", "-O3", "-Os", "-Ofast", "-Og"],
+      "patterns": [
+        "-O0",
+        "-O1",
+        "-O2",
+        "-O3",
+        "-Os",
+        "-Ofast",
+        "-Og"
+      ],
       "description": "Remove optimization level flags"
     },
     {
       "id": "architecture",
       "type": "exact_match",
-      "patterns": ["-m64", "-m32", "-msse2", "-mfpmath=sse"],
+      "patterns": [
+        "-m64",
+        "-m32",
+        "-msse2",
+        "-mfpmath=sse"
+      ],
       "description": "Remove architecture-specific options"
     },
     {
@@ -53,41 +76,68 @@
     {
       "id": "pic",
       "type": "exact_match",
-      "patterns": ["-fPIC", "-fPIE", "-fpic", "-fpie"],
+      "patterns": [
+        "-fPIC",
+        "-fPIE",
+        "-fpic",
+        "-fpie"
+      ],
       "description": "Remove position independent code options"
     },
     {
       "id": "constexpr-limits",
       "type": "prefix_match",
-      "patterns": ["-fconstexpr-steps=", "-fconstexpr-depth="],
+      "patterns": [
+        "-fconstexpr-steps=",
+        "-fconstexpr-depth="
+      ],
       "description": "Remove constexpr limit options that may differ between compiler versions"
     },
     {
       "id": "template-depth",
       "type": "prefix_match",
-      "patterns": ["-ftemplate-depth="],
+      "patterns": [
+        "-ftemplate-depth="
+      ],
       "description": "Remove template depth limit options"
     },
     {
       "id": "xclang-include-pch",
       "type": "xclang_sequence",
-      "sequence": ["-Xclang", "-include-pch", "-Xclang", "<arg>"],
+      "sequence": [
+        "-Xclang",
+        "-include-pch",
+        "-Xclang",
+        "<arg>"
+      ],
       "description": "Remove -Xclang -include-pch -Xclang <pch-file> sequences"
     },
     {
       "id": "xclang-include-cmake-pch",
       "type": "xclang_conditional_sequence",
-      "sequence": ["-Xclang", "-include", "-Xclang", "<arg>"],
+      "sequence": [
+        "-Xclang",
+        "-include",
+        "-Xclang",
+        "<arg>"
+      ],
       "condition": {
         "arg_index": 0,
-        "contains": ["pch", "cmake_pch"]
+        "contains": [
+          "pch",
+          "cmake_pch"
+        ]
       },
       "description": "Remove -Xclang -include -Xclang <file> when file contains 'pch' or 'cmake_pch'"
     },
     {
       "id": "xclang-emit-pch",
       "type": "xclang_option_with_value",
-      "patterns": ["-emit-pch", "-include-pch-header", "-fmodules-cache-path"],
+      "patterns": [
+        "-emit-pch",
+        "-include-pch-header",
+        "-fmodules-cache-path"
+      ],
       "description": "Remove -Xclang <option> [value] for PCH/module options"
     },
     {

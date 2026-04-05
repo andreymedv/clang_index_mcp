@@ -7,13 +7,15 @@ Requirements: REQ-1.7 (Vcpkg Integration)
 Priority: P1
 """
 
-import pytest
-from pathlib import Path
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -133,13 +135,11 @@ public:
         """Test vcpkg manifest mode (vcpkg.json)"""
         # Create vcpkg.json manifest
         import json
+
         vcpkg_manifest = {
             "name": "test-project",
             "version": "1.0.0",
-            "dependencies": [
-                "fmt",
-                "nlohmann-json"
-            ]
+            "dependencies": ["fmt", "nlohmann-json"],
         }
 
         with open(temp_project_dir / "vcpkg.json", "w") as f:
@@ -164,11 +164,14 @@ public:
 
         # Create compile_commands.json
         import json
-        compile_commands = [{
-            "directory": str(temp_project_dir),
-            "command": f"g++ -I{vcpkg_dir} -c test.cpp",
-            "file": str(temp_project_dir / "src" / "test.cpp")
-        }]
+
+        compile_commands = [
+            {
+                "directory": str(temp_project_dir),
+                "command": f"g++ -I{vcpkg_dir} -c test.cpp",
+                "file": str(temp_project_dir / "src" / "test.cpp"),
+            }
+        ]
 
         with open(temp_project_dir / "compile_commands.json", "w") as f:
             json.dump(compile_commands, f)

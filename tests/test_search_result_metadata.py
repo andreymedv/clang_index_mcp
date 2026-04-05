@@ -11,16 +11,17 @@ Tests the "silence = success" design principle:
 """
 
 import json
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+
 from mcp_server.state_manager import (
+    AnalyzerState,
+    AnalyzerStateManager,
     EnhancedQueryResult,
+    IndexingProgress,
     QueryCompletenessStatus,
     QueryMetadata,
-    AnalyzerStateManager,
-    AnalyzerState,
-    IndexingProgress,
 )
 
 
@@ -62,9 +63,9 @@ class TestEnhancedQueryResultFactoryMethods:
         """Passing suggestions=[] means no hints needed — no metadata block at all."""
         result = EnhancedQueryResult.create_empty([], suggestions=[])
         output = result.to_dict()
-        assert "metadata" not in output, (
-            "suggestions=[] with no status means nothing to say — metadata must be absent"
-        )
+        assert (
+            "metadata" not in output
+        ), "suggestions=[] with no status means nothing to say — metadata must be absent"
 
     def test_create_truncated_with_counts(self):
         """Truncated results should include returned and total_matches"""

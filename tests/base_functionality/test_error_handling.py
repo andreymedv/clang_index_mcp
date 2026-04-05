@@ -7,22 +7,22 @@ Requirements: REQ-1.5 (Cache Management)
 Priority: P1
 """
 
-import unittest
 import os
-import sys
-import tempfile
 import shutil
 import sqlite3
+import sys
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 # Import test infrastructure
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.error_tracking import ErrorTracker, RecoveryManager, ErrorRecord
 from mcp_server.cache_manager import CacheManager
+from mcp_server.error_tracking import ErrorRecord, ErrorTracker, RecoveryManager
 from mcp_server.symbol_info import SymbolInfo
 
 
@@ -33,7 +33,7 @@ class TestErrorTracker(unittest.TestCase):
         """Set up test fixtures"""
         self.tracker = ErrorTracker(
             window_seconds=60.0,  # 1 minute window for faster testing
-            fallback_threshold=0.05  # 5% error rate
+            fallback_threshold=0.05,  # 5% error rate
         )
 
     def test_record_operation(self):
@@ -49,10 +49,7 @@ class TestErrorTracker(unittest.TestCase):
         """Test recording errors"""
         # Record an error
         should_fallback = self.tracker.record_error(
-            "TestError",
-            "Test error message",
-            "test_operation",
-            recoverable=True
+            "TestError", "Test error message", "test_operation", recoverable=True
         )
 
         # Should not trigger fallback yet (need higher error rate)
@@ -67,12 +64,7 @@ class TestErrorTracker(unittest.TestCase):
 
         # Record 5 errors (5% error rate)
         for i in range(5):
-            self.tracker.record_error(
-                "TestError",
-                f"Error {i}",
-                "test_op",
-                recoverable=True
-            )
+            self.tracker.record_error("TestError", f"Error {i}", "test_op", recoverable=True)
 
         # Error rate should be 5/100 = 5%
         error_rate = self.tracker.get_error_rate()
@@ -87,10 +79,7 @@ class TestErrorTracker(unittest.TestCase):
         # Record 9 errors (9/199 = 4.5% - not enough to trigger)
         for i in range(9):
             should_fallback = self.tracker.record_error(
-                "TestError",
-                f"Error {i}",
-                "test_op",
-                recoverable=True
+                "TestError", f"Error {i}", "test_op", recoverable=True
             )
             self.assertFalse(should_fallback, f"Should not fallback at error {i}")
 
@@ -98,10 +87,7 @@ class TestErrorTracker(unittest.TestCase):
         # Record another one (11/201 = 5.47% > 5% threshold)
         self.tracker.record_operation("test_op")  # 191 ops
         should_fallback = self.tracker.record_error(
-            "TestError",
-            "Error 10",
-            "test_op",
-            recoverable=True
+            "TestError", "Error 10", "test_op", recoverable=True
         )
 
         # Should trigger fallback
@@ -122,12 +108,12 @@ class TestErrorTracker(unittest.TestCase):
 
         summary = self.tracker.get_error_summary()
 
-        self.assertEqual(summary['total_operations'], 15)
-        self.assertEqual(summary['total_errors'], 3)
-        self.assertEqual(summary['errors_by_type']['ErrorType1'], 2)
-        self.assertEqual(summary['errors_by_type']['ErrorType2'], 1)
-        self.assertEqual(summary['errors_by_operation']['op1'], 2)
-        self.assertEqual(summary['errors_by_operation']['op2'], 1)
+        self.assertEqual(summary["total_operations"], 15)
+        self.assertEqual(summary["total_errors"], 3)
+        self.assertEqual(summary["errors_by_type"]["ErrorType1"], 2)
+        self.assertEqual(summary["errors_by_type"]["ErrorType2"], 1)
+        self.assertEqual(summary["errors_by_operation"]["op1"], 2)
+        self.assertEqual(summary["errors_by_operation"]["op2"], 1)
 
     def test_reset(self):
         """Test resetting error tracker"""
@@ -248,8 +234,8 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
         # Get initial error summary
         summary = cache_manager.get_error_summary()
-        self.assertEqual(summary['total_errors'], 0)
-        self.assertEqual(summary['total_operations'], 0)
+        self.assertEqual(summary["total_errors"], 0)
+        self.assertEqual(summary["total_operations"], 0)
 
     def test_fallback_to_json_on_init_error(self):
         """Test fallback to JSON when SQLite init fails"""
@@ -266,10 +252,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
         # Call should handle the error gracefully
         result = cache_manager.save_cache(
-            class_index={},
-            function_index={},
-            file_hashes={},
-            indexed_file_count=0
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
         # Should return False (error handled)
@@ -277,8 +260,8 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
         # Error should be tracked
         summary = cache_manager.get_error_summary()
-        self.assertGreater(summary['total_errors'], 0, "Should have tracked the error")
-        self.assertGreater(summary['total_operations'], 0, "Should have tracked the operation")
+        self.assertGreater(summary["total_errors"], 0, "Should have tracked the error")
+        self.assertGreater(summary["total_operations"], 0, "Should have tracked the operation")
 
     def test_error_rate_triggers_fallback(self):
         """Test that high error rate triggers fallback"""
@@ -286,18 +269,18 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
         # Verify starting with SQLite
         from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+
         self.assertIsInstance(cache_manager.backend, SqliteCacheBackend)
 
         # Simulate many failed operations to trigger fallback
-        cache_manager.backend.save_cache = Mock(side_effect=sqlite3.DatabaseError("Simulated corruption"))
+        cache_manager.backend.save_cache = Mock(
+            side_effect=sqlite3.DatabaseError("Simulated corruption")
+        )
 
         # Make 100 save attempts (will fail with DatabaseError)
         for i in range(100):
             cache_manager.save_cache(
-                class_index={},
-                function_index={},
-                file_hashes={},
-                indexed_file_count=0
+                class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
             )
 
             # Check if fallback triggered
@@ -330,10 +313,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
         # Attempt save (will trigger error handling)
         result = cache_manager.save_cache(
-            class_index={},
-            function_index={},
-            file_hashes={},
-            indexed_file_count=0
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
         # Verify recovery was attempted
@@ -344,7 +324,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         else:
             # If not triggered, just verify error was tracked
             summary = cache_manager.get_error_summary()
-            self.assertGreater(summary['total_errors'], 0)
+            self.assertGreater(summary["total_errors"], 0)
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""
@@ -356,22 +336,19 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         # Try to save cache multiple times to generate errors
         for i in range(5):
             cache_manager.save_cache(
-                class_index={},
-                function_index={},
-                file_hashes={},
-                indexed_file_count=0
+                class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
             )
 
         # Verify errors tracked
         summary = cache_manager.get_error_summary()
-        self.assertGreater(summary['total_errors'], 0, "Should have recorded errors")
+        self.assertGreater(summary["total_errors"], 0, "Should have recorded errors")
 
         # Reset
         cache_manager.reset_error_tracking()
 
         # Verify reset
         summary = cache_manager.get_error_summary()
-        self.assertEqual(summary['total_errors'], 0, "Errors should be reset")
+        self.assertEqual(summary["total_errors"], 0, "Errors should be reset")
 
 
 class TestErrorHandlingScenarios(unittest.TestCase):
@@ -414,10 +391,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
         # Attempt operation
         result = cache_manager.save_cache(
-            class_index={},
-            function_index={},
-            file_hashes={},
-            indexed_file_count=0
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
         # Should handle error
@@ -431,17 +405,16 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         cache_manager = self._create_cache_manager()
 
         # Mock disk full error
-        cache_manager.backend.save_cache = Mock(side_effect=OSError("[Errno 28] No space left on device"))
+        cache_manager.backend.save_cache = Mock(
+            side_effect=OSError("[Errno 28] No space left on device")
+        )
 
         # Mock clear cache to succeed
         cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
 
         # Attempt operation
         result = cache_manager.save_cache(
-            class_index={},
-            function_index={},
-            file_hashes={},
-            indexed_file_count=0
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
         # Should handle error
@@ -455,14 +428,13 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         cache_manager = self._create_cache_manager()
 
         # Mock database locked error
-        cache_manager.backend.save_cache = Mock(side_effect=sqlite3.OperationalError("database is locked"))
+        cache_manager.backend.save_cache = Mock(
+            side_effect=sqlite3.OperationalError("database is locked")
+        )
 
         # Attempt operation
         result = cache_manager.save_cache(
-            class_index={},
-            function_index={},
-            file_hashes={},
-            indexed_file_count=0
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
         # Should handle error (may not succeed but won't crash)
@@ -470,9 +442,9 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
         # Error should be tracked
         summary = cache_manager.get_error_summary()
-        self.assertGreater(summary['total_errors'], 0, "Should have tracked the error")
-        self.assertGreater(summary['total_operations'], 0, "Should have tracked the operation")
+        self.assertGreater(summary["total_errors"], 0, "Should have tracked the error")
+        self.assertGreater(summary["total_operations"], 0, "Should have tracked the operation")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -7,10 +7,11 @@ Tests SymbolInfo dataclass updates with brief and doc_comment fields.
 
 import os
 import sys
+
 import pytest
 
 # Add the mcp_server directory to the path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -23,27 +24,19 @@ class TestSymbolInfoDocumentation:
     def test_symbol_info_has_brief_field(self):
         """UT-5.1: Verify SymbolInfo has brief field."""
         symbol = SymbolInfo(
-            name="TestClass",
-            kind="class",
-            file="/test/test.cpp",
-            line=10,
-            column=1
+            name="TestClass", kind="class", file="/test/test.cpp", line=10, column=1
         )
 
-        assert hasattr(symbol, 'brief')
+        assert hasattr(symbol, "brief")
         assert symbol.brief is None
 
     def test_symbol_info_has_doc_comment_field(self):
         """UT-5.2: Verify SymbolInfo has doc_comment field."""
         symbol = SymbolInfo(
-            name="TestClass",
-            kind="class",
-            file="/test/test.cpp",
-            line=10,
-            column=1
+            name="TestClass", kind="class", file="/test/test.cpp", line=10, column=1
         )
 
-        assert hasattr(symbol, 'doc_comment')
+        assert hasattr(symbol, "doc_comment")
         assert symbol.doc_comment is None
 
     def test_create_symbol_with_brief(self):
@@ -54,7 +47,7 @@ class TestSymbolInfoDocumentation:
             file="/test/test.cpp",
             line=10,
             column=1,
-            brief="This is the brief description"
+            brief="This is the brief description",
         )
 
         assert symbol.brief == "This is the brief description"
@@ -70,7 +63,7 @@ class TestSymbolInfoDocumentation:
             file="/test/test.cpp",
             line=10,
             column=1,
-            doc_comment=doc
+            doc_comment=doc,
         )
 
         assert symbol.doc_comment == doc
@@ -85,7 +78,7 @@ class TestSymbolInfoDocumentation:
             line=10,
             column=1,
             brief="Brief description",
-            doc_comment="Full documentation\nwith details"
+            doc_comment="Full documentation\nwith details",
         )
 
         assert symbol.brief == "Brief description"
@@ -100,14 +93,14 @@ class TestSymbolInfoDocumentation:
             line=10,
             column=1,
             brief="Brief",
-            doc_comment="Docs"
+            doc_comment="Docs",
         )
 
         d = symbol.to_dict()
-        assert 'brief' in d
-        assert d['brief'] == "Brief"
-        assert 'doc_comment' in d
-        assert d['doc_comment'] == "Docs"
+        assert "brief" in d
+        assert d["brief"] == "Brief"
+        assert "doc_comment" in d
+        assert d["doc_comment"] == "Docs"
 
     def test_symbol_with_none_documentation(self):
         """UT-5.7: Test SymbolInfo with None for documentation fields."""
@@ -118,7 +111,7 @@ class TestSymbolInfoDocumentation:
             line=10,
             column=1,
             brief=None,
-            doc_comment=None
+            doc_comment=None,
         )
 
         assert symbol.brief is None
@@ -133,7 +126,7 @@ class TestSymbolInfoDocumentation:
             line=10,
             column=1,
             brief="Unicode test: Привет мир 你好",
-            doc_comment="Full docs with emoji: 🚀 📝 ✅"
+            doc_comment="Full docs with emoji: 🚀 📝 ✅",
         )
 
         assert "Привет" in symbol.brief
@@ -146,11 +139,7 @@ class TestSymbolInfoBackwardCompatibility:
     def test_create_symbol_without_docs_still_works(self):
         """UT-5.9: Verify creating SymbolInfo without docs still works."""
         symbol = SymbolInfo(
-            name="OldStyleClass",
-            kind="class",
-            file="/test/test.cpp",
-            line=10,
-            column=1
+            name="OldStyleClass", kind="class", file="/test/test.cpp", line=10, column=1
         )
 
         assert symbol.name == "OldStyleClass"
@@ -168,19 +157,19 @@ class TestSymbolInfoBackwardCompatibility:
             namespace="namespace",
             parent_class="BaseClass",
             brief="Brief",
-            doc_comment="Docs"
+            doc_comment="Docs",
         )
 
         # Check all fields exist
-        assert hasattr(symbol, 'name')
-        assert hasattr(symbol, 'kind')
-        assert hasattr(symbol, 'file')
-        assert hasattr(symbol, 'line')
-        assert hasattr(symbol, 'column')
-        assert hasattr(symbol, 'namespace')
-        assert hasattr(symbol, 'parent_class')
-        assert hasattr(symbol, 'brief')
-        assert hasattr(symbol, 'doc_comment')
+        assert hasattr(symbol, "name")
+        assert hasattr(symbol, "kind")
+        assert hasattr(symbol, "file")
+        assert hasattr(symbol, "line")
+        assert hasattr(symbol, "column")
+        assert hasattr(symbol, "namespace")
+        assert hasattr(symbol, "parent_class")
+        assert hasattr(symbol, "brief")
+        assert hasattr(symbol, "doc_comment")
 
 
 if __name__ == "__main__":

@@ -7,16 +7,15 @@ while indexing is in progress without timing out or blocking.
 """
 
 import asyncio
-import pytest
 import json
 import threading
 from pathlib import Path
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.state_manager import (
-    AnalyzerStateManager, AnalyzerState, BackgroundIndexer
-)
+import pytest
+
 from mcp_server import cpp_mcp_server
+from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager, BackgroundIndexer
 
 
 @pytest.fixture
@@ -108,8 +107,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     # Send a query while indexing is in progress
     # This should NOT block or timeout - it should return partial results
     result = await cpp_mcp_server._handle_tool_call(
-        "search_classes",
-        {"symbol_name": "Module.*", "search_scope": "project_code_only"}
+        "search_classes", {"symbol_name": "Module.*", "search_scope": "project_code_only"}
     )
 
     # Verify we got a response (even if partial)
@@ -137,8 +135,7 @@ async def test_query_during_background_indexing(large_cpp_project):
 
     # Now query again - should get complete results
     result2 = await cpp_mcp_server._handle_tool_call(
-        "search_classes",
-        {"symbol_name": "Module.*", "search_scope": "project_code_only"}
+        "search_classes", {"symbol_name": "Module.*", "search_scope": "project_code_only"}
     )
 
     response_text2 = result2[0].text
@@ -153,10 +150,14 @@ async def test_query_during_background_indexing(large_cpp_project):
 
     if "metadata" in response_data2:
         # Large result set - should not be partial or have warning
-        assert response_data2["metadata"]["status"] in ("large", "truncated"), \
-            f"If metadata present, should be 'large' or 'truncated' not {response_data2['metadata']['status']}"
-        assert "warning" not in response_data2["metadata"] or response_data2["metadata"].get("warning") is None, \
-            "Should have no partial indexing warning when fully indexed"
+        assert response_data2["metadata"]["status"] in (
+            "large",
+            "truncated",
+        ), f"If metadata present, should be 'large' or 'truncated' not {response_data2['metadata']['status']}"
+        assert (
+            "warning" not in response_data2["metadata"]
+            or response_data2["metadata"].get("warning") is None
+        ), "Should have no partial indexing warning when fully indexed"
     # else: no metadata means normal success (silence = success)
 
 
@@ -193,10 +194,7 @@ async def test_multiple_concurrent_queries_during_indexing(large_cpp_project):
 
     # All queries should complete without blocking each other
     # Use a reasonable timeout (5 seconds)
-    results = await asyncio.wait_for(
-        asyncio.gather(*query_tasks),
-        timeout=5.0
-    )
+    results = await asyncio.wait_for(asyncio.gather(*query_tasks), timeout=5.0)
 
     # All queries should return results
     assert len(results) == 4, "All concurrent queries should complete"
@@ -235,12 +233,10 @@ async def test_query_does_not_timeout_during_long_indexing(large_cpp_project):
 
     # Time how long a query takes
     import time
+
     start = time.time()
 
-    result = await cpp_mcp_server.call_tool(
-        "sync_project",
-        {}
-    )
+    result = await cpp_mcp_server.call_tool("sync_project", {})
 
     elapsed = time.time() - start
 
@@ -440,10 +436,7 @@ def test_no_runtime_error_during_concurrent_search(large_cpp_project):
     idx_thread.start()
 
     # Start multiple query threads to stress test
-    query_threads = [
-        threading.Thread(target=query_thread, daemon=True)
-        for _ in range(5)
-    ]
+    query_threads = [threading.Thread(target=query_thread, daemon=True) for _ in range(5)]
 
     for t in query_threads:
         t.start()
@@ -457,7 +450,8 @@ def test_no_runtime_error_during_concurrent_search(large_cpp_project):
 
     # Verify no RuntimeError occurred
     runtime_errors = [
-        (source, err) for source, err in errors
+        (source, err)
+        for source, err in errors
         if isinstance(err, RuntimeError) and "dictionary changed size" in str(err)
     ]
 

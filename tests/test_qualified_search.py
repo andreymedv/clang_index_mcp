@@ -9,6 +9,7 @@ This file tests the qualified name pattern matching capabilities added in Phase 
 """
 
 import pytest
+
 from mcp_server.search_engine import SearchEngine
 
 
@@ -88,7 +89,9 @@ class TestQualifiedPatternMatching:
         assert SearchEngine.matches_qualified_pattern("app::ui::View", "ui::View") is True
         assert SearchEngine.matches_qualified_pattern("legacy::ui::View", "ui::View") is True
         assert SearchEngine.matches_qualified_pattern("app::core::ui::View", "ui::View") is True
-        assert SearchEngine.matches_qualified_pattern("app::core::ui::View", "core::ui::View") is True
+        assert (
+            SearchEngine.matches_qualified_pattern("app::core::ui::View", "core::ui::View") is True
+        )
 
         # Should NOT match: wrong component boundaries
         assert SearchEngine.matches_qualified_pattern("myui::View", "ui::View") is False
@@ -109,7 +112,9 @@ class TestQualifiedPatternMatching:
         # Regex with :: separator
         assert SearchEngine.matches_qualified_pattern("app::core::View", "app::.*::View") is True
         assert SearchEngine.matches_qualified_pattern("app::ui::View", "app::.*::View") is True
-        assert SearchEngine.matches_qualified_pattern("app::View", "app::.*::View") is False  # no middle component
+        assert (
+            SearchEngine.matches_qualified_pattern("app::View", "app::.*::View") is False
+        )  # no middle component
 
         # Regex without :: (matches anywhere)
         assert SearchEngine.matches_qualified_pattern("View", ".*View.*") is True
@@ -136,8 +141,13 @@ class TestQualifiedPatternMatching:
     def test_multi_component_suffix_patterns(self):
         """Multi-component suffix patterns should work."""
         # 3-component pattern
-        assert SearchEngine.matches_qualified_pattern("app::core::ui::View", "core::ui::View") is True
-        assert SearchEngine.matches_qualified_pattern("legacy::core::ui::View", "core::ui::View") is True
+        assert (
+            SearchEngine.matches_qualified_pattern("app::core::ui::View", "core::ui::View") is True
+        )
+        assert (
+            SearchEngine.matches_qualified_pattern("legacy::core::ui::View", "core::ui::View")
+            is True
+        )
         assert SearchEngine.matches_qualified_pattern("app::ui::View", "core::ui::View") is False
 
         # 2-component pattern
@@ -168,9 +178,10 @@ class TestFindInFileQualifiedPatterns:
         # This test verifies that find_in_file() inherits qualified pattern matching
         # by delegating to the already-updated search methods.
         # The actual integration testing happens in integration tests.
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create minimal test project
@@ -208,9 +219,10 @@ void testFunc() {}
 
     def test_find_in_file_qualified_patterns_integration(self):
         """Test find_in_file() with various qualified patterns."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test project with namespaced classes
@@ -238,7 +250,9 @@ class View {};
             # Test unqualified: should find all 3 View classes
             unqualified_response = analyzer.find_in_file(str(test_file), "View")
             unqualified_results = unqualified_response["results"]
-            view_results = [r for r in unqualified_results if r["qualified_name"].split("::")[-1] == "View"]
+            view_results = [
+                r for r in unqualified_results if r["qualified_name"].split("::")[-1] == "View"
+            ]
             assert len(view_results) == 3
 
             # Test qualified suffix: ui::View should find 2 (app::ui::View and legacy::ui::View)
@@ -268,9 +282,10 @@ class TestBackwardCompatibility:
 
     def test_unqualified_pattern_still_works(self):
         """Old-style unqualified search must work."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -295,9 +310,10 @@ class View {};
 
     def test_qualified_pattern_narrows_results(self):
         """Qualified pattern should reduce ambiguity."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -328,9 +344,10 @@ class View {};
 
     def test_leading_colon_exact_match(self):
         """Leading :: means exact match in global namespace."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -353,9 +370,10 @@ class GlobalClass {};
 
     def test_regex_patterns(self):
         """Regex patterns work with qualified names."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -386,9 +404,10 @@ class Config {};
 
     def test_case_insensitive_backward_compatibility(self):
         """Case-insensitive matching works for all pattern types."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -426,9 +445,10 @@ class TestPartiallyQualifiedNameLookups:
 
     def test_get_class_info_partially_qualified(self):
         """get_class_info should find class with partially qualified name."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -465,9 +485,10 @@ namespace outer {
 
     def test_get_class_info_disambiguates_correctly(self):
         """Partially qualified name should find the right class when there are multiple."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -514,9 +535,10 @@ namespace legacy {
 
     def test_get_function_signature_partially_qualified(self):
         """get_function_signature should work with partially qualified names."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -543,9 +565,10 @@ namespace outer {
 
     def test_get_class_info_exact_match_with_leading_colons(self):
         """Leading :: should still require exact global namespace match."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -568,9 +591,10 @@ class MyClass {};
 
     def test_get_class_hierarchy_partially_qualified(self):
         """get_class_hierarchy should work with partially qualified names."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -599,9 +623,10 @@ namespace outer {
 
     def test_case_insensitive_partially_qualified(self):
         """Partially qualified matching should be case-insensitive."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -636,9 +661,10 @@ class TestAmbiguousClassNameHandling:
 
     def test_get_class_info_detects_ambiguous_simple_name(self):
         """get_class_info should return ambiguity error for simple name with multiple matches."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -680,9 +706,10 @@ namespace ns2 {
 
     def test_get_class_info_qualified_name_no_ambiguity(self):
         """Qualified name should return exact match, not ambiguity error."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -720,9 +747,10 @@ namespace ns2 {
 
     def test_get_class_info_single_match_no_ambiguity(self):
         """Single class with simple name should return normally, not ambiguity error."""
-        from mcp_server.cpp_analyzer import CppAnalyzer
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from mcp_server.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"

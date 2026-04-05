@@ -7,24 +7,26 @@ is working correctly before running actual feature tests.
 """
 
 import json
-import pytest
-from pathlib import Path
+import os
 
 # Test imports work
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import (
-    temp_project,
-    temp_file,
-    temp_compile_commands,
+    create_simple_cpp_file,
     env_var,
+    temp_compile_commands,
     temp_config_file,
-    create_simple_cpp_file
+    temp_file,
+    temp_project,
 )
 
 
@@ -74,6 +76,7 @@ class TestInfrastructure:
         # The actual results depend on libclang's ability to parse headers
         if len(classes) == 0 and len(classes2) == 0:
             import pytest
+
             pytest.skip("Libclang may not be available or configured to parse headers")
 
     def test_compile_commands_file_fixture(self, compile_commands_file):
@@ -150,12 +153,7 @@ class TestHelperFunctions:
 
     def test_temp_compile_commands(self, temp_project_dir):
         """Test temp_compile_commands helper."""
-        files = [
-            {
-                "file": "src/main.cpp",
-                "arguments": ["-std=c++17", "-I", "include"]
-            }
-        ]
+        files = [{"file": "src/main.cpp", "arguments": ["-std=c++17", "-I", "include"]}]
 
         compile_commands_path = temp_compile_commands(temp_project_dir, files)
 
@@ -180,10 +178,7 @@ class TestHelperFunctions:
 
     def test_temp_config_file(self, temp_project_dir):
         """Test temp_config_file helper."""
-        config = {
-            "max_file_size_mb": 5,
-            "cache_enabled": True
-        }
+        config = {"max_file_size_mb": 5, "cache_enabled": True}
 
         config_path = temp_config_file(temp_project_dir, config)
 
@@ -198,7 +193,7 @@ class TestHelperFunctions:
             "test.h",
             classes=["ClassA", "ClassB"],
             functions=["void foo()", "int bar()"],
-            includes=["<string>", "<vector>"]
+            includes=["<string>", "<vector>"],
         )
 
         assert "#include <string>" in content

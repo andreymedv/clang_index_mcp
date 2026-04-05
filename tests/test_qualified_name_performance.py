@@ -16,10 +16,12 @@ Benchmarks cover:
 - Large dataset performance
 """
 
-import pytest
+import tempfile
 import time
 from pathlib import Path
-import tempfile
+
+import pytest
+
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 
@@ -299,7 +301,9 @@ class TestPatternMatchingPerformance:
             elapsed = time.time() - start
 
             avg_time_ms = (elapsed / 100) * 1000
-            assert avg_time_ms < 10.0, f"Regex pattern matching too slow: {avg_time_ms:.3f}ms per match"
+            assert (
+                avg_time_ms < 10.0
+            ), f"Regex pattern matching too slow: {avg_time_ms:.3f}ms per match"
 
         print(f"\n  Regex pattern matching: <10ms per match (100 iterations)")
 

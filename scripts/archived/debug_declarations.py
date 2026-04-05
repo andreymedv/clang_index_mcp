@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Debug why declarations aren't in file_index"""
 
+import sys
 import tempfile
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

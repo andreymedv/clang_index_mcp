@@ -9,9 +9,10 @@ exists alongside the actual definition (with base classes). The query methods
 must return the definition, not the forward declaration.
 """
 
-import pytest
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -93,58 +94,58 @@ class TestGetClassInfoReturnsDefinition:
         """Test 1: get_class_info with simple name returns definition with base classes."""
         analyzer = forward_decl_project
 
-        info = analyzer.get_class_info('ConcreteWidget')
+        info = analyzer.get_class_info("ConcreteWidget")
 
         assert info is not None, "get_class_info should find ConcreteWidget"
-        assert 'error' not in info, f"get_class_info returned error: {info.get('error')}"
+        assert "error" not in info, f"get_class_info returned error: {info.get('error')}"
 
         # The critical assertion: base_classes must not be empty
         # If this fails, we're getting the forward declaration instead of definition
-        base_classes = info.get('base_classes', [])
-        assert base_classes != [], (
-            "base_classes is empty - likely returning forward declaration instead of definition"
-        )
-        assert 'BaseWidget' in str(base_classes), (
-            f"BaseWidget not found in base_classes: {base_classes}"
-        )
+        base_classes = info.get("base_classes", [])
+        assert (
+            base_classes != []
+        ), "base_classes is empty - likely returning forward declaration instead of definition"
+        assert "BaseWidget" in str(
+            base_classes
+        ), f"BaseWidget not found in base_classes: {base_classes}"
 
     def test_get_class_info_qualified_name_has_base_classes(self, forward_decl_project):
         """Test 2: get_class_info with qualified name returns definition with base classes."""
         analyzer = forward_decl_project
 
-        info = analyzer.get_class_info('test::ConcreteWidget')
+        info = analyzer.get_class_info("test::ConcreteWidget")
 
         assert info is not None, "get_class_info should find test::ConcreteWidget"
-        assert 'error' not in info, f"get_class_info returned error: {info.get('error')}"
+        assert "error" not in info, f"get_class_info returned error: {info.get('error')}"
 
         # The critical assertion: base_classes must not be empty
-        base_classes = info.get('base_classes', [])
-        assert base_classes != [], (
-            "base_classes is empty - likely returning forward declaration instead of definition"
-        )
+        base_classes = info.get("base_classes", [])
+        assert (
+            base_classes != []
+        ), "base_classes is empty - likely returning forward declaration instead of definition"
         # Accept either qualified or simple name in base_classes
-        assert 'BaseWidget' in str(base_classes), (
-            f"BaseWidget not found in base_classes: {base_classes}"
-        )
+        assert "BaseWidget" in str(
+            base_classes
+        ), f"BaseWidget not found in base_classes: {base_classes}"
 
     def test_get_class_info_returns_correct_line_range(self, forward_decl_project):
         """Test that the returned info has correct line range (definition, not forward decl)."""
         analyzer = forward_decl_project
 
-        info = analyzer.get_class_info('test::ConcreteWidget')
+        info = analyzer.get_class_info("test::ConcreteWidget")
 
         assert info is not None
-        assert 'error' not in info
+        assert "error" not in info
         # The returned info should be the definition (multi-line), not forward decl (single line)
-        _loc = info.get('definition') or info.get('declaration') or {}
-        start_line = _loc.get('start_line')
-        end_line = _loc.get('end_line')
+        _loc = info.get("definition") or info.get("declaration") or {}
+        start_line = _loc.get("start_line")
+        end_line = _loc.get("end_line")
         assert start_line is not None and end_line is not None
         # Definition spans multiple lines (struct with methods)
         # Forward declaration would be a single line
-        assert end_line > start_line, (
-            f"Expected multi-line definition, got start_line={start_line}, end_line={end_line}"
-        )
+        assert (
+            end_line > start_line
+        ), f"Expected multi-line definition, got start_line={start_line}, end_line={end_line}"
 
 
 class TestGetClassHierarchyReturnsDefinition:
@@ -154,18 +155,20 @@ class TestGetClassHierarchyReturnsDefinition:
         """Test 3: get_class_hierarchy includes base classes from definition."""
         analyzer = forward_decl_project
 
-        hierarchy = analyzer.get_class_hierarchy('test::ConcreteWidget')
+        hierarchy = analyzer.get_class_hierarchy("test::ConcreteWidget")
 
         assert hierarchy is not None, "get_class_hierarchy should find test::ConcreteWidget"
-        assert 'error' not in hierarchy, f"get_class_hierarchy returned error: {hierarchy.get('error')}"
+        assert (
+            "error" not in hierarchy
+        ), f"get_class_hierarchy returned error: {hierarchy.get('error')}"
 
         # The critical assertion: queried class node must have base_classes (not forward decl)
         qname = hierarchy.get("queried_class")
         node = hierarchy["classes"].get(qname, {})
-        base_classes = node.get('base_classes', [])
-        assert len(base_classes) > 0, (
-            "base_classes is empty in hierarchy - likely using forward declaration"
-        )
+        base_classes = node.get("base_classes", [])
+        assert (
+            len(base_classes) > 0
+        ), "base_classes is empty in hierarchy - likely using forward declaration"
 
 
 class TestSearchClassesReturnsDefinition:
@@ -175,22 +178,22 @@ class TestSearchClassesReturnsDefinition:
         """Test 4: search_classes returns definition, not declaration."""
         analyzer = forward_decl_project
 
-        results = analyzer.search_classes('ConcreteWidget')
+        results = analyzer.search_classes("ConcreteWidget")
 
         assert len(results) > 0, "search_classes should find ConcreteWidget"
 
         # Find the ConcreteWidget result
         concrete_widget = None
         for result in results:
-            if result.get('qualified_name', '').split('::')[-1] == 'ConcreteWidget':
+            if result.get("qualified_name", "").split("::")[-1] == "ConcreteWidget":
                 concrete_widget = result
                 break
 
         assert concrete_widget is not None, "ConcreteWidget not found in search results"
 
         # The critical assertion: should have base classes (definition, not declaration)
-        base_classes = concrete_widget.get('base_classes', [])
-        assert 'BaseWidget' in str(base_classes), (
+        base_classes = concrete_widget.get("base_classes", [])
+        assert "BaseWidget" in str(base_classes), (
             f"BaseWidget not in base_classes: {base_classes}. "
             "search_classes may be returning forward declaration instead of definition."
         )
@@ -199,17 +202,17 @@ class TestSearchClassesReturnsDefinition:
         """Test search_classes with qualified pattern returns definition."""
         analyzer = forward_decl_project
 
-        results = analyzer.search_classes('test::ConcreteWidget')
+        results = analyzer.search_classes("test::ConcreteWidget")
 
         assert len(results) > 0, "search_classes should find test::ConcreteWidget"
 
         # All results should have base classes (definition)
         for result in results:
-            if result.get('qualified_name', '').split('::')[-1] == 'ConcreteWidget':
-                base_classes = result.get('base_classes', [])
-                assert 'BaseWidget' in str(base_classes), (
-                    f"BaseWidget not in base_classes for qualified search: {base_classes}"
-                )
+            if result.get("qualified_name", "").split("::")[-1] == "ConcreteWidget":
+                base_classes = result.get("base_classes", [])
+                assert "BaseWidget" in str(
+                    base_classes
+                ), f"BaseWidget not in base_classes for qualified search: {base_classes}"
 
 
 class TestDefinitionWinsInVariousScenarios:
@@ -241,13 +244,15 @@ struct MyClass;  // Forward declaration
         # Then forward declaration
         analyzer.index_file(str(forward_h))
 
-        info = analyzer.get_class_info('MyClass')
+        info = analyzer.get_class_info("MyClass")
         assert info is not None
         # Definition should have base classes
-        assert 'Base' in str(info.get('base_classes', [])), "Should have base classes"
+        assert "Base" in str(info.get("base_classes", [])), "Should have base classes"
         # Definition spans multiple lines
-        _info_loc = info.get('definition') or info.get('declaration') or {}
-        assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), "Should be multi-line definition"
+        _info_loc = info.get("definition") or info.get("declaration") or {}
+        assert _info_loc.get("end_line", 0) > _info_loc.get(
+            "start_line", 0
+        ), "Should be multi-line definition"
 
     def test_declaration_indexed_before_definition(self, tmp_path):
         """Test when forward declaration is indexed before definition."""
@@ -275,13 +280,15 @@ struct MyClass : public Base {
         # Then definition
         analyzer.index_file(str(definition_h))
 
-        info = analyzer.get_class_info('MyClass')
+        info = analyzer.get_class_info("MyClass")
         assert info is not None
         # Definition should have base classes
-        assert 'Base' in str(info.get('base_classes', [])), "Should have base classes"
+        assert "Base" in str(info.get("base_classes", [])), "Should have base classes"
         # Definition spans multiple lines
-        _info_loc = info.get('definition') or info.get('declaration') or {}
-        assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), "Should be multi-line definition"
+        _info_loc = info.get("definition") or info.get("declaration") or {}
+        assert _info_loc.get("end_line", 0) > _info_loc.get(
+            "start_line", 0
+        ), "Should be multi-line definition"
 
     def test_multiple_forward_declarations_one_definition(self, tmp_path):
         """Test with multiple forward declarations and one definition."""
@@ -315,13 +322,15 @@ struct Widget : WidgetBase {
         # Then definition
         analyzer.index_file(str(widget_h))
 
-        info = analyzer.get_class_info('Widget')
+        info = analyzer.get_class_info("Widget")
         assert info is not None
         # Definition should have base classes
-        assert 'WidgetBase' in str(info.get('base_classes', []))
+        assert "WidgetBase" in str(info.get("base_classes", []))
         # Definition spans multiple lines
-        _info_loc = info.get('definition') or info.get('declaration') or {}
-        assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), "Should be multi-line definition"
+        _info_loc = info.get("definition") or info.get("declaration") or {}
+        assert _info_loc.get("end_line", 0) > _info_loc.get(
+            "start_line", 0
+        ), "Should be multi-line definition"
 
     def test_namespaced_forward_declaration(self, tmp_path):
         """Test forward declaration in namespace."""
@@ -348,16 +357,16 @@ struct Button : ButtonBase {
         analyzer.index_file(str(header_h))
 
         # Test with various qualified name forms
-        for name in ['Button', 'ui::Button', 'app::ui::Button']:
+        for name in ["Button", "ui::Button", "app::ui::Button"]:
             info = analyzer.get_class_info(name)
-            if info and 'error' not in info:
+            if info and "error" not in info:
                 # Definition should have base classes
-                assert 'ButtonBase' in str(info.get('base_classes', [])), f"No base for {name}"
+                assert "ButtonBase" in str(info.get("base_classes", [])), f"No base for {name}"
                 # Definition spans multiple lines
-                _info_loc = info.get('definition') or info.get('declaration') or {}
-                assert _info_loc.get('end_line', 0) > _info_loc.get('start_line', 0), (
-                    f"Should be multi-line definition for {name}"
-                )
+                _info_loc = info.get("definition") or info.get("declaration") or {}
+                assert _info_loc.get("end_line", 0) > _info_loc.get(
+                    "start_line", 0
+                ), f"Should be multi-line definition for {name}"
 
 
 class TestIsRicherDefinition:

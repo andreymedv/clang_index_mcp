@@ -1,9 +1,9 @@
 """Error tracking and monitoring for cache operations."""
 
 import time
-from typing import Any, Dict, Optional
 from collections import deque
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 # Handle both package and script imports
 try:

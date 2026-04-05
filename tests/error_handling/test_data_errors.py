@@ -7,14 +7,16 @@ Requirements: REQ-6.5 (Data Error Handling)
 Priority: P0-P1
 """
 
-import pytest
-from pathlib import Path
 import json
+import os
 
 # Import test infrastructure
 import sys
-import os
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -45,32 +47,40 @@ public:
         assert count1 >= 0, "Should handle truncated JSON gracefully"
 
         # Test Case 2: Invalid JSON
-        cc_file.write_text('this is not JSON at all { invalid }')
+        cc_file.write_text("this is not JSON at all { invalid }")
 
         analyzer2 = CppAnalyzer(str(temp_project_dir))
         count2 = analyzer2.index_project()
         assert count2 >= 0, "Should handle invalid JSON gracefully"
 
         # Test Case 3: Missing required fields
-        cc_file.write_text(json.dumps([
-            {
-                "directory": str(temp_project_dir)
-                # Missing "command" and "file" fields
-            }
-        ]))
+        cc_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(temp_project_dir)
+                        # Missing "command" and "file" fields
+                    }
+                ]
+            )
+        )
 
         analyzer3 = CppAnalyzer(str(temp_project_dir))
         count3 = analyzer3.index_project()
         assert count3 >= 0, "Should handle missing fields gracefully"
 
         # Test Case 4: Wrong types
-        cc_file.write_text(json.dumps([
-            {
-                "directory": 12345,  # Should be string
-                "command": ["array", "instead", "of", "string"],
-                "file": None
-            }
-        ]))
+        cc_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": 12345,  # Should be string
+                        "command": ["array", "instead", "of", "string"],
+                        "file": None,
+                    }
+                ]
+            )
+        )
 
         analyzer4 = CppAnalyzer(str(temp_project_dir))
         count4 = analyzer4.index_project()
@@ -102,6 +112,7 @@ public:
 
         # Verify cache was created (use actual cache location)
         from pathlib import Path
+
         cache_dir = Path(analyzer1.cache_dir)
         assert cache_dir.exists(), "Cache directory should exist"
 
@@ -111,7 +122,7 @@ public:
 
         # Test corruption by truncating the SQLite database
         original_size = cache_file.stat().st_size
-        with open(cache_file, 'r+b') as f:
+        with open(cache_file, "r+b") as f:
             f.truncate(original_size // 2)  # Truncate to half size
 
         analyzer2 = CppAnalyzer(str(temp_project_dir))

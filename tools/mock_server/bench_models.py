@@ -33,20 +33,23 @@ FIXTURES_DIR = SCRIPT_DIR / "fixtures"
 RUNS_DIR = SCRIPT_DIR / "optimization_runs"
 
 LM_URL = "http://localhost:1234"
-MODEL_READY_TIMEOUT = 120   # seconds to wait for model to load
-MODEL_READY_POLL = 3        # seconds between polls
+MODEL_READY_TIMEOUT = 120  # seconds to wait for model to load
+MODEL_READY_POLL = 3  # seconds between polls
 
 
 # ---------------------------------------------------------------------------
 # LM Studio helpers
 # ---------------------------------------------------------------------------
 
+
 def get_loaded_models() -> list[str]:
     """Return list of currently loaded model IDs via `lms ps`."""
     try:
         result = subprocess.run(
             ["lms", "ps"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             return []
@@ -70,7 +73,10 @@ def unload_all_models() -> None:
     try:
         subprocess.run(
             ["lms", "unload", "--all"],
-            check=False, capture_output=True, text=True, timeout=30,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
@@ -82,7 +88,9 @@ def load_model(model_id: str, timeout: int = MODEL_READY_TIMEOUT) -> bool:
     try:
         subprocess.run(
             ["lms", "load", model_id, "--yes"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
         print(f"  ERROR: lms load failed: {e.stderr.strip()}")
@@ -115,6 +123,7 @@ def resolve_model_id(model_arg: str) -> str:
 # ---------------------------------------------------------------------------
 # Timing statistics
 # ---------------------------------------------------------------------------
+
 
 def calculate_per_tool_time(results: list[dict]) -> dict:
     """Calculate average time per tool invocation.
@@ -159,6 +168,7 @@ def calculate_per_tool_time(results: list[dict]) -> dict:
 # Runner helpers
 # ---------------------------------------------------------------------------
 
+
 def safe_filename(model_id: str) -> str:
     """Convert model ID to a safe filename component."""
     return model_id.replace("/", "_").replace(":", "_").replace(" ", "_")
@@ -183,14 +193,22 @@ def run_scenarios(
         print(f"    Scenarios: {sf.name}", flush=True)
         out = output_path.with_suffix(f".{sf.stem}.json")
         cmd = [
-            sys.executable, str(RUNNER),
-            "--scenarios", str(sf),
-            "--fixtures", str(FIXTURES_DIR),
-            "--model", model_id,
-            "--lm-url", lm_url,
-            "--token", token,
-            "--output", str(out),
-            "--eval-mode", eval_mode,
+            sys.executable,
+            str(RUNNER),
+            "--scenarios",
+            str(sf),
+            "--fixtures",
+            str(FIXTURES_DIR),
+            "--model",
+            model_id,
+            "--lm-url",
+            lm_url,
+            "--token",
+            token,
+            "--output",
+            str(out),
+            "--eval-mode",
+            eval_mode,
         ]
         if explain_failures:
             cmd.append("--explain-failures")
@@ -233,6 +251,7 @@ def run_scenarios(
 # Summary table
 # ---------------------------------------------------------------------------
 
+
 def print_summary_table(summaries: list[dict]) -> None:
     """Print a comparison table across all models."""
     if not summaries:
@@ -253,7 +272,9 @@ def print_summary_table(summaries: list[dict]) -> None:
         time_stats = s.get("time_stats", {})
         avg_time = time_stats.get("avg_time_per_tool", 0.0)
         time_str = f"{avg_time:.2f}s" if time_stats.get("test_count", 0) > 0 else "-"
-        print(f"{s['model']:<35} {s['passed']:>6} {s['total']:>6} {rate_pct:>7} {time_str:>10}{marker}")
+        print(
+            f"{s['model']:<35} {s['passed']:>6} {s['total']:>6} {rate_pct:>7} {time_str:>10}{marker}"
+        )
 
     print("=" * 75)
     print("* best result")
@@ -262,6 +283,7 @@ def print_summary_table(summaries: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -359,13 +381,13 @@ def main() -> None:
         scenario_files = sorted(SCENARIOS_DIR.glob("*.yaml"))
         if not args.all_scenarios:
             before = len(scenario_files)
-            scenario_files = [
-                f for f in scenario_files if not f.name.startswith("advanced_")
-            ]
+            scenario_files = [f for f in scenario_files if not f.name.startswith("advanced_")]
             skipped = before - len(scenario_files)
             if skipped:
-                print(f"Skipping {skipped} advanced scenario file(s) "
-                      f"(use --all-scenarios to include)")
+                print(
+                    f"Skipping {skipped} advanced scenario file(s) "
+                    f"(use --all-scenarios to include)"
+                )
 
     if not scenario_files:
         print(f"ERROR: no scenario files found in {SCENARIOS_DIR}")
@@ -431,7 +453,9 @@ def main() -> None:
             avg_time = time_stats.get("avg_time_per_tool", 0.0)
             total_calls = time_stats.get("total_tool_calls", 0)
             total_wall = time_stats.get("total_wall_time", 0.0)
-            timing_str = f" | {avg_time:.2f}s per tool ({total_calls} calls, {total_wall:.1f}s total)"
+            timing_str = (
+                f" | {avg_time:.2f}s per tool ({total_calls} calls, {total_wall:.1f}s total)"
+            )
         else:
             timing_str = ""
         print(

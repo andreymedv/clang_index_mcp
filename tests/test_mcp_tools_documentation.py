@@ -6,14 +6,15 @@ Tests that search_classes, search_functions, and get_class_info
 return documentation fields in their JSON responses.
 """
 
+import json
 import os
 import sys
-import json
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -36,11 +37,16 @@ class ConfigManager {
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -51,9 +57,9 @@ class ConfigManager {
         # Should find Application class
         app_class = results
         assert len(app_class) == 1
-        assert 'brief' in app_class[0]
-        if app_class[0].get('brief'):
-            assert "application" in app_class[0].get('brief').lower()
+        assert "brief" in app_class[0]
+        if app_class[0].get("brief"):
+            assert "application" in app_class[0].get("brief").lower()
 
     def test_search_classes_returns_doc_comment(self, temp_project_dir):
         """Test that search_classes() includes doc_comment field."""
@@ -68,19 +74,24 @@ class ConnectionPool {
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
         results = analyzer.search_classes("ConnectionPool")
         assert len(results) == 1
-        if results[0].get('doc_comment'):
-            assert "connection" in results[0].get('doc_comment').lower()
+        if results[0].get("doc_comment"):
+            assert "connection" in results[0].get("doc_comment").lower()
 
     def test_search_classes_json_serialization(self, temp_project_dir):
         """Test that documentation fields serialize to JSON properly."""
@@ -90,11 +101,16 @@ class TestClass {
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -107,8 +123,8 @@ class TestClass {
 
         result_dict = results_json[0]
         # Should have brief and doc_comment keys
-        assert 'brief' in result_dict
-        assert 'doc_comment' in result_dict
+        assert "brief" in result_dict
+        assert "doc_comment" in result_dict
 
 
 class TestSearchFunctionsWithDocumentation:
@@ -124,18 +140,23 @@ void initialize();
 void processInput();
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
         results = analyzer.search_functions("initialize")
         assert len(results) == 1
-        assert 'brief' in results[0]
+        assert "brief" in results[0]
 
     def test_search_functions_returns_doc_comment(self, temp_project_dir):
         """Test that search_functions() includes doc_comment field."""
@@ -152,18 +173,23 @@ void processInput();
 bool validateCredentials(const char* username, const char* password);
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
         results = analyzer.search_functions("validateCredentials")
         assert len(results) == 1
-        assert 'doc_comment' in results[0]
+        assert "doc_comment" in results[0]
 
     def test_search_functions_json_serialization(self, temp_project_dir):
         """Test that function documentation serializes to JSON."""
@@ -172,11 +198,16 @@ bool validateCredentials(const char* username, const char* password);
 void testFunction();
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -187,10 +218,10 @@ void testFunction();
         assert len(results_json) >= 1
 
         # Find our function
-        func = [f for f in results_json if f['qualified_name'].split('::')[-1] == 'testFunction']
+        func = [f for f in results_json if f["qualified_name"].split("::")[-1] == "testFunction"]
         assert len(func) == 1
-        assert 'brief' in func[0]
-        assert 'doc_comment' in func[0]
+        assert "brief" in func[0]
+        assert "doc_comment" in func[0]
 
 
 class TestGetClassInfoWithDocumentation:
@@ -210,11 +241,16 @@ public:
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -224,8 +260,8 @@ public:
         assert class_info is not None
 
         # Class itself should have documentation
-        assert 'brief' in class_info
-        assert 'doc_comment' in class_info
+        assert "brief" in class_info
+        assert "doc_comment" in class_info
 
     def test_get_class_info_includes_method_docs(self, temp_project_dir):
         """Test that get_class_info() includes method documentation."""
@@ -244,11 +280,16 @@ public:
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -257,18 +298,18 @@ public:
         assert class_info is not None
 
         # Methods should have documentation
-        assert 'methods' in class_info
-        methods = class_info['methods']
+        assert "methods" in class_info
+        methods = class_info["methods"]
 
         # Find start method
-        start_methods = [m for m in methods if m['qualified_name'].split('::')[-1] == 'start']
+        start_methods = [m for m in methods if m["qualified_name"].split("::")[-1] == "start"]
         if start_methods:
-            assert 'qualified_name' in start_methods[0]
+            assert "qualified_name" in start_methods[0]
 
         # Find stop method
-        stop_methods = [m for m in methods if m['qualified_name'].split('::')[-1] == 'stop']
+        stop_methods = [m for m in methods if m["qualified_name"].split("::")[-1] == "stop"]
         if stop_methods:
-            assert 'qualified_name' in stop_methods[0]
+            assert "qualified_name" in stop_methods[0]
 
     def test_get_class_info_json_format(self, temp_project_dir):
         """Test that get_class_info() JSON format includes all doc fields."""
@@ -284,11 +325,16 @@ public:
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -298,8 +344,8 @@ public:
 
         # Verify JSON structure
         assert isinstance(class_info, dict)
-        assert 'qualified_name' in class_info
-        assert 'methods' in class_info
+        assert "qualified_name" in class_info
+        assert "methods" in class_info
 
 
 class TestDocumentationWithNullValues:
@@ -312,11 +358,16 @@ class UndocumentedClass {
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -327,8 +378,8 @@ class UndocumentedClass {
         result = results_json[0]
 
         # Should have null values (None) when no documentation - now omitted from dict
-        assert result.get('brief') is None
-        assert result.get('doc_comment') is None
+        assert result.get("brief") is None
+        assert result.get("doc_comment") is None
 
     def test_get_class_info_with_null_docs(self, temp_project_dir):
         """Test that get_class_info handles NULL documentation correctly."""
@@ -339,11 +390,16 @@ public:
 };
 """)
 
-        temp_compile_commands(temp_project_dir, [{
-            "file": "src/test.cpp",
-            "directory": str(temp_project_dir),
-            "arguments": ["-std=c++17"]
-        }])
+        temp_compile_commands(
+            temp_project_dir,
+            [
+                {
+                    "file": "src/test.cpp",
+                    "directory": str(temp_project_dir),
+                    "arguments": ["-std=c++17"],
+                }
+            ],
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -352,14 +408,14 @@ public:
         assert class_info is not None
 
         # Class should have null docs (omitted from dict when None)
-        assert class_info.get('brief') is None
-        assert class_info.get('doc_comment') is None
+        assert class_info.get("brief") is None
+        assert class_info.get("doc_comment") is None
 
         # Methods should have null docs (omitted from dict when None)
-        methods = class_info.get('methods', [])
+        methods = class_info.get("methods", [])
         if methods:
-            assert methods[0].get('brief') is None
-            assert methods[0].get('doc_comment') is None
+            assert methods[0].get("brief") is None
+            assert methods[0].get("doc_comment") is None
 
 
 if __name__ == "__main__":

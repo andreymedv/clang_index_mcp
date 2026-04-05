@@ -5,9 +5,10 @@ Test Runner - Orchestrates test execution
 import importlib
 from pathlib import Path
 from typing import Dict, Optional
+
 from project_manager import ProjectManager
-from server_manager import ServerManager
 from result_analyzer import ResultAnalyzer
+from server_manager import ServerManager
 
 
 class TestRunner:
@@ -28,7 +29,7 @@ class TestRunner:
         test_name: str,
         project: str,
         protocol: str = "http",
-        scenario_path: Optional[str] = None
+        scenario_path: Optional[str] = None,
     ) -> str:
         """
         Run a test scenario
@@ -125,7 +126,9 @@ class TestRunner:
         # Execute custom scenario
         return self._execute_custom_scenario(scenario_path, project, project_info, protocol)
 
-    def _execute_test(self, test_name: str, project_name: str, project_info: Dict, protocol: str) -> str:
+    def _execute_test(
+        self, test_name: str, project_name: str, project_info: Dict, protocol: str
+    ) -> str:
         """
         Execute test scenario with full orchestration
 
@@ -166,10 +169,7 @@ class TestRunner:
             return formatted_output
 
         except Exception as e:
-            error_result = {
-                "error": str(e),
-                "metrics": {}
-            }
+            error_result = {"error": str(e), "metrics": {}}
             analysis = result_analyzer.analyze(error_result)
             return result_analyzer.format_output(analysis)
 
@@ -180,7 +180,9 @@ class TestRunner:
                 server_manager.stop_server()
                 print("✓ Server stopped")
 
-    def _execute_custom_scenario(self, scenario_path: Path, project_name: str, project_info: Dict, protocol: str) -> str:
+    def _execute_custom_scenario(
+        self, scenario_path: Path, project_name: str, project_info: Dict, protocol: str
+    ) -> str:
         """
         Execute custom YAML scenario with full orchestration
 
@@ -221,10 +223,7 @@ class TestRunner:
             return formatted_output
 
         except Exception as e:
-            error_result = {
-                "error": str(e),
-                "metrics": {}
-            }
+            error_result = {"error": str(e), "metrics": {}}
             analysis = result_analyzer.analyze(error_result)
             return result_analyzer.format_output(analysis)
 
@@ -253,7 +252,7 @@ class TestRunner:
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=300,
             )
 
             output = result.stdout + result.stderr

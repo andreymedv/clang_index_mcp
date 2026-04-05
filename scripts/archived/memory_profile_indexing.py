@@ -6,17 +6,17 @@ This script monitors memory usage during indexing and provides detailed
 analysis of memory consumption patterns and hotspots.
 """
 
-import os
-import sys
-import time
 import gc
-import tracemalloc
-import resource
-import threading
 import json
-from pathlib import Path
-from datetime import datetime
+import os
+import resource
+import sys
+import threading
+import time
+import tracemalloc
 from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))

@@ -7,16 +7,17 @@ configuration files and compile_commands.json, and invalidates the cache
 to trigger full re-indexing.
 """
 
-import unittest
 import json
-import tempfile
-import time
 import shutil
-from pathlib import Path
-from typing import Dict, Any
 
 # Import the modules to test
 import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from typing import Any, Dict
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_server.cache_manager import CacheManager
@@ -34,15 +35,13 @@ class TestConfigChangeDetection(unittest.TestCase):
         # Create sample cache data
         self.sample_class_index = {}
         self.sample_function_index = {}
-        self.sample_file_hashes = {
-            str(self.test_dir / "test.cpp"): "abc123"
-        }
+        self.sample_file_hashes = {str(self.test_dir / "test.cpp"): "abc123"}
         self.sample_indexed_count = 1
 
     def tearDown(self):
         """Clean up test fixtures"""
         # Close cache manager to avoid resource leaks
-        if hasattr(self, 'cache_manager') and self.cache_manager is not None:
+        if hasattr(self, "cache_manager") and self.cache_manager is not None:
             try:
                 self.cache_manager.close()
             except Exception:
@@ -54,22 +53,26 @@ class TestConfigChangeDetection(unittest.TestCase):
     def _create_config_file(self) -> Path:
         """Create a test configuration file"""
         config_file = self.test_dir / ".cpp-analyzer-config.json"
-        config_file.write_text(json.dumps({
-            "exclude_directories": [".git"],
-            "include_dependencies": False
-        }, indent=2))
+        config_file.write_text(
+            json.dumps({"exclude_directories": [".git"], "include_dependencies": False}, indent=2)
+        )
         return config_file
 
     def _create_compile_commands_file(self) -> Path:
         """Create a test compile_commands.json file"""
         cc_file = self.test_dir / "compile_commands.json"
-        cc_file.write_text(json.dumps([
-            {
-                "directory": str(self.test_dir),
-                "file": str(self.test_dir / "test.cpp"),
-                "arguments": ["-std=c++17"]
-            }
-        ], indent=2))
+        cc_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(self.test_dir),
+                        "file": str(self.test_dir / "test.cpp"),
+                        "arguments": ["-std=c++17"],
+                    }
+                ],
+                indent=2,
+            )
+        )
         return cc_file
 
     def test_cache_stores_config_metadata(self):
@@ -90,7 +93,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertTrue(success, "Cache save should succeed")
@@ -106,7 +109,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
         self.assertIsNotNone(cache_data, "Should be able to load cache with matching metadata")
 
@@ -128,7 +131,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Load cache with same metadata - should succeed
@@ -137,7 +140,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertIsNotNone(cache_data, "Cache should be valid when config unchanged")
@@ -160,15 +163,20 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=original_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Wait and modify config file
         time.sleep(0.1)
-        config_file.write_text(json.dumps({
-            "exclude_directories": [".git", "build"],  # Modified
-            "include_dependencies": False
-        }, indent=2))
+        config_file.write_text(
+            json.dumps(
+                {
+                    "exclude_directories": [".git", "build"],  # Modified
+                    "include_dependencies": False,
+                },
+                indent=2,
+            )
+        )
 
         new_mtime = config_file.stat().st_mtime
         self.assertNotEqual(original_mtime, new_mtime, "Config file mtime should change")
@@ -179,7 +187,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=new_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when config modified")
@@ -202,18 +210,23 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=original_cc_mtime
+            compile_commands_mtime=original_cc_mtime,
         )
 
         # Wait and modify compile_commands.json
         time.sleep(0.1)
-        cc_file.write_text(json.dumps([
-            {
-                "directory": str(self.test_dir),
-                "file": str(self.test_dir / "test.cpp"),
-                "arguments": ["-std=c++20"]  # Modified
-            }
-        ], indent=2))
+        cc_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(self.test_dir),
+                        "file": str(self.test_dir / "test.cpp"),
+                        "arguments": ["-std=c++20"],  # Modified
+                    }
+                ],
+                indent=2,
+            )
+        )
 
         new_cc_mtime = cc_file.stat().st_mtime
         self.assertNotEqual(original_cc_mtime, new_cc_mtime, "compile_commands mtime should change")
@@ -224,7 +237,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=new_cc_mtime
+            compile_commands_mtime=new_cc_mtime,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when compile_commands modified")
@@ -247,7 +260,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Delete config file
@@ -259,7 +272,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=None,
             config_file_mtime=None,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when config deleted")
@@ -282,7 +295,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Delete compile_commands.json
@@ -294,7 +307,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=None,
-            compile_commands_mtime=None
+            compile_commands_mtime=None,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when compile_commands deleted")
@@ -314,7 +327,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=None,
             config_file_mtime=None,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Create config file
@@ -327,7 +340,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when config created")
@@ -347,7 +360,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=None,
-            compile_commands_mtime=None
+            compile_commands_mtime=None,
         )
 
         # Create compile_commands.json
@@ -360,7 +373,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when compile_commands created")
@@ -383,15 +396,14 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file1,
             config_file_mtime=config_mtime1,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         # Create a different config file (simulating CPP_ANALYZER_CONFIG change)
         config_file2 = self.test_dir / "alternate-config.json"
-        config_file2.write_text(json.dumps({
-            "exclude_directories": [".git"],
-            "include_dependencies": False
-        }, indent=2))
+        config_file2.write_text(
+            json.dumps({"exclude_directories": [".git"], "include_dependencies": False}, indent=2)
+        )
         config_mtime2 = config_file2.stat().st_mtime
 
         # Load cache with different config path - should be invalidated
@@ -400,7 +412,7 @@ class TestConfigChangeDetection(unittest.TestCase):
             config_file_path=config_file2,
             config_file_mtime=config_mtime2,
             compile_commands_path=cc_file,
-            compile_commands_mtime=cc_mtime
+            compile_commands_mtime=cc_mtime,
         )
 
         self.assertIsNone(cache_data, "Cache should be invalidated when config path changes")
@@ -418,5 +430,5 @@ def suite():
     return suite
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -5,8 +5,9 @@ Tests the _build_human_readable_signature() method and its helpers
 (_extract_params_from_type_spelling, _extract_trailing_qualifiers).
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 

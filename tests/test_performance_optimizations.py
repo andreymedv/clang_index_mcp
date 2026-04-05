@@ -13,15 +13,15 @@ Requirements verified:
 - orjson>=3.0.0 (optional from performance extras) - Verified by TestOrjsonSupport
 """
 
-import unittest
+import json
 import os
+import pickle
 import sys
 import tempfile
-import json
-import pickle
 import time
+import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -29,9 +29,10 @@ sys.path.insert(0, str(project_root))
 
 # Try to import clang-dependent modules, skip tests if not available
 try:
-    from mcp_server.cpp_analyzer import CppAnalyzer
     from mcp_server.compile_commands_manager import CompileCommandsManager
+    from mcp_server.cpp_analyzer import CppAnalyzer
     from mcp_server.symbol_info import SymbolInfo
+
     CLANG_AVAILABLE = True
 except SystemExit:
     # clang.cindex not available
@@ -54,16 +55,20 @@ class TestWorkerCountOptimization(unittest.TestCase):
             cpu_count = os.cpu_count() or 1
 
             # Verify worker count equals cpu_count
-            self.assertEqual(analyzer.max_workers, cpu_count,
-                           f"Worker count should be {cpu_count}, not {analyzer.max_workers}")
+            self.assertEqual(
+                analyzer.max_workers,
+                cpu_count,
+                f"Worker count should be {cpu_count}, not {analyzer.max_workers}",
+            )
 
     def test_worker_count_minimum_one(self):
         """Worker count should be at least 1 even if cpu_count fails"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('os.cpu_count', return_value=None):
+            with patch("os.cpu_count", return_value=None):
                 analyzer = CppAnalyzer(tmpdir)
-                self.assertGreaterEqual(analyzer.max_workers, 1,
-                                      "Worker count should be at least 1")
+                self.assertGreaterEqual(
+                    analyzer.max_workers, 1, "Worker count should be at least 1"
+                )
 
 
 @unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")
@@ -74,42 +79,41 @@ class TestProcessPoolExecutor(unittest.TestCase):
         """By default, use_processes should be True (ProcessPoolExecutor)"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Ensure environment variable is not set
-            env_backup = os.environ.get('CPP_ANALYZER_USE_THREADS')
-            if 'CPP_ANALYZER_USE_THREADS' in os.environ:
-                del os.environ['CPP_ANALYZER_USE_THREADS']
+            env_backup = os.environ.get("CPP_ANALYZER_USE_THREADS")
+            if "CPP_ANALYZER_USE_THREADS" in os.environ:
+                del os.environ["CPP_ANALYZER_USE_THREADS"]
 
             try:
                 analyzer = CppAnalyzer(tmpdir)
-                self.assertTrue(analyzer.use_processes,
-                              "Should use ProcessPoolExecutor by default")
+                self.assertTrue(analyzer.use_processes, "Should use ProcessPoolExecutor by default")
             finally:
                 if env_backup is not None:
-                    os.environ['CPP_ANALYZER_USE_THREADS'] = env_backup
+                    os.environ["CPP_ANALYZER_USE_THREADS"] = env_backup
 
     def test_can_override_to_threadpool(self):
         """CPP_ANALYZER_USE_THREADS=true should switch to ThreadPoolExecutor"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            os.environ['CPP_ANALYZER_USE_THREADS'] = 'true'
+            os.environ["CPP_ANALYZER_USE_THREADS"] = "true"
             try:
                 analyzer = CppAnalyzer(tmpdir)
-                self.assertFalse(analyzer.use_processes,
-                               "Should use ThreadPoolExecutor when env var set")
+                self.assertFalse(
+                    analyzer.use_processes, "Should use ThreadPoolExecutor when env var set"
+                )
             finally:
-                if 'CPP_ANALYZER_USE_THREADS' in os.environ:
-                    del os.environ['CPP_ANALYZER_USE_THREADS']
+                if "CPP_ANALYZER_USE_THREADS" in os.environ:
+                    del os.environ["CPP_ANALYZER_USE_THREADS"]
 
     def test_case_insensitive_env_var(self):
         """Environment variable should be case-insensitive"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            for value in ['TRUE', 'True', 'true']:
-                os.environ['CPP_ANALYZER_USE_THREADS'] = value
+            for value in ["TRUE", "True", "true"]:
+                os.environ["CPP_ANALYZER_USE_THREADS"] = value
                 try:
                     analyzer = CppAnalyzer(tmpdir)
-                    self.assertFalse(analyzer.use_processes,
-                                   f"Should recognize '{value}' as true")
+                    self.assertFalse(analyzer.use_processes, f"Should recognize '{value}' as true")
                 finally:
-                    if 'CPP_ANALYZER_USE_THREADS' in os.environ:
-                        del os.environ['CPP_ANALYZER_USE_THREADS']
+                    if "CPP_ANALYZER_USE_THREADS" in os.environ:
+                        del os.environ["CPP_ANALYZER_USE_THREADS"]
 
 
 @unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")
@@ -156,7 +160,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
                 line=10,
                 column=1,
                 is_project=True,
-                usr="c:@S@TestClass"
+                usr="c:@S@TestClass",
             )
 
             # Add to buffer
@@ -185,7 +189,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
                 line=10,
                 column=1,
                 is_project=True,
-                usr="c:@S@TestClass"
+                usr="c:@S@TestClass",
             )
 
             symbol2 = SymbolInfo(
@@ -195,7 +199,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
                 line=20,
                 column=1,
                 is_project=True,
-                usr="c:@S@TestClass"
+                usr="c:@S@TestClass",
             )
 
             # Add both to buffer
@@ -223,16 +227,16 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
             manager = CompileCommandsManager(Path(tmpdir), {}, cache_dir=cache_dir)
             cache_path = manager._get_compile_commands_cache_path()
 
-            self.assertTrue(str(cache_path).endswith('.cache'))
-            self.assertIn('compile_commands', str(cache_path))
-            self.assertIn('.mcp_cache', str(cache_path))
+            self.assertTrue(str(cache_path).endswith(".cache"))
+            self.assertIn("compile_commands", str(cache_path))
+            self.assertIn(".mcp_cache", str(cache_path))
 
             # Test without cache_dir (legacy fallback)
             manager_legacy = CompileCommandsManager(Path(tmpdir), {})
             cache_path_legacy = manager_legacy._get_compile_commands_cache_path()
 
-            self.assertTrue(str(cache_path_legacy).endswith('compile_commands.cache'))
-            self.assertIn('.clang_index', str(cache_path_legacy))
+            self.assertTrue(str(cache_path_legacy).endswith("compile_commands.cache"))
+            self.assertIn(".clang_index", str(cache_path_legacy))
 
     def test_file_hash_calculation(self):
         """File hash should be calculated correctly"""
@@ -267,7 +271,7 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
                 {
                     "directory": str(project_root),
                     "file": str(project_root / "test.cpp"),
-                    "arguments": ["clang++", "-std=c++17", "test.cpp"]
+                    "arguments": ["clang++", "-std=c++17", "test.cpp"],
                 }
             ]
             cc_path.write_text(json.dumps(test_data))
@@ -291,7 +295,9 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
 
             # Create initial compile_commands.json
             cc_path = project_root / "compile_commands.json"
-            test_data = [{"file": "test1.cpp", "directory": str(project_root), "arguments": ["clang++"]}]
+            test_data = [
+                {"file": "test1.cpp", "directory": str(project_root), "arguments": ["clang++"]}
+            ]
             cc_path.write_text(json.dumps(test_data))
 
             # First load
@@ -300,7 +306,9 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
 
             # Modify file
             time.sleep(0.1)  # Ensure modification time changes
-            test_data.append({"file": "test2.cpp", "directory": str(project_root), "arguments": ["clang++"]})
+            test_data.append(
+                {"file": "test2.cpp", "directory": str(project_root), "arguments": ["clang++"]}
+            )
             cc_path.write_text(json.dumps(test_data))
 
             # Second load - should detect change and re-parse
@@ -327,9 +335,10 @@ class TestOrjsonSupport(unittest.TestCase):
         Verifies: The code properly detects orjson installation status via HAS_ORJSON flag.
         """
         from mcp_server.compile_commands_manager import HAS_ORJSON
+
         self.assertIsInstance(HAS_ORJSON, bool)
 
-    @patch('mcp_server.compile_commands_manager.HAS_ORJSON', False)
+    @patch("mcp_server.compile_commands_manager.HAS_ORJSON", False)
     def test_fallback_to_stdlib_json(self):
         """Should fall back to stdlib json if orjson not available.
 
@@ -341,7 +350,9 @@ class TestOrjsonSupport(unittest.TestCase):
 
             # Create compile_commands.json
             cc_path = project_root / "compile_commands.json"
-            test_data = [{"file": "test.cpp", "directory": str(project_root), "arguments": ["clang++"]}]
+            test_data = [
+                {"file": "test.cpp", "directory": str(project_root), "arguments": ["clang++"]}
+            ]
             cc_path.write_text(json.dumps(test_data))
 
             # Should work without orjson
@@ -365,15 +376,17 @@ class TestThreadLocalBuffers(unittest.TestCase):
                 analyzer._init_thread_local_buffers()
                 symbols, calls, aliases = analyzer._get_thread_local_buffers()
                 # Add unique symbol to this thread's buffer
-                symbols.append(SymbolInfo(
-                    name=f"Class{thread_id}",
-                    kind="class",
-                    file="test.cpp",
-                    line=thread_id,
-                    column=1,
-                    is_project=True,
-                    usr=f"c:@S@Class{thread_id}"
-                ))
+                symbols.append(
+                    SymbolInfo(
+                        name=f"Class{thread_id}",
+                        kind="class",
+                        file="test.cpp",
+                        line=thread_id,
+                        column=1,
+                        is_project=True,
+                        usr=f"c:@S@Class{thread_id}",
+                    )
+                )
                 results[thread_id] = len(symbols)
 
             # Run in multiple threads
@@ -407,6 +420,6 @@ def run_tests():
     return result.wasSuccessful()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = run_tests()
     sys.exit(0 if success else 1)

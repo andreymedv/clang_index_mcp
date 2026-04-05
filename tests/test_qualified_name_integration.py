@@ -11,9 +11,11 @@ This file tests the complete qualified name implementation:
 Note: F2 (pattern matching) and F3 (leading ::) are tested in test_qualified_search.py
 """
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
+
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 
@@ -197,8 +199,10 @@ template void genericFunc<int>(int);
             if len(results) > 0:
                 # is_template_specialization removed; use template_kind
                 generic = [
-                    r for r in results
-                    if r.get("template_kind") not in ("full_specialization", "partial_specialization")
+                    r
+                    for r in results
+                    if r.get("template_kind")
+                    not in ("full_specialization", "partial_specialization")
                 ]
                 # Generic template (if indexed) should not be a full/partial specialization
                 assert len(generic) >= 0  # May be empty if only specialization indexed
@@ -229,13 +233,14 @@ void func<int>(int value) {}
             # Verify template_kind is present on all results that have template context
             # (field may be absent for non-template generic functions)
             for result in results:
-                assert "is_template_specialization" not in result, (
-                    "is_template_specialization was removed; use template_kind"
-                )
+                assert (
+                    "is_template_specialization" not in result
+                ), "is_template_specialization was removed; use template_kind"
 
             # Find specializations via template_kind (should be at least one)
             specialized = [
-                r for r in results
+                r
+                for r in results
                 if r.get("template_kind") in ("full_specialization", "partial_specialization")
             ]
             assert len(specialized) >= 1, "Should find at least one specialization"
@@ -258,11 +263,12 @@ void foo(int x, int y) {}
 
             # All regular overloads should have no template_kind (or null)
             for result in results:
-                assert "is_template_specialization" not in result, (
-                    "is_template_specialization was removed; use template_kind"
-                )
+                assert (
+                    "is_template_specialization" not in result
+                ), "is_template_specialization was removed; use template_kind"
                 assert result.get("template_kind") not in (
-                    "full_specialization", "partial_specialization"
+                    "full_specialization",
+                    "partial_specialization",
                 ), f"Regular overload should not be a specialization: {result}"
 
     def test_template_class_methods(self):
@@ -292,9 +298,9 @@ public:
 
             # Verify removed fields are absent
             for result in results:
-                assert "is_template_specialization" not in result, (
-                    "is_template_specialization was removed"
-                )
+                assert (
+                    "is_template_specialization" not in result
+                ), "is_template_specialization was removed"
 
 
 class TestF5TemplateArgsQualification:
@@ -405,8 +411,10 @@ namespace app {
             assert len(results) == 1
             assert "qualified_name" in results[0]
             # Should include app in the qualified name
-            assert "app" in results[0]["qualified_name"].lower() or \
-                   "anonymous" in results[0]["qualified_name"].lower()
+            assert (
+                "app" in results[0]["qualified_name"].lower()
+                or "anonymous" in results[0]["qualified_name"].lower()
+            )
 
     def test_anonymous_namespace_not_confused_with_regular(self):
         """Anonymous namespace symbols should be distinct from regular namespace symbols."""
@@ -571,7 +579,8 @@ public:
             results = analyzer.search_functions("process")
             # Should have both generic and specialized versions
             specialized = [
-                r for r in results
+                r
+                for r in results
                 if r.get("template_kind") in ("full_specialization", "partial_specialization")
             ]
             # Note: May or may not detect specialization depending on libclang version
@@ -699,7 +708,9 @@ class RegularClass {};
             class_results = analyzer.search_classes("Map")
             if len(class_results) > 0:
                 assert "qualified_name" in class_results[0]
-                assert "template_kind" in class_results[0]  # template_kind replaces is_template/_specialization
+                assert (
+                    "template_kind" in class_results[0]
+                )  # template_kind replaces is_template/_specialization
 
             func_results = analyzer.search_functions("insert")
             if len(func_results) > 0:

@@ -12,6 +12,7 @@ Tests the comprehensive type alias information retrieval including:
 import os
 import sys
 from pathlib import Path
+
 import pytest
 
 # Add the mcp_server directory to the path
@@ -21,7 +22,6 @@ if project_root not in sys.path:
 
 from mcp_server.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
-
 
 # ============================================================================
 # Success Cases: Canonical Type Input
@@ -33,8 +33,7 @@ class TestCanonicalTypeInput:
 
     def test_canonical_type_with_aliases(self, temp_project_dir):
         """Query canonical type that has aliases."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 public:
     void show();
@@ -42,8 +41,7 @@ public:
 
 using WidgetAlias = Widget;
 typedef Widget WidgetType;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -91,14 +89,12 @@ typedef Widget WidgetType;
 
     def test_canonical_type_without_aliases(self, temp_project_dir):
         """Query canonical type that has no aliases."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 public:
     void show();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -125,8 +121,7 @@ public:
 
     def test_qualified_canonical_type(self, temp_project_dir):
         """Query qualified canonical type name."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 namespace ui {
     class Widget {
     public:
@@ -135,8 +130,7 @@ namespace ui {
 
     using WidgetAlias = Widget;
 }
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -173,14 +167,12 @@ class TestAliasInput:
 
     def test_alias_resolves_to_canonical(self, temp_project_dir):
         """Query alias name, should resolve to canonical type."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 };
 
 using WidgetAlias = Widget;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -210,15 +202,13 @@ using WidgetAlias = Widget;
 
     def test_alias_chain_resolution(self, temp_project_dir):
         """Query alias in chain, should resolve to ultimate canonical type."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class RealClass {
 };
 
 using AliasOne = RealClass;
 using AliasTwo = AliasOne;
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -258,8 +248,7 @@ class TestAmbiguityDetection:
 
     def test_ambiguous_unqualified_name(self, temp_project_dir):
         """Unqualified name matching multiple types should return ambiguity error."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 };
 
@@ -272,8 +261,7 @@ namespace app {
     class Widget {
     };
 }
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -309,8 +297,7 @@ namespace app {
 
     def test_qualified_name_disambiguates(self, temp_project_dir):
         """Qualified name should disambiguate successfully."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 };
 
@@ -319,8 +306,7 @@ namespace ui {
     };
     using WidgetAlias = Widget;
 }
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -356,12 +342,10 @@ class TestErrorCases:
 
     def test_type_not_found(self, temp_project_dir):
         """Non-existent type should return not found error."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -388,11 +372,9 @@ class Widget {
 
     def test_empty_project(self, temp_project_dir):
         """Query on empty project should return not found."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 // Empty file
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -427,8 +409,7 @@ class TestPatternMatching:
 
     def test_exact_global_namespace(self, temp_project_dir):
         """Leading :: should match only global namespace."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Widget {
 };
 
@@ -436,8 +417,7 @@ namespace ui {
     class Widget {
     };
 }
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -463,8 +443,7 @@ namespace ui {
 
     def test_partial_qualification(self, temp_project_dir):
         """Partially qualified name should use component suffix matching."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 namespace app {
     namespace ui {
         class Widget {
@@ -472,8 +451,7 @@ namespace app {
         using WidgetAlias = Widget;
     }
 }
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,

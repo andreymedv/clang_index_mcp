@@ -103,9 +103,7 @@ class TestEnableDisable:
 class TestBasicLogging:
     def test_log_basic_call(self, enabled_logger):
         """JSONL entry has expected fields."""
-        enabled_logger.log_tool_call(
-            "search_classes", {"pattern": "Foo"}, 3, '[{"name": "Foo"}]'
-        )
+        enabled_logger.log_tool_call("search_classes", {"pattern": "Foo"}, 3, '[{"name": "Foo"}]')
         entries = _read_log(enabled_logger)
         assert len(entries) == 1
         entry = entries[0]
@@ -156,9 +154,7 @@ class TestPatternClassification:
 class TestEmptyResultEnrichment:
     def test_enrichment_on_empty_search(self, enabled_logger):
         """Empty result on search tool triggers pattern classification."""
-        enabled_logger.log_tool_call(
-            "search_classes", {"pattern": "ns::MyClass"}, 0, "[]"
-        )
+        enabled_logger.log_tool_call("search_classes", {"pattern": "ns::MyClass"}, 0, "[]")
         entries = _read_log(enabled_logger)
         entry = entries[0]
         assert entry["pattern_classification"] == "qualified_name"
@@ -168,17 +164,13 @@ class TestEmptyResultEnrichment:
 
     def test_no_enrichment_on_nonempty(self, enabled_logger):
         """Non-empty results don't get pattern classification."""
-        enabled_logger.log_tool_call(
-            "search_classes", {"pattern": "ns::MyClass"}, 5, "[]"
-        )
+        enabled_logger.log_tool_call("search_classes", {"pattern": "ns::MyClass"}, 5, "[]")
         entries = _read_log(enabled_logger)
         assert "pattern_classification" not in entries[0]
 
     def test_no_enrichment_on_non_search_tool(self, enabled_logger):
         """Non-search tools don't get enrichment even on empty."""
-        enabled_logger.log_tool_call(
-            "get_class_info", {"class_name": "Foo"}, 0, "null"
-        )
+        enabled_logger.log_tool_call("get_class_info", {"class_name": "Foo"}, 0, "null")
         entries = _read_log(enabled_logger)
         assert "pattern_classification" not in entries[0]
 
@@ -226,9 +218,7 @@ class TestLargeResultEnrichment:
             for i in range(60)
         ]
         result_text = json.dumps(items)
-        enabled_logger.log_tool_call(
-            "search_functions", {"pattern": ".*"}, 60, result_text
-        )
+        enabled_logger.log_tool_call("search_functions", {"pattern": ".*"}, 60, result_text)
         entries = _read_log(enabled_logger)
         entry = entries[0]
         assert "class_distribution_top5" in entry
@@ -252,9 +242,7 @@ class TestLargeResultEnrichment:
     def test_no_enrichment_on_small_result(self, enabled_logger):
         """Results <= 50 don't get distribution analysis."""
         items = [{"name": f"f{i}"} for i in range(50)]
-        enabled_logger.log_tool_call(
-            "search_functions", {"pattern": ".*"}, 50, json.dumps(items)
-        )
+        enabled_logger.log_tool_call("search_functions", {"pattern": ".*"}, 50, json.dumps(items))
         entries = _read_log(enabled_logger)
         assert "class_distribution_top5" not in entries[0]
 
@@ -310,9 +298,7 @@ class TestPrivacy:
     def test_result_text_not_in_log(self, enabled_logger):
         """Result text content is NOT stored in the log file."""
         secret_text = "SENSITIVE_RESULT_DATA_12345"
-        enabled_logger.log_tool_call(
-            "search_classes", {"pattern": "Foo"}, 3, secret_text
-        )
+        enabled_logger.log_tool_call("search_classes", {"pattern": "Foo"}, 3, secret_text)
         log_content = enabled_logger.log_path.read_text()
         assert secret_text not in log_content
 
@@ -320,9 +306,7 @@ class TestPrivacy:
         """Large result text is parsed for distribution but not stored raw."""
         items = [{"name": f"f{i}", "class_name": "MySecret"} for i in range(60)]
         result_text = json.dumps(items)
-        enabled_logger.log_tool_call(
-            "search_functions", {"pattern": ".*"}, 60, result_text
-        )
+        enabled_logger.log_tool_call("search_functions", {"pattern": ".*"}, 60, result_text)
         log_content = enabled_logger.log_path.read_text()
         entry = json.loads(log_content.strip())
         # Distribution key is present but raw result_text is not

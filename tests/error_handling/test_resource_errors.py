@@ -7,13 +7,15 @@ Requirements: REQ-6.4 (Resource Error Handling)
 Priority: P1-P2
 """
 
-import pytest
-from pathlib import Path
 import os
 
 # Import test infrastructure
 import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+from pathlib import Path
+
+import pytest
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -43,7 +45,7 @@ public:
             # Raise disk full error
             raise OSError(28, "No space left on device")
 
-        mocker.patch.object(CacheManager, 'save_cache', mock_save_cache)
+        mocker.patch.object(CacheManager, "save_cache", mock_save_cache)
 
         # Create analyzer
         analyzer = CppAnalyzer(str(temp_project_dir))

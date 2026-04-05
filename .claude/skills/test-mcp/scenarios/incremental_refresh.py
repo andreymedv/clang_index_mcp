@@ -24,9 +24,9 @@ Success Criteria:
 - All existing symbols still searchable
 """
 
-import time
 import os
 import shutil
+import time
 from pathlib import Path
 
 
@@ -42,11 +42,7 @@ def run(project_info, server_manager):
         dict: Test results with status, metrics, issues
     """
     start_time = time.time()
-    results = {
-        "metrics": {},
-        "details": {},
-        "steps": []
-    }
+    results = {"metrics": {}, "details": {}, "steps": []}
 
     try:
         endpoint = server_manager.server_process and f"http://localhost:{server_manager.port}"
@@ -57,9 +53,7 @@ def run(project_info, server_manager):
         results["steps"].append("Setting project directory...")
         print(f"  Setting project directory: {project_info['path']}")
         response = server_manager.call_tool(
-            endpoint,
-            "set_project_directory",
-            {"project_path": project_info["path"]}
+            endpoint, "set_project_directory", {"project_path": project_info["path"]}
         )
 
         if "error" in response:
@@ -80,11 +74,7 @@ def run(project_info, server_manager):
 
         # Step 3: Search for baseline function
         results["steps"].append("Searching for baseline function...")
-        baseline_response = server_manager.call_tool(
-            endpoint,
-            "search_functions",
-            {"pattern": ""}
-        )
+        baseline_response = server_manager.call_tool(endpoint, "search_functions", {"pattern": ""})
 
         if "result" in baseline_response:
             content = baseline_response["result"].get("content", [])
@@ -106,11 +96,7 @@ def run(project_info, server_manager):
         print("  Refreshing project (incremental)...")
         refresh_start = time.time()
 
-        refresh_response = server_manager.call_tool(
-            endpoint,
-            "refresh_project",
-            {}
-        )
+        refresh_response = server_manager.call_tool(endpoint, "refresh_project", {})
 
         if "error" in refresh_response:
             results["error"] = f"refresh_project failed: {refresh_response['error']}"
@@ -135,9 +121,7 @@ def run(project_info, server_manager):
         results["steps"].append("Searching for new function...")
         print(f"  Searching for new function '{new_function_name}'...")
         new_func_response = server_manager.call_tool(
-            endpoint,
-            "search_functions",
-            {"pattern": new_function_name}
+            endpoint, "search_functions", {"pattern": new_function_name}
         )
 
         new_function_found = False
@@ -154,11 +138,7 @@ def run(project_info, server_manager):
 
         # Step 7: Verify all functions still searchable
         results["steps"].append("Verifying all functions...")
-        all_funcs_response = server_manager.call_tool(
-            endpoint,
-            "search_functions",
-            {"pattern": ""}
-        )
+        all_funcs_response = server_manager.call_tool(endpoint, "search_functions", {"pattern": ""})
 
         if "result" in all_funcs_response:
             content = all_funcs_response["result"].get("content", [])
@@ -194,11 +174,7 @@ def _wait_for_indexing(server_manager, endpoint, max_wait=60):
 
     wait_start = time.time()
     while time.time() - wait_start < max_wait:
-        status_response = server_manager.call_tool(
-            endpoint,
-            "get_indexing_status",
-            {}
-        )
+        status_response = server_manager.call_tool(endpoint, "get_indexing_status", {})
 
         if "result" in status_response:
             content = status_response["result"].get("content", [])

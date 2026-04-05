@@ -1,10 +1,11 @@
 """Unit tests for database schema migration."""
 
-import unittest
+import shutil
 import sqlite3
 import tempfile
-import shutil
+import unittest
 from pathlib import Path
+
 from mcp_server.schema_migrations import SchemaMigration
 
 
@@ -57,7 +58,7 @@ class TestSchemaMigration(unittest.TestCase):
         """)
         tables = cursor.fetchall()
         self.assertEqual(len(tables), 1)
-        self.assertEqual(tables[0][0], 'file_dependencies')
+        self.assertEqual(tables[0][0], "file_dependencies")
 
         # Verify indexes exist
         cursor = conn.execute("""
@@ -68,10 +69,10 @@ class TestSchemaMigration(unittest.TestCase):
         index_names = {row[0] for row in indexes}
 
         expected_indexes = {
-            'idx_dep_source',
-            'idx_dep_included',
-            'idx_dep_direct',
-            'idx_dep_detected'
+            "idx_dep_source",
+            "idx_dep_included",
+            "idx_dep_direct",
+            "idx_dep_detected",
         }
 
         self.assertTrue(expected_indexes.issubset(index_names))
@@ -138,8 +139,12 @@ class TestSchemaMigration(unittest.TestCase):
         # Verify columns
         column_names = {col[1] for col in columns}
         expected_columns = {
-            'id', 'source_file', 'included_file',
-            'is_direct', 'include_depth', 'detected_at'
+            "id",
+            "source_file",
+            "included_file",
+            "is_direct",
+            "include_depth",
+            "detected_at",
         }
 
         self.assertEqual(column_names, expected_columns)
@@ -220,10 +225,10 @@ class TestSchemaMigration(unittest.TestCase):
 
         # Check that migration 2 has description
         migration_2 = [h for h in history if h[0] == 2][0]
-        self.assertIn('002', migration_2[2])  # Description should contain '002'
+        self.assertIn("002", migration_2[2])  # Description should contain '002'
 
         conn.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

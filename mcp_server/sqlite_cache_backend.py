@@ -1,12 +1,13 @@
 """SQLite-based cache backend for C++ analyzer."""
 
-import sqlite3
-import json
-import time
-import sys
 import fcntl
+import json
+import sqlite3
+import sys
+import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 from .symbol_info import SymbolInfo
 
 # Handle both package and script imports

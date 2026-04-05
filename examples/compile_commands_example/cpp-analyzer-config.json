@@ -31,7 +31,17 @@
     "cache_enabled": true,
     "fallback_to_hardcoded": true,
     "cache_expiry_seconds": 300,
-    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++", ".inl"],
+    "supported_extensions": [
+      ".cpp",
+      ".cc",
+      ".cxx",
+      ".c++",
+      ".h",
+      ".hpp",
+      ".hxx",
+      ".h++",
+      ".inl"
+    ],
     "exclude_patterns": [
       "*/CMakeFiles/*",
       "*/cmake-build-*",
