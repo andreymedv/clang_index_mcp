@@ -30,12 +30,12 @@ MODEL = "qwen/qwen3.5-9b"
 LOOP_SCENARIOS = {
     "RC3-01": {
         "query": "What other functions does initialize() call internally?",
-        "expected_tool": "get_functions_called_by",
+        "expected_tool": "find_outgoing_calls",
         "wrong_tool": "find_symbols_by_pattern",
     },
     "RC3-03": {
         "query": "Show all the function calls that happen inside render()",
-        "expected_tool": "get_functions_called_by",
+        "expected_tool": "find_outgoing_calls",
         "wrong_tool": "find_symbols_by_pattern",
     },
     "RC1-03": {
@@ -45,7 +45,7 @@ LOOP_SCENARIOS = {
     },
     "RC2-03": {
         "query": "What functions are called by processData? Show me its dependencies.",
-        "expected_tool": "get_functions_called_by",
+        "expected_tool": "find_outgoing_calls",
         "wrong_tool": "find_symbols_by_pattern",
     },
 }
@@ -56,7 +56,7 @@ EMPTY_RESULTS = {
         "Use find_in_file to search within a specific file",
     ]}),
     "find_in_file": json.dumps({"symbols": [], "message": "No symbols found in specified file"}),
-    "get_functions_called_by": json.dumps({"callees": [], "message": "Function not found or has no recorded calls"}),
+    "find_outgoing_calls": json.dumps({"callees": [], "message": "Function not found or has no recorded calls"}),
 }
 
 

@@ -1,0 +1,1951 @@
+responses:
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: ApplyStyle
+  response:
+    results:
+    - qualified_name: ApplyStyle
+      kind: class
+      prototype: class ApplyStyle
+      file: src/generated/ApplyStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: ApplyStyleRecursive
+  response:
+    results:
+    - qualified_name: ApplyStyleRecursive
+      kind: class
+      prototype: class ApplyStyleRecursive
+      file: src/generated/ApplyStyleRecursive.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::CascadeEngine::getElementProperties
+  response:
+    results:
+    - qualified_name: CSS::CascadeEngine::getElementProperties
+      kind: method
+      prototype: getElementProperties()
+      file: src/generated/CSS/CascadeEngine/getElementProperties.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::CascadeEngine::mergeProperties
+  response:
+    results:
+    - qualified_name: CSS::CascadeEngine::mergeProperties
+      kind: method
+      prototype: mergeProperties()
+      file: src/generated/CSS/CascadeEngine/mergeProperties.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleResolver
+  response:
+    results:
+    - qualified_name: CSS::StyleResolver
+      kind: class
+      prototype: class StyleResolver
+      file: src/generated/CSS/StyleResolver.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleResolver::applyResolvedStyles
+  response:
+    results:
+    - qualified_name: CSS::StyleResolver::applyResolvedStyles
+      kind: method
+      prototype: applyResolvedStyles()
+      file: src/generated/CSS/StyleResolver/applyResolvedStyles.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleResolver::getCascadedProperties
+  response:
+    results:
+    - qualified_name: CSS::StyleResolver::getCascadedProperties
+      kind: method
+      prototype: getCascadedProperties()
+      file: src/generated/CSS/StyleResolver/getCascadedProperties.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleResolver::resolveElementStyle
+  response:
+    results:
+    - qualified_name: CSS::StyleResolver::resolveElementStyle
+      kind: method
+      prototype: resolveElementStyle()
+      file: src/generated/CSS/StyleResolver/resolveElementStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleResolver::resolveInheritedProperties
+  response:
+    results:
+    - qualified_name: CSS::StyleResolver::resolveInheritedProperties
+      kind: method
+      prototype: resolveInheritedProperties()
+      file: src/generated/CSS/StyleResolver/resolveInheritedProperties.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleResolver::resolveStyle
+  response:
+    results:
+    - qualified_name: CSS::StyleResolver::resolveStyle
+      kind: method
+      prototype: resolveStyle()
+      file: src/generated/CSS/StyleResolver/resolveStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleVisitor
+  response:
+    results:
+    - qualified_name: CSS::StyleVisitor
+      kind: class
+      prototype: class StyleVisitor
+      file: src/generated/CSS/StyleVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: CSS::StyleVisitor::visitElement
+  response:
+    results:
+    - qualified_name: CSS::StyleVisitor::visitElement
+      kind: method
+      prototype: visitElement()
+      file: src/generated/CSS/StyleVisitor/visitElement.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Attribute
+  response:
+    results:
+    - qualified_name: DOM::Attribute
+      kind: class
+      prototype: class Attribute
+      file: src/generated/DOM/Attribute.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Attribute::Attribute
+  response:
+    results:
+    - qualified_name: DOM::Attribute::Attribute
+      kind: method
+      prototype: Attribute()
+      file: src/generated/DOM/Attribute/Attribute.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document
+  response:
+    results:
+    - qualified_name: DOM::Document
+      kind: class
+      prototype: class Document
+      file: src/generated/DOM/Document.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::appendChild
+  response:
+    results:
+    - qualified_name: DOM::Document::appendChild
+      kind: method
+      prototype: appendChild()
+      file: src/generated/DOM/Document/appendChild.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::createElement
+  response:
+    results:
+    - qualified_name: DOM::Document::createElement
+      kind: method
+      prototype: createElement()
+      file: src/generated/DOM/Document/createElement.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::createTextNode
+  response:
+    results:
+    - qualified_name: DOM::Document::createTextNode
+      kind: method
+      prototype: createTextNode()
+      file: src/generated/DOM/Document/createTextNode.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::getDocumentElement
+  response:
+    results:
+    - qualified_name: DOM::Document::getDocumentElement
+      kind: method
+      prototype: getDocumentElement()
+      file: src/generated/DOM/Document/getDocumentElement.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::getElementById
+  response:
+    results:
+    - qualified_name: DOM::Document::getElementById
+      kind: method
+      prototype: getElementById()
+      file: src/generated/DOM/Document/getElementById.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::getElementsByTagName
+  response:
+    results:
+    - qualified_name: DOM::Document::getElementsByTagName
+      kind: method
+      prototype: getElementsByTagName()
+      file: src/generated/DOM/Document/getElementsByTagName.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::initializeDOM
+  response:
+    results:
+    - qualified_name: DOM::Document::initializeDOM
+      kind: method
+      prototype: initializeDOM()
+      file: src/generated/DOM/Document/initializeDOM.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::parse
+  response:
+    results:
+    - qualified_name: DOM::Document::parse
+      kind: method
+      prototype: parse()
+      file: src/generated/DOM/Document/parse.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::processData
+  response:
+    results:
+    - qualified_name: DOM::Document::processData
+      kind: method
+      prototype: processData()
+      file: src/generated/DOM/Document/processData.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Document::validate
+  response:
+    results:
+    - qualified_name: DOM::Document::validate
+      kind: method
+      prototype: validate()
+      file: src/generated/DOM/Document/validate.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::DocumentImpl
+  response:
+    results:
+    - qualified_name: DOM::DocumentImpl
+      kind: class
+      prototype: class DocumentImpl
+      file: src/generated/DOM/DocumentImpl.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::DocumentImpl::DocumentImpl
+  response:
+    results:
+    - qualified_name: DOM::DocumentImpl::DocumentImpl
+      kind: method
+      prototype: DocumentImpl()
+      file: src/generated/DOM/DocumentImpl/DocumentImpl.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::DocumentImpl::parse
+  response:
+    results:
+    - qualified_name: DOM::DocumentImpl::parse
+      kind: method
+      prototype: parse()
+      file: src/generated/DOM/DocumentImpl/parse.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::DocumentImpl::serialize
+  response:
+    results:
+    - qualified_name: DOM::DocumentImpl::serialize
+      kind: method
+      prototype: serialize()
+      file: src/generated/DOM/DocumentImpl/serialize.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element
+  response:
+    results:
+    - qualified_name: DOM::Element
+      kind: class
+      prototype: class Element
+      file: src/generated/DOM/Element.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::appendChild
+  response:
+    results:
+    - qualified_name: DOM::Element::appendChild
+      kind: method
+      prototype: appendChild()
+      file: src/generated/DOM/Element/appendChild.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::getAttribute
+  response:
+    results:
+    - qualified_name: DOM::Element::getAttribute
+      kind: method
+      prototype: getAttribute()
+      file: src/generated/DOM/Element/getAttribute.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::getChildren
+  response:
+    results:
+    - qualified_name: DOM::Element::getChildren
+      kind: method
+      prototype: getChildren()
+      file: src/generated/DOM/Element/getChildren.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::getComputedStyle
+  response:
+    results:
+    - qualified_name: DOM::Element::getComputedStyle
+      kind: method
+      prototype: getComputedStyle()
+      file: src/generated/DOM/Element/getComputedStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::getTagName
+  response:
+    results:
+    - qualified_name: DOM::Element::getTagName
+      kind: method
+      prototype: getTagName()
+      file: src/generated/DOM/Element/getTagName.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::invalidateStyle
+  response:
+    results:
+    - qualified_name: DOM::Element::invalidateStyle
+      kind: method
+      prototype: invalidateStyle()
+      file: src/generated/DOM/Element/invalidateStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::removeChild
+  response:
+    results:
+    - qualified_name: DOM::Element::removeChild
+      kind: method
+      prototype: removeChild()
+      file: src/generated/DOM/Element/removeChild.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Element::setAttribute
+  response:
+    results:
+    - qualified_name: DOM::Element::setAttribute
+      kind: method
+      prototype: setAttribute()
+      file: src/generated/DOM/Element/setAttribute.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::ExportVisitor
+  response:
+    results:
+    - qualified_name: DOM::ExportVisitor
+      kind: class
+      prototype: class ExportVisitor
+      file: src/generated/DOM/ExportVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::HtmlExportVisitor
+  response:
+    results:
+    - qualified_name: DOM::HtmlExportVisitor
+      kind: class
+      prototype: class HtmlExportVisitor
+      file: src/generated/DOM/HtmlExportVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::INodeVisitor
+  response:
+    results:
+    - qualified_name: DOM::INodeVisitor
+      kind: class
+      prototype: class INodeVisitor
+      file: src/generated/DOM/INodeVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::INodeVisitor::visitDocument
+  response:
+    results:
+    - qualified_name: DOM::INodeVisitor::visitDocument
+      kind: method
+      prototype: visitDocument()
+      file: src/generated/DOM/INodeVisitor/visitDocument.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::INodeVisitor::visitElement
+  response:
+    results:
+    - qualified_name: DOM::INodeVisitor::visitElement
+      kind: method
+      prototype: visitElement()
+      file: src/generated/DOM/INodeVisitor/visitElement.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::INodeVisitor::visitTextNode
+  response:
+    results:
+    - qualified_name: DOM::INodeVisitor::visitTextNode
+      kind: method
+      prototype: visitTextNode()
+      file: src/generated/DOM/INodeVisitor/visitTextNode.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::IProcessor
+  response:
+    results:
+    - qualified_name: DOM::IProcessor
+      kind: class
+      prototype: class IProcessor
+      file: src/generated/DOM/IProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::IProcessor::process
+  response:
+    results:
+    - qualified_name: DOM::IProcessor::process
+      kind: method
+      prototype: process()
+      file: src/generated/DOM/IProcessor/process.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::MarkdownExportVisitor
+  response:
+    results:
+    - qualified_name: DOM::MarkdownExportVisitor
+      kind: class
+      prototype: class MarkdownExportVisitor
+      file: src/generated/DOM/MarkdownExportVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Node
+  response:
+    results:
+    - qualified_name: DOM::Node
+      kind: class
+      prototype: class Node
+      file: src/generated/DOM/Node.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Node::getParentNode
+  response:
+    results:
+    - qualified_name: DOM::Node::getParentNode
+      kind: method
+      prototype: getParentNode()
+      file: src/generated/DOM/Node/getParentNode.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Node::notifyModification
+  response:
+    results:
+    - qualified_name: DOM::Node::notifyModification
+      kind: method
+      prototype: notifyModification()
+      file: src/generated/DOM/Node/notifyModification.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::NodeProcessor
+  response:
+    results:
+    - qualified_name: DOM::NodeProcessor
+      kind: class
+      prototype: class NodeProcessor
+      file: src/generated/DOM/NodeProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::StyleProcessor
+  response:
+    results:
+    - qualified_name: DOM::StyleProcessor
+      kind: class
+      prototype: class StyleProcessor
+      file: src/generated/DOM/StyleProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::Table
+  response:
+    results:
+    - qualified_name: DOM::Table
+      kind: class
+      prototype: class Table
+      file: src/generated/DOM/Table.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::TextNode
+  response:
+    results:
+    - qualified_name: DOM::TextNode
+      kind: class
+      prototype: class TextNode
+      file: src/generated/DOM/TextNode.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DOM::ValidationVisitor
+  response:
+    results:
+    - qualified_name: DOM::ValidationVisitor
+      kind: class
+      prototype: class ValidationVisitor
+      file: src/generated/DOM/ValidationVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DataManager
+  response:
+    results:
+    - qualified_name: DataManager
+      kind: class
+      prototype: class DataManager
+      file: src/generated/DataManager.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: Document
+  response:
+    results:
+    - qualified_name: Document
+      kind: class
+      prototype: class Document
+      file: src/generated/Document.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DocumentBuilder
+  response:
+    results:
+    - qualified_name: DocumentBuilder
+      kind: class
+      prototype: class DocumentBuilder
+      file: src/generated/DocumentBuilder.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DocumentImpl
+  response:
+    results:
+    - qualified_name: DocumentImpl
+      kind: class
+      prototype: class DocumentImpl
+      file: src/generated/DocumentImpl.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DocumentTestFixture
+  response:
+    results:
+    - qualified_name: DocumentTestFixture
+      kind: class
+      prototype: class DocumentTestFixture
+      file: src/generated/DocumentTestFixture.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: DocumentTestFixture::createSampleTable
+  response:
+    results:
+    - qualified_name: DocumentTestFixture::createSampleTable
+      kind: method
+      prototype: createSampleTable()
+      file: src/generated/DocumentTestFixture/createSampleTable.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: Element
+  response:
+    results:
+    - qualified_name: Element
+      kind: class
+      prototype: class Element
+      file: src/generated/Element.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: ElementTestFixture
+  response:
+    results:
+    - qualified_name: ElementTestFixture
+      kind: class
+      prototype: class ElementTestFixture
+      file: src/generated/ElementTestFixture.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: EventHandler
+  response:
+    results:
+    - qualified_name: EventHandler
+      kind: class
+      prototype: class EventHandler
+      file: src/generated/EventHandler.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: GetComputedStyle
+  response:
+    results:
+    - qualified_name: GetComputedStyle
+      kind: class
+      prototype: class GetComputedStyle
+      file: src/generated/GetComputedStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: HandleKeyPress
+  response:
+    results:
+    - qualified_name: HandleKeyPress
+      kind: class
+      prototype: class HandleKeyPress
+      file: src/generated/HandleKeyPress.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: INodeVisitor
+  response:
+    results:
+    - qualified_name: INodeVisitor
+      kind: class
+      prototype: class INodeVisitor
+      file: src/generated/INodeVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: IProcessor
+  response:
+    results:
+    - qualified_name: IProcessor
+      kind: class
+      prototype: class IProcessor
+      file: src/generated/IProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: MergeTableCells
+  response:
+    results:
+    - qualified_name: MergeTableCells
+      kind: class
+      prototype: class MergeTableCells
+      file: src/generated/MergeTableCells.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: RecalculateSpans
+  response:
+    results:
+    - qualified_name: RecalculateSpans
+      kind: class
+      prototype: class RecalculateSpans
+      file: src/generated/RecalculateSpans.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: ResolveInheritedStyle
+  response:
+    results:
+    - qualified_name: ResolveInheritedStyle
+      kind: class
+      prototype: class ResolveInheritedStyle
+      file: src/generated/ResolveInheritedStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: StyleResolver
+  response:
+    results:
+    - qualified_name: StyleResolver
+      kind: class
+      prototype: class StyleResolver
+      file: src/generated/StyleResolver.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: StyleResolverTestFixture
+  response:
+    results:
+    - qualified_name: StyleResolverTestFixture
+      kind: class
+      prototype: class StyleResolverTestFixture
+      file: src/generated/StyleResolverTestFixture.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::CellMerger::mergeCells
+  response:
+    results:
+    - qualified_name: TBL::CellMerger::mergeCells
+      kind: method
+      prototype: mergeCells()
+      file: src/generated/TBL/CellMerger/mergeCells.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::CellMerger::unmerge
+  response:
+    results:
+    - qualified_name: TBL::CellMerger::unmerge
+      kind: method
+      prototype: unmerge()
+      file: src/generated/TBL/CellMerger/unmerge.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::SpanCalculator::recalculate
+  response:
+    results:
+    - qualified_name: TBL::SpanCalculator::recalculate
+      kind: method
+      prototype: recalculate()
+      file: src/generated/TBL/SpanCalculator/recalculate.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::TableProcessor
+  response:
+    results:
+    - qualified_name: TBL::TableProcessor
+      kind: class
+      prototype: class TableProcessor
+      file: src/generated/TBL/TableProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::TableProcessor::addColumn
+  response:
+    results:
+    - qualified_name: TBL::TableProcessor::addColumn
+      kind: method
+      prototype: addColumn()
+      file: src/generated/TBL/TableProcessor/addColumn.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::TableProcessor::addRow
+  response:
+    results:
+    - qualified_name: TBL::TableProcessor::addRow
+      kind: method
+      prototype: addRow()
+      file: src/generated/TBL/TableProcessor/addRow.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::TableProcessor::getCell
+  response:
+    results:
+    - qualified_name: TBL::TableProcessor::getCell
+      kind: method
+      prototype: getCell()
+      file: src/generated/TBL/TableProcessor/getCell.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::TableProcessor::removeRow
+  response:
+    results:
+    - qualified_name: TBL::TableProcessor::removeRow
+      kind: method
+      prototype: removeRow()
+      file: src/generated/TBL/TableProcessor/removeRow.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TBL::TableProcessor::setTableElement
+  response:
+    results:
+    - qualified_name: TBL::TableProcessor::setTableElement
+      kind: method
+      prototype: setTableElement()
+      file: src/generated/TBL/TableProcessor/setTableElement.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TEST_F_AppendChild
+  response:
+    results:
+    - qualified_name: TEST_F_AppendChild
+      kind: class
+      prototype: class TEST_F_AppendChild
+      file: src/generated/TEST_F_AppendChild.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TEST_F_CreateElement
+  response:
+    results:
+    - qualified_name: TEST_F_CreateElement
+      kind: class
+      prototype: class TEST_F_CreateElement
+      file: src/generated/TEST_F_CreateElement.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TableOperationsFixture
+  response:
+    results:
+    - qualified_name: TableOperationsFixture
+      kind: class
+      prototype: class TableOperationsFixture
+      file: src/generated/TableOperationsFixture.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TableProcessor
+  response:
+    results:
+    - qualified_name: TableProcessor
+      kind: class
+      prototype: class TableProcessor
+      file: src/generated/TableProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TestUtils::AssertionHelper
+  response:
+    results:
+    - qualified_name: TestUtils::AssertionHelper
+      kind: class
+      prototype: class AssertionHelper
+      file: src/generated/TestUtils/AssertionHelper.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TestUtils::DocumentBuilder
+  response:
+    results:
+    - qualified_name: TestUtils::DocumentBuilder
+      kind: class
+      prototype: class DocumentBuilder
+      file: src/generated/TestUtils/DocumentBuilder.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TestUtils::DocumentBuilder::build
+  response:
+    results:
+    - qualified_name: TestUtils::DocumentBuilder::build
+      kind: method
+      prototype: build()
+      file: src/generated/TestUtils/DocumentBuilder/build.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TestUtils::DocumentBuilder::withHeading
+  response:
+    results:
+    - qualified_name: TestUtils::DocumentBuilder::withHeading
+      kind: method
+      prototype: withHeading()
+      file: src/generated/TestUtils/DocumentBuilder/withHeading.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TestUtils::DocumentBuilder::withParagraph
+  response:
+    results:
+    - qualified_name: TestUtils::DocumentBuilder::withParagraph
+      kind: method
+      prototype: withParagraph()
+      file: src/generated/TestUtils/DocumentBuilder/withParagraph.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: TestUtils::DocumentBuilder::withTable
+  response:
+    results:
+    - qualified_name: TestUtils::DocumentBuilder::withTable
+      kind: method
+      prototype: withTable()
+      file: src/generated/TestUtils/DocumentBuilder/withTable.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::CommandHandler::HandleKeyPress
+  response:
+    results:
+    - qualified_name: UI::CommandHandler::HandleKeyPress
+      kind: class
+      prototype: class HandleKeyPress
+      file: src/generated/UI/CommandHandler/HandleKeyPress.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::CommandHandler::executeCommand
+  response:
+    results:
+    - qualified_name: UI::CommandHandler::executeCommand
+      kind: method
+      prototype: executeCommand()
+      file: src/generated/UI/CommandHandler/executeCommand.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::CommandHandler::executeInsertRow
+  response:
+    results:
+    - qualified_name: UI::CommandHandler::executeInsertRow
+      kind: method
+      prototype: executeInsertRow()
+      file: src/generated/UI/CommandHandler/executeInsertRow.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::CommandHandler::executeMergeCells
+  response:
+    results:
+    - qualified_name: UI::CommandHandler::executeMergeCells
+      kind: method
+      prototype: executeMergeCells()
+      file: src/generated/UI/CommandHandler/executeMergeCells.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::CommandHandler::findBinding
+  response:
+    results:
+    - qualified_name: UI::CommandHandler::findBinding
+      kind: method
+      prototype: findBinding()
+      file: src/generated/UI/CommandHandler/findBinding.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget
+  response:
+    results:
+    - qualified_name: UI::EditorWidget
+      kind: class
+      prototype: class EditorWidget
+      file: src/generated/UI/EditorWidget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::createToolbar
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::createToolbar
+      kind: method
+      prototype: createToolbar()
+      file: src/generated/UI/EditorWidget/createToolbar.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::initialize
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::initialize
+      kind: method
+      prototype: initialize()
+      file: src/generated/UI/EditorWidget/initialize.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::keyPressEvent
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::keyPressEvent
+      kind: method
+      prototype: keyPressEvent()
+      file: src/generated/UI/EditorWidget/keyPressEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::layoutContent
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::layoutContent
+      kind: method
+      prototype: layoutContent()
+      file: src/generated/UI/EditorWidget/layoutContent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::loadPlugins
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::loadPlugins
+      kind: method
+      prototype: loadPlugins()
+      file: src/generated/UI/EditorWidget/loadPlugins.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::onDocumentChanged
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::onDocumentChanged
+      kind: method
+      prototype: onDocumentChanged()
+      file: src/generated/UI/EditorWidget/onDocumentChanged.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::paintElements
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::paintElements
+      kind: method
+      prototype: paintElements()
+      file: src/generated/UI/EditorWidget/paintElements.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::reformatDocument
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::reformatDocument
+      kind: method
+      prototype: reformatDocument()
+      file: src/generated/UI/EditorWidget/reformatDocument.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::render
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::render
+      kind: method
+      prototype: render()
+      file: src/generated/UI/EditorWidget/render.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::updateElementStyle
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::updateElementStyle
+      kind: method
+      prototype: updateElementStyle()
+      file: src/generated/UI/EditorWidget/updateElementStyle.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EditorWidget::updateUI
+  response:
+    results:
+    - qualified_name: UI::EditorWidget::updateUI
+      kind: method
+      prototype: updateUI()
+      file: src/generated/UI/EditorWidget/updateUI.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EventHandler
+  response:
+    results:
+    - qualified_name: UI::EventHandler
+      kind: class
+      prototype: class EventHandler
+      file: src/generated/UI/EventHandler.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EventHandler::addEventListener
+  response:
+    results:
+    - qualified_name: UI::EventHandler::addEventListener
+      kind: method
+      prototype: addEventListener()
+      file: src/generated/UI/EventHandler/addEventListener.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EventHandler::handleEvent
+  response:
+    results:
+    - qualified_name: UI::EventHandler::handleEvent
+      kind: method
+      prototype: handleEvent()
+      file: src/generated/UI/EventHandler/handleEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::EventHandler::removeEventListener
+  response:
+    results:
+    - qualified_name: UI::EventHandler::removeEventListener
+      kind: method
+      prototype: removeEventListener()
+      file: src/generated/UI/EventHandler/removeEventListener.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::KeyEventHandler
+  response:
+    results:
+    - qualified_name: UI::KeyEventHandler
+      kind: class
+      prototype: class KeyEventHandler
+      file: src/generated/UI/KeyEventHandler.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::MouseEventHandler
+  response:
+    results:
+    - qualified_name: UI::MouseEventHandler
+      kind: class
+      prototype: class MouseEventHandler
+      file: src/generated/UI/MouseEventHandler.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::SelectionManager::getSelection
+  response:
+    results:
+    - qualified_name: UI::SelectionManager::getSelection
+      kind: method
+      prototype: getSelection()
+      file: src/generated/UI/SelectionManager/getSelection.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::ToolbarWidget
+  response:
+    results:
+    - qualified_name: UI::ToolbarWidget
+      kind: class
+      prototype: class ToolbarWidget
+      file: src/generated/UI/ToolbarWidget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: UI::Widget
+  response:
+    results:
+    - qualified_name: UI::Widget
+      kind: class
+      prototype: class Widget
+      file: src/generated/UI/Widget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: Widget
+  response:
+    results:
+    - qualified_name: Widget
+      kind: class
+      prototype: class Widget
+      file: src/generated/Widget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: addRow
+  response:
+    results:
+    - qualified_name: addRow
+      kind: function
+      prototype: addRow()
+      file: src/generated/addRow.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::AsyncProcessor
+  response:
+    results:
+    - qualified_name: app::AsyncProcessor
+      kind: function
+      prototype: app::AsyncProcessor()
+      file: src/generated/app/AsyncProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::BaseService
+  response:
+    results:
+    - qualified_name: app::BaseService
+      kind: function
+      prototype: app::BaseService()
+      file: src/generated/app/BaseService.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::BatchProcessor
+  response:
+    results:
+    - qualified_name: app::BatchProcessor
+      kind: function
+      prototype: app::BatchProcessor()
+      file: src/generated/app/BatchProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::CacheManager
+  response:
+    results:
+    - qualified_name: app::CacheManager
+      kind: function
+      prototype: app::CacheManager()
+      file: src/generated/app/CacheManager.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::CachedDataManager
+  response:
+    results:
+    - qualified_name: app::CachedDataManager
+      kind: function
+      prototype: app::CachedDataManager()
+      file: src/generated/app/CachedDataManager.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::Config::load
+  response:
+    results:
+    - qualified_name: app::Config::load
+      kind: method
+      prototype: load()
+      file: src/generated/app/Config/load.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DOMPrinter
+  response:
+    results:
+    - qualified_name: app::DOMPrinter
+      kind: function
+      prototype: app::DOMPrinter()
+      file: src/generated/app/DOMPrinter.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager
+  response:
+    results:
+    - qualified_name: app::DataManager
+      kind: function
+      prototype: app::DataManager()
+      file: src/generated/app/DataManager.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager::getData
+  response:
+    results:
+    - qualified_name: app::DataManager::getData
+      kind: method
+      prototype: getData()
+      file: src/generated/app/DataManager/getData.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager::initialize
+  response:
+    results:
+    - qualified_name: app::DataManager::initialize
+      kind: method
+      prototype: initialize()
+      file: src/generated/app/DataManager/initialize.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager::processData
+  response:
+    results:
+    - qualified_name: app::DataManager::processData
+      kind: method
+      prototype: processData()
+      file: src/generated/app/DataManager/processData.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager::processEvent
+  response:
+    results:
+    - qualified_name: app::DataManager::processEvent
+      kind: method
+      prototype: processEvent()
+      file: src/generated/app/DataManager/processEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager::shutdown
+  response:
+    results:
+    - qualified_name: app::DataManager::shutdown
+      kind: method
+      prototype: shutdown()
+      file: src/generated/app/DataManager/shutdown.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataManager::transform
+  response:
+    results:
+    - qualified_name: app::DataManager::transform
+      kind: method
+      prototype: transform()
+      file: src/generated/app/DataManager/transform.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DataValidator::validate
+  response:
+    results:
+    - qualified_name: app::DataValidator::validate
+      kind: method
+      prototype: validate()
+      file: src/generated/app/DataValidator/validate.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::Database::connect
+  response:
+    results:
+    - qualified_name: app::Database::connect
+      kind: method
+      prototype: connect()
+      file: src/generated/app/Database/connect.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::Database::insert
+  response:
+    results:
+    - qualified_name: app::Database::insert
+      kind: method
+      prototype: insert()
+      file: src/generated/app/Database/insert.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::DocumentBuilderHelper
+  response:
+    results:
+    - qualified_name: app::DocumentBuilderHelper
+      kind: function
+      prototype: app::DocumentBuilderHelper()
+      file: src/generated/app/DocumentBuilderHelper.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::EventHandler
+  response:
+    results:
+    - qualified_name: app::EventHandler
+      kind: function
+      prototype: app::EventHandler()
+      file: src/generated/app/EventHandler.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::EventHandler::handleEvent
+  response:
+    results:
+    - qualified_name: app::EventHandler::handleEvent
+      kind: method
+      prototype: handleEvent()
+      file: src/generated/app/EventHandler/handleEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::EventHandler::onFocus
+  response:
+    results:
+    - qualified_name: app::EventHandler::onFocus
+      kind: method
+      prototype: onFocus()
+      file: src/generated/app/EventHandler/onFocus.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::EventLoop::dispatch
+  response:
+    results:
+    - qualified_name: app::EventLoop::dispatch
+      kind: method
+      prototype: dispatch()
+      file: src/generated/app/EventLoop/dispatch.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::EventLoop::onEvent
+  response:
+    results:
+    - qualified_name: app::EventLoop::onEvent
+      kind: method
+      prototype: onEvent()
+      file: src/generated/app/EventLoop/onEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::EventValidator::validate
+  response:
+    results:
+    - qualified_name: app::EventValidator::validate
+      kind: method
+      prototype: validate()
+      file: src/generated/app/EventValidator/validate.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::FilteredStreamProcessor
+  response:
+    results:
+    - qualified_name: app::FilteredStreamProcessor
+      kind: function
+      prototype: app::FilteredStreamProcessor()
+      file: src/generated/app/FilteredStreamProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::INodeVisitor
+  response:
+    results:
+    - qualified_name: app::INodeVisitor
+      kind: function
+      prototype: app::INodeVisitor()
+      file: src/generated/app/INodeVisitor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::IProcessor
+  response:
+    results:
+    - qualified_name: app::IProcessor
+      kind: function
+      prototype: app::IProcessor()
+      file: src/generated/app/IProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::Logger::init
+  response:
+    results:
+    - qualified_name: app::Logger::init
+      kind: method
+      prototype: init()
+      file: src/generated/app/Logger/init.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::Logger::log
+  response:
+    results:
+    - qualified_name: app::Logger::log
+      kind: method
+      prototype: log()
+      file: src/generated/app/Logger/log.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::NetworkManager
+  response:
+    results:
+    - qualified_name: app::NetworkManager
+      kind: function
+      prototype: app::NetworkManager()
+      file: src/generated/app/NetworkManager.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::NodeCounter
+  response:
+    results:
+    - qualified_name: app::NodeCounter
+      kind: function
+      prototype: app::NodeCounter()
+      file: src/generated/app/NodeCounter.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::StreamProcessor
+  response:
+    results:
+    - qualified_name: app::StreamProcessor
+      kind: function
+      prototype: app::StreamProcessor()
+      file: src/generated/app/StreamProcessor.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::StyleApplier
+  response:
+    results:
+    - qualified_name: app::StyleApplier
+      kind: function
+      prototype: app::StyleApplier()
+      file: src/generated/app/StyleApplier.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::TestHelper
+  response:
+    results:
+    - qualified_name: app::TestHelper
+      kind: function
+      prototype: app::TestHelper()
+      file: src/generated/app/TestHelper.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::TestRunner::runTest
+  response:
+    results:
+    - qualified_name: app::TestRunner::runTest
+      kind: method
+      prototype: runTest()
+      file: src/generated/app/TestRunner/runTest.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::Widget::handleInput
+  response:
+    results:
+    - qualified_name: app::Widget::handleInput
+      kind: method
+      prototype: handleInput()
+      file: src/generated/app/Widget/handleInput.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::core::BaseService
+  response:
+    results:
+    - qualified_name: app::core::BaseService
+      kind: function
+      prototype: app::core::BaseService()
+      file: src/generated/app/core/BaseService.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::core::Config
+  response:
+    results:
+    - qualified_name: app::core::Config
+      kind: function
+      prototype: app::core::Config()
+      file: src/generated/app/core/Config.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::core::EventHandler
+  response:
+    results:
+    - qualified_name: app::core::EventHandler
+      kind: function
+      prototype: app::core::EventHandler()
+      file: src/generated/app/core/EventHandler.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::initializeApp
+  response:
+    results:
+    - qualified_name: app::initializeApp
+      kind: method
+      prototype: initializeApp()
+      file: src/generated/app/initializeApp.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::processEvent
+  response:
+    results:
+    - qualified_name: app::processEvent
+      kind: method
+      prototype: processEvent()
+      file: src/generated/app/processEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::processInput
+  response:
+    results:
+    - qualified_name: app::processInput
+      kind: method
+      prototype: processInput()
+      file: src/generated/app/processInput.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::test::DataManagerTest
+  response:
+    results:
+    - qualified_name: app::test::DataManagerTest
+      kind: function
+      prototype: app::test::DataManagerTest()
+      file: src/generated/app/test/DataManagerTest.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::test::DataManagerTest::setUp
+  response:
+    results:
+    - qualified_name: app::test::DataManagerTest::setUp
+      kind: method
+      prototype: setUp()
+      file: src/generated/app/test/DataManagerTest/setUp.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::test::WidgetTest
+  response:
+    results:
+    - qualified_name: app::test::WidgetTest
+      kind: function
+      prototype: app::test::WidgetTest()
+      file: src/generated/app/test/WidgetTest.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::test::runDataManagerTests
+  response:
+    results:
+    - qualified_name: app::test::runDataManagerTests
+      kind: method
+      prototype: runDataManagerTests()
+      file: src/generated/app/test/runDataManagerTests.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::test::runWidgetTests
+  response:
+    results:
+    - qualified_name: app::test::runWidgetTests
+      kind: method
+      prototype: runWidgetTests()
+      file: src/generated/app/test/runWidgetTests.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Application::run
+  response:
+    results:
+    - qualified_name: app::ui::Application::run
+      kind: method
+      prototype: run()
+      file: src/generated/app/ui/Application/run.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Button
+  response:
+    results:
+    - qualified_name: app::ui::Button
+      kind: function
+      prototype: app::ui::Button()
+      file: src/generated/app/ui/Button.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::ButtonWidget
+  response:
+    results:
+    - qualified_name: app::ui::ButtonWidget
+      kind: function
+      prototype: app::ui::ButtonWidget()
+      file: src/generated/app/ui/ButtonWidget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::ContainerWidget
+  response:
+    results:
+    - qualified_name: app::ui::ContainerWidget
+      kind: function
+      prototype: app::ui::ContainerWidget()
+      file: src/generated/app/ui/ContainerWidget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Painter::drawRect
+  response:
+    results:
+    - qualified_name: app::ui::Painter::drawRect
+      kind: method
+      prototype: drawRect()
+      file: src/generated/app/ui/Painter/drawRect.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::ScrollableContainer
+  response:
+    results:
+    - qualified_name: app::ui::ScrollableContainer
+      kind: function
+      prototype: app::ui::ScrollableContainer()
+      file: src/generated/app/ui/ScrollableContainer.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::StyleSheet::apply
+  response:
+    results:
+    - qualified_name: app::ui::StyleSheet::apply
+      kind: method
+      prototype: apply()
+      file: src/generated/app/ui/StyleSheet/apply.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::TextWidget
+  response:
+    results:
+    - qualified_name: app::ui::TextWidget
+      kind: function
+      prototype: app::ui::TextWidget()
+      file: src/generated/app/ui/TextWidget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Widget
+  response:
+    results:
+    - qualified_name: app::ui::Widget
+      kind: function
+      prototype: app::ui::Widget()
+      file: src/generated/app/ui/Widget.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Widget::handleEvent
+  response:
+    results:
+    - qualified_name: app::ui::Widget::handleEvent
+      kind: method
+      prototype: handleEvent()
+      file: src/generated/app/ui/Widget/handleEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Widget::render
+  response:
+    results:
+    - qualified_name: app::ui::Widget::render
+      kind: method
+      prototype: render()
+      file: src/generated/app/ui/Widget/render.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Widget::renderChildren
+  response:
+    results:
+    - qualified_name: app::ui::Widget::renderChildren
+      kind: method
+      prototype: renderChildren()
+      file: src/generated/app/ui/Widget/renderChildren.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Widget::resize
+  response:
+    results:
+    - qualified_name: app::ui::Widget::resize
+      kind: method
+      prototype: resize()
+      file: src/generated/app/ui/Widget/resize.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::Widget::updateUI
+  response:
+    results:
+    - qualified_name: app::ui::Widget::updateUI
+      kind: method
+      prototype: updateUI()
+      file: src/generated/app/ui/Widget/updateUI.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::ui::WindowManager
+  response:
+    results:
+    - qualified_name: app::ui::WindowManager
+      kind: function
+      prototype: app::ui::WindowManager()
+      file: src/generated/app/ui/WindowManager.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::utils::formatDate
+  response:
+    results:
+    - qualified_name: app::utils::formatDate
+      kind: method
+      prototype: formatDate()
+      file: src/generated/app/utils/formatDate.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::utils::hexEncode
+  response:
+    results:
+    - qualified_name: app::utils::hexEncode
+      kind: method
+      prototype: hexEncode()
+      file: src/generated/app/utils/hexEncode.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: app::utils::parseString
+  response:
+    results:
+    - qualified_name: app::utils::parseString
+      kind: method
+      prototype: parseString()
+      file: src/generated/app/utils/parseString.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: formatString
+  response:
+    results:
+    - qualified_name: formatString
+      kind: function
+      prototype: formatString()
+      file: src/generated/formatString.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: initialize
+  response:
+    results:
+    - qualified_name: initialize
+      kind: function
+      prototype: initialize()
+      file: src/generated/initialize.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: main
+  response:
+    results:
+    - qualified_name: main
+      kind: function
+      prototype: main()
+      file: src/generated/main.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: myFunction
+  response:
+    results:
+    - qualified_name: myFunction
+      kind: function
+      prototype: myFunction()
+      file: src/generated/myFunction.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: parseInteger
+  response:
+    results:
+    - qualified_name: parseInteger
+      kind: function
+      prototype: parseInteger()
+      file: src/generated/parseInteger.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: processData
+  response:
+    results:
+    - qualified_name: processData
+      kind: function
+      prototype: processData()
+      file: src/generated/processData.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: processEvent
+  response:
+    results:
+    - qualified_name: processEvent
+      kind: function
+      prototype: processEvent()
+      file: src/generated/processEvent.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: render
+  response:
+    results:
+    - qualified_name: render
+      kind: function
+      prototype: render()
+      file: src/generated/render.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: setAttribute
+  response:
+    results:
+    - qualified_name: setAttribute
+      kind: function
+      prototype: setAttribute()
+      file: src/generated/setAttribute.h
+      line: 1
+- tool: find_symbols_by_pattern
+  match:
+    symbol_name: updateUI
+  response:
+    results:
+    - qualified_name: updateUI
+      kind: function
+      prototype: updateUI()
+      file: src/generated/updateUI.h
+      line: 1

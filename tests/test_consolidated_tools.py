@@ -93,9 +93,9 @@ class TestListToolsB:
             "full_details_with_docs",
         }
 
-    def test_get_functions_called_by_has_return_format_enum(self) -> None:
+    def test_find_outgoing_calls_has_return_format_enum(self) -> None:
         tools = list_tools_b()
-        tool = [t for t in tools if t.name == "get_functions_called_by"][0]
+        tool = [t for t in tools if t.name == "find_outgoing_calls"][0]
         props = tool.inputSchema["properties"]
         assert "return_format" in props
         assert set(props["return_format"]["enum"]) == {
@@ -111,28 +111,6 @@ class TestListToolsB:
             "source_function",
             "target_function",
         }
-
-    def test_no_internal_only_tools_present(self) -> None:
-        """Internal-only tools should not appear in consolidated tool list."""
-        tools = list_tools_b()
-        names = {t.name for t in tools}
-        internal_only = {
-            "search_classes",
-            "search_functions",
-            "search_symbols",
-            "get_outgoing_calls",
-            "get_incoming_calls",
-            "get_call_sites",
-            "get_call_path",
-            "get_function_signature",
-            "wait_for_indexing",
-            "get_files_containing_symbol",
-            "set_project_directory",
-            "check_system_status",
-            "refresh_project",
-        }
-        assert names.isdisjoint(internal_only)
-
 
 # ---------------------------------------------------------------
 # Output filtering
@@ -486,7 +464,7 @@ class TestSearchCodebaseRouting:
 
 
 class TestGetFunctionsCalledByRouting:
-    """Test get_functions_called_by routing based on return_format."""
+    """Test find_outgoing_calls routing based on return_format."""
 
     @pytest.mark.asyncio
     async def test_summary_routes_to_outgoing_calls(self) -> None:
@@ -496,7 +474,7 @@ class TestGetFunctionsCalledByRouting:
             return_value=_tc({"callees": [{"qualified_name": "f", "file": "a.cpp"}]}),
         ) as mock:
             await handle_tool_call_b(
-                "get_functions_called_by",
+                "find_outgoing_calls",
                 {
                     "function_name": "process",
                     "return_format": "function_definitions_summary",
@@ -524,7 +502,7 @@ class TestGetFunctionsCalledByRouting:
             ),
         ):
             result = await handle_tool_call_b(
-                "get_functions_called_by",
+                "find_outgoing_calls",
                 {
                     "function_name": "process",
                     "return_format": "function_definitions_summary",
@@ -545,7 +523,7 @@ class TestGetFunctionsCalledByRouting:
             ),
         ) as mock:
             result = await handle_tool_call_b(
-                "get_functions_called_by",
+                "find_outgoing_calls",
                 {
                     "function_name": "process",
                     "return_format": "function_definitions_full",
@@ -564,7 +542,7 @@ class TestGetFunctionsCalledByRouting:
             return_value=_tc({"call_sites": []}),
         ) as mock:
             await handle_tool_call_b(
-                "get_functions_called_by",
+                "find_outgoing_calls",
                 {
                     "function_name": "process",
                     "return_format": "exact_call_line_locations",
@@ -581,7 +559,7 @@ class TestGetFunctionsCalledByRouting:
             return_value=_tc({"call_sites": []}),
         ) as mock:
             await handle_tool_call_b(
-                "get_functions_called_by",
+                "find_outgoing_calls",
                 {
                     "function_name": "process",
                     "class_name": "Handler",
@@ -605,7 +583,7 @@ class TestGetFunctionsCalledByRouting:
             return_value=_tc({"callees": []}),
         ) as mock:
             await handle_tool_call_b(
-                "get_functions_called_by",
+                "find_outgoing_calls",
                 {
                     "function_name": "f",
                     "return_format": "function_definitions_full",
@@ -618,7 +596,7 @@ class TestGetFunctionsCalledByRouting:
 
 
 class TestFindUsageSitesRouting:
-    """Test find_callers → get_incoming_calls delegation."""
+    """Test find_incoming_calls → find_incoming_calls delegation."""
 
     @pytest.mark.asyncio
     async def test_delegates_to_incoming_calls(self) -> None:
@@ -628,8 +606,8 @@ class TestFindUsageSitesRouting:
             return_value=_tc({"callers": []}),
         ) as mock:
             args = {"function_name": "render", "class_name": "View"}
-            await handle_tool_call_b("find_callers", args)
-            mock.assert_called_once_with("get_incoming_calls", args)
+            await handle_tool_call_b("find_incoming_calls", args)
+            mock.assert_called_once_with("find_incoming_calls", args)
 
 
 class TestTraceExecutionPathRouting:

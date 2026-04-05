@@ -40,7 +40,7 @@ responses:
   # Search for Manager classes
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Manager"
       target_type: "classes_and_structs_only"
     response:
@@ -60,14 +60,11 @@ responses:
           prototype: "class WindowManager : public Singleton<WindowManager>"
           file: "src/ui/window_manager.h"
           line: 22
-      next_steps:
-        - "get_class_info('DataManager') -- explore class details"
-        - "get_class_hierarchy('DataManager') -- see inheritance tree"
 
   # Search for Manager pattern (all symbol types)
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Manager"
     response:
       results:
@@ -86,13 +83,11 @@ responses:
           prototype: "bool DataManager::initialize(const Config &config)"
           file: "src/data_manager.cpp"
           line: 45
-      next_steps:
-        - "get_class_info('DataManager') -- explore class details"
 
   # Search for Widget
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Widget"
     response:
       results:
@@ -111,14 +106,11 @@ responses:
           prototype: "class TextWidget : public Widget"
           file: "src/ui/text_widget.h"
           line: 10
-      next_steps:
-        - "get_class_info('Widget') -- explore base class"
-        - "get_class_hierarchy('Widget') -- see full inheritance tree"
 
   # Search for functions with "process"
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "process"
       target_type: "functions_and_methods_only"
     response:
@@ -133,14 +125,11 @@ responses:
           prototype: "bool processInput(int argc, char **argv)"
           file: "src/main.cpp"
           line: 15
-      next_steps:
-        - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
 
   # Search for functions with "event"
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "event"
       target_type: "functions_and_methods_only"
     response:
@@ -155,14 +144,11 @@ responses:
           prototype: "bool Widget::handleEvent(const Event &event)"
           file: "src/ui/widget.h"
           line: 22
-      next_steps:
-        - "get_functions_called_by('processEvent', class_name='DataManager') -- see callees"
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
 
   # Empty search result (for testing empty-result hints)
   - tool: find_symbols_by_pattern
     match:
-      pattern: "NonExistentSymbol12345"
+      symbol_name: "NonExistentSymbol12345"
     response:
       results: []
       next_steps:
@@ -306,7 +292,7 @@ responses:
   # Non-existent symbol search — return empty
   - tool: find_symbols_by_pattern
     match:
-      pattern: "myFunction"
+      symbol_name: "myFunction"
     response:
       results: []
       message: "No symbols matching 'myFunction' found in the codebase."
@@ -338,6 +324,8 @@ responses:
       prototype: "class DataManager : public BaseService"
       file: "src/data_manager.h"
       line: 15
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details."
       base_classes:
         - "app::BaseService"
       derived_classes:
@@ -355,11 +343,6 @@ responses:
         - qualified_name: "app::DataManager::getData"
           prototype: "const Data &DataManager::getData() const"
           attributes: ["const"]
-      next_steps:
-        - "get_class_info('BaseService') -- explore base class"
-        - "get_class_hierarchy('DataManager') -- full inheritance tree"
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
-
   - tool: get_class_info
     match:
       class_name:
@@ -370,6 +353,8 @@ responses:
       prototype: "class Widget : public EventHandler"
       file: "src/ui/widget.h"
       line: 18
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. Use get_class_hierarchy if you need the full inheritance tree."
       base_classes:
         - "app::EventHandler"
       derived_classes:
@@ -386,11 +371,6 @@ responses:
         - qualified_name: "app::ui::Widget::resize"
           prototype: "void Widget::resize(int w, int h)"
           attributes: ["virtual"]
-      next_steps:
-        - "get_class_info('EventHandler') -- explore base class"
-        - "get_class_hierarchy('Widget') -- full inheritance tree"
-        - "find_symbols_by_pattern('render', target_type='functions_and_methods_only') -- find implementations"
-
   - tool: get_class_info
     match:
       class_name:
@@ -401,6 +381,8 @@ responses:
       prototype: "class EventHandler"
       file: "src/event_handler.h"
       line: 10
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. Use get_class_hierarchy if you need the full inheritance tree."
       base_classes: []
       derived_classes:
         - "app::ui::Widget"
@@ -412,8 +394,7 @@ responses:
         - qualified_name: "app::EventHandler::onFocus"
           prototype: "virtual void EventHandler::onFocus() = 0"
           attributes: ["pure_virtual"]
-      next_steps:
-        - "get_class_hierarchy('EventHandler') -- see all subclasses"
+      next_steps: []
 
   - tool: get_class_info
     default: true
@@ -431,6 +412,8 @@ responses:
         contains: "Widget"
     response:
       root: "app::EventHandler"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "app::EventHandler"
           children: ["app::ui::Widget"]
@@ -451,6 +434,8 @@ responses:
         contains: "DataManager"
     response:
       root: "app::BaseService"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "app::BaseService"
           children: ["app::DataManager", "app::NetworkManager"]
@@ -467,6 +452,8 @@ responses:
         contains: "IProcessor"
     response:
       root: "app::IProcessor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "app::IProcessor"
           children: ["app::BatchProcessor", "app::StreamProcessor", "app::AsyncProcessor"]
@@ -485,6 +472,8 @@ responses:
         contains: "INodeVisitor"
     response:
       root: "app::INodeVisitor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "app::INodeVisitor"
           children: ["app::DOMPrinter", "app::NodeCounter", "app::StyleApplier"]
@@ -568,10 +557,10 @@ responses:
       error: "Type alias not found. Try find_symbols_by_pattern to find type names."
 
   # -----------------------------------------------------------------
-  # get_functions_called_by (outgoing calls)
+  # find_outgoing_calls (outgoing calls)
   # -----------------------------------------------------------------
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "processEvent"
@@ -590,11 +579,8 @@ responses:
           prototype: "void Logger::log(LogLevel, const std::string &)"
           file: "src/logger.h"
           line: 15
-      next_steps:
-        - "find_callers('processEvent', class_name='DataManager') -- find callers"
-        - "get_functions_called_by('validate', class_name='EventValidator') -- go deeper"
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name: "main"
     response:
@@ -613,7 +599,7 @@ responses:
           file: "src/ui/application.h"
           line: 30
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "initialize"
@@ -632,10 +618,8 @@ responses:
           prototype: "bool Database::connect(const Config &)"
           file: "src/database.h"
           line: 32
-      next_steps:
-        - "find_callers('initialize') -- find callers"
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "render"
@@ -654,10 +638,8 @@ responses:
           prototype: "void StyleSheet::apply(Widget &)"
           file: "src/ui/stylesheet.h"
           line: 14
-      next_steps:
-        - "find_callers('render') -- find callers"
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "processData"
@@ -676,10 +658,8 @@ responses:
           prototype: "bool Database::insert(const DataRecord &)"
           file: "src/database.h"
           line: 44
-      next_steps:
-        - "find_callers('processData') -- find callers"
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     default: true
     response:
       function: "unknown"
@@ -689,10 +669,10 @@ responses:
         - "If it is a method, pass class_name parameter to narrow the search."
 
   # -----------------------------------------------------------------
-  # find_callers (incoming calls / callers)
+  # find_incoming_calls (incoming calls / callers)
   # -----------------------------------------------------------------
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "processEvent"
@@ -715,10 +695,8 @@ responses:
             - file: "tests/test_runner.cpp"
               line: 42
               column: 8
-      next_steps:
-        - "get_functions_called_by('dispatch', class_name='EventLoop') -- trace upstream"
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "myFunction"
@@ -727,7 +705,7 @@ responses:
       callers: []
       message: "No callers found — this function appears to be unused or not yet in the index."
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "updateUI"
@@ -742,10 +720,8 @@ responses:
             - file: "src/event_loop.cpp"
               line: 85
               column: 8
-      next_steps:
-        - "get_functions_called_by('updateUI') -- see what updateUI calls"
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     default: true
     response:
       function: "unknown"

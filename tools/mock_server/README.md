@@ -375,6 +375,78 @@ python tools/mock_server/bench_models.py --explain-failures qwen3-4b
 python tools/mock_server/bench_models.py --explain-all qwen3-4b
 ```
 
+### Benchmarking Strategy
+
+Use a tiered model list instead of treating every model as equally important.
+
+#### Primary
+
+Use the `Primary` set for routine benchmark reruns and regression tracking.
+These models should:
+- reliably emit native tool calls,
+- finish in reasonable time,
+- be strong enough that failures often indicate tool-description, hint, or
+  scenario problems rather than basic incapability.
+
+The `Primary` set defines the main benchmark scorecard.
+
+Recommended `Primary` models:
+- `qwen3-next-80b-a3b-instruct`
+- `qwen/qwen3-4b-thinking-2507`
+- `qwen3-30b-a3b-thinking-2507`
+- `zai-org/glm-4.7-flash`
+- `qwen3-coder-30b-a3b-instruct`
+- `mistralai/devstral-small-2-2512`
+- `qwen/qwen3-4b-2507`
+- `qwen/qwen3.5-9b`
+
+#### Stress
+
+Use the `Stress` set to probe benchmark brittleness. These models may be
+weaker or more idiosyncratic, but they still produce useful failure patterns
+that can reveal prompt, hint, or workflow weaknesses.
+
+Recommended `Stress` model:
+- `gpt-oss-120b`
+
+Run `Stress` models less often than `Primary`, or only before finalizing prompt
+and fixture changes.
+
+#### Retired
+
+Use the `Retired` set only for occasional spot checks. These models are not
+worth routine benchmark cost when they mainly fail at the function-calling or
+protocol layer and provide little incremental signal for tool-description
+improvements.
+
+Recommended `Retired` model:
+- `nanbeige4-3b-thinking-2511`
+
+#### Movement Criteria
+
+Move a model from `Primary` to `Stress` when:
+- its failures are mostly model-intrinsic across reruns,
+- it adds little new information beyond stronger models,
+- or it is much slower than the rest.
+
+Move a model from `Stress` to `Retired` when:
+- most failures are protocol-level brokenness rather than semantic tool-use
+  mistakes,
+- explanations stop being useful,
+- or the model rarely responds to prompt, hint, or scenario improvements.
+
+Move a model back toward `Primary` when:
+- it reacts meaningfully to benchmark/tooling improvements,
+- it provides distinct signal not already covered by stronger models,
+- and runtime remains acceptable.
+
+#### Recommended Usage
+
+- Run `Primary` on every meaningful benchmark iteration.
+- Run `Primary` plus `Stress` before merging significant tool-description,
+  fixture, or scenario changes.
+- Run `Retired` only for occasional compatibility audits.
+
 ### Output & Reports
 
 Results are saved to `tools/mock_server/optimization_runs/bench_<timestamp>/`:

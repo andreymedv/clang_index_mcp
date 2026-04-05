@@ -383,6 +383,28 @@ def _build_explanation_prompt(
 
     # Case 2: Wrong tool
     if not step_eval["tool_match"]:
+        # Special handling for direction-confusion cases (incoming vs outgoing calls)
+        is_direction_case = (
+            (actual_tool == "find_incoming_calls" and expected_tool == "find_outgoing_calls") or
+            (actual_tool == "find_outgoing_calls" and expected_tool == "find_incoming_calls")
+        )
+        if is_direction_case:
+            return (
+                f"You chose '{actual_tool}' but the expected tool was '{expected_tool}'.\n\n"
+                f"This is a DIRECTION confusion case (callers vs callees). Analyze your reasoning:\n\n"
+                f"1. SEMANTIC MAPPING:\n"
+                f"   - Who is the SUBJECT of the user's query?\n"
+                f"   - In your interpretation, does the subject MAKE calls or RECEIVE calls?\n"
+                f"   - Quote specific words/phrases that indicated direction to you.\n\n"
+                f"2. TOOL DESCRIPTION ANALYSIS:\n"
+                f"   - Quote the EXACT sentence in '{actual_tool}' that matched your interpretation.\n"
+                f"   - Quote the EXACT sentence in '{expected_tool}' that you missed/misunderstood.\n"
+                f"   - Why did the '{expected_tool}' description fail to override your choice?\n\n"
+                f"3. CONFUSION SOURCE:\n"
+                f"   - Was the query phrased in active voice ('X calls Y') or passive voice ('Y is called by X')?\n"
+                f"   - What alternative tool names would be clearer to you?\n\n"
+                f"Be detailed. This helps identify semantic mismatches between natural language and API design."
+            )
         return (
             f"Quote an EXACT part (or parts) of {actual_tool} and {expected_tool} "
             " descriptions and/or hints from previous tools' responses that made you decide "
@@ -899,6 +921,9 @@ def run_scenario(
             max_tokens=2048,
         )
 
+    # Collect unmatched incidents from the store
+    unmatched_incidents = store.get_unmatched_incidents()
+
     result: Dict[str, Any] = {
         "scenario_id": scenario["id"],
         "category": scenario.get("category", ""),
@@ -918,6 +943,12 @@ def run_scenario(
         "error": error,
     }
 
+    # Include unmatched incidents if any
+    if unmatched_incidents:
+        result["unmatched_incidents"] = list(unmatched_incidents)
+        # Clear incidents for next scenario
+        store.clear_incidents()
+
     # Include query variant metadata if present
     if scenario.get("query_variant"):
         result["base_scenario_id"] = scenario.get("base_id", scenario["id"])
@@ -925,6 +956,50 @@ def run_scenario(
         result["query_variant_total"] = scenario.get("query_variant_total", 1)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Timing statistics
+# ---------------------------------------------------------------------------
+
+
+def calculate_per_tool_time(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculate average time per tool invocation.
+
+    Returns dict with:
+        - avg_time_per_tool: average wall_time / total_tool_calls across all tests
+        - total_wall_time: sum of all wall_time_seconds
+        - total_tool_calls: sum of all tool calls
+        - test_count: number of tests with timing data
+    """
+    total_wall_time = 0.0
+    total_tool_calls = 0
+    test_count = 0
+
+    for r in results:
+        wall_time = r.get("wall_time_seconds")
+        tool_calls = r.get("total_tool_calls")
+
+        # Only count tests that have both timing and tool call data
+        if wall_time is not None and tool_calls is not None and tool_calls > 0:
+            total_wall_time += wall_time
+            total_tool_calls += tool_calls
+            test_count += 1
+
+    if total_tool_calls == 0:
+        return {
+            "avg_time_per_tool": 0.0,
+            "total_wall_time": 0.0,
+            "total_tool_calls": 0,
+            "test_count": 0,
+        }
+
+    return {
+        "avg_time_per_tool": round(total_wall_time / total_tool_calls, 2),
+        "total_wall_time": round(total_wall_time, 2),
+        "total_tool_calls": total_tool_calls,
+        "test_count": test_count,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -939,12 +1014,13 @@ def export_results(
     scenarios_file: str,
     fixtures_file: str,
     eval_mode: str = "strict",
+    unmatched_incidents: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """Export results as structured JSON."""
     passed = sum(1 for r in results if r["overall_pass"])
     total = len(results)
 
-    report = {
+    report: Dict[str, Any] = {
         "run_id": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "model": model,
         "eval_mode": eval_mode,
@@ -959,6 +1035,11 @@ def export_results(
         },
     }
 
+    # Include unmatched incidents if any
+    if unmatched_incidents:
+        report["unmatched_incidents"] = unmatched_incidents
+        report["summary"]["unmatched_incident_count"] = len(unmatched_incidents)
+
     with open(output_path, "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
 
@@ -966,6 +1047,15 @@ def export_results(
 # ---------------------------------------------------------------------------
 # Default system prompt
 # ---------------------------------------------------------------------------
+
+TOOL_SELECTION_RULES = """\
+Tool selection rules:
+- If the request names a specific class or function and asks for details, hierarchy, callers, or callees, use the specialized tool directly. Do not search for symbol unless the name is ambiguous or other tools return empty result.
+- If the request names a specific file, use find_in_file. If it mentions file prefixes, directories, or subtrees, use find_symbols_by_pattern with file_name. If it mentions a namespace, use find_symbols_by_pattern with namespace.
+- Use find_symbols_by_pattern as a discovery tool ONLY when the exact symbol identity is unknown or the task is broad discovery; otherwise prefer the more specific tool.
+- For call graph questions, use find_outgoing_calls for outbound calls from a function and find_incoming_calls for inbound calls to a function. Think: X -> callees for find_outgoing_calls, callers -> X for find_incoming_calls.
+- Use trace_execution_path only when both source and target functions are known and the request asks for call paths between them.
+"""
 
 SYSTEM_PROMPT = """\
 You are a C++ code analysis assistant. You have access to tools that can \
@@ -977,6 +1067,8 @@ Go directly to answering the question using the available tools.
 Use the available tools to answer the user's question. Be precise with tool \
 arguments -- use class/function names, not signatures. For regex patterns, \
 remember that patterns are anchored (matched against full name).
+
+""" + TOOL_SELECTION_RULES + """
 
 When you need a tool, you MUST emit a native tool call via the tool-calling \
 API. Do NOT write tool invocations as plain text, markdown, code fences, or \
@@ -1249,6 +1341,8 @@ def main() -> None:
         system_prompt = SYSTEM_PROMPT + VALIDATE_INTENT_ADDITION
 
     results: List[Dict[str, Any]] = []
+    all_unmatched_incidents: List[Dict[str, Any]] = []
+
     for i, scenario in enumerate(scenarios):
         if state.interrupted:
             break
@@ -1271,6 +1365,14 @@ def main() -> None:
             eval_mode=args.eval_mode,
         )
         results.append(result)
+
+        # Collect unmatched incidents from this scenario
+        if result.get("unmatched_incidents"):
+            for incident in result["unmatched_incidents"]:
+                incident["scenario_id"] = scenario["id"]
+                all_unmatched_incidents.append(incident)
+            # Print warning about unmatched incidents
+            print(f"  WARN: {len(result['unmatched_incidents'])} unmatched tool call(s)")
 
         # Detect clarification_requested: no tool calls, model responded with text
         clarification = (
@@ -1320,6 +1422,7 @@ def main() -> None:
         scenarios_file=args.scenarios,
         fixtures_file=fixtures_label,
         eval_mode=args.eval_mode,
+        unmatched_incidents=all_unmatched_incidents if all_unmatched_incidents else None,
     )
 
     # Summary
@@ -1340,6 +1443,13 @@ def main() -> None:
         tps = total_compl / total_wall if total_wall else 0
         print(f"Tokens:  prompt={total_prompt:,}  completion={total_compl:,}  "
               f"~{tps:.0f} tok/s completion")
+
+    # Print timing statistics
+    time_stats = calculate_per_tool_time(results)
+    if time_stats["test_count"] > 0:
+        print(f"Timing:  {time_stats['avg_time_per_tool']:.2f}s per tool "
+              f"({time_stats['total_tool_calls']} calls, "
+              f"{time_stats['total_wall_time']:.1f}s total)")
 
     # Per-base-scenario variant summary (only if multi-query scenarios exist)
     has_variants = any(r.get("query_variant") for r in results)

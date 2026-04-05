@@ -1,23 +1,11 @@
-"""
-Conditional next-step suggestions for MCP tool responses.
+"""Conditional next-step suggestions for MCP tool responses."""
 
-Design principle: hints only appear when returned data warrants them.
-Each function returns list[str] — empty list means no suggestions (no metadata added).
-"""
-
+import re
 from typing import Any, Dict, List, Optional
 
 
-def _strip_template_args(name: str) -> str:
-    """Strip template arguments from a type name: 'Foo<T>' -> 'Foo'."""
-    idx = name.find("<")
-    if idx != -1:
-        return name[:idx].strip()
-    return name
-
-
 def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
-    """Generate next-step suggestions for get_class_info results.
+    """Generate next-step suggestions for get_class_info results (public: get_class_info).
 
     Args:
         result_data: The dict returned by get_class_info (must be truthy / non-error)
@@ -30,36 +18,43 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
 
     hints: List[str] = []
 
-    # Suggest exploring base classes (up to 3)
-    base_classes: List[str] = result_data.get("base_classes") or []
-    for base in base_classes[:3]:
-        clean = _strip_template_args(base)
-        if clean:
-            hints.append(f"get_class_info('{clean}') — explore base class")
-
     # Suggest finding implementations of pure virtual methods
     methods: List[Dict[str, Any]] = result_data.get("methods") or []
     has_pure_virtual = any("pure_virtual" in (m.get("attributes") or []) for m in methods)
     if has_pure_virtual:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"search_functions(is_definition=True, parent_class='<DerivedClassName>') "
-            f"— find concrete implementations of {class_name}'s pure virtual methods"
+            f"get_class_hierarchy('{class_name}') — find concrete implementations of {class_name}"
         )
+
+    notes = result_data.get("notes")
+    if isinstance(notes, str):
+        match = re.search(r"Private implementation class is ([A-Za-z_][\w:]*)", notes)
+        if match:
+            impl_class = match.group(1)
+            hints.append(
+                f"get_class_info('{impl_class}') — inspect the private implementation "
+                f"class behind this PIMPL interface"
+            )
 
     # Suggest filtering when there are many methods
     if len(methods) > 10:
         class_name = result_data.get("qualified_name") or ""
         hints.append(
-            f"search_functions(pattern='...', parent_class='{class_name}') "
-            f"— filter methods by name pattern"
+            "find_symbols_by_pattern(symbol_name='...', target_type='functions_and_methods_only') "
+            "— filter methods by name pattern"
         )
 
     return hints
 
 
-def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
-    """Generate next-step suggestions for search_classes results.
+def for_search_classes(
+    results: List[Dict[str, Any]],
+    pattern: str = "",
+    file_name: Optional[str] = None,
+    namespace: Optional[str] = None,
+) -> List[str]:
+    """Generate next-step suggestions for search_classes results (public: find_symbols_by_pattern).
 
     Args:
         results: The list returned by search_classes (non-empty)
@@ -70,16 +65,14 @@ def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
     if not results:
         return []
 
-    hints: List[str] = []
+    if pattern == "" or file_name or namespace:
+        return []
 
-    if len(results) <= 3:
-        # Few results — suggest get_class_info for each
-        for item in results:
-            qname = item.get("qualified_name") or item.get("name") or ""
-            if qname:
-                hints.append(f"get_class_info('{qname}') — get full class details")
-    else:
-        # Many results — suggest get_class_info for top match only
+    hints: List[str] = []
+    if len(results) > 3:
+        # Many results — suggest get_class_info for top match only.
+        # For small result sets, avoid nudging the model into extra follow-up
+        # calls when the search already answered the user's discovery task.
         top = results[0]
         qname = top.get("qualified_name") or top.get("name") or ""
         if qname:
@@ -89,7 +82,7 @@ def for_search_classes(results: List[Dict[str, Any]]) -> List[str]:
 
 
 def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
-    """Generate next-step suggestions for search_functions results.
+    """Generate next-step suggestions for search_functions results (public: find_symbols_by_pattern).
 
     Args:
         results: The list returned by search_functions (non-empty)
@@ -100,33 +93,21 @@ def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
     if not results:
         return []
 
-    hints: List[str] = []
-
-    # Collect unique parent classes (up to 2)
-    seen: List[str] = []
-    for item in results:
-        parent = item.get("parent_class") or ""
-        if parent and parent not in seen:
-            seen.append(parent)
-        if len(seen) >= 2:
-            break
-
-    for parent in seen:
-        hints.append(f"get_class_info('{parent}') — explore owning class")
-
-    return hints
+    # Function searches often precede call-graph queries. Avoid steering models
+    # toward class-info detours unless the user explicitly asked about the class.
+    return []
 
 
-def for_get_incoming_calls(
+def for_find_incoming_calls(
     function_name: str,
     result_data: Dict[str, Any],
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Generate next-step suggestions for get_incoming_calls results.
+    """Generate next-step suggestions for find_incoming_calls results (public: find_incoming_calls).
 
     Args:
         function_name: The function name that was queried
-        result_data: The full dict returned by get_incoming_calls (with 'callers' list)
+        result_data: The full dict returned by find_incoming_calls (with 'callers' list)
         qualified_name: Fully qualified name of the resolved function (preferred for hint)
 
     Returns:
@@ -135,12 +116,7 @@ def for_get_incoming_calls(
     callers: List[Any] = result_data.get("callers") or [] if isinstance(result_data, dict) else []
     if not callers:
         return []
-
-    name_to_use = qualified_name or function_name
-    return [
-        f"get_outgoing_calls('{name_to_use}') — see what this function calls "
-        f"(complements incoming calls view)"
-    ]
+    return []
 
 
 def for_get_outgoing_calls(
@@ -148,7 +124,7 @@ def for_get_outgoing_calls(
     result_data: Dict[str, Any],
     qualified_name: Optional[str] = None,
 ) -> List[str]:
-    """Generate next-step suggestions for get_outgoing_calls results.
+    """Generate next-step suggestions for get_outgoing_calls results (public: find_outgoing_calls).
 
     Args:
         function_name: The function name that was queried
@@ -161,18 +137,16 @@ def for_get_outgoing_calls(
     callees: List[Any] = result_data.get("callees") or [] if isinstance(result_data, dict) else []
     if not callees:
         return []
-
-    name_to_use = qualified_name or function_name
-    return [f"get_call_sites('{name_to_use}') — get exact call locations within the function body"]
+    return []
 
 
 def for_get_call_sites_empty(
     function_name: str,
     class_name: str = "",
 ) -> List[str]:
-    """Suggestion when get_call_sites returns no call sites.
+    """Suggestion when get_call_sites returns no call sites (via find_outgoing_calls).
 
-    Guides the caller to use get_outgoing_calls to distinguish between 'no body',
+    Guides the caller to use find_outgoing_calls to distinguish between 'no body',
     'leaf function', and 'all callees are external'.
 
     Args:
@@ -185,7 +159,7 @@ def for_get_call_sites_empty(
     name = f"{class_name}::{function_name}" if class_name else function_name
     return [
         f"No call sites found within '{name}'. "
-        f"Call get_outgoing_calls('{name}') to check why — "
+        f"Call find_outgoing_calls('{name}') to check why — "
         "if it reports 'all callees outside project', "
         "the function calls only external libraries; "
         "use search_scope='include_external_libraries' to list them."
@@ -197,7 +171,7 @@ def for_get_call_path_empty(
     to_function: str,
     max_depth: int,
 ) -> List[str]:
-    """Suggestion when get_call_path returns no paths.
+    """Suggestion when get_call_path returns no paths (public: trace_execution_path).
 
     Args:
         from_function: The source function name
@@ -211,5 +185,5 @@ def for_get_call_path_empty(
         f"No call path found from '{from_function}' to '{to_function}' "
         f"within max_depth={max_depth}. "
         "Try increasing max_depth or verify both functions exist "
-        "with search_functions."
+        "with find_symbols_by_pattern."
     ]

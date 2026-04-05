@@ -7,13 +7,16 @@ scenarios:
 
   - id: "H-01"
     category: "empty_results"
-    query: "Find the NonExistentSymbol12345 class"
+    query: "Search for classes with 'NonExistentSymbol12345' in the name"
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "NonExistentSymbol12345"
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
 
   # -----------------------------------------------------------------
   # Category I: Direction confusion (callers vs callees)
@@ -23,13 +26,13 @@ scenarios:
   - id: "I-outgoing"
     category: "direction"
     queries:
-      - "What functions are called BY processEvent?"
+      - "What functions does processEvent call?"
       - "Show the dependencies of processEvent — what does it depend on?"
       - "What does processEvent call internally?"
       - "List the outgoing calls from processEvent"
       - "Show me what processEvent invokes"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -44,7 +47,7 @@ scenarios:
       - "Who invokes processEvent?"
       - "Show me the usage sites of processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -82,7 +85,7 @@ scenarios:
     category: "method_class"
     query: "What does the DataManager::processEvent method call?"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -92,7 +95,7 @@ scenarios:
     category: "method_class"
     query: "Find all callers of DataManager::processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains

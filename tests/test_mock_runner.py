@@ -57,7 +57,7 @@ def test_find_interesting_calls_mismatches_includes_missing_steps_without_calls(
     step_results = [
         {
             "step": 1,
-            "expected_tool": "find_callers",
+            "expected_tool": "find_incoming_calls",
             "actual_tool": None,
             "tool_match": False,
             "params_pass": False,
@@ -136,7 +136,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
     step_results = [
         {
             "step": 1,
-            "expected_tool": "find_callers",
+            "expected_tool": "find_incoming_calls",
             "actual_tool": None,
             "tool_match": False,
             "params_pass": False,
@@ -178,7 +178,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
             "prompt": (
                 "Explain why you chose not to use any tool. "
                 "If you could not find suitable tool, quote an EXACT part (or parts) "
-                "of 'find_callers' tool description that made you decide against calling one."
+                "of 'find_incoming_calls' tool description that made you decide against calling one."
                 "Be concise. Do not output any fluff."
             ),
         }
@@ -236,7 +236,7 @@ def test_run_scenario_explain_all_adds_posthoc_explanation(monkeypatch):
             "query": "Find callers of Widget",
             "expected_steps": [
                 {
-                    "tool": "find_callers",
+                    "tool": "find_incoming_calls",
                     "params": {
                         "function_name": {"type": "contains", "value": "Widget"},
                     },
@@ -294,7 +294,7 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
             "query": "Find callers of Widget",
             "expected_steps": [
                 {
-                    "tool": "find_callers",
+                    "tool": "find_incoming_calls",
                     "params": {
                         "function_name": {"type": "contains", "value": "Widget"},
                     },
@@ -320,7 +320,7 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
             "prompt": (
                 "Explain why you chose not to use any tool. "
                 "If you could not find suitable tool, quote an EXACT part (or parts) "
-                "of 'find_callers' tool description that made you decide against calling one."
+                "of 'find_incoming_calls' tool description that made you decide against calling one."
                 "Be concise. Do not output any fluff."
             ),
         }
