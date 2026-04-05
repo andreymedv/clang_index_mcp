@@ -470,7 +470,7 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
                 if isinstance(results_list, list):
                     result_count = len(results_list)
                 else:
-                    # get_incoming_calls/get_outgoing_calls: count callers/callees list
+                    # find_incoming_calls/get_outgoing_calls: count callers/callees list
                     for key in ("callers", "callees"):
                         sub = parsed.get(key)
                         if isinstance(sub, list):
@@ -669,7 +669,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             "search_symbols",
             "find_in_file",
             "get_class_hierarchy",
-            "get_incoming_calls",
+            "find_incoming_calls",
             "get_outgoing_calls",
             "get_call_path",
         }
@@ -685,7 +685,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
 
         if name == "search_classes":
             project_only = _parse_search_scope(arguments)
-            pattern = arguments["pattern"]
+            pattern = arguments["symbol_name"]
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
             max_results = arguments.get("max_results", None)
@@ -708,7 +708,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 results, state_manager, "search_classes", max_results, total_count, fallback
             )
             if results:
-                enhanced_result.next_steps = suggestions.for_search_classes(results)
+                enhanced_result.next_steps = suggestions.for_search_classes(
+                    results,
+                    pattern=pattern,
+                    file_name=file_name,
+                    namespace=namespace,
+                )
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_functions":
@@ -716,7 +721,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             class_name = arguments.get("class_name", None)
             file_name = arguments.get("file_name", None)
             namespace = arguments.get("namespace", None)
-            pattern = arguments["pattern"]
+            pattern = arguments["symbol_name"]
             max_results = arguments.get("max_results", None)
             signature_pattern = arguments.get("signature_pattern", None)
             include_attributes = arguments.get("include_attributes", False)
@@ -775,7 +780,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
         elif name == "search_symbols":
-            pattern = arguments["pattern"]
+            pattern = arguments["symbol_name"]
             project_only = _parse_search_scope(arguments)
             symbol_types = arguments.get("symbol_types", None)
             namespace = arguments.get("namespace", None)
@@ -987,7 +992,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             else:
                 return [TextContent(type="text", text=f"Class '{class_name}' not found")]
 
-        elif name == "get_incoming_calls":
+        elif name == "find_incoming_calls":
             function_name = str(arguments["function_name"])
             class_name = str(arguments.get("class_name", ""))
             max_results = arguments.get("max_results", None)
@@ -995,7 +1000,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             # Run synchronous method in executor to avoid blocking event loop
             results = await loop.run_in_executor(
                 None,
-                lambda: analyzer.find_callers(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
+                lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
             )
             # Results is dict with "callers" list - use that for metadata logic
             callers_list = results.get("callers", []) if isinstance(results, dict) else []
@@ -1019,7 +1024,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             if project_only and not callers_list and function_found and has_any_in_graph:
                 expanded = await loop.run_in_executor(
                     None,
-                    lambda: analyzer.find_callers(function_name, class_name, project_only=False),  # type: ignore[arg-type]
+                    lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=False),  # type: ignore[arg-type]
                 )
                 # Strip internal flags from expanded results
                 expanded.pop("_function_found", None)
@@ -1048,12 +1053,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             enhanced_result = _create_search_result(
                 results.get("callers", []),
                 state_manager,
-                "get_incoming_calls",
+                "find_incoming_calls",
                 max_results,
                 total_count,
                 empty_suggestions=empty_suggestions,
             )
-            enhanced_result.next_steps = suggestions.for_get_incoming_calls(
+            enhanced_result.next_steps = suggestions.for_find_incoming_calls(
                 function_name, results, qualified_name=target_qualified_name
             )
             # Merge metadata into results dict

@@ -130,7 +130,7 @@ def test_mcp_server(project_path: str):
     # 9. Find callers (if functions exist)
     if functions:
         print(f"\n9. Finding callers of function: {functions[0]['name']}")
-        callers_result = analyzer.find_callers(functions[0]["name"])
+        callers_result = analyzer.find_incoming_calls(functions[0]["name"])
         callers_list = callers_result.get("callers", [])
         print(f"[OK] Found {len(callers_list)} caller(s)")
         if callers_list:

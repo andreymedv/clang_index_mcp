@@ -43,6 +43,24 @@ responses:
     match:
       target_type: "classes_and_structs_only"
       file_name:
+        contains: "CoreTree/Tests/"
+    response:
+      results:
+        - qualified_name: "ItemTestFixture"
+          kind: "class"
+          prototype: "class ItemTestFixture : public ::testing::Test"
+          file: "CoreTree/Tests/Tree_DocumentTests.cpp"
+          line: 18
+        - qualified_name: "LeafTestFixture"
+          kind: "class"
+          prototype: "class LeafTestFixture : public ::testing::Test"
+          file: "CoreTree/Tests/Tree_ElementTests.cpp"
+          line: 15
+
+  - tool: find_symbols_by_pattern
+    match:
+      target_type: "classes_and_structs_only"
+      file_name:
         contains: "Test"
     response:
       results:
@@ -67,8 +85,7 @@ responses:
           file: "TableEngine/Tests/TBL_OperationsTests.cpp"
           line: 20
       next_steps:
-        - "get_class_info('ItemTestFixture') -- see test fixture setup"
-        - "find_in_file('CoreTree/Tests/Tree_DocumentTests.cpp', '') -- see all test functions"
+        - "get_class_info('ItemTestFixture') — get full details for top match"
 
   # --- L-01 / R-01: Classes in Tree module (by file_name containing "Tree") ---
   - tool: find_symbols_by_pattern
@@ -109,9 +126,7 @@ responses:
           file: "CoreTree/Private/Tree_ItemImpl.h"
           line: 15
       next_steps:
-        - "get_class_info('Item') -- explore Item class details"
-        - "get_class_hierarchy('Node') -- see full Tree inheritance tree"
-        - "get_class_info('Leaf') -- explore Leaf class details"
+        - "get_class_info('Tree::Item') — get full details for top match"
 
   # --- L-01 variant: Classes in Tree namespace ---
   - tool: find_symbols_by_pattern
@@ -147,8 +162,7 @@ responses:
           file: "CoreTree/Public/Tree_Attribute.h"
           line: 8
       next_steps:
-        - "get_class_info('Item') -- explore Item class"
-        - "get_class_hierarchy('Node') -- see Tree inheritance tree"
+        - "get_class_info('Tree::Item') — get full details for top match"
 
   # --- L-02: Functions in TBL_ files ---
   - tool: find_symbols_by_pattern
@@ -188,14 +202,11 @@ responses:
           prototype: "void RecalculateSpans(Tree::Leaf &table)"
           file: "TableEngine/Public/TBL_Operations.h"
           line: 52
-      next_steps:
-        - "get_class_info('TableProcessor') -- explore TableProcessor class"
-        - "get_functions_called_by('MergeTableCells') -- see what MergeTableCells does"
 
   # --- M-02 step 1 / O-01: Search for ApplyStyle ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "ApplyStyle"
     response:
       results:
@@ -209,14 +220,11 @@ responses:
           prototype: "void ApplyStyleRecursive(Tree::Node &root, const CSS::ComputedStyle &style)"
           file: "CoreCSS/Public/CSS_Operations.h"
           line: 45
-      next_steps:
-        - "find_callers('ApplyStyle') -- find all callers"
-        - "get_functions_called_by('ApplyStyle') -- see implementation details"
 
   # --- O-01: Style-related functions ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Style"
       target_type: "functions_and_methods_only"
     response:
@@ -246,14 +254,11 @@ responses:
           prototype: "ComputedStyle StyleResolver::resolveElementStyle(const Tree::Leaf &elem)"
           file: "CoreCSS/Public/CSS_StyleResolver.h"
           line: 28
-      next_steps:
-        - "find_callers('ApplyStyle') -- see where styles are applied"
-        - "get_functions_called_by('ResolveInheritedStyle') -- trace inheritance resolution"
 
   # --- P-02: ItemBuilder search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "ItemBuilder"
     response:
       results:
@@ -277,14 +282,11 @@ responses:
           prototype: "ItemBuilder &ItemBuilder::withGrid(int rows, int cols)"
           file: "TestUtils/ItemBuilder.h"
           line: 35
-      next_steps:
-        - "get_class_info('ItemBuilder') -- see full builder API"
-        - "find_callers('build', class_name='ItemBuilder') -- see how builder is used in tests"
 
   # --- Q-03 step 2: Search for ItemImpl ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "ItemImpl"
     response:
       results:
@@ -298,14 +300,11 @@ responses:
           prototype: "ItemImpl::ItemImpl()"
           file: "CoreTree/Private/Tree_ItemImpl.cpp"
           line: 8
-      next_steps:
-        - "get_class_info('ItemImpl') -- see implementation details"
-        - "find_in_file('CoreTree/Private/Tree_ItemImpl.h', '') -- see all members"
 
   # --- Q-01: INodeVisitor search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "INodeVisitor"
     response:
       results:
@@ -324,14 +323,11 @@ responses:
           prototype: "class ExportVisitor : public INodeVisitor"
           file: "CoreTree/Public/Tree_ExportVisitor.h"
           line: 12
-      next_steps:
-        - "get_class_hierarchy('INodeVisitor') -- see full implementation tree"
-        - "get_class_info('INodeVisitor') -- see interface methods"
 
   # --- R-02: Merge functions in TBL_ files ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "Merge"
       target_type: "functions_and_methods_only"
       file_name:
@@ -353,14 +349,11 @@ responses:
           prototype: "void CellMerger::unmerge(CellRange range)"
           file: "TableEngine/Public/TBL_CellMerger.h"
           line: 22
-      next_steps:
-        - "get_functions_called_by('MergeTableCells') -- see implementation"
-        - "find_callers('mergeCells', class_name='CellMerger') -- find callers"
 
   # --- PROBE-RC2-01: EventHandler search (models that search before get_class_info) ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "EventHandler"
     response:
       results:
@@ -374,13 +367,11 @@ responses:
           prototype: "void EventHandler::handleEvent(const Event &event)"
           file: "EditorUI/Public/UI_EventHandler.h"
           line: 28
-      next_steps:
-        - "get_class_info('EventHandler') -- get full class details"
 
   # --- PROBE-RC3-01: initialize search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "initialize"
     response:
       results:
@@ -394,13 +385,11 @@ responses:
           prototype: "void Item::initializeTree()"
           file: "CoreTree/Public/Tree_Document.h"
           line: 68
-      next_steps:
-        - "get_functions_called_by('initialize', class_name='EditorWidget') -- see what initialize does"
 
   # --- PROBE: processData search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "processData"
     response:
       results:
@@ -409,13 +398,11 @@ responses:
           prototype: "void Item::processData(const std::string &input)"
           file: "CoreTree/Public/Tree_Document.h"
           line: 75
-      next_steps:
-        - "get_functions_called_by('processData', class_name='Item') -- see callees"
 
   # --- PROBE: IProcessor search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "IProcessor"
     response:
       results:
@@ -424,13 +411,11 @@ responses:
           prototype: "class IProcessor"
           file: "CoreTree/Public/Tree_IProcessor.h"
           line: 8
-      next_steps:
-        - "get_class_hierarchy('IProcessor') -- find implementations"
 
   # --- PROBE: myFunction search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "myFunction"
     response:
       results:
@@ -439,13 +424,11 @@ responses:
           prototype: "void myFunction(int param)"
           file: "CoreTree/Public/Tree_Helpers.h"
           line: 55
-      next_steps:
-        - "find_callers('myFunction') -- find callers"
 
   # --- PROBE: updateUI search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "updateUI"
     response:
       results:
@@ -454,13 +437,11 @@ responses:
           prototype: "void EditorWidget::updateUI()"
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 52
-      next_steps:
-        - "find_callers('updateUI', class_name='EditorWidget') -- find callers"
 
   # --- PROBE: render search ---
   - tool: find_symbols_by_pattern
     match:
-      pattern:
+      symbol_name:
         contains: "render"
     response:
       results:
@@ -469,14 +450,12 @@ responses:
           prototype: "void EditorWidget::render()"
           file: "EditorUI/Public/UI_EditorWidget.h"
           line: 60
-      next_steps:
-        - "get_functions_called_by('render', class_name='EditorWidget') -- see what render calls"
 
   # --- PROBE-RC1: Classes in Core/ (file_name filter) ---
   - tool: find_symbols_by_pattern
     match:
       file_name:
-        contains: "Core"
+        contains: "Core/"
       target_type: "classes_and_structs_only"
     response:
       results:
@@ -495,8 +474,6 @@ responses:
           prototype: "class StyleResolver"
           file: "CoreCSS/Public/CSS_StyleResolver.h"
           line: 15
-      next_steps:
-        - "get_class_info('Item') -- see Item details"
 
   # --- PROBE-RC1: Functions in Util_ files ---
   - tool: find_symbols_by_pattern
@@ -516,8 +493,6 @@ responses:
           prototype: "int parseInteger(const std::string &str)"
           file: "Utils/Util_Parsers.h"
           line: 8
-      next_steps:
-        - "find_callers('formatString') -- find callers"
 
   # --- PROBE-RC1: Functions/methods in Tests/ files ---
   - tool: find_symbols_by_pattern
@@ -537,8 +512,6 @@ responses:
           prototype: "TEST_F(ItemTestFixture, AppendChild)"
           file: "CoreTree/Tests/Tree_DocumentTests.cpp"
           line: 62
-      next_steps:
-        - "find_in_file('CoreTree/Tests/Tree_DocumentTests.cpp') -- see all symbols in test file"
 
   # --- PROBE-RC1: Classes in files matching Helper* ---
   - tool: find_symbols_by_pattern
@@ -553,14 +526,26 @@ responses:
           prototype: "class AssertionHelper"
           file: "TestUtils/AssertionHelpers.h"
           line: 8
-      next_steps:
-        - "get_class_info('AssertionHelper') -- see helper methods"
 
   # --- O-02: Tree::Table search (when models search first) ---
+  # NOTE: Specific Tree::Table fixture before broader TableProcessor
   - tool: find_symbols_by_pattern
     match:
-      pattern:
-        contains: "Table"
+      symbol_name:
+        contains: "Tree::Table"
+      target_type: "classes_and_structs_only"
+    response:
+      results:
+        - qualified_name: "Tree::Table"
+          kind: "class"
+          prototype: "class Table : public Leaf"
+          file: "CoreTree/Public/Tree_Table.h"
+          line: 22
+
+  - tool: find_symbols_by_pattern
+    match:
+      symbol_name:
+        contains: "TableProcessor"
       target_type: "classes_and_structs_only"
     response:
       results:
@@ -569,14 +554,25 @@ responses:
           prototype: "class TableProcessor"
           file: "TableEngine/Public/TBL_TableProcessor.h"
           line: 18
+
+  # Broader Table search for general queries
+  - tool: find_symbols_by_pattern
+    match:
+      symbol_name:
+        contains: "Table"
+      target_type: "classes_and_structs_only"
+    response:
+      results:
         - qualified_name: "Tree::Table"
           kind: "class"
           prototype: "class Table : public Leaf"
           file: "CoreTree/Public/Tree_Table.h"
           line: 22
-      next_steps:
-        - "get_class_info('TableProcessor') -- see table class details"
-        - "get_class_info('Table') -- see Tree table element details"
+        - qualified_name: "TBL::TableProcessor"
+          kind: "class"
+          prototype: "class TableProcessor"
+          file: "TableEngine/Public/TBL_TableProcessor.h"
+          line: 18
 
   # --- Default search response ---
   - tool: find_symbols_by_pattern
@@ -588,8 +584,6 @@ responses:
           prototype: "class Item : public Node"
           file: "CoreTree/Public/Tree_Document.h"
           line: 24
-      next_steps:
-        - "Refine your search with target_type, file_name, or namespace filters"
 
   # =================================================================
   # find_in_file
@@ -631,7 +625,7 @@ responses:
           prototype: "LeafPtr Item::getDocumentElement() const"
       next_steps:
         - "get_class_info('Item') -- see base classes and full details"
-        - "get_functions_called_by('createElement', class_name='Item') -- trace implementation"
+        - "find_outgoing_calls('createElement', class_name='Item') -- trace implementation"
 
   - tool: find_in_file
     default: true
@@ -653,6 +647,8 @@ responses:
       prototype: "class Item : public Node"
       file: "CoreTree/Public/Tree_Document.h"
       line: 24
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details. This class uses PIMPL pattern - see notes for implementation class."
       base_classes:
         - "Tree::Node"
       derived_classes: []
@@ -675,12 +671,9 @@ responses:
         - qualified_name: "Tree::Item::getDocumentElement"
           prototype: "LeafPtr Item::getDocumentElement() const"
           attributes: ["const"]
-      notes: "Uses PIMPL pattern. Implementation in Tree::ItemImpl (CoreTree/Private/Tree_ItemImpl.h)."
+      notes: "Uses PIMPL pattern. Private implementation class is Tree::ItemImpl in CoreTree/Private/Tree_ItemImpl.h."
       next_steps:
-        - "get_class_hierarchy('Item') -- see inheritance tree"
-        - "find_symbols_by_pattern('ItemImpl') -- find PIMPL implementation class"
-        - "get_functions_called_by('createElement', class_name='Item') -- trace factory method"
-
+        - "get_class_info('Tree::ItemImpl') — inspect the private implementation class behind this PIMPL interface"
   # --- Leaf ---
   - tool: get_class_info
     match:
@@ -692,6 +685,8 @@ responses:
       prototype: "class Leaf : public Node"
       file: "CoreTree/Public/Tree_Element.h"
       line: 18
+      completeness: "complete"
+      completeness_note: "All methods, base classes, and derived classes are listed. No further searching needed for class details."
       base_classes:
         - "Tree::Node"
       derived_classes: []
@@ -717,10 +712,6 @@ responses:
         - qualified_name: "Tree::Leaf::getComputedStyle"
           prototype: "OptionalStyle Leaf::getComputedStyle() const"
           attributes: ["const"]
-      next_steps:
-        - "get_class_hierarchy('Leaf') -- see inheritance tree"
-        - "find_callers('setAttribute', class_name='Leaf') -- see how attributes are set"
-
   # --- StyleResolver ---
   - tool: get_class_info
     match:
@@ -747,9 +738,7 @@ responses:
         - qualified_name: "CSS::StyleResolver::getCascadedProperties"
           prototype: "PropertyMap StyleResolver::getCascadedProperties(const Tree::Leaf &elem)"
           attributes: ["const"]
-      next_steps:
-        - "find_callers('resolveStyle', class_name='StyleResolver') -- find callers"
-        - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- see implementation"
+      next_steps: []
 
   # --- INodeVisitor (interface with pure virtuals) ---
   - tool: get_class_info
@@ -778,9 +767,7 @@ responses:
           prototype: "void INodeVisitor::visitDocument(Item &doc)"
           attributes: ["pure_virtual"]
       next_steps:
-        - "get_class_hierarchy('INodeVisitor') -- see all implementations"
-        - "get_class_info('StyleVisitor') -- see CSS visitor implementation"
-        - "get_class_info('ExportVisitor') -- see export visitor implementation"
+        - "get_class_hierarchy('Tree::INodeVisitor') — find concrete implementations of this interface"
 
   # --- Table (for O-02) ---
   - tool: get_class_info
@@ -811,9 +798,7 @@ responses:
         - qualified_name: "TBL::TableProcessor::setTableElement"
           prototype: "void TableProcessor::setTableElement(Tree::LeafPtr tableElem)"
           attributes: []
-      next_steps:
-        - "find_callers('addRow', class_name='TableProcessor') -- see how rows are added"
-        - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
+      next_steps: []
 
   # --- ItemBuilder (for P-02 follow-up) ---
   - tool: get_class_info
@@ -841,8 +826,7 @@ responses:
         - qualified_name: "TestUtils::ItemBuilder::build"
           prototype: "Tree::ItemPtr ItemBuilder::build()"
           attributes: []
-      next_steps:
-        - "find_callers('build', class_name='ItemBuilder') -- see usage in tests"
+      next_steps: []
 
   # --- EventHandler (for PROBE-RC2-01) ---
   - tool: get_class_info
@@ -869,9 +853,7 @@ responses:
         - qualified_name: "UI::EventHandler::removeEventListener"
           prototype: "void EventHandler::removeEventListener(EventType type)"
           attributes: []
-      next_steps:
-        - "get_class_hierarchy('EventHandler') -- see all event handler implementations"
-        - "find_callers('handleEvent', class_name='EventHandler') -- find callers"
+      next_steps: []
 
   # --- IProcessor (for PROBE-RC2-04) ---
   - tool: get_class_info
@@ -893,7 +875,7 @@ responses:
           prototype: "void IProcessor::process(Node &node)"
           attributes: ["pure_virtual"]
       next_steps:
-        - "get_class_hierarchy('IProcessor') -- see all implementations"
+        - "get_class_hierarchy('Tree::IProcessor') — find concrete implementations of this interface"
 
   # --- ItemImpl (for Q-03 follow-up) ---
   - tool: get_class_info
@@ -915,8 +897,7 @@ responses:
         - qualified_name: "Tree::ItemImpl::serialize"
           prototype: "std::string ItemImpl::serialize() const"
           attributes: ["const"]
-      next_steps:
-        - "find_in_file('CoreTree/Private/Tree_ItemImpl.h') -- see all members"
+      next_steps: []
 
   - tool: get_class_info
     default: true
@@ -934,6 +915,8 @@ responses:
         contains: "INodeVisitor"
     response:
       root: "Tree::INodeVisitor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "Tree::INodeVisitor"
           children: ["CSS::StyleVisitor", "Tree::ExportVisitor", "Tree::ValidationVisitor"]
@@ -955,6 +938,8 @@ responses:
         contains: "Node"
     response:
       root: "Tree::Node"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "Tree::Node"
           children: ["Tree::Item", "Tree::Leaf", "Tree::TextNode"]
@@ -972,6 +957,8 @@ responses:
         contains: "EventHandler"
     response:
       root: "UI::EventHandler"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
       nodes:
         - name: "UI::EventHandler"
           children: ["UI::KeyEventHandler", "UI::MouseEventHandler"]
@@ -987,6 +974,8 @@ responses:
         contains: "IProcessor"
     response:
       root: "Tree::IProcessor"
+      completeness: "complete"
+      completeness_note: "Full inheritance hierarchy including all ancestors and descendants. All implementations of this interface are listed. No further searching needed."
       nodes:
         - name: "Tree::IProcessor"
           children: ["Tree::NodeProcessor", "Tree::StyleProcessor"]
@@ -1027,11 +1016,11 @@ responses:
       error: "Class not found in hierarchy. Use find_symbols_by_pattern to find the correct name."
 
   # =================================================================
-  # get_functions_called_by
+  # find_outgoing_calls
   # =================================================================
 
   # --- PROBE-RC3-01: initialize() callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "initialize"
@@ -1050,12 +1039,9 @@ responses:
           prototype: "void Item::initializeTree()"
           file: "CoreTree/Private/Tree_Document.cpp"
           line: 42
-      next_steps:
-        - "get_functions_called_by('createToolbar', class_name='EditorWidget') -- go deeper"
-        - "find_callers('initialize', class_name='EditorWidget') -- find callers"
 
   # --- PROBE-RC2-03: processData callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "processData"
@@ -1070,11 +1056,9 @@ responses:
           prototype: "bool Item::validate()"
           file: "CoreTree/Private/Tree_Document.cpp"
           line: 102
-      next_steps:
-        - "find_callers('processData', class_name='Item') -- find callers"
 
   # --- PROBE-RC3-03: render() callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "render"
@@ -1089,11 +1073,9 @@ responses:
           prototype: "void EditorWidget::paintElements()"
           file: "EditorUI/Private/UI_EditorWidget.cpp"
           line: 135
-      next_steps:
-        - "get_functions_called_by('layoutContent', class_name='EditorWidget') -- go deeper"
 
   # --- L-04: Leaf::setAttribute callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "setAttribute"
@@ -1114,12 +1096,9 @@ responses:
           prototype: "void Node::notifyModification()"
           file: "CoreTree/Private/Tree_Node.cpp"
           line: 120
-      next_steps:
-        - "find_callers('setAttribute', class_name='Leaf') -- find callers"
-        - "get_functions_called_by('invalidateStyle', class_name='Leaf') -- go deeper"
 
   # --- N-01 step 1: ResolveInheritedStyle callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "ResolveInheritedStyle"
@@ -1138,12 +1117,9 @@ responses:
           prototype: "ComputedStyle CascadeEngine::mergeProperties(const ComputedStyle &parent, const ComputedStyle &local)"
           file: "CoreCSS/Public/CSS_CascadeEngine.h"
           line: 42
-      next_steps:
-        - "get_functions_called_by('GetComputedStyle') -- go deeper into style computation"
-        - "find_callers('ResolveInheritedStyle') -- find callers"
 
   # --- N-01 step 2: GetComputedStyle callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "GetComputedStyle"
@@ -1162,12 +1138,9 @@ responses:
           prototype: "std::optional<std::string> Leaf::getAttribute(const std::string &name) const"
           file: "CoreTree/Public/Tree_Element.h"
           line: 25
-      next_steps:
-        - "find_callers('GetComputedStyle') -- who calls this?"
-        - "get_functions_called_by('resolveStyle', class_name='StyleResolver') -- deeper into resolver"
 
   # --- N-03 step 1: HandleKeyPress callees ---
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     match:
       function_name:
         contains: "HandleKeyPress"
@@ -1186,24 +1159,21 @@ responses:
           prototype: "Selection SelectionManager::getSelection() const"
           file: "EditorUI/Public/UI_SelectionManager.h"
           line: 22
-      next_steps:
-        - "find_callers('HandleKeyPress') -- find callers"
-        - "get_functions_called_by('executeCommand', class_name='CommandHandler') -- trace command execution"
 
-  - tool: get_functions_called_by
+  - tool: find_outgoing_calls
     default: true
     response:
       function: "unknown"
       callees: []
       next_steps:
-        - "Use find_symbols_by_pattern to find the correct function name"
+        - "find_symbols_by_pattern -- possible: search for function name if unknown"
 
   # =================================================================
-  # find_callers
+  # find_incoming_calls
   # =================================================================
 
   # --- M-02 step 2 / O-01 follow-up: ApplyStyle callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "ApplyStyle"
@@ -1226,11 +1196,9 @@ responses:
             - file: "EditorUI/Private/UI_EditorWidget.cpp"
               line: 162
               column: 8
-      next_steps:
-        - "get_functions_called_by('applyResolvedStyles', class_name='StyleResolver') -- trace full flow"
 
   # --- M-03 step 2: StyleResolver::resolveStyle callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "resolveStyle"
@@ -1261,11 +1229,9 @@ responses:
             - file: "CoreCSS/Private/CSS_StyleVisitor.cpp"
               line: 38
               column: 8
-      next_steps:
-        - "get_functions_called_by('GetComputedStyle') -- trace style query chain"
 
   # --- N-02 step 1: MergeTableCells callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "MergeTableCells"
@@ -1288,12 +1254,9 @@ responses:
             - file: "EditorUI/Private/UI_CommandHandler.cpp"
               line: 128
               column: 12
-      next_steps:
-        - "find_callers('RecalculateSpans') -- who triggers recalculation?"
-        - "get_functions_called_by('MergeTableCells') -- see internal implementation"
 
   # --- N-02 step 2: RecalculateSpans callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "RecalculateSpans"
@@ -1316,11 +1279,9 @@ responses:
             - file: "TableEngine/Private/TBL_TableProcessor.cpp"
               line: 72
               column: 4
-      next_steps:
-        - "get_class_info('TableProcessor') -- see all table operations"
 
   # --- N-03 step 2: HandleKeyPress callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "HandleKeyPress"
@@ -1335,11 +1296,9 @@ responses:
             - file: "EditorUI/Private/UI_EditorWidget.cpp"
               line: 95
               column: 8
-      next_steps:
-        - "get_functions_called_by('keyPressEvent', class_name='EditorWidget') -- trace Qt event handling"
 
   # --- O-02 step 2: TableProcessor::addRow callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "addRow"
@@ -1362,11 +1321,9 @@ responses:
             - file: "CoreTree/Tests/Tree_DocumentTests.cpp"
               line: 42
               column: 12
-      next_steps:
-        - "get_functions_called_by('addRow', class_name='TableProcessor') -- see implementation"
 
   # --- PROBE: processEvent callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "processEvent"
@@ -1389,11 +1346,9 @@ responses:
             - file: "src/ui/widget.cpp"
               line: 95
               column: 12
-      next_steps:
-        - "get_functions_called_by('processEvent') -- see what processEvent calls"
 
   # --- PROBE: myFunction callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "myFunction"
@@ -1408,11 +1363,9 @@ responses:
             - file: "CoreTree/Private/Tree_Document.cpp"
               line: 92
               column: 4
-      next_steps:
-        - "get_functions_called_by('myFunction') -- see what it calls"
 
   # --- PROBE: updateUI callers ---
-  - tool: find_callers
+  - tool: find_incoming_calls
     match:
       function_name:
         contains: "updateUI"
@@ -1427,10 +1380,8 @@ responses:
             - file: "EditorUI/Private/UI_EditorWidget.cpp"
               line: 172
               column: 8
-      next_steps:
-        - "get_functions_called_by('updateUI', class_name='EditorWidget') -- see implementation"
 
-  - tool: find_callers
+  - tool: find_incoming_calls
     default: true
     response:
       function: "unknown"
@@ -1474,4 +1425,4 @@ responses:
       paths: []
       path_count: 0
       next_steps:
-        - "Use find_symbols_by_pattern to verify both function names exist"
+        - "find_symbols_by_pattern -- possible: verify both function names exist"

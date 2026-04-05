@@ -259,7 +259,7 @@ public:
 class TestCallGraphAnalysis:
     """Test call graph analysis - REQ-3.2"""
 
-    def test_find_callers_basic(self, temp_project_dir):
+    def test_find_incoming_calls_basic(self, temp_project_dir):
         """Test finding callers of a function - Task 1.1.7"""
         # Create function call relationships
         (temp_project_dir / "src" / "calls.cpp").write_text("""
@@ -285,10 +285,10 @@ void unrelatedFunction() {
         analyzer.index_project()
 
         # Find callers of helperFunction
-        result = analyzer.find_callers("helperFunction")
+        result = analyzer.find_incoming_calls("helperFunction")
 
-        # Phase 3: find_callers now returns dict with 'callers' key
-        assert isinstance(result, dict), "find_callers should return dict (Phase 3)"
+        # Phase 3: find_incoming_calls now returns dict with 'callers' key
+        assert isinstance(result, dict), "find_incoming_calls should return dict (Phase 3)"
         callers = result['callers']
 
         # Verify callers were found

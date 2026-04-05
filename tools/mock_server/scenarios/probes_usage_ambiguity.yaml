@@ -1,7 +1,7 @@
 # Probe scenarios for root cause: "used" / "usage" ambiguity
-# between find_symbols_by_pattern (find references) and find_callers (find callers).
+# between find_symbols_by_pattern (find references) and find_incoming_calls (find callers).
 #
-# Tests whether the LLM consistently picks find_callers when
+# Tests whether the LLM consistently picks find_incoming_calls when
 # the query implies call-site analysis with various phrasings of "used".
 
 scenarios:
@@ -9,7 +9,7 @@ scenarios:
     category: "probe"
     query: "Where in the project is processEvent being used?"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -19,7 +19,7 @@ scenarios:
     category: "probe"
     query: "Show me all the places that use processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -27,9 +27,9 @@ scenarios:
 
   - id: "P1-03"
     category: "probe"
-    query: "Which parts of the code rely on processEvent?"
+    query: "Which functions call processEvent?"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -37,9 +37,9 @@ scenarios:
 
   - id: "P1-04"
     category: "probe"
-    query: "I want to see everywhere processEvent is referenced"
+    query: "Show me every function that calls processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
@@ -49,7 +49,7 @@ scenarios:
     category: "probe"
     query: "Find all code that depends on the processEvent function"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains

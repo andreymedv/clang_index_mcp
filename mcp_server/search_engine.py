@@ -1053,6 +1053,8 @@ class SearchEngine:
                 "qualified_name": info.qualified_name or info.name,
                 "namespace": info.namespace,
                 "kind": info.kind,
+                "completeness": "complete",
+                "completeness_note": "All methods, base classes, and derived classes are listed. No further searching needed for class details.",
                 "base_classes": info.base_classes,
                 "template_param_base_indices": get_template_param_base_indices(info) or None,
                 "methods": sorted(methods, key=_method_sort_line),

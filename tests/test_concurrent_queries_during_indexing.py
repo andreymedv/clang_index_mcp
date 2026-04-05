@@ -109,7 +109,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     # This should NOT block or timeout - it should return partial results
     result = await cpp_mcp_server._handle_tool_call(
         "search_classes",
-        {"pattern": "Module.*", "search_scope": "project_code_only"}
+        {"symbol_name": "Module.*", "search_scope": "project_code_only"}
     )
 
     # Verify we got a response (even if partial)
@@ -138,7 +138,7 @@ async def test_query_during_background_indexing(large_cpp_project):
     # Now query again - should get complete results
     result2 = await cpp_mcp_server._handle_tool_call(
         "search_classes",
-        {"pattern": "Module.*", "search_scope": "project_code_only"}
+        {"symbol_name": "Module.*", "search_scope": "project_code_only"}
     )
 
     response_text2 = result2[0].text
@@ -185,10 +185,10 @@ async def test_multiple_concurrent_queries_during_indexing(large_cpp_project):
 
     # Launch multiple queries concurrently
     query_tasks = [
-        cpp_mcp_server._handle_tool_call("search_classes", {"pattern": "Module.*"}),
-        cpp_mcp_server._handle_tool_call("search_functions", {"pattern": "calculate.*"}),
-        cpp_mcp_server._handle_tool_call("search_classes", {"pattern": "Helper.*"}),
-        cpp_mcp_server._handle_tool_call("search_functions", {"pattern": "process.*"}),
+        cpp_mcp_server._handle_tool_call("search_classes", {"symbol_name": "Module.*"}),
+        cpp_mcp_server._handle_tool_call("search_functions", {"symbol_name": "calculate.*"}),
+        cpp_mcp_server._handle_tool_call("search_classes", {"symbol_name": "Helper.*"}),
+        cpp_mcp_server._handle_tool_call("search_functions", {"symbol_name": "process.*"}),
     ]
 
     # All queries should complete without blocking each other

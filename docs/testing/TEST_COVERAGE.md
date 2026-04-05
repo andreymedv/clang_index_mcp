@@ -100,7 +100,7 @@ Tests are organized by category:
 | get_indexing_status | ✅ Progress tracking | Pass |
 | wait_for_indexing | ✅ Blocking wait | Pass |
 | get_class_hierarchy | ✅ Inheritance | Pass |
-| get_incoming_calls | ✅ Call graph | Pass |
+| find_incoming_calls | ✅ Call graph | Pass |
 | get_outgoing_calls | ✅ Call graph | Pass |
 | get_call_sites | ✅ Call sites | Pass |
 | get_files_containing_symbol | ✅ File search | Pass |

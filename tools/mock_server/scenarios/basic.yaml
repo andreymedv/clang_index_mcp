@@ -22,7 +22,7 @@ scenarios:
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "Manager"
           target_type:
@@ -31,13 +31,16 @@ scenarios:
 
   - id: "A-02"
     category: "search"
-    query: "Search for the Widget class"
+    query: "Search for classes with 'Widget' in the name"
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "Widget"
+          target_type:
+            type: exact
+            value: "classes_and_structs_only"
 
   - id: "A-03"
     category: "search"
@@ -45,7 +48,7 @@ scenarios:
     expected_steps:
       - tool: find_symbols_by_pattern
         params:
-          pattern:
+          symbol_name:
             type: contains
             value: "process"
           target_type:
@@ -94,7 +97,7 @@ scenarios:
     category: "call_graph"
     query: "What functions does processEvent call?"
     expected_steps:
-      - tool: get_functions_called_by
+      - tool: find_outgoing_calls
         params:
           function_name:
             type: contains
@@ -104,7 +107,7 @@ scenarios:
     category: "call_graph"
     query: "Find all callers of processEvent"
     expected_steps:
-      - tool: find_callers
+      - tool: find_incoming_calls
         params:
           function_name:
             type: contains
