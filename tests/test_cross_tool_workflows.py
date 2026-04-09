@@ -42,7 +42,8 @@ def namespaced_project(temp_project_dir):
     - outer::Helper (utility class)
     - GlobalClass (no namespace)
     """
-    (temp_project_dir / "src" / "classes.cpp").write_text("""
+    (temp_project_dir / "src" / "classes.cpp").write_text(
+        """
 namespace outer {
 namespace inner {
 
@@ -75,7 +76,8 @@ public:
 };
 
 void globalFunction() {}
-""")
+"""
+    )
 
     temp_compile_commands(
         temp_project_dir,
@@ -102,7 +104,8 @@ def template_project(temp_project_dir):
     """
     Create a project with template classes for workflow testing.
     """
-    (temp_project_dir / "src" / "templates.cpp").write_text("""
+    (temp_project_dir / "src" / "templates.cpp").write_text(
+        """
 namespace lib {
 
 template<typename T>
@@ -123,7 +126,8 @@ template class Container<int>;
 template class DerivedContainer<int>;
 
 }  // namespace lib
-""")
+"""
+    )
 
     temp_compile_commands(
         temp_project_dir,

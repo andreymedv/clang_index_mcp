@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for signature_pattern parameter in search_functions and search_symbols.
 

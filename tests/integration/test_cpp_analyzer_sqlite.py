@@ -42,7 +42,8 @@ class TestCppAnalyzerSQLiteIntegration(unittest.TestCase):
         """Test full indexing cycle with SQLite backend"""
         # Create test C++ file
         test_file = self.temp_project_dir / "src" / "test.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class TestClass {
 public:
     void method();
@@ -52,7 +53,8 @@ public:
 void testFunction() {
     TestClass obj;
 }
-""")
+"""
+        )
 
         # Enable SQLite backend
         # First indexing - should create SQLite cache
@@ -99,12 +101,14 @@ void testFunction() {
         test_file = self.temp_project_dir / "src" / "changing.cpp"
 
         # Create initial file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class OriginalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # First indexing
         analyzer1 = CppAnalyzer(str(self.temp_project_dir))
@@ -115,12 +119,14 @@ public:
         self.assertGreater(len(original), 0, "Should find OriginalClass")
 
         # Modify the file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class ModifiedClass {
 public:
     void newMethod();
 };
-""")
+"""
+        )
 
         # Re-index - should detect file change
         analyzer2 = CppAnalyzer(str(self.temp_project_dir))
@@ -137,16 +143,20 @@ public:
         """Test cache invalidation when config file changes"""
         # Create test file
         test_file = self.temp_project_dir / "src" / "test.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class TestClass {};
-""")
+"""
+        )
 
         # Create config file
         config_file = self.temp_project_dir / ".clang_index"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 [files]
 patterns = ["*.cpp"]
-""")
+"""
+        )
 
         # First indexing
         analyzer1 = CppAnalyzer(str(self.temp_project_dir))
@@ -157,11 +167,13 @@ patterns = ["*.cpp"]
         import time
 
         time.sleep(0.1)  # Ensure timestamp difference
-        config_file.write_text("""
+        config_file.write_text(
+            """
 [files]
 patterns = ["*.cpp", "*.h"]
 exclude = ["test/*"]
-""")
+"""
+        )
 
         # Re-index - should invalidate cache due to config change
         analyzer2 = CppAnalyzer(str(self.temp_project_dir))
@@ -174,7 +186,8 @@ exclude = ["test/*"]
     def test_sqlite_backend_preserves_all_symbol_data(self):
         """Test that SQLite backend preserves all symbol fields"""
         test_file = self.temp_project_dir / "src" / "detailed.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 namespace MyNamespace {
     class BaseClass {};
 
@@ -191,7 +204,8 @@ namespace MyNamespace {
         obj.publicMethod();
     }
 }
-""")
+"""
+        )
 
         # Index project
         analyzer1 = CppAnalyzer(str(self.temp_project_dir))

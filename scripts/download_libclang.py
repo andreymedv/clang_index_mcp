@@ -11,8 +11,9 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
+from contextlib import suppress
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 LLVM_VERSION = "19.1.7"
 
@@ -36,7 +37,6 @@ class DownloadConfig:
 
 def get_download_config(system_override: Optional[str] = None) -> DownloadConfig:
     """Return the download configuration for the current platform."""
-
     system = (system_override or platform.system()).lower()
     # Get the directory where the script itself is located
     script_dir = Path(__file__).parent
@@ -80,10 +80,7 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
 
 
 def _already_present(dest_dir: Path, expected_files: Iterable[str]) -> bool:
-    for filename in expected_files:
-        if (dest_dir / filename).exists():
-            return True
-    return False
+    return any((dest_dir / filename).exists() for filename in expected_files)
 
 
 def _ensure_directory(path: Path) -> None:
@@ -163,7 +160,6 @@ def download_libclang(
     system_override: Optional[str] = None, save_archive_to: Optional[Path] = None
 ) -> bool:
     """Download and extract a libclang build for the current platform."""
-
     config = get_download_config(system_override)
     print(f"Setting up libclang for {config.system}...")
     _ensure_directory(config.dest_dir)
@@ -220,17 +216,14 @@ def download_libclang(
 
     print("[OK] Download complete, extracting...")
 
-    with tarfile.open(temp_file, "r:xz") as tar:
-        with tempfile.TemporaryDirectory() as extract_dir:
-            tar.extractall(extract_dir)
-            success = _copy_libclang(Path(extract_dir), config)
+    with tarfile.open(temp_file, "r:xz") as tar, tempfile.TemporaryDirectory() as extract_dir:
+        tar.extractall(extract_dir)
+        success = _copy_libclang(Path(extract_dir), config)
 
     # Only delete the archive if it was a temporary file and not explicitly saved
     if not save_archive_to:
-        try:
+        with suppress(OSError):
             temp_file.unlink()
-        except OSError:
-            pass
 
     if success:
         print("[OK] libclang ready for use")
@@ -240,7 +233,7 @@ def download_libclang(
     return success
 
 
-def main(argv: Optional[Iterable[str]] = None) -> int:
+def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Download libclang for the MCP server")
     parser.add_argument(
         "--system",
@@ -252,7 +245,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         type=Path,
         help="Optional path to save the downloaded archive instead of a temporary file.",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(list(argv) if argv is not None else None)
 
     success = download_libclang(args.system, args.save_archive_to)
     return 0 if success else 1

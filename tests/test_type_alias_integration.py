@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Integration tests for type alias tracking through MCP tools (Phase 1.5).
 
@@ -35,7 +34,8 @@ class TestSearchClassesTypeExpansion:
     def test_search_by_alias_finds_canonical_class(self, temp_project_dir):
         """IT-1.1: Searching by alias name should find canonical class (Future Phase)."""
         # Create class with alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Main widget class
 class Widget {
 public:
@@ -44,7 +44,8 @@ public:
 
 /// Alias for Widget
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -73,7 +74,8 @@ using WidgetAlias = Widget;
     def test_search_by_canonical_includes_aliases(self, temp_project_dir):
         """IT-1.2: Searching by canonical name should also match aliases."""
         # Create class with multiple aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Main button class
 class Button {
 public:
@@ -82,7 +84,8 @@ public:
 
 using ButtonAlias = Button;
 typedef Button ButtonType;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -111,7 +114,8 @@ typedef Button ButtonType;
     def test_search_respects_alias_chain(self, temp_project_dir):
         """IT-1.3: Search should resolve alias chains to canonical type (Future Phase)."""
         # Create alias chain
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Real class definition
 class RealClass {
 public:
@@ -120,7 +124,8 @@ public:
 
 using AliasOne = RealClass;
 using AliasTwo = AliasOne;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -149,7 +154,8 @@ using AliasTwo = AliasOne;
     def test_search_with_namespace_scoped_alias(self, temp_project_dir):
         """IT-1.4: Search handles namespace-scoped aliases correctly (Future Phase)."""
         # Create namespace-scoped alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 namespace widgets {
     /// Widget class in namespace
     class Widget {
@@ -162,7 +168,8 @@ namespace ui {
     /// Alias to widgets::Widget
     using Widget = widgets::Widget;
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -200,7 +207,8 @@ class TestSearchFunctionsTypeExpansion:
     def test_search_function_with_alias_parameter(self, temp_project_dir):
         """IT-2.1: Find functions with aliased parameter types."""
         # Create function with alias parameter
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetPtr = Widget*;
 
@@ -210,7 +218,8 @@ void processWidget(WidgetPtr widget);
 void processWidget(WidgetPtr widget) {
     // Implementation
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -236,7 +245,8 @@ void processWidget(WidgetPtr widget) {
     def test_search_function_with_alias_return_type(self, temp_project_dir):
         """IT-2.2: Find functions with aliased return types."""
         # Create function with alias return type
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Data {};
 using DataPtr = Data*;
 
@@ -246,7 +256,8 @@ DataPtr getData();
 DataPtr getData() {
     return nullptr;
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -281,7 +292,8 @@ class TestGetClassInfoWithAliases:
     def test_get_class_info_for_aliased_class(self, temp_project_dir):
         """IT-3.1: get_class_info should work when queried by alias name."""
         # Create class with alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Main widget class
 class Widget {
 public:
@@ -290,7 +302,8 @@ public:
 };
 
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -318,7 +331,8 @@ using WidgetAlias = Widget;
     def test_get_class_info_shows_methods(self, temp_project_dir):
         """IT-3.2: Class info should include methods regardless of alias usage."""
         # Create class with methods
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Button {
 public:
     void click();
@@ -327,7 +341,8 @@ public:
 };
 
 using ButtonAlias = Button;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -364,7 +379,8 @@ class TestEndToEndWorkflows:
     def test_complete_alias_workflow(self, temp_project_dir):
         """IT-4.1: Complete workflow from indexing to querying aliases."""
         # Create a realistic project with aliases
-        (temp_project_dir / "src" / "core.h").write_text("""
+        (temp_project_dir / "src" / "core.h").write_text(
+            """
 #pragma once
 
 namespace core {
@@ -378,9 +394,11 @@ namespace core {
     /// Convenience alias for DataStore pointer
     using DataStorePtr = DataStore*;
 }
-""")
+"""
+        )
 
-        (temp_project_dir / "src" / "app.cpp").write_text("""
+        (temp_project_dir / "src" / "app.cpp").write_text(
+            """
 #include "core.h"
 
 namespace app {
@@ -392,7 +410,8 @@ namespace app {
         store->save();
     }
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -425,7 +444,8 @@ namespace app {
     def test_multi_file_alias_usage(self, temp_project_dir):
         """IT-4.2: Test aliases used across multiple files."""
         # Create header with class and alias
-        (temp_project_dir / "include" / "types.h").write_text("""
+        (temp_project_dir / "include" / "types.h").write_text(
+            """
 #pragma once
 
 /// Base widget class
@@ -436,24 +456,29 @@ public:
 
 /// Widget pointer type
 using WidgetPtr = Widget*;
-""")
+"""
+        )
 
         # Create implementation files using the alias
-        (temp_project_dir / "src" / "file1.cpp").write_text("""
+        (temp_project_dir / "src" / "file1.cpp").write_text(
+            """
 #include "types.h"
 
 void createWidget(WidgetPtr* out) {
     *out = new Widget();
 }
-""")
+"""
+        )
 
-        (temp_project_dir / "src" / "file2.cpp").write_text("""
+        (temp_project_dir / "src" / "file2.cpp").write_text(
+            """
 #include "types.h"
 
 void destroyWidget(WidgetPtr widget) {
     delete widget;
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -488,7 +513,8 @@ void destroyWidget(WidgetPtr widget) {
     def test_stl_alias_integration(self, temp_project_dir):
         """IT-4.3: Test aliases with STL types in realistic scenario."""
         # Create code using STL type aliases
-        (temp_project_dir / "src" / "callbacks.h").write_text("""
+        (temp_project_dir / "src" / "callbacks.h").write_text(
+            """
 #pragma once
 #include <functional>
 #include <string>
@@ -501,15 +527,18 @@ using SuccessCallback = std::function<void()>;
 
 /// Register callbacks
 void registerCallbacks(ErrorCallback onError, SuccessCallback onSuccess);
-""")
+"""
+        )
 
-        (temp_project_dir / "src" / "callbacks.cpp").write_text("""
+        (temp_project_dir / "src" / "callbacks.cpp").write_text(
+            """
 #include "callbacks.h"
 
 void registerCallbacks(ErrorCallback onError, SuccessCallback onSuccess) {
     // Implementation
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -628,13 +657,15 @@ class TestErrorHandlingEdgeCases:
     def test_search_with_no_aliases(self, temp_project_dir):
         """IT-6.1: Search works correctly when no aliases exist."""
         # Create simple class without aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Simple widget class
 class Widget {
 public:
     void show();
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -661,7 +692,8 @@ public:
     def test_malformed_alias_doesnt_break_indexing(self, temp_project_dir):
         """IT-6.2: Malformed alias doesn't prevent rest of indexing."""
         # Create file with malformed alias and valid classes
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class ValidClass1 {
 };
 
@@ -669,7 +701,8 @@ using BrokenAlias =   // Missing target type
 
 class ValidClass2 {
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -695,10 +728,12 @@ class ValidClass2 {
     def test_incremental_refresh_with_new_alias(self, temp_project_dir):
         """IT-6.3: Incremental refresh picks up newly added aliases."""
         # Initial indexing without alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -719,12 +754,14 @@ class Widget {
         initial_count = len(aliases)
 
         # Add alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {
 };
 
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         # Refresh
         analyzer.refresh_if_needed()

@@ -19,7 +19,8 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         self.conn = sqlite3.connect(str(self.db_path))
 
         # Create file_metadata table
-        self.conn.execute("""
+        self.conn.execute(
+            """
             CREATE TABLE file_metadata (
                 file_path TEXT PRIMARY KEY,
                 file_hash TEXT NOT NULL,
@@ -27,7 +28,8 @@ class TestCompileCommandsDiffer(unittest.TestCase):
                 indexed_at REAL NOT NULL,
                 symbol_count INTEGER DEFAULT 0
             )
-        """)
+        """
+        )
         self.conn.commit()
 
         # Create mock backend
@@ -222,10 +224,12 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         self.assertEqual(cleared, 2)
 
         # Verify cleared
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT COUNT(*) FROM file_metadata
             WHERE compile_args_hash IS NOT NULL
-        """)
+        """
+        )
 
         count = cursor.fetchone()[0]
         self.assertEqual(count, 0)

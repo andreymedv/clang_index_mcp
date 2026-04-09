@@ -113,6 +113,7 @@ repos:
 # Configuration for specific hooks
 exclude: |
   (?x)(
+    ^\.claude/.*|
     ^lib/.*|
     ^mcp_env/.*|
     ^\.mcp_cache/.*|

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Consolidated MCP tool definitions.
 
 Provides the public tool surface for the C++ analyzer MCP server.

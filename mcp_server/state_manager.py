@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 State management for C++ analyzer lifecycle
 
