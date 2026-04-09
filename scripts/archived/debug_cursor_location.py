@@ -17,12 +17,10 @@ with tempfile.TemporaryDirectory() as tmpdir:
     header.write_text("int add(int a, int b);")
 
     source = project / "test.cpp"
-    source.write_text(
-        """
+    source.write_text("""
 #include "test.h"
 int add(int a, int b) { return a + b; }
-"""
-    )
+""")
 
     # Parse with libclang
     index = Index.create()
