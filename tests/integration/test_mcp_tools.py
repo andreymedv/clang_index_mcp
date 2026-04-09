@@ -29,7 +29,8 @@ class TestMCPServerTools:
     def test_list_classes_tool(self, temp_project_dir):
         """Test list_classes functionality"""
         # Create test file
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class TestClass {
 public:
     void method();
@@ -39,7 +40,8 @@ class AnotherClass {
 public:
     void another();
 };
-""")
+"""
+        )
 
         # Create analyzer and index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -54,11 +56,13 @@ public:
 
     def test_search_classes_tool(self, temp_project_dir):
         """Test search_classes functionality"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class TestClass {};
 class TestHelper {};
 class DifferentClass {};
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -73,10 +77,12 @@ class DifferentClass {};
 
     def test_search_classes_include_base_classes_default(self, temp_project_dir):
         """Test search_classes includes base_classes by default."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Base {};
 class Derived : public Base {};
-""")
+"""
+        )
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
@@ -88,10 +94,12 @@ class Derived : public Base {};
 
     def test_search_classes_exclude_base_classes(self, temp_project_dir):
         """Test search_classes omits base_classes when include_base_classes=False."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Base {};
 class Derived : public Base {};
-""")
+"""
+        )
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
@@ -104,9 +112,11 @@ class Derived : public Base {};
 
     def test_search_classes_include_base_classes_no_inheritance(self, temp_project_dir):
         """Test search_classes with include_base_classes=False on class with no bases."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class StandaloneClass {};
-""")
+"""
+        )
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
@@ -120,7 +130,8 @@ class StandaloneClass {};
 
     def test_search_functions_tool(self, temp_project_dir):
         """Test search_functions functionality"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 void globalFunction() {}
 void testFunction() {}
 
@@ -129,7 +140,8 @@ public:
     void testMethod();
     void anotherMethod();
 };
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -143,7 +155,8 @@ public:
 
     def test_get_class_info_tool(self, temp_project_dir):
         """Test get_class_info functionality"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class TestClass {
 public:
     void method1();
@@ -151,7 +164,8 @@ public:
 private:
     void privateMethod();
 };
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -170,7 +184,8 @@ private:
         but get_class_info couldn't find the class using that qualified name.
         """
         # Create two classes with same simple name in different namespaces
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 namespace ns1 {
     class Builder {
     public:
@@ -184,7 +199,8 @@ namespace ns2 {
         void build2();
     };
 }
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -222,7 +238,8 @@ namespace ns2 {
 
     def test_get_function_signature_tool(self, temp_project_dir):
         """Test get_function_signature functionality"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 void testFunction(int x) {}
 void testFunction(double y) {}
 
@@ -230,7 +247,8 @@ class TestClass {
 public:
     void testFunction(const char* s) {}
 };
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -242,12 +260,14 @@ public:
 
     def test_search_symbols_tool(self, temp_project_dir):
         """Test search_symbols unified search"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class TestClass {};
 void testFunction() {}
 class DifferentClass {};
 void differentFunction() {}
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -261,11 +281,13 @@ void differentFunction() {}
 
     def test_get_class_hierarchy_tool(self, temp_project_dir):
         """Test get_class_hierarchy functionality"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Base {};
 class Derived : public Base {};
 class MoreDerived : public Derived {};
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -290,11 +312,13 @@ class MoreDerived : public Derived {};
 
     def test_get_derived_classes_tool(self, temp_project_dir):
         """Test get_derived_classes functionality"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Base {};
 class Derived1 : public Base {};
 class Derived2 : public Base {};
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -311,7 +335,8 @@ class Derived2 : public Base {};
 
         Bug fix: class_name parameter should accept both simple names and qualified names.
         """
-        (temp_project_dir / "src" / "namespaced.cpp").write_text("""
+        (temp_project_dir / "src" / "namespaced.cpp").write_text(
+            """
 namespace MyNamespace {
 namespace Inner {
 
@@ -321,7 +346,8 @@ class Derived2 : public Base {};
 
 }  // namespace Inner
 }  // namespace MyNamespace
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -342,7 +368,8 @@ class Derived2 : public Base {};
 
     def test_get_call_graph_tool(self, temp_project_dir):
         """Test get_call_graph functionality using find_callees and find_incoming_calls"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 void helper() {}
 void process() {
     helper();
@@ -350,7 +377,8 @@ void process() {
 void main() {
     process();
 }
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -387,10 +415,12 @@ void main() {
 
     def test_project_only_filter(self, temp_project_dir):
         """Test project_only filter works correctly"""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <vector>
 class MyClass {};
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
@@ -444,16 +474,20 @@ class MyClass {};
     def test_error_recovery(self, temp_project_dir):
         """Test error recovery with malformed C++ code"""
         # Create two files - one valid, one with errors
-        (temp_project_dir / "src" / "valid.cpp").write_text("""
+        (temp_project_dir / "src" / "valid.cpp").write_text(
+            """
 class ValidClass {};
 class AnotherValidClass {};
-""")
-        (temp_project_dir / "src" / "invalid.cpp").write_text("""
+"""
+        )
+        (temp_project_dir / "src" / "invalid.cpp").write_text(
+            """
 // Malformed code (syntax error)
 class InvalidClass {
     void method(
 };
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         # Should not crash, should index what it can
@@ -660,11 +694,13 @@ class TestMCPServerToolsAdditional:
     def test_get_parse_errors(self, temp_project_dir):
         """Test get_parse_errors API for tracking indexing issues"""
         # Create file with syntax errors
-        (temp_project_dir / "src" / "bad.cpp").write_text("""
+        (temp_project_dir / "src" / "bad.cpp").write_text(
+            """
 class BrokenClass {
     void method(
 };  // Missing closing paren
-""")
+"""
+        )
         (temp_project_dir / "src" / "good.cpp").write_text("class GoodClass {};")
 
         analyzer = CppAnalyzer(str(temp_project_dir))

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Test runner for compile_commands.json integration tests.
 

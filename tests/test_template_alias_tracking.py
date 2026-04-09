@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unit tests for template alias tracking (Phase 2.0).
 
@@ -32,11 +31,13 @@ class TestTemplateAliasDetection:
     def test_detect_simple_template_alias(self, temp_project_dir):
         """UT-T1.1: Detect simple template alias with single type parameter."""
         # Create source file with template alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <memory>
 template<typename T>
 using Ptr = std::shared_ptr<T>;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -73,7 +74,8 @@ using Ptr = std::shared_ptr<T>;
     def test_distinguish_template_from_simple_alias(self, temp_project_dir):
         """UT-T1.2: Distinguish between template and simple aliases."""
         # Create source file with both types
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <memory>
 
 // Simple alias
@@ -83,7 +85,8 @@ using WidgetAlias = Widget;
 // Template alias
 template<typename T>
 using Ptr = std::shared_ptr<T>;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -141,11 +144,13 @@ class TestTemplateParameterExtraction:
 
     def test_extract_single_type_parameter(self, temp_project_dir):
         """UT-T2.1: Extract single type parameter."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <memory>
 template<typename T>
 using Ptr = std::shared_ptr<T>;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -181,11 +186,13 @@ using Ptr = std::shared_ptr<T>;
 
     def test_extract_multiple_type_parameters(self, temp_project_dir):
         """UT-T2.2: Extract multiple type parameters."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <utility>
 template<typename T, typename U>
 using Pair = std::pair<T, U>;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -223,11 +230,13 @@ using Pair = std::pair<T, U>;
 
     def test_extract_non_type_parameter(self, temp_project_dir):
         """UT-T2.3: Extract non-type template parameter."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <array>
 template<typename T, int N>
 using Array = std::array<T, N>;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -268,11 +277,13 @@ using Array = std::array<T, N>;
 
     def test_extract_variadic_template_parameter(self, temp_project_dir):
         """UT-T2.4: Extract variadic template parameter."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <tuple>
 template<typename... Args>
 using Tuple = std::tuple<Args...>;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -318,11 +329,13 @@ class TestTemplateAliasTargetType:
 
     def test_extract_template_alias_target(self, temp_project_dir):
         """UT-T3.1: Extract target type from template alias."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <memory>
 template<typename T>
 using Ptr = std::shared_ptr<T>;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -365,13 +378,15 @@ class TestNamespaceScopedTemplateAlias:
 
     def test_namespace_scoped_template_alias(self, temp_project_dir):
         """UT-T4.1: Extract template alias from namespace."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <memory>
 namespace utils {
     template<typename T>
     using UniquePtr = std::unique_ptr<T>;
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -415,11 +430,13 @@ class TestTemplatealiasDatabaseStorage:
 
     def test_template_params_json_format(self, temp_project_dir):
         """UT-T5.1: Verify template_params stored as valid JSON."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <utility>
 template<typename T, typename U>
 using Pair = std::pair<T, U>;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -456,10 +473,12 @@ using Pair = std::pair<T, U>;
 
     def test_simple_alias_template_params_null(self, temp_project_dir):
         """UT-T5.2: Verify simple aliases have NULL template_params."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,

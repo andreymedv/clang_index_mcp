@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Test helper functions for Clang Index MCP test suite.
 

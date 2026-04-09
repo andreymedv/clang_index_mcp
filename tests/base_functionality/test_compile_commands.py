@@ -32,7 +32,8 @@ class TestCompileCommands:
         """Test loading valid compile_commands.json - Task 1.1.10"""
         # Create a simple C++ file (no includes needed)
         src_file = temp_project_dir / "src" / "main.cpp"
-        src_file.write_text("""
+        src_file.write_text(
+            """
 class TestClass {
 public:
     void method();
@@ -41,7 +42,8 @@ public:
 int main() {
     return 0;
 }
-""")
+"""
+        )
 
         # Create compile_commands.json
         compile_commands = [
@@ -79,12 +81,14 @@ int main() {
     def test_missing_compile_commands_fallback(self, temp_project_dir):
         """Test fallback behavior when compile_commands.json is missing"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "simple.cpp").write_text("""
+        (temp_project_dir / "src" / "simple.cpp").write_text(
+            """
 class SimpleClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # No compile_commands.json created
 
@@ -108,7 +112,8 @@ public:
         """
         # Create main source file that will be in compile_commands.json
         main_cpp = temp_project_dir / "src" / "main.cpp"
-        main_cpp.write_text("""
+        main_cpp.write_text(
+            """
 class MainClass {
 public:
     void mainMethod();
@@ -118,25 +123,30 @@ int main() {
     MainClass obj;
     return 0;
 }
-""")
+"""
+        )
 
         # Create a header file that is NOT in compile_commands.json
         header_file = temp_project_dir / "src" / "extra.h"
-        header_file.write_text("""
+        header_file.write_text(
+            """
 class ExtraClass {
 public:
     void extraMethod();
 };
-""")
+"""
+        )
 
         # Create another source file that is NOT in compile_commands.json
         extra_cpp = temp_project_dir / "src" / "extra.cpp"
-        extra_cpp.write_text("""
+        extra_cpp.write_text(
+            """
 class AnotherClass {
 public:
     void anotherMethod();
 };
-""")
+"""
+        )
 
         # Create compile_commands.json with ONLY main.cpp
         compile_commands = [
@@ -204,12 +214,14 @@ public:
         """
         # Create a simple source file
         src_file = temp_project_dir / "src" / "test.cpp"
-        src_file.write_text("""
+        src_file.write_text(
+            """
 class TestClass {
 public:
     void testMethod();
 };
-""")
+"""
+        )
 
         # Create compile_commands.json with COMMAND STRING (not arguments array)
         # This simulates the real-world format from CMake/make

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tests for consolidated tools facade.
 
 Tests tool list validation, parameter routing, detail filtering,

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Infrastructure smoke tests for test framework.
 

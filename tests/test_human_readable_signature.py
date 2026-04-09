@@ -235,7 +235,8 @@ class TestHumanReadableSignatureIntegration:
         src_dir = tmp_path / "src"
         src_dir.mkdir()
 
-        (src_dir / "functions.cpp").write_text("""
+        (src_dir / "functions.cpp").write_text(
+            """
 void simpleFunction(int x, double y) {}
 
 int noParams() { return 42; }
@@ -246,7 +247,8 @@ public:
     static int staticMethod(int a, int b) { return a + b; }
     virtual void virtualMethod(int x) {}
 };
-""")
+"""
+        )
         return tmp_path
 
     def test_signatures_are_human_readable(self, project_dir):

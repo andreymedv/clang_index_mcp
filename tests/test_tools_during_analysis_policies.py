@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for query behavior policy configuration (REQ-10.7.x)
 

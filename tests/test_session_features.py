@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Comprehensive test suite for all features added in this session:
 1. Config file validation (JSON array vs object)
