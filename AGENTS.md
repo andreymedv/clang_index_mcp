@@ -66,14 +66,12 @@ make dev
 git config core.hooksPath .githooks
 ```
 
-**Pre-commit hook** runs:
+**Pre-commit hook** (fast checks, runs on every commit):
 - `make format-check` (blocking)
-- `make lint` (blocking)  
+- `make lint` (blocking)
 - `make type-check` (informational)
-- `make test` (blocking)
-- `python -m build` (blocking)
 
-**Pre-push hook** runs:
+**Pre-push hook** (full validation, runs before push):
 - `make test` (blocking)
 - `make format-check` (blocking)
 - `make lint` (blocking)
