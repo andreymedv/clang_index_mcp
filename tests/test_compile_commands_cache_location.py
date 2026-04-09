@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test script to verify compile_commands cache works with multiple builds."""
 
 import json

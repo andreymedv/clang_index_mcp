@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Cache Statistics Tool
+"""Show cache statistics for the C++ analyzer SQLite cache.
 
 Shows comprehensive statistics about the C++ analyzer SQLite cache, including:
 - Database size
@@ -11,15 +10,11 @@ Shows comprehensive statistics about the C++ analyzer SQLite cache, including:
 - Health status
 """
 
+import importlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
+from typing import Any, Dict, Mapping
 
 
 def format_size(bytes_value: int) -> str:
@@ -35,15 +30,19 @@ def format_size(bytes_value: int) -> str:
 
 
 def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
-    """Get statistics for SQLite cache."""
+    """Get statistics for a SQLite cache."""
     db_path = cache_dir / "symbols.db"
 
     if not db_path.exists():
         return {"error": "No SQLite cache found"}
 
-    stats = {"backend_type": "SQLite", "db_path": str(db_path)}
+    stats: Dict[str, Any] = {"backend_type": "SQLite", "db_path": str(db_path)}
 
     try:
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        backend_module = importlib.import_module("mcp_server.sqlite_cache_backend")
+        SqliteCacheBackend = backend_module.SqliteCacheBackend
+
         backend = SqliteCacheBackend(db_path)
 
         # Get symbol statistics
@@ -71,7 +70,9 @@ def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
 
         # Format database size
         if "db_size_bytes" in stats:
-            stats["db_size_formatted"] = format_size(stats["db_size_bytes"])
+            db_size = stats["db_size_bytes"]
+            if isinstance(db_size, int):
+                stats["db_size_formatted"] = format_size(db_size)
 
         backend._close()
 
@@ -81,22 +82,7 @@ def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
     return stats
 
 
-def print_stats(stats: Dict[str, Any]):
-    """Print statistics in formatted output."""
-    print("=" * 70)
-    print("CACHE STATISTICS")
-    print("=" * 70)
-    print()
-
-    if "error" in stats:
-        print(f"[ERROR] Error: {stats['error']}")
-        return
-
-    # Backend type
-    print(f"Backend Type: {stats.get('backend_type', 'Unknown')}")
-    print()
-
-    # Size information
+def _print_size_information(stats: Mapping[str, Any]) -> None:
     print("─" * 70)
     print("SIZE INFORMATION")
     print("─" * 70)
@@ -108,15 +94,17 @@ def print_stats(stats: Dict[str, Any]):
         print(f"  Raw bytes: {stats.get('cache_size_bytes', 0):,}")
     print()
 
-    # Symbol statistics
+
+def _print_symbol_statistics(stats: Mapping[str, Any]) -> None:
     print("─" * 70)
     print("SYMBOL STATISTICS")
     print("─" * 70)
     print(f"Total Symbols: {stats.get('total_symbols', 0):,}")
 
-    if "by_kind" in stats:
+    by_kind = stats.get("by_kind")
+    if isinstance(by_kind, dict):
         print("\nBy Kind:")
-        for kind, count in sorted(stats["by_kind"].items(), key=lambda x: x[1], reverse=True):
+        for kind, count in sorted(by_kind.items(), key=lambda item: item[1], reverse=True):
             print(f"  {kind:20s}: {count:,}")
     else:
         if "class_symbols" in stats:
@@ -130,81 +118,118 @@ def print_stats(stats: Dict[str, Any]):
         print(f"Dependency Symbols: {stats['dependency_symbols']:,}")
     print()
 
-    # File statistics
+
+def _print_file_statistics(stats: Mapping[str, Any]) -> None:
     print("─" * 70)
     print("FILE STATISTICS")
     print("─" * 70)
     print(f"Total Files: {stats.get('total_files', 0):,}")
 
-    if "file_stats" in stats:
-        fs = stats["file_stats"]
-        print(f"Average Symbols per File: {fs.get('avg_symbols_per_file', 0):.1f}")
-        print(f"Max Symbols in a File: {fs.get('max_symbols_in_file', 0):,}")
+    file_stats = stats.get("file_stats")
+    if isinstance(file_stats, dict):
+        print(f"Average Symbols per File: {file_stats.get('avg_symbols_per_file', 0):.1f}")
+        print(f"Max Symbols in a File: {file_stats.get('max_symbols_in_file', 0):,}")
 
-    if "top_files" in stats and stats["top_files"]:
+    top_files = stats.get("top_files")
+    if isinstance(top_files, list) and top_files:
         print("\nTop Files by Symbol Count:")
-        for i, file_info in enumerate(stats["top_files"][:5], 1):
+        for i, file_info in enumerate(top_files[:5], 1):
+            if not isinstance(file_info, dict):
+                continue
             file_path = file_info.get("file", "unknown")
-            # Shorten path if too long
             if len(file_path) > 60:
                 file_path = "..." + file_path[-57:]
             print(f"  {i}. {file_path}")
             print(f"     Symbols: {file_info.get('symbol_count', 0):,}")
     print()
 
-    # Performance (SQLite only)
-    if stats.get("backend_type") == "SQLite" and "performance_search_ms" in stats:
-        print("─" * 70)
-        print("PERFORMANCE METRICS")
-        print("─" * 70)
-        perf = stats["performance_search_ms"]
-        if "fts_search_ms" in perf:
-            print(f"FTS5 Search: {perf['fts_search_ms']:.2f} ms")
-        if "like_search_ms" in perf:
-            print(f"LIKE Search: {perf['like_search_ms']:.2f} ms")
-        print()
 
-    # Health status (SQLite only)
-    if stats.get("backend_type") == "SQLite":
-        print("─" * 70)
-        print("HEALTH STATUS")
-        print("─" * 70)
-        status = stats.get("health_status", "unknown")
-        if status == "healthy":
-            print(f"Status: [PASS] {status.upper()}")
-        elif status == "warning":
-            print(f"Status: [WARNING]  {status.upper()}")
-        elif status == "error":
-            print(f"Status: [ERROR] {status.upper()}")
-        else:
-            print(f"Status: {status}")
+def _print_performance_metrics(stats: Mapping[str, Any]) -> None:
+    if stats.get("backend_type") != "SQLite":
+        return
+    perf = stats.get("performance_search_ms")
+    if not isinstance(perf, dict):
+        return
 
-        warnings = stats.get("health_warnings", [])
-        if warnings:
-            print(f"\nWarnings ({len(warnings)}):")
-            for warning in warnings:
-                print(f"  [WARNING]  {warning}")
+    print("─" * 70)
+    print("PERFORMANCE METRICS")
+    print("─" * 70)
+    if "fts_search_ms" in perf:
+        print(f"FTS5 Search: {perf['fts_search_ms']:.2f} ms")
+    if "like_search_ms" in perf:
+        print(f"LIKE Search: {perf['like_search_ms']:.2f} ms")
+    print()
 
-        errors = stats.get("health_errors", [])
-        if errors:
-            print(f"\nErrors ({len(errors)}):")
-            for error in errors:
-                print(f"  [ERROR] {error}")
-        print()
 
-    # Metadata
-    if "metadata" in stats and stats["metadata"]:
-        print("─" * 70)
-        print("METADATA")
-        print("─" * 70)
-        for key, value in stats["metadata"].items():
-            print(f"{key}: {value}")
-        print()
+def _print_health_status(stats: Mapping[str, Any]) -> None:
+    if stats.get("backend_type") != "SQLite":
+        return
+
+    print("─" * 70)
+    print("HEALTH STATUS")
+    print("─" * 70)
+    status = stats.get("health_status", "unknown")
+    if status == "healthy":
+        print(f"Status: [PASS] {status.upper()}")
+    elif status == "warning":
+        print(f"Status: [WARNING]  {status.upper()}")
+    elif status == "error":
+        print(f"Status: [ERROR] {status.upper()}")
+    else:
+        print(f"Status: {status}")
+
+    warnings = stats.get("health_warnings", [])
+    if warnings:
+        print(f"\nWarnings ({len(warnings)}):")
+        for warning in warnings:
+            print(f"  [WARNING]  {warning}")
+
+    errors = stats.get("health_errors", [])
+    if errors:
+        print(f"\nErrors ({len(errors)}):")
+        for error in errors:
+            print(f"  [ERROR] {error}")
+    print()
+
+
+def _print_metadata(stats: Mapping[str, Any]) -> None:
+    metadata = stats.get("metadata")
+    if not isinstance(metadata, dict) or not metadata:
+        return
+
+    print("─" * 70)
+    print("METADATA")
+    print("─" * 70)
+    for key, value in metadata.items():
+        print(f"{key}: {value}")
+    print()
+
+
+def print_stats(stats: Dict[str, Any]) -> None:
+    """Print statistics in a formatted layout."""
+    print("=" * 70)
+    print("CACHE STATISTICS")
+    print("=" * 70)
+    print()
+
+    if "error" in stats:
+        print(f"[ERROR] Error: {stats['error']}")
+        return
+
+    # Backend type
+    print(f"Backend Type: {stats.get('backend_type', 'Unknown')}")
+    print()
+    _print_size_information(stats)
+    _print_symbol_statistics(stats)
+    _print_file_statistics(stats)
+    _print_performance_metrics(stats)
+    _print_health_status(stats)
+    _print_metadata(stats)
 
     print("=" * 70)
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     import argparse
 

@@ -28,7 +28,8 @@ class TestFileNameFilter:
     def test_search_classes_with_file_name_filter(self, temp_project_dir):
         """Test filtering classes by header file"""
         # Create a header file with a class
-        (temp_project_dir / "src" / "MyClass.h").write_text("""
+        (temp_project_dir / "src" / "MyClass.h").write_text(
+            """
 #ifndef MYCLASS_H
 #define MYCLASS_H
 
@@ -44,10 +45,12 @@ public:
 };
 
 #endif
-""")
+"""
+        )
 
         # Create a different header file
-        (temp_project_dir / "src" / "OtherClass.h").write_text("""
+        (temp_project_dir / "src" / "OtherClass.h").write_text(
+            """
 #ifndef OTHERCLASS_H
 #define OTHERCLASS_H
 
@@ -57,10 +60,12 @@ public:
 };
 
 #endif
-""")
+"""
+        )
 
         # Create a source file with classes (these should NOT be included when filtering by header)
-        (temp_project_dir / "src" / "implementation.cpp").write_text("""
+        (temp_project_dir / "src" / "implementation.cpp").write_text(
+            """
 #include "MyClass.h"
 
 void MyClass::myMethod() {}
@@ -69,7 +74,8 @@ class ImplementationClass {
 public:
     void implMethod();
 };
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -104,19 +110,23 @@ public:
         """Test file_name filter with partial paths"""
         # Create a nested directory structure
         (temp_project_dir / "src" / "utils").mkdir(parents=True, exist_ok=True)
-        (temp_project_dir / "src" / "utils" / "Helper.h").write_text("""
+        (temp_project_dir / "src" / "utils" / "Helper.h").write_text(
+            """
 class HelperClass {
 public:
     void help();
 };
-""")
+"""
+        )
 
-        (temp_project_dir / "src" / "Main.h").write_text("""
+        (temp_project_dir / "src" / "Main.h").write_text(
+            """
 class MainClass {
 public:
     void main();
 };
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -136,7 +146,8 @@ public:
     def test_search_functions_with_file_name_filter(self, temp_project_dir):
         """Test filtering functions by header file"""
         # Create a header file with function declarations
-        (temp_project_dir / "src" / "functions.h").write_text("""
+        (temp_project_dir / "src" / "functions.h").write_text(
+            """
 #ifndef FUNCTIONS_H
 #define FUNCTIONS_H
 
@@ -144,20 +155,24 @@ int add(int a, int b);
 int subtract(int a, int b);
 
 #endif
-""")
+"""
+        )
 
         # Create another header
-        (temp_project_dir / "src" / "other.h").write_text("""
+        (temp_project_dir / "src" / "other.h").write_text(
+            """
 #ifndef OTHER_H
 #define OTHER_H
 
 int multiply(int a, int b);
 
 #endif
-""")
+"""
+        )
 
         # Create source file with implementations (inline functions in .cpp should not match header filter)
-        (temp_project_dir / "src" / "functions.cpp").write_text("""
+        (temp_project_dir / "src" / "functions.cpp").write_text(
+            """
 #include "functions.h"
 
 int add(int a, int b) { return a + b; }
@@ -165,7 +180,8 @@ int subtract(int a, int b) { return a - b; }
 
 // This is defined only in .cpp, not in header
 int divide(int a, int b) { return a / b; }
-""")
+"""
+        )
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -240,7 +256,8 @@ int divide(int a, int b) { return a / b; }
     def test_search_functions_with_class_name_and_header_file(self, temp_project_dir):
         """Test combining class_name and file_name filters"""
         # Create header with multiple classes
-        (temp_project_dir / "src" / "Multi.h").write_text("""
+        (temp_project_dir / "src" / "Multi.h").write_text(
+            """
 class ClassA {
 public:
     void methodA();
@@ -252,16 +269,19 @@ public:
     void methodB();
     void commonMethod();
 };
-""")
+"""
+        )
 
         # Create another header
-        (temp_project_dir / "src" / "Single.h").write_text("""
+        (temp_project_dir / "src" / "Single.h").write_text(
+            """
 class ClassC {
 public:
     void methodC();
     void commonMethod();
 };
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -292,7 +312,8 @@ public:
         parent_class is stored as simple name, so qualified names must be normalized.
         """
         # Create header with namespaced classes
-        (temp_project_dir / "src" / "Namespaced.h").write_text("""
+        (temp_project_dir / "src" / "Namespaced.h").write_text(
+            """
 namespace OuterNS {
 namespace InnerNS {
 
@@ -314,7 +335,8 @@ public:
 };
 
 }  // namespace OtherNS
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -348,22 +370,26 @@ public:
     def test_file_name_filter_with_cpp_source_files(self, temp_project_dir):
         """Test that header_file parameter works with .cpp source files too"""
         # Create source file with class
-        (temp_project_dir / "src" / "source.cpp").write_text("""
+        (temp_project_dir / "src" / "source.cpp").write_text(
+            """
 class SourceClass {
 public:
     void sourceMethod();
 };
 
 void standaloneFunction() {}
-""")
+"""
+        )
 
         # Create header
-        (temp_project_dir / "src" / "header.h").write_text("""
+        (temp_project_dir / "src" / "header.h").write_text(
+            """
 class HeaderClass {
 public:
     void headerMethod();
 };
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -402,15 +428,19 @@ public:
 
     def test_file_name_filter_with_pattern_matching(self, temp_project_dir):
         """Test file_name filter combined with pattern matching"""
-        (temp_project_dir / "src" / "Test.h").write_text("""
+        (temp_project_dir / "src" / "Test.h").write_text(
+            """
 class TestClassOne {};
 class TestClassTwo {};
 class OtherClass {};
-""")
+"""
+        )
 
-        (temp_project_dir / "src" / "Other.h").write_text("""
+        (temp_project_dir / "src" / "Other.h").write_text(
+            """
 class TestClassThree {};
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -496,7 +526,8 @@ class TestClassThree {};
 
     def test_search_functions_standalone_vs_methods(self, temp_project_dir):
         """Test file_name filter with both standalone functions and methods"""
-        (temp_project_dir / "src" / "Mixed.h").write_text("""
+        (temp_project_dir / "src" / "Mixed.h").write_text(
+            """
 // Standalone function
 void standaloneFunc();
 
@@ -504,11 +535,14 @@ class MyClass {
 public:
     void classMethod();
 };
-""")
+"""
+        )
 
-        (temp_project_dir / "src" / "Other.h").write_text("""
+        (temp_project_dir / "src" / "Other.h").write_text(
+            """
 void otherFunc();
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -560,13 +594,15 @@ void otherFunc();
 
     def test_multiple_classes_same_file_filtered_correctly(self, temp_project_dir):
         """Test that all classes from filtered file are returned"""
-        (temp_project_dir / "src" / "Many.h").write_text("""
+        (temp_project_dir / "src" / "Many.h").write_text(
+            """
 class Class1 {};
 class Class2 {};
 class Class3 {};
 class Class4 {};
 class Class5 {};
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -585,14 +621,18 @@ class Class5 {};
         This is the fix for the issue where LLMs using search_classes("", file_name="MyFile.h")
         would get empty results instead of all classes in that file.
         """
-        (temp_project_dir / "src" / "Target.h").write_text("""
+        (temp_project_dir / "src" / "Target.h").write_text(
+            """
 struct StructA {};
 class ClassB {};
 struct StructC {};
-""")
-        (temp_project_dir / "src" / "Other.h").write_text("""
+"""
+        )
+        (temp_project_dir / "src" / "Other.h").write_text(
+            """
 class OtherClass {};
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -614,11 +654,13 @@ class OtherClass {};
 
     def test_empty_pattern_with_file_name_functions(self, temp_project_dir):
         """Test that empty pattern with file_name filter works for functions too."""
-        (temp_project_dir / "src" / "functions.cpp").write_text("""
+        (temp_project_dir / "src" / "functions.cpp").write_text(
+            """
 void funcA() {}
 void funcB() {}
 int funcC(int x) { return x; }
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -633,14 +675,16 @@ int funcC(int x) { return x; }
 
     def test_empty_pattern_search_symbols_all_types(self, temp_project_dir):
         """Test that empty pattern with search_symbols returns all symbol types."""
-        (temp_project_dir / "src" / "mixed.h").write_text("""
+        (temp_project_dir / "src" / "mixed.h").write_text(
+            """
 class ClassA {};
 struct StructB {};
 void functionC();
 class ClassD {
     void methodE();
 };
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -665,11 +709,13 @@ class ClassD {
 
     def test_empty_pattern_search_symbols_filtered_by_type(self, temp_project_dir):
         """Test that empty pattern with search_symbols and symbol_types filter works."""
-        (temp_project_dir / "src" / "mixed.h").write_text("""
+        (temp_project_dir / "src" / "mixed.h").write_text(
+            """
 class ClassA {};
 struct StructB {};
 void functionC();
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -692,11 +738,13 @@ void functionC();
     def test_empty_pattern_find_in_file(self, temp_project_dir):
         """Test that empty pattern with find_in_file returns all symbols in that file."""
         test_file = temp_project_dir / "src" / "testfile.cpp"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class TestClass {};
 void testFunc1() {}
 void testFunc2() {}
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -718,10 +766,12 @@ void testFunc2() {}
         """Test that empty pattern works with find_in_file using partial path."""
         # Create nested directory
         (temp_project_dir / "src" / "module").mkdir(parents=True, exist_ok=True)
-        (temp_project_dir / "src" / "module" / "code.cpp").write_text("""
+        (temp_project_dir / "src" / "module" / "code.cpp").write_text(
+            """
 class ModuleClass {};
 void moduleFunc() {}
-""")
+"""
+        )
 
         # Index
         analyzer = CppAnalyzer(str(temp_project_dir))

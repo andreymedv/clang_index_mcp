@@ -39,7 +39,8 @@ class TestQualifiedSearchPerformance:
                 content = []
                 for j in range(20):  # 20 classes per file = 1000 total classes
                     ns = f"ns{i % 10}"  # 10 different namespaces
-                    content.append(f"""
+                    content.append(
+                        f"""
 namespace {ns} {{
     class Class{i}_{j} {{
     public:
@@ -47,7 +48,8 @@ namespace {ns} {{
         void process() {{}}
     }};
 }}
-""")
+"""
+                    )
                 test_file.write_text("\n".join(content))
 
             analyzer = CppAnalyzer(tmpdir)
@@ -93,12 +95,14 @@ namespace {ns} {{
             test_file = Path(tmpdir) / "test.cpp"
             content = []
             for i in range(100):  # 100 global classes
-                content.append(f"""
+                content.append(
+                    f"""
 class GlobalClass{i} {{
 public:
     void method() {{}}
 }};
-""")
+"""
+                )
             test_file.write_text("\n".join(content))
 
             analyzer = CppAnalyzer(tmpdir)
@@ -194,14 +198,16 @@ class TestIndexingPerformance:
                 test_file = Path(tmpdir) / f"file{i}.cpp"
                 content = []
                 for j in range(10):
-                    content.append(f"""
+                    content.append(
+                        f"""
 namespace ns{i} {{
     class Class{i}_{j} {{
     public:
         void method{j}() {{}}
     }};
 }}
-""")
+"""
+                    )
                 test_file.write_text("\n".join(content))
 
             analyzer = CppAnalyzer(tmpdir)
@@ -225,22 +231,26 @@ namespace ns{i} {{
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create initial project
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     class Original {};
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
 
             # Modify file
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     class Original {};
     class Modified {};
 }
-""")
+"""
+            )
 
             # Benchmark incremental refresh
             start = time.time()

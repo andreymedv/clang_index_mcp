@@ -1,18 +1,105 @@
-#!/usr/bin/env sh
-# bd-shim v1
+#!/usr/bin/env bash
 #
-# bd (beads) pre-commit hook - thin shim
+# Pre-commit hook: mirror the repository's GitHub Actions CI commands locally.
 #
-# This shim delegates to 'bd hooks run pre-commit' which contains
-# the actual hook logic. This pattern ensures hook behavior is always
-# in sync with the installed bd version - no manual updates needed.
+# Blocking checks:
+#   - make format-check
+#   - make lint
+#   - make test
+#   - python -m build
+#
+# Informational only:
+#   - make type-check
+#
+# Notes:
+#   - GitHub Actions runs tests on Python 3.10, 3.11, and 3.12. This hook runs
+#     the same command set in the currently active local environment.
+#   - The CI build job runs only after lint and tests pass; this hook preserves
+#     that ordering.
+#
 
-# Check if bd is available
-if ! command -v bd >/dev/null 2>&1; then
-    echo "Warning: bd command not found in PATH, skipping pre-commit hook" >&2
-    echo "  Install bd: brew install steveyegge/tap/bd" >&2
-    echo "  Or add bd to your PATH" >&2
-    exit 0
+set -u
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+echo -e "${YELLOW}=== Pre-commit checks (CI mirror) ===${NC}"
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT" || exit 1
+
+if [ -f "mcp_env/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    . "mcp_env/bin/activate"
+elif [ -f "mcp_env/Scripts/activate" ]; then
+    # shellcheck disable=SC1091
+    . "mcp_env/Scripts/activate"
 fi
 
-exec bd hooks run pre-commit "$@"
+PYTHON_BIN="${PYTHON:-}"
+if [ -z "$PYTHON_BIN" ]; then
+    if [ -x "mcp_env/bin/python" ]; then
+        PYTHON_BIN="mcp_env/bin/python"
+    elif [ -x "mcp_env/Scripts/python.exe" ]; then
+        PYTHON_BIN="mcp_env/Scripts/python.exe"
+    elif command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN="$(command -v python3)"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_BIN="$(command -v python)"
+    else
+        echo -e "${RED}ERROR: Python not found.${NC}"
+        exit 1
+    fi
+fi
+
+if ! command -v make >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: make not found.${NC}"
+    exit 1
+fi
+
+run_blocking_check() {
+    local description="$1"
+    shift
+
+    echo -e "${YELLOW}Running ${description}...${NC}"
+    if "$@"; then
+        echo -e "${GREEN}${description} passed.${NC}"
+    else
+        echo -e "${RED}${description} failed. Commit aborted.${NC}"
+        exit 1
+    fi
+}
+
+run_informational_check() {
+    local description="$1"
+    shift
+
+    echo -e "${YELLOW}Running ${description} (informational)...${NC}"
+    if "$@"; then
+        echo -e "${GREEN}${description} passed.${NC}"
+    else
+        echo -e "${YELLOW}${description} reported issues (not blocking commit).${NC}"
+    fi
+}
+
+run_blocking_check "format check (make format-check)" make format-check
+run_blocking_check "lint (make lint)" make lint
+run_informational_check "type check (make type-check)" make type-check
+run_blocking_check "tests (make test)" make test
+
+echo -e "${YELLOW}Running build (python -m build)...${NC}"
+if "$PYTHON_BIN" -m build; then
+    echo -e "${GREEN}build passed.${NC}"
+else
+    echo -e "${RED}build failed. Commit aborted.${NC}"
+    echo "Install build dependencies if needed: python -m pip install --upgrade build"
+    exit 1
+fi
+
+echo -e "${GREEN}=== Pre-commit checks passed ===${NC}"
+
+if command -v bd >/dev/null 2>&1; then
+    bd hooks run pre-commit "$@"
+fi

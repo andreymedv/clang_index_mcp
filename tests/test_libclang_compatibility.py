@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for LibClang Compatibility Processing Requirements (REQ-5.7)
 

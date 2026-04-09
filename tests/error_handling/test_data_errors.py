@@ -30,12 +30,14 @@ class TestCorruptCompileCommands:
     def test_corrupt_compile_commands_handling(self, temp_project_dir):
         """Test handling of various corrupted compile_commands.json formats - Task 1.2.4"""
         # Create a valid C++ file
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class TestClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Test Case 1: Truncated JSON
         cc_file = temp_project_dir / "compile_commands.json"
@@ -99,12 +101,14 @@ class TestMalformedCacheRecovery:
     def test_malformed_json_cache_recovery(self, temp_project_dir):
         """Test recovery from various cache corruption scenarios - Task 1.2.5"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "cached.cpp").write_text("""
+        (temp_project_dir / "src" / "cached.cpp").write_text(
+            """
 class CachedClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # First, create a valid cache
         analyzer1 = CppAnalyzer(str(temp_project_dir))

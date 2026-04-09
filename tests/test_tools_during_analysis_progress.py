@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for real-time progress reporting during indexing (REQ-10.3.5)
 
@@ -29,16 +28,19 @@ def simple_cpp_project(tmp_path):
     project.mkdir()
 
     # Create main.cpp
-    (project / "main.cpp").write_text("""
+    (project / "main.cpp").write_text(
+        """
 #include "utils.h"
 
 int main() {
     return calculate(5);
 }
-""")
+"""
+    )
 
     # Create utils.h
-    (project / "utils.h").write_text("""
+    (project / "utils.h").write_text(
+        """
 #ifndef UTILS_H
 #define UTILS_H
 
@@ -51,10 +53,12 @@ public:
 };
 
 #endif
-""")
+"""
+    )
 
     # Create utils.cpp
-    (project / "utils.cpp").write_text("""
+    (project / "utils.cpp").write_text(
+        """
 #include "utils.h"
 
 int calculate(int x) {
@@ -68,7 +72,8 @@ int Calculator::add(int a, int b) {
 int Calculator::subtract(int a, int b) {
     return a - b;
 }
-""")
+"""
+    )
 
     return project
 
