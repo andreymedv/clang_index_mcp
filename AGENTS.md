@@ -55,6 +55,54 @@ make dev
 - If code changes affect formatting, linting, or typing expectations, run the relevant `make` target or `make check`.
 - If you could not run the appropriate validation, say so explicitly in the final response.
 
+## Git Hooks and Code Quality
+
+**This repository uses Makefile-based git hooks only.** The pre-commit framework (`.pre-commit-config.yaml`) should NOT be used as it has different check versions and rules than GitHub CI.
+
+### Current Setup (Makefile-based)
+
+```bash
+# Hooks are configured to use .githooks/ directory
+git config core.hooksPath .githooks
+```
+
+**Pre-commit hook** runs:
+- `make format-check` (blocking)
+- `make lint` (blocking)  
+- `make type-check` (informational)
+- `make test` (blocking)
+- `python -m build` (blocking)
+
+**Pre-push hook** runs:
+- `make test` (blocking)
+- `make format-check` (blocking)
+- `make lint` (blocking)
+- `make type-check` (informational)
+
+### Validation Commands (Use These)
+
+Always use these commands to check code before committing:
+
+```bash
+# Full check (runs all code quality checks)
+make check
+
+# Individual checks
+make format-check  # Check black formatting
+make format        # Apply black formatting
+make lint          # Run flake8
+make type-check    # Run mypy (informational)
+make test          # Run pytest suite
+```
+
+### Important: Do NOT Use
+
+- `pre-commit run` - Uses different black version and extra checks not in CI
+- Direct tool invocation with different flags than Makefile
+- `--no-verify` flag on git push except in emergencies
+
+This ensures local checks match GitHub CI exactly.
+
 ## Architecture Hotspots
 
 Most changes will touch one of these areas:
