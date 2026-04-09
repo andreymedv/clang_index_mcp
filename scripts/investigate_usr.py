@@ -25,8 +25,7 @@ def test_usr_matching_same_file():
 
         # Create file with forward decl followed by definition
         test_h = tmp_path / "test.h"
-        test_h.write_text(
-            """
+        test_h.write_text("""
 // Forward declaration
 class MyClass;
 
@@ -36,8 +35,7 @@ class MyClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
 
@@ -74,25 +72,21 @@ def test_usr_matching_different_files():
 
         # Forward declaration in header
         fwd_h = tmp_path / "fwd.h"
-        fwd_h.write_text(
-            """
+        fwd_h.write_text("""
 // Forward declaration only
 class MyClass;
-"""
-        )
+""")
 
         # Definition in another header
         myclass_h = tmp_path / "myclass.h"
-        myclass_h.write_text(
-            """
+        myclass_h.write_text("""
 // Full definition
 class MyClass {
     int value;
 public:
     void method();
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -127,18 +121,15 @@ def test_usr_matching_with_namespace():
 
         # Forward declaration in namespace
         fwd_h = tmp_path / "fwd.h"
-        fwd_h.write_text(
-            """
+        fwd_h.write_text("""
 namespace ns {
     class MyClass;
 }
-"""
-        )
+""")
 
         # Definition in namespace
         myclass_h = tmp_path / "myclass.h"
-        myclass_h.write_text(
-            """
+        myclass_h.write_text("""
 namespace ns {
     class MyClass {
         int value;
@@ -146,8 +137,7 @@ namespace ns {
         void method();
     };
 }
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -181,26 +171,21 @@ def test_parallel_indexing_simulation():
 
         # Forward declaration
         fwd_h = tmp_path / "fwd.h"
-        fwd_h.write_text(
-            """
+        fwd_h.write_text("""
 class Widget;
-"""
-        )
+""")
 
         # Definition
         widget_h = tmp_path / "widget.h"
-        widget_h.write_text(
-            """
+        widget_h.write_text("""
 class Widget {
     int x;
 };
-"""
-        )
+""")
 
         # Source that includes both (forces both to be parsed)
         main_cpp = tmp_path / "main.cpp"
-        main_cpp.write_text(
-            """
+        main_cpp.write_text("""
 #include "fwd.h"
 #include "widget.h"
 
@@ -208,8 +193,7 @@ int main() {
     Widget w;
     return 0;
 }
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -239,21 +223,18 @@ def test_source_includes_both_headers():
 
         # Forward declaration in widget.h
         widget_h = tmp_path / "widget.h"
-        widget_h.write_text(
-            """
+        widget_h.write_text("""
 // widget.h - uses forward declaration
 class QString;
 
 class Widget {
     QString* text;
 };
-"""
-        )
+""")
 
         # Full definition in qstring.h
         qstring_h = tmp_path / "qstring.h"
-        qstring_h.write_text(
-            """
+        qstring_h.write_text("""
 // qstring.h - full definition
 class QString {
     char* data;
@@ -262,13 +243,11 @@ public:
     QString();
     ~QString();
 };
-"""
-        )
+""")
 
         # main.cpp includes BOTH headers
         main_cpp = tmp_path / "main.cpp"
-        main_cpp.write_text(
-            """
+        main_cpp.write_text("""
 #include "widget.h"
 #include "qstring.h"
 
@@ -277,8 +256,7 @@ int main() {
     QString s;
     return 0;
 }
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -317,8 +295,7 @@ def test_check_usr_for_forward_decl():
 
         # Various forward declaration scenarios
         fwd_h = tmp_path / "fwd.h"
-        fwd_h.write_text(
-            """
+        fwd_h.write_text("""
 // Bare forward declaration
 class FwdClass1;
 
@@ -335,8 +312,7 @@ class FwdClass4;
 class FwdClass4 {
     int x;
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -372,26 +348,21 @@ def test_sqlite_storage():
 
         # Forward declaration
         fwd_h = tmp_path / "fwd.h"
-        fwd_h.write_text(
-            """
+        fwd_h.write_text("""
 class TestClass;
-"""
-        )
+""")
 
         # Definition
         test_h = tmp_path / "test.h"
-        test_h.write_text(
-            """
+        test_h.write_text("""
 class TestClass {
     int x;
 };
-"""
-        )
+""")
 
         # Source that includes both
         main_cpp = tmp_path / "main.cpp"
-        main_cpp.write_text(
-            """
+        main_cpp.write_text("""
 #include "fwd.h"
 #include "test.h"
 
@@ -399,8 +370,7 @@ int main() {
     TestClass t;
     return 0;
 }
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -438,8 +408,7 @@ def test_empty_usr_handling():
 
         # Create files with unusual constructs that might produce empty USRs
         test_h = tmp_path / "test.h"
-        test_h.write_text(
-            """
+        test_h.write_text("""
 // Anonymous struct (might have unusual USR behavior)
 struct {
     int x;
@@ -452,8 +421,7 @@ struct {
 class NormalClass {
     int y;
 };
-"""
-        )
+""")
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
