@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unit tests for documentation encoding and special characters (Phase 2).
 
@@ -154,11 +153,13 @@ class TestSpecialCharacters:
 
     def test_angle_brackets_in_docs(self, temp_project_dir):
         """Test <angle> brackets don't break parsing."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Template class for std::vector<int> processing
 class VectorProcessor {
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -181,11 +182,13 @@ class VectorProcessor {
 
     def test_quotes_in_docs(self, temp_project_dir):
         """Test quotes in documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Handles "quoted" strings and 'apostrophes'
 class StringHandler {
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -210,11 +213,13 @@ class StringHandler {
 
     def test_ampersand_in_docs(self, temp_project_dir):
         """Test ampersand in documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /// Handles read & write operations
 class IOHandler {
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -237,7 +242,8 @@ class IOHandler {
 
     def test_newlines_in_doc_comment(self, temp_project_dir):
         """Test newlines are preserved in doc_comment."""
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 /**
  * Line 1
  * Line 2
@@ -245,7 +251,8 @@ class IOHandler {
  */
 class MultilineDoc {
 };
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,

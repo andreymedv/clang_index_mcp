@@ -29,13 +29,15 @@ class TestVcpkgSupport:
     def test_vcpkg_detection_basic(self, temp_project_dir):
         """Test detection of vcpkg installation - Task 1.1.11"""
         # Create a simple C++ file that might use vcpkg libraries
-        (temp_project_dir / "src" / "vcpkg_test.cpp").write_text("""
+        (temp_project_dir / "src" / "vcpkg_test.cpp").write_text(
+            """
 // This test just verifies analyzer can handle vcpkg paths
 class TestClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # Create a fake vcpkg_installed directory structure
         vcpkg_dir = temp_project_dir / "vcpkg_installed" / "x64-windows" / "include"
@@ -60,12 +62,14 @@ public:
     def test_without_vcpkg(self, temp_project_dir):
         """Test analyzer works without vcpkg"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "no_vcpkg.cpp").write_text("""
+        (temp_project_dir / "src" / "no_vcpkg.cpp").write_text(
+            """
 class NoVcpkgClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # No vcpkg_installed directory
 
@@ -88,24 +92,28 @@ public:
 
         # Create a fake library header
         (vcpkg_include / "mylibrary" / "myclass.h").parent.mkdir(exist_ok=True)
-        (vcpkg_include / "mylibrary" / "myclass.h").write_text("""
+        (vcpkg_include / "mylibrary" / "myclass.h").write_text(
+            """
 namespace mylibrary {
     class LibraryClass {
     public:
         void libraryMethod();
     };
 }
-""")
+"""
+        )
 
         # Create source file that uses the library (without include, since the path might not be auto-detected)
-        (temp_project_dir / "src" / "main.cpp").write_text("""
+        (temp_project_dir / "src" / "main.cpp").write_text(
+            """
 // Simulating vcpkg library usage
 
 class MyApp {
 public:
     void useLibrary();
 };
-""")
+"""
+        )
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         count = analyzer.index_project()

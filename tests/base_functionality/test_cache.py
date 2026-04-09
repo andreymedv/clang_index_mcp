@@ -30,14 +30,16 @@ class TestCachePersistence:
     def test_cache_persistence_basic(self, temp_project_dir):
         """Test that cache is created and loadable - Task 1.1.9"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "cache_test.cpp").write_text("""
+        (temp_project_dir / "src" / "cache_test.cpp").write_text(
+            """
 class CachedClass {
 public:
     void method();
 };
 
 void cachedFunction() {}
-""")
+"""
+        )
 
         # First indexing - should create cache
         analyzer1 = CppAnalyzer(str(temp_project_dir))
@@ -82,12 +84,14 @@ void cachedFunction() {}
         test_file = temp_project_dir / "src" / "changing.cpp"
 
         # Create initial file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class OriginalClass {
 public:
     void method();
 };
-""")
+"""
+        )
 
         # First indexing
         analyzer1 = CppAnalyzer(str(temp_project_dir))
@@ -101,12 +105,14 @@ public:
         time.sleep(0.1)
 
         # Modify the file
-        test_file.write_text("""
+        test_file.write_text(
+            """
 class ModifiedClass {
 public:
     void newMethod();
 };
-""")
+"""
+        )
 
         # Create new analyzer - should detect file change
         analyzer2 = CppAnalyzer(str(temp_project_dir))

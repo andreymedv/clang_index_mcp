@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unit tests for documentation data model (Phase 2 - UT-5).
 

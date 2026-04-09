@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Filter compile_commands.json to include only entries for source files
-located in specified directories (recursively).
+"""Filter compile_commands.json by source directory.
 
 This script is useful for creating test versions of compile_commands.json
 that contain only entries from specific project subdirectories.
@@ -12,12 +10,11 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List
+from typing import Any, Optional
 
 
-def normalize_path(path: str, base_directory: str = None) -> Path:
-    """
-    Normalize a path, handling both absolute and relative paths.
+def normalize_path(path: str, base_directory: Optional[str] = None) -> Path:
+    """Normalize a path, handling both absolute and relative paths.
 
     Args:
         path: The path to normalize
@@ -40,9 +37,8 @@ def normalize_path(path: str, base_directory: str = None) -> Path:
         return path_obj.absolute()
 
 
-def is_path_in_directories(file_path: Path, directories: List[Path]) -> bool:
-    """
-    Check if a file path is located within any of the specified directories.
+def is_path_in_directories(file_path: Path, directories: list[Path]) -> bool:
+    """Check whether a file path is located within any of the directories.
 
     Args:
         file_path: Path to the file to check
@@ -63,11 +59,53 @@ def is_path_in_directories(file_path: Path, directories: List[Path]) -> bool:
     return False
 
 
+def _normalize_filter_directories(filter_dirs: list[str]) -> list[Path]:
+    normalized_dirs: list[Path] = []
+    for dir_path in filter_dirs:
+        if not os.path.exists(dir_path):
+            print(f"Warning: Directory does not exist: {dir_path}", file=sys.stderr)
+            continue
+
+        if not os.path.isdir(dir_path):
+            print(f"Warning: Not a directory: {dir_path}", file=sys.stderr)
+            continue
+
+        normalized_dirs.append(normalize_path(dir_path))
+
+    return normalized_dirs
+
+
+def _collect_filtered_entries(
+    compile_commands: list[dict[str, Any]], normalized_dirs: list[Path], verbose: bool
+) -> list[dict[str, Any]]:
+    filtered_entries: list[dict[str, Any]] = []
+
+    for entry in compile_commands:
+        file_value = entry.get("file")
+        directory_value = entry.get("directory", "")
+        file_path = file_value if isinstance(file_value, str) else ""
+        directory = directory_value if isinstance(directory_value, str) else ""
+
+        if not file_path:
+            if verbose:
+                print("Warning: Entry missing 'file' field", file=sys.stderr)
+            continue
+
+        normalized_file = normalize_path(file_path, directory)
+        if is_path_in_directories(normalized_file, normalized_dirs):
+            filtered_entries.append(entry)
+            if verbose:
+                print(f"Including: {normalized_file}")
+        elif verbose:
+            print(f"Excluding: {normalized_file}")
+
+    return filtered_entries
+
+
 def filter_compile_commands(
-    input_path: str, output_path: str, filter_dirs: List[str], verbose: bool = False
+    input_path: str, output_path: str, filter_dirs: list[str], verbose: bool = False
 ) -> int:
-    """
-    Filter compile_commands.json to include only entries from specified directories.
+    """Filter compile_commands.json to entries from specified directories.
 
     Args:
         input_path: Path to input compile_commands.json
@@ -94,17 +132,7 @@ def filter_compile_commands(
         sys.exit(1)
 
     # Normalize filter directories
-    normalized_dirs = []
-    for dir_path in filter_dirs:
-        if not os.path.exists(dir_path):
-            print(f"Warning: Directory does not exist: {dir_path}", file=sys.stderr)
-            continue
-
-        if not os.path.isdir(dir_path):
-            print(f"Warning: Not a directory: {dir_path}", file=sys.stderr)
-            continue
-
-        normalized_dirs.append(normalize_path(dir_path))
+    normalized_dirs = _normalize_filter_directories(filter_dirs)
 
     if not normalized_dirs:
         print("Error: No valid filter directories specified", file=sys.stderr)
@@ -117,30 +145,8 @@ def filter_compile_commands(
         print()
 
     # Filter entries
-    filtered_entries = []
-    for entry in compile_commands:
-        if not isinstance(entry, dict):
-            continue
-
-        # Get the source file path
-        file_path = entry.get("file")
-        directory = entry.get("directory", "")
-
-        if not file_path:
-            if verbose:
-                print("Warning: Entry missing 'file' field", file=sys.stderr)
-            continue
-
-        # Normalize the file path
-        normalized_file = normalize_path(file_path, directory)
-
-        # Check if file is in any of the filter directories
-        if is_path_in_directories(normalized_file, normalized_dirs):
-            filtered_entries.append(entry)
-            if verbose:
-                print(f"Including: {normalized_file}")
-        elif verbose:
-            print(f"Excluding: {normalized_file}")
+    typed_compile_commands = [entry for entry in compile_commands if isinstance(entry, dict)]
+    filtered_entries = _collect_filtered_entries(typed_compile_commands, normalized_dirs, verbose)
 
     # Write output compile_commands.json
     try:
@@ -158,7 +164,7 @@ def filter_compile_commands(
     return len(filtered_entries)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Filter compile_commands.json by source file directories",
         formatter_class=argparse.RawDescriptionHelpFormatter,

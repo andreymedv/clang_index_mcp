@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for Issue #4: Exact matching by default in search_classes and search_functions.
 

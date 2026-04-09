@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unit tests for type alias tracking (Phase 1.3).
 
@@ -31,10 +30,12 @@ class TestAliasExtraction:
     def test_extract_using_class_alias(self, temp_project_dir):
         """UT-1.1: Extract simple class alias with 'using' syntax."""
         # Create source file with using alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -60,10 +61,12 @@ using WidgetAlias = Widget;
     def test_extract_typedef_class_alias(self, temp_project_dir):
         """UT-1.2: Extract simple class alias with 'typedef' syntax."""
         # Create source file with typedef alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Button {};
 typedef Button ButtonAlias;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -89,11 +92,13 @@ typedef Button ButtonAlias;
     def test_extract_pointer_type_alias(self, temp_project_dir):
         """UT-1.3: Extract pointer type alias."""
         # Create source file with pointer alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Data {};
 using DataPtr = Data*;
 typedef Data* DataPointer;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -122,11 +127,13 @@ typedef Data* DataPointer;
     def test_extract_reference_type_alias(self, temp_project_dir):
         """UT-1.4: Extract reference type alias."""
         # Create source file with reference alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Data {};
 using DataRef = Data&;
 typedef Data& DataReference;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -154,10 +161,12 @@ typedef Data& DataReference;
     def test_extract_builtin_type_alias(self, temp_project_dir):
         """UT-1.5: Extract built-in type alias."""
         # Create source file with built-in type aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 using size_type = unsigned long;
 typedef int int32_t;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -185,14 +194,16 @@ typedef int int32_t;
     def test_extract_stl_type_alias(self, temp_project_dir):
         """UT-1.6: Extract STL type alias."""
         # Create source file with STL type alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 #include <functional>
 #include <vector>
 #include <string>
 
 using ErrorCallback = std::function<void(int)>;
 using StringVector = std::vector<std::string>;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -221,11 +232,13 @@ using StringVector = std::vector<std::string>;
     def test_extract_alias_chain(self, temp_project_dir):
         """UT-1.7: Extract alias chain (A -> B -> C)."""
         # Create source file with alias chain
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class RealClass {};
 using AliasOne = RealClass;
 using AliasTwo = AliasOne;
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -255,7 +268,8 @@ using AliasTwo = AliasOne;
     def test_extract_namespace_scoped_alias(self, temp_project_dir):
         """UT-1.8: Extract namespace-scoped alias."""
         # Create source file with namespace-scoped alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 namespace foo {
     class LocalClass {};
     using LocalAlias = LocalClass;
@@ -264,7 +278,8 @@ namespace foo {
 namespace bar {
     using ExternalAlias = foo::LocalClass;
 }
-""")
+"""
+        )
 
         # Create compile commands
         temp_compile_commands(
@@ -300,10 +315,12 @@ class TestAliasStorage:
     def test_store_single_alias(self, temp_project_dir):
         """UT-2.1: Store single type alias in database."""
         # Create simple alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -327,7 +344,8 @@ using WidgetAlias = Widget;
     def test_store_multiple_aliases(self, temp_project_dir):
         """UT-2.2: Store multiple type aliases in batch."""
         # Create multiple aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 class Button {};
 class Data {};
@@ -335,7 +353,8 @@ class Data {};
 using WidgetAlias = Widget;
 using ButtonAlias = Button;
 using DataPtr = Data*;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -362,10 +381,12 @@ using DataPtr = Data*;
     def test_alias_persistence(self, temp_project_dir):
         """UT-2.3: Verify aliases persist across analyzer instances."""
         # Create alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -403,10 +424,12 @@ class TestAliasLookup:
     def test_get_canonical_for_alias(self, temp_project_dir):
         """UT-3.1: Lookup canonical type for alias name."""
         # Create alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class RealClass {};
 using AliasName = RealClass;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -430,12 +453,14 @@ using AliasName = RealClass;
     def test_get_aliases_for_canonical(self, temp_project_dir):
         """UT-3.2: Find all aliases pointing to a canonical type."""
         # Create multiple aliases for same type
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
 using WidgetPtr = Widget*;
 typedef Widget WidgetType;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -461,9 +486,11 @@ typedef Widget WidgetType;
     def test_lookup_nonexistent_alias(self, temp_project_dir):
         """UT-3.3: Lookup returns None for nonexistent alias."""
         # Create empty project
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -487,9 +514,11 @@ class Widget {};
     def test_lookup_empty_result(self, temp_project_dir):
         """UT-3.4: Lookup returns empty list for canonical type with no aliases."""
         # Create class without aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -523,10 +552,12 @@ class TestSearchEngineTypeExpansion:
     def test_expand_alias_to_canonical(self, temp_project_dir):
         """UT-4.1: Expand alias name to include canonical type."""
         # Create alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -551,11 +582,13 @@ using WidgetAlias = Widget;
     def test_expand_canonical_to_aliases(self, temp_project_dir):
         """UT-4.2: Expand canonical type to include aliases."""
         # Create aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using WidgetAlias = Widget;
 typedef Widget WidgetType;
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -581,9 +614,11 @@ typedef Widget WidgetType;
     def test_expand_without_aliases(self, temp_project_dir):
         """UT-4.3: Expand returns only original name if no aliases exist."""
         # Create class without aliases
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -616,9 +651,11 @@ class TestEdgeCases:
     def test_empty_project(self, temp_project_dir):
         """UT-5.1: Handle project with no aliases."""
         # Create empty source file
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -643,10 +680,12 @@ class Widget {};
         """UT-5.2: Handle malformed alias gracefully."""
         # Create source with intentional syntax error in alias
         # (This should be caught by libclang, not crash the analyzer)
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 class Widget {};
 using BrokenAlias =   // Missing target type
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,
@@ -669,7 +708,8 @@ using BrokenAlias =   // Missing target type
     def test_duplicate_alias_names(self, temp_project_dir):
         """UT-5.3: Handle duplicate alias names in different namespaces."""
         # Create aliases with same name in different namespaces
-        (temp_project_dir / "src" / "test.cpp").write_text("""
+        (temp_project_dir / "src" / "test.cpp").write_text(
+            """
 namespace foo {
     class Widget {};
     using Alias = Widget;
@@ -679,7 +719,8 @@ namespace bar {
     class Button {};
     using Alias = Button;
 }
-""")
+"""
+        )
 
         temp_compile_commands(
             temp_project_dir,

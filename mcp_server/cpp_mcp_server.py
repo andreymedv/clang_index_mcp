@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 C++ Code Analysis MCP Server
 

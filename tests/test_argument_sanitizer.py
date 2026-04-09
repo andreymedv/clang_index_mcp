@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for Rule-Based Argument Sanitizer (REQ-5.8)
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 HTTP/SSE Server Implementation for C++ Code Analysis MCP Server
 

@@ -186,7 +186,8 @@ class TestFindInFileQualifiedPatterns:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create minimal test project
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace ui {
         class View {};
@@ -195,7 +196,8 @@ namespace app {
 
 class View {};
 void testFunc() {}
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -227,7 +229,8 @@ void testFunc() {}
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test project with namespaced classes
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace ui {
         class View {};
@@ -242,7 +245,8 @@ namespace legacy {
 }
 
 class View {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -289,7 +293,8 @@ class TestBackwardCompatibility:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     class View {};
 }
@@ -299,7 +304,8 @@ namespace ns2 {
 }
 
 class View {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -317,7 +323,8 @@ class View {};
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     class View {};
 }
@@ -327,7 +334,8 @@ namespace ns2 {
 }
 
 class View {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -351,13 +359,15 @@ class View {};
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     class GlobalClass {};
 }
 
 class GlobalClass {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -377,7 +387,8 @@ class GlobalClass {};
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace core {
         class Config {};
@@ -388,7 +399,8 @@ namespace app {
 }
 
 class Config {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -411,11 +423,13 @@ class Config {};
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace MyApp {
     class MyClass {};
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -452,7 +466,8 @@ class TestPartiallyQualifiedNameLookups:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace outer {
     namespace builders {
         class Presenter {
@@ -461,7 +476,8 @@ namespace outer {
         };
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -492,7 +508,8 @@ namespace outer {
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace app {
     namespace ui {
         class View {
@@ -510,7 +527,8 @@ namespace legacy {
         };
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -542,13 +560,15 @@ namespace legacy {
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace outer {
     namespace inner {
         void myFunction(int x) {}
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -572,13 +592,15 @@ namespace outer {
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns {
     class MyClass {};
 }
 
 class MyClass {};
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -598,14 +620,16 @@ class MyClass {};
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace outer {
     namespace inner {
         class Base {};
         class Derived : public Base {};
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -630,13 +654,15 @@ namespace outer {
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace MyApp {
     namespace Core {
         class MyClass {};
     }
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -668,7 +694,8 @@ class TestAmbiguousClassNameHandling:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     class SomeClass {
     public:
@@ -682,7 +709,8 @@ namespace ns2 {
         void build2();
     };
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -713,7 +741,8 @@ namespace ns2 {
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     class SomeClass {
     public:
@@ -727,7 +756,8 @@ namespace ns2 {
         void build2();
     };
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()
@@ -754,14 +784,16 @@ namespace ns2 {
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 namespace ns1 {
     class UniqueClass {
     public:
         void method();
     };
 }
-""")
+"""
+            )
 
             analyzer = CppAnalyzer(tmpdir)
             analyzer.index_project()

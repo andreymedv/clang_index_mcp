@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Integration tests for CppAnalyzer with compile_commands.json support.
 
@@ -35,7 +34,8 @@ class TestCompileCommandsManagerIntegration(unittest.TestCase):
         (self.project_root / "tests").mkdir()
 
         # Create source files
-        (self.project_root / "src" / "main.cpp").write_text("""
+        (self.project_root / "src" / "main.cpp").write_text(
+            """
 #include "utils.h"
 #include <iostream>
 
@@ -43,9 +43,11 @@ int main() {
     std::cout << get_message() << std::endl;
     return 0;
 }
-""")
+"""
+        )
 
-        (self.project_root / "src" / "utils.cpp").write_text("""
+        (self.project_root / "src" / "utils.cpp").write_text(
+            """
 #include "utils.h"
 #include <string>
 
@@ -56,15 +58,18 @@ std::string get_message() {
 void helper_function() {
     // This is a helper function
 }
-""")
+"""
+        )
 
-        (self.project_root / "include" / "utils.h").write_text("""
+        (self.project_root / "include" / "utils.h").write_text(
+            """
 #pragma once
 #include <string>
 
 std::string get_message();
 void helper_function();
-""")
+"""
+        )
 
     def tearDown(self):
         """Clean up test fixtures."""

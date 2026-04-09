@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tests for performance optimizations added in the optimize-slow-host-performance session.
 
