@@ -373,15 +373,18 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="get_class_hierarchy",
             description=(
-                "Get complete inheritance graph for a named class or structure — all ancestors "
-                "and descendants as a flat adjacency list.\n\n"
+                "Get inheritance graph for a class — ancestors, descendants, or both as a flat adjacency list.\n\n"
                 "IMPORTANT: Call directly when you know the class name; do NOT call find_symbols_by_pattern first. "
                 "This tool accepts simple names ('Widget') and qualified names ('UI::Widget') directly.\n\n"
                 "Use for: full inheritance trees, interface implementations, subclass discovery.\n\n"
+                "Traversal direction:\n"
+                "- 'both' (default): ancestors AND descendants, but avoids explosion through shared bases\n"
+                "- 'up': ancestors only (base classes and their bases)\n"
+                "- 'down': descendants only (derived classes and their derivations)\n\n"
                 "Examples:\n"
-                "- 'full hierarchy of X' -> get_class_hierarchy('X') — call directly\n"
-                "- 'all implementations of IProcessor' -> get_class_hierarchy('IProcessor') — call directly\n"
-                "- 'find all derived classes of Widget' -> get_class_hierarchy('Widget') — call directly"
+                "- 'full hierarchy of X' -> get_class_hierarchy('X', direction='both')\n"
+                "- 'all implementations of IProcessor' -> get_class_hierarchy('IProcessor', direction='down')\n"
+                "- 'base classes of Widget' -> get_class_hierarchy('Widget', direction='up')"
             ),
             inputSchema={
                 "type": "object",
@@ -389,6 +392,16 @@ def list_tools_b() -> List[Tool]:
                     "class_name": {
                         "type": "string",
                         "description": "Class name to get hierarchy for.",
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["up", "down", "both"],
+                        "description": (
+                            "Traversal direction: 'up' (ancestors only), "
+                            "'down' (descendants only), 'both' (ancestors and descendants). "
+                            "Default is 'both'."
+                        ),
+                        "default": "both",
                     },
                     "max_nodes": {
                         "type": "integer",
