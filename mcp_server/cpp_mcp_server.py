@@ -977,11 +977,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             class_name = str(arguments["class_name"])
             max_nodes = arguments.get("max_nodes", 200)
             max_depth = arguments.get("max_depth", None)
+            direction = arguments.get("direction", "both")
             # Run synchronous method in executor to avoid blocking event loop
             hierarchy = await loop.run_in_executor(
                 None,
                 lambda: analyzer.get_class_hierarchy(  # type: ignore[arg-type]
-                    class_name, max_nodes=max_nodes, max_depth=max_depth  # type: ignore[arg-type]
+                    class_name, max_nodes=max_nodes, max_depth=max_depth, direction=direction  # type: ignore[arg-type]
                 ),
             )
             if hierarchy:
