@@ -5101,15 +5101,15 @@ class CppAnalyzer:
         class_name: str,
         max_nodes: Optional[int] = 200,
         max_depth: Optional[int] = None,
+        direction: str = "both",
     ) -> Dict[str, Any]:
         """
-        Get the complete inheritance graph for a class as a flat adjacency list.
+        Get the inheritance graph for a class as a flat adjacency list.
 
-        Performs BFS starting from the queried class, exploring both base (upward)
-        and derived (downward) edges from every discovered node. Returns the entire
-        connected component of the inheritance graph, so diamond inheritance,
-        multiple inheritance, and cross-hierarchy relationships are all captured
-        without duplication.
+        Performs controlled BFS traversal to collect ancestors (base classes) and/or
+        descendants (derived classes) of the queried class. Uses a two-phase algorithm
+        for 'both' direction to avoid returning unrelated classes through shared
+        intermediate bases (e.g., common mixin classes like Reflectable or UUIDable).
 
         Args:
             class_name: Name of the class to analyze (simple or qualified)
@@ -5120,6 +5120,10 @@ class CppAnalyzer:
             max_depth: Maximum BFS depth from the queried class (default None = unlimited).
                        Depth 0 = queried class, depth 1 = direct parents/children, etc.
                        Set to None to disable the cap.
+            direction: Traversal direction (default 'both'):
+                       - 'up': ancestors only (base classes and their bases)
+                       - 'down': descendants only (derived classes and their derivations)
+                       - 'both': ancestors AND descendants (corrected algorithm)
 
         Returns:
             Dictionary containing:
@@ -5133,9 +5137,14 @@ class CppAnalyzer:
                 - derived_classes: List of qualified names (keys into 'classes')
                 - is_unresolved: True if not found in index (external lib class)
                 - is_dependent_type: True if template-dependent (typename T::X)
+            - direction: The direction parameter used for this query
             - truncated: True if the result was capped by max_nodes or max_depth
             - nodes_returned: Total nodes returned (only when truncated=True)
         """
+
+        # Validate direction parameter
+        if direction not in ("up", "down", "both"):
+            return {"error": f"Invalid direction '{direction}'. Must be one of: up, down, both"}
 
         # --- Helper: resolve a raw base-class name to a canonical key ---
         def resolve_base_key(raw: str) -> str:
@@ -5181,35 +5190,17 @@ class CppAnalyzer:
                     infos = specs
             return infos
 
-        # --- Phase 1: resolve the start class ---
-        start_infos = lookup_infos(class_name)
-        if not start_infos:
-            return {"error": f"Class '{class_name}' not found"}
-
-        start_info = start_infos[0]
-        start_key = start_info.qualified_name if start_info.qualified_name else start_info.name
-
-        # --- Phase 2: BFS over the inheritance graph ---
-        classes: Dict[str, Any] = {}
-        visited: Set[str] = set()
-        # Queue entries: (node_key, bfs_depth)
-        queue: deque = deque([(start_key, 0)])
-        truncated = False
-
-        while queue:
-            current, depth = queue.popleft()
-            if current in visited:
-                continue
-            visited.add(current)
-
-            infos = lookup_infos(current)
+        # --- Helper: collect node data for a key ---
+        def collect_node_data(key: str) -> Optional[Dict[str, Any]]:
+            """Collect class node data. Returns None if not found."""
+            infos = lookup_infos(key)
             if not infos:
                 # Unresolved: external lib or template-dependent name
-                is_dep = current.startswith("typename ") or (
-                    "<" in current and ">" in current and not current.endswith(">")
+                is_dep = key.startswith("typename ") or (
+                    "<" in key and ">" in key and not key.endswith(">")
                 )
                 node: Dict[str, Any] = {
-                    "qualified_name": current,
+                    "qualified_name": key,
                     "kind": "unknown",
                     "is_project": False,
                     "base_classes": [],
@@ -5219,12 +5210,7 @@ class CppAnalyzer:
                     node["is_dependent_type"] = True
                 else:
                     node["is_unresolved"] = True
-                classes[current] = node
-                # Check node cap
-                if max_nodes is not None and len(classes) >= max_nodes:
-                    truncated = True
-                    break
-                continue
+                return node
 
             info = infos[0]
             info_key = info.qualified_name if info.qualified_name else info.name
@@ -5248,7 +5234,7 @@ class CppAnalyzer:
                     seen_derived.add(dk)
                     derived_keys.append(dk)
 
-            classes[info_key] = {
+            return {
                 "qualified_name": info_key,
                 "kind": info.kind,
                 "is_project": info.is_project,
@@ -5256,24 +5242,164 @@ class CppAnalyzer:
                 "derived_classes": derived_keys,
             }
 
-            # Check node cap after adding this node
-            if max_nodes is not None and len(classes) >= max_nodes:
-                truncated = True
-                break
+        # --- Phase 1: resolve the start class ---
+        start_infos = lookup_infos(class_name)
+        if not start_infos:
+            return {"error": f"Class '{class_name}' not found"}
 
-            # Enqueue unvisited neighbors in both directions (respecting max_depth)
-            next_depth = depth + 1
-            unvisited_neighbors = [n for n in base_keys + derived_keys if n not in visited]
-            if max_depth is not None and next_depth > max_depth:
-                if unvisited_neighbors:
+        start_info = start_infos[0]
+        start_key = start_info.qualified_name if start_info.qualified_name else start_info.name
+
+        # --- Phase 2: BFS traversal based on direction ---
+        classes: Dict[str, Any] = {}
+        truncated = False
+
+        if direction == "up":
+            # Traverse UP: only follow base_classes (ancestors)
+            visited: Set[str] = set()
+            queue: deque = deque([(start_key, 0)])
+
+            while queue:
+                current, depth = queue.popleft()
+                if current in visited:
+                    continue
+                visited.add(current)
+
+                node_data = collect_node_data(current)
+                if node_data is None:
+                    continue
+
+                classes[current] = node_data
+
+                # Check node cap
+                if max_nodes is not None and len(classes) >= max_nodes:
                     truncated = True
-                # Don't enqueue beyond max_depth
-            else:
-                for neighbor in unvisited_neighbors:
-                    queue.append((neighbor, next_depth))
+                    break
+
+                # Only enqueue base classes (ancestors)
+                next_depth = depth + 1
+                if max_depth is not None and next_depth > max_depth:
+                    if any(b not in visited for b in node_data["base_classes"]):
+                        truncated = True
+                else:
+                    for base in node_data["base_classes"]:
+                        if base not in visited:
+                            queue.append((base, next_depth))
+
+        elif direction == "down":
+            # Traverse DOWN: only follow derived_classes (descendants)
+            visited: Set[str] = set()
+            queue: deque = deque([(start_key, 0)])
+
+            while queue:
+                current, depth = queue.popleft()
+                if current in visited:
+                    continue
+                visited.add(current)
+
+                node_data = collect_node_data(current)
+                if node_data is None:
+                    continue
+
+                classes[current] = node_data
+
+                # Check node cap
+                if max_nodes is not None and len(classes) >= max_nodes:
+                    truncated = True
+                    break
+
+                # Only enqueue derived classes (descendants)
+                next_depth = depth + 1
+                if max_depth is not None and next_depth > max_depth:
+                    if any(d not in visited for d in node_data["derived_classes"]):
+                        truncated = True
+                else:
+                    for derived in node_data["derived_classes"]:
+                        if derived not in visited:
+                            queue.append((derived, next_depth))
+
+        else:  # direction == "both"
+            # Two-phase algorithm to avoid shared-base explosion:
+            # Phase A: Collect ancestors (UP from start only)
+            # Phase B: Collect descendants (DOWN from start only)
+            # This prevents traversing from intermediate bases to unrelated derived classes
+
+            ancestor_keys: Set[str] = set()
+            descendant_keys: Set[str] = set()
+
+            # Phase A: Collect ancestors
+            visited_up: Set[str] = set()
+            queue_up: deque = deque([(start_key, 0)])
+
+            while queue_up:
+                current, depth = queue_up.popleft()
+                if current in visited_up:
+                    continue
+                visited_up.add(current)
+                ancestor_keys.add(current)
+
+                # Check caps during ancestor collection
+                if max_nodes is not None and len(ancestor_keys) >= max_nodes:
+                    truncated = True
+                    break
+
+                node_data = collect_node_data(current)
+                if node_data is None:
+                    continue
+
+                next_depth = depth + 1
+                if max_depth is not None and next_depth > max_depth:
+                    if any(b not in visited_up for b in node_data["base_classes"]):
+                        truncated = True
+                else:
+                    for base in node_data["base_classes"]:
+                        if base not in visited_up:
+                            queue_up.append((base, next_depth))
+
+            # Phase B: Collect descendants (only if not already truncated)
+            if not truncated or len(descendant_keys) < (max_nodes or 1000):
+                visited_down: Set[str] = set()
+                queue_down: deque = deque([(start_key, 0)])
+
+                while queue_down:
+                    current, depth = queue_down.popleft()
+                    if current in visited_down:
+                        continue
+                    visited_down.add(current)
+                    descendant_keys.add(current)
+
+                    # Check combined node cap
+                    total_nodes = (
+                        len(ancestor_keys) + len(descendant_keys) - 1
+                    )  # -1 for start_key counted twice
+                    if max_nodes is not None and total_nodes >= max_nodes:
+                        truncated = True
+                        break
+
+                    node_data = collect_node_data(current)
+                    if node_data is None:
+                        continue
+
+                    next_depth = depth + 1
+                    if max_depth is not None and next_depth > max_depth:
+                        if any(d not in visited_down for d in node_data["derived_classes"]):
+                            truncated = True
+                    else:
+                        for derived in node_data["derived_classes"]:
+                            if derived not in visited_down:
+                                queue_down.append((derived, next_depth))
+
+            # Combine all keys and collect node data
+            all_keys = ancestor_keys | descendant_keys
+            for key in all_keys:
+                if key not in classes:
+                    node_data = collect_node_data(key)
+                    if node_data:
+                        classes[key] = node_data
 
         result: Dict[str, Any] = {
             "queried_class": start_key,
+            "direction": direction,
             "classes": classes,
         }
         if truncated:
