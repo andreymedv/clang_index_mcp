@@ -381,10 +381,17 @@ def list_tools_b() -> List[Tool]:
                 "- 'both' (default): ancestors AND descendants, but avoids explosion through shared bases\n"
                 "- 'up': ancestors only (base classes and their bases)\n"
                 "- 'down': descendants only (derived classes and their derivations)\n\n"
+                "Output formats:\n"
+                "- 'json' (default): Full structured JSON with all metadata\n"
+                "- 'compact': Abbreviated JSON (smaller payload)\n"
+                "- 'cpp': C++ pseudocode format — compact, readable inheritance view\n"
+                "- 'cpp_with_meta': C++ format with metadata comments\n\n"
                 "Examples:\n"
                 "- 'full hierarchy of X' -> get_class_hierarchy('X', direction='both')\n"
                 "- 'all implementations of IProcessor' -> get_class_hierarchy('IProcessor', direction='down')\n"
-                "- 'base classes of Widget' -> get_class_hierarchy('Widget', direction='up')"
+                "- 'base classes of Widget' -> get_class_hierarchy('Widget', direction='up')\n"
+                "- 'compact view of Widget' -> get_class_hierarchy('Widget', output_format='compact')\n"
+                "- 'C++ view of Widget' -> get_class_hierarchy('Widget', output_format='cpp')"
             ),
             inputSchema={
                 "type": "object",
@@ -411,6 +418,17 @@ def list_tools_b() -> List[Tool]:
                     "max_depth": {
                         "type": "integer",
                         "description": "Max BFS depth from queried class.",
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["json", "compact", "cpp", "cpp_with_meta"],
+                        "description": (
+                            "Output format: 'json' (default, full details), "
+                            "'compact' (abbreviated JSON), "
+                            "'cpp' (C++ pseudocode, 70% smaller), "
+                            "'cpp_with_meta' (C++ with metadata comments)."
+                        ),
+                        "default": "json",
                     },
                 },
                 "required": ["class_name"],
