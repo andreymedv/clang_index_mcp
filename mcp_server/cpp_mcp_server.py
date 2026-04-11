@@ -978,6 +978,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             max_nodes = arguments.get("max_nodes", 200)
             max_depth = arguments.get("max_depth", None)
             direction = arguments.get("direction", "both")
+            output_format = arguments.get("output_format", "json")
             # Run synchronous method in executor to avoid blocking event loop
             hierarchy = await loop.run_in_executor(
                 None,
@@ -986,9 +987,24 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 ),
             )
             if hierarchy:
-                return [TextContent(type="text", text=json.dumps(hierarchy, indent=2))]
+                # Check for error in hierarchy result
+                if "error" in hierarchy:
+                    from .hierarchy_format import format_hierarchy_error
+
+                    error_text = format_hierarchy_error(hierarchy["error"], output_format)
+                    return [TextContent(type="text", text=error_text)]
+                # Convert to requested output format
+                from .hierarchy_format import convert_hierarchy_format
+
+                formatted = convert_hierarchy_format(hierarchy, output_format)
+                return [TextContent(type="text", text=formatted)]
             else:
-                return [TextContent(type="text", text=f"Class '{class_name}' not found")]
+                from .hierarchy_format import format_hierarchy_error
+
+                error_text = format_hierarchy_error(
+                    f"Class '{class_name}' not found", output_format
+                )
+                return [TextContent(type="text", text=error_text)]
 
         elif name == "find_incoming_calls":
             function_name = str(arguments["function_name"])

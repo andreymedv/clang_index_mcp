@@ -184,6 +184,7 @@ def run_scenarios(
     explain_scope: str,
     token: str = "sk-lm-local",
     eval_mode: str = "strict",
+    output_format: str = "json",
 ) -> dict:
     """Run all scenario files for one model, merge results, return summary."""
     all_results = []
@@ -209,6 +210,8 @@ def run_scenarios(
             str(out),
             "--eval-mode",
             eval_mode,
+            "--format",
+            output_format,
         ]
         if explain_failures:
             cmd.append("--explain-failures")
@@ -364,6 +367,18 @@ def parse_args() -> argparse.Namespace:
             "'relaxed' skips discovery tool calls before expected tool."
         ),
     )
+    parser.add_argument(
+        "--format",
+        choices=["json", "compact", "cpp", "cpp_with_meta"],
+        default="json",
+        help=(
+            "Output format for get_class_hierarchy tool responses passed to runner.py. "
+            "'json' (default): full JSON response. "
+            "'compact': abbreviated JSON. "
+            "'cpp': C++ pseudocode format. "
+            "'cpp_with_meta': C++ format with metadata comments."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -443,6 +458,7 @@ def main() -> None:
             explain_scope=args.explain_scope,
             token=args.token,
             eval_mode=args.eval_mode,
+            output_format=args.format,
         )
         summary["model"] = model_arg  # use original arg for display
 

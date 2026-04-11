@@ -43,6 +43,108 @@ def _load_fixtures(fixtures_path: str | Path | None = None) -> FixtureStore:
     return store
 
 
+def _convert_hierarchy_response(response: dict, output_format: str) -> str:
+    """Convert mock hierarchy response to requested output format.
+
+    The mock uses a simplified 'nodes' format, so we convert it to the
+    standard 'classes' format that the real server uses, then format.
+    """
+    # Convert nodes format to classes format
+    classes = {}
+    nodes = response.get("nodes", [])
+
+    for node in nodes:
+        name = node["name"]
+        children = node.get("children", [])
+        # In the mock format, children are derived classes
+        classes[name] = {
+            "qualified_name": name,
+            "name": name.split("::")[-1] if "::" in name else name,
+            "kind": "class",
+            "is_project": True,
+            "base_classes": [],  # Will be filled in below
+            "derived_classes": children,
+        }
+
+    # Build base_classes relationships from derived_classes
+    for name, info in classes.items():
+        for derived in info["derived_classes"]:
+            if derived in classes:
+                classes[derived]["base_classes"].append(name)
+
+    # Build standard hierarchy structure
+    hierarchy = {
+        "queried_class": response.get("root", ""),
+        "direction": "both",
+        "classes": classes,
+    }
+    if response.get("truncated"):
+        hierarchy["truncated"] = True
+
+    # Use the same converter as the real server
+    try:
+        # Try importing from mcp_server first
+        from mcp_server.hierarchy_format import convert_hierarchy_format
+    except ImportError:
+        # Fallback to local implementation
+        return _mock_convert_hierarchy(hierarchy, output_format)
+
+    return convert_hierarchy_format(hierarchy, output_format)
+
+
+def _mock_convert_hierarchy(hierarchy: dict, output_format: str) -> str:
+    """Fallback converter when mcp_server module is not available."""
+    classes = hierarchy.get("classes", {})
+    queried_class = hierarchy.get("queried_class", "Unknown")
+
+    if output_format == "compact":
+        # Abbreviated JSON
+        key_map = {
+            "queried_class": "q",
+            "classes": "c",
+            "qualified_name": "qn",
+            "base_classes": "bases",
+            "derived_classes": "derived",
+        }
+
+        def abbreviate(obj):
+            if isinstance(obj, dict):
+                return {key_map.get(k, k): abbreviate(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [abbreviate(item) for item in obj]
+            return obj
+
+        return json.dumps(abbreviate(hierarchy), indent=None, separators=(',', ':'))
+
+    if output_format in ("cpp", "cpp_with_meta"):
+        # C++ pseudocode format
+        lines = []
+        lines.append(f"// Class hierarchy for: {queried_class}")
+        lines.append("")
+
+        # Simple topological sort: classes with no bases first
+        sorted_names = sorted(classes.keys())
+
+        for name in sorted_names:
+            info = classes[name]
+            bases = info.get("base_classes", [])
+            if bases:
+                base_list = ", ".join(f"public {b}" for b in bases)
+                lines.append(f"class {name}: {base_list} {{}};")
+            else:
+                lines.append(f"class {name} {{}};")
+
+            if output_format == "cpp_with_meta":
+                derived = info.get("derived_classes", [])
+                if derived:
+                    lines.append(f"  // derived: {', '.join(derived)}")
+
+        return "\n".join(lines)
+
+    # Default: JSON
+    return json.dumps(hierarchy, indent=2)
+
+
 def create_server(fixtures_path: str | Path | None = None) -> Server:
     """Create a mock MCP server with canned responses."""
     store = _load_fixtures(fixtures_path)
@@ -58,6 +160,15 @@ def create_server(fixtures_path: str | Path | None = None) -> Server:
     async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         logger.debug("call_tool: %s(%s)", name, json.dumps(arguments, indent=2))
         response = store.match(name, arguments or {})
+
+        # Handle output_format for get_class_hierarchy
+        if name == "get_class_hierarchy":
+            output_format = arguments.get("output_format", "json")
+            if output_format != "json" and "error" not in response:
+                # Convert fixture response to proper format
+                formatted = _convert_hierarchy_response(response, output_format)
+                return [TextContent(type="text", text=formatted)]
+
         return [TextContent(type="text", text=json.dumps(response, indent=2))]
 
     return app
