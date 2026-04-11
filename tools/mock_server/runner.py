@@ -43,6 +43,102 @@ DISCOVERY_TOOLS = frozenset({"find_symbols_by_pattern"})
 
 
 # ---------------------------------------------------------------------------
+# Hierarchy format conversion for mock server
+# ---------------------------------------------------------------------------
+
+def _convert_hierarchy_to_format(response: dict, output_format: str) -> str:
+    """Convert mock hierarchy response to requested output format.
+
+    The mock uses a simplified 'nodes' format, so we convert it to the
+    standard 'classes' format that the real server uses, then format.
+    """
+    # Convert nodes format to classes format
+    classes = {}
+    nodes = response.get("nodes", [])
+
+    for node in nodes:
+        name = node["name"]
+        children = node.get("children", [])
+        # In the mock format, children are derived classes
+        classes[name] = {
+            "qualified_name": name,
+            "name": name.split("::")[-1] if "::" in name else name,
+            "kind": "class",
+            "is_project": True,
+            "base_classes": [],  # Will be filled in below
+            "derived_classes": children,
+        }
+
+    # Build base_classes relationships from derived_classes
+    for name, info in classes.items():
+        for derived in info["derived_classes"]:
+            if derived in classes:
+                classes[derived]["base_classes"].append(name)
+
+    # Build standard hierarchy structure
+    hierarchy = {
+        "queried_class": response.get("root", ""),
+        "direction": "both",
+        "classes": classes,
+    }
+    if response.get("truncated"):
+        hierarchy["truncated"] = True
+
+    # Use the same converter as the real server if available
+    try:
+        from mcp_server.hierarchy_format import convert_hierarchy_format
+        return convert_hierarchy_format(hierarchy, output_format)
+    except ImportError:
+        pass
+
+    # Fallback implementation
+    if output_format == "compact":
+        key_map = {
+            "queried_class": "q",
+            "classes": "c",
+            "qualified_name": "qn",
+            "base_classes": "bases",
+            "derived_classes": "derived",
+        }
+
+        def abbreviate(obj):
+            if isinstance(obj, dict):
+                return {key_map.get(k, k): abbreviate(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [abbreviate(item) for item in obj]
+            return obj
+
+        return json.dumps(abbreviate(hierarchy), indent=None, separators=(',', ':'))
+
+    if output_format in ("cpp", "cpp_with_meta"):
+        lines = []
+        queried = hierarchy.get("queried_class", "Unknown")
+        lines.append(f"// Class hierarchy for: {queried}")
+        lines.append("")
+
+        sorted_names = sorted(classes.keys())
+
+        for name in sorted_names:
+            info = classes[name]
+            bases = info.get("base_classes", [])
+            if bases:
+                base_list = ", ".join(f"public {b}" for b in bases)
+                lines.append(f"class {name}: {base_list} {{}};")
+            else:
+                lines.append(f"class {name} {{}};")
+
+            if output_format == "cpp_with_meta":
+                derived = info.get("derived_classes", [])
+                if derived:
+                    lines.append(f"  // derived: {', '.join(derived)}")
+
+        return "\n".join(lines)
+
+    # Default: JSON
+    return json.dumps(hierarchy, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # MCP Tool → OpenAI function-calling format conversion
 # ---------------------------------------------------------------------------
 
@@ -643,6 +739,7 @@ def run_scenario(
     explain_scope: str = "mismatches",
     verbose_messages: bool = False,
     eval_mode: str = "strict",
+    output_format: str = "json",
 ) -> Dict[str, Any]:
     """Run a single scenario through the LLM tool-call mediation loop.
 
@@ -787,7 +884,13 @@ def run_scenario(
 
             # Get canned response
             canned = store.match(tool_name, tool_args)
-            canned_str = json.dumps(canned, indent=2)
+
+            # Handle output_format for get_class_hierarchy
+            if tool_name == "get_class_hierarchy" and output_format != "json":
+                if "error" not in canned:
+                    canned = _convert_hierarchy_to_format(canned, output_format)
+
+            canned_str = json.dumps(canned, indent=2) if isinstance(canned, (dict, list)) else str(canned)
 
             # Append tool result
             messages.append(
@@ -1269,6 +1372,19 @@ def main() -> None:
             "are marked as 'clarification_requested' (not PASS, not FAIL)."
         ),
     )
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=["json", "compact", "cpp", "cpp_with_meta"],
+        default="json",
+        help=(
+            "Output format for get_class_hierarchy tool responses. "
+            "'json' (default): full JSON response. "
+            "'compact': abbreviated JSON. "
+            "'cpp': C++ pseudocode format. "
+            "'cpp_with_meta': C++ format with metadata comments."
+        ),
+    )
     args = parser.parse_args()
 
     client = OpenAIClient(
@@ -1398,6 +1514,7 @@ def main() -> None:
             explain_scope=args.explain_scope,
             verbose_messages=args.verbose_messages,
             eval_mode=args.eval_mode,
+            output_format=args.output_format,
         )
         results.append(result)
 
