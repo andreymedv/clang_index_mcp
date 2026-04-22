@@ -163,6 +163,21 @@ def mcp_tools_to_openai(tools: list) -> List[Dict[str, Any]]:
     return result
 
 
+def format_tool_descriptions_for_explanations(openai_tools: List[Dict[str, Any]]) -> str:
+    """Render tool descriptions as plain text for explanation-only follow-ups."""
+    sections: List[str] = []
+
+    for tool in openai_tools:
+        function = tool.get("function", {})
+        name = function.get("name")
+        description = function.get("description")
+        if not name or not description:
+            continue
+        sections.append(f"{name}:\n{description}")
+
+    return "\n\n".join(sections)
+
+
 # ---------------------------------------------------------------------------
 # LM Studio OpenAI-compat client
 # ---------------------------------------------------------------------------
@@ -565,11 +580,22 @@ def _request_explanation(
     model: str,
     messages: List[Dict[str, Any]],
     explanation_prompt: str,
+    tool_descriptions_text: str = "",
     temperature: float = 0,
     max_tokens: int = 2048,
 ) -> Optional[str]:
     """Ask the LLM to explain its tool choice. Returns explanation text."""
     explain_messages = list(messages)
+    if tool_descriptions_text:
+        explain_messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "Original tool descriptions available during the tool-calling run:\n\n"
+                    f"{tool_descriptions_text}"
+                ),
+            }
+        )
     explain_messages.append({"role": "user", "content": explanation_prompt})
 
     try:
@@ -668,6 +694,7 @@ def _collect_posthoc_explanations(
     step_results: List[Dict[str, Any]],
     recorded_calls: List[Dict[str, Any]],
     overall_pass: bool,
+    tool_descriptions_text: str = "",
     explain_scope: str = "mismatches",
     temperature: float = 0,
     max_tokens: int = 2048,
@@ -706,6 +733,7 @@ def _collect_posthoc_explanations(
             model=model,
             messages=truncated_messages,
             explanation_prompt=prompt,
+            tool_descriptions_text=tool_descriptions_text,
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -763,6 +791,7 @@ def run_scenario(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": scenario["query"]},
     ]
+    tool_descriptions_text = format_tool_descriptions_for_explanations(openai_tools)
 
     expected_steps = scenario.get("expected_steps", [])
     recorded_calls: List[Dict[str, Any]] = []
@@ -853,6 +882,7 @@ def run_scenario(
                         model,
                         messages,
                         prompt,
+                        tool_descriptions_text=tool_descriptions_text,
                         temperature=temperature,
                         max_tokens=2048,
                     )
@@ -917,6 +947,7 @@ def run_scenario(
                             model,
                             messages,
                             prompt,
+                            tool_descriptions_text=tool_descriptions_text,
                             temperature=temperature,
                             max_tokens=2048,
                         )
@@ -962,6 +993,7 @@ def run_scenario(
                                 model,
                                 messages,
                                 prompt,
+                                tool_descriptions_text=tool_descriptions_text,
                                 temperature=temperature,
                                 max_tokens=2048,
                             )
@@ -979,6 +1011,7 @@ def run_scenario(
                         model,
                         messages,
                         prompt,
+                        tool_descriptions_text=tool_descriptions_text,
                         temperature=temperature,
                         max_tokens=2048,
                     )
@@ -1050,6 +1083,7 @@ def run_scenario(
             step_results=step_results,
             recorded_calls=recorded_calls,
             overall_pass=overall_pass,
+            tool_descriptions_text=tool_descriptions_text,
             explain_scope=explain_scope,
             temperature=temperature,
             max_tokens=2048,
