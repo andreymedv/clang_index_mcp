@@ -5,8 +5,18 @@ from tools.mock_server.fixtures import FixtureStore
 class FakeClient:
     def __init__(self, responses):
         self._responses = list(responses)
+        self.calls = []
 
     def chat_completion(self, model, messages, tools, temperature=0, max_tokens=4096):
+        self.calls.append(
+            {
+                "model": model,
+                "messages": messages,
+                "tools": tools,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+        )
         return self._responses.pop(0)
 
 
@@ -14,6 +24,42 @@ def test_system_prompt_bans_textual_tool_plans():
     assert "native tool call via the tool-calling API" in runner.SYSTEM_PROMPT
     assert "Do NOT write tool invocations as plain text" in runner.SYSTEM_PROMPT
     assert "tool_code" in runner.SYSTEM_PROMPT
+
+
+def test_request_explanation_includes_tool_descriptions_in_messages():
+    client = FakeClient(
+        [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "because",
+                        }
+                    }
+                ]
+            }
+        ]
+    )
+
+    explanation = runner._request_explanation(
+        client=client,
+        model="test-model",
+        messages=[{"role": "system", "content": "sys"}, {"role": "assistant", "content": "prior"}],
+        explanation_prompt="Why?",
+        tool_descriptions_text="find_incoming_calls:\nInbound description",
+    )
+
+    assert explanation == "because"
+    assert client.calls[0]["tools"] == []
+    assert client.calls[0]["messages"][-2] == {
+        "role": "system",
+        "content": (
+            "Original tool descriptions available during the tool-calling run:\n\n"
+            "find_incoming_calls:\nInbound description"
+        ),
+    }
+    assert client.calls[0]["messages"][-1] == {"role": "user", "content": "Why?"}
 
 
 def test_find_interesting_calls_mismatches_includes_mismatches_and_extra_calls():
@@ -105,12 +151,21 @@ def test_collect_posthoc_explanations_processes_calls_in_reverse_message_order(m
     ]
     calls = []
 
-    def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
+    def fake_request(
+        client,
+        model,
+        messages,
+        explanation_prompt,
+        tool_descriptions_text="",
+        temperature=0,
+        max_tokens=2048,
+    ):
         calls.append(
             {
                 "message_count": len(messages),
                 "last_role": messages[-1]["role"],
                 "prompt": explanation_prompt,
+                "tool_descriptions_text": tool_descriptions_text,
             }
         )
         return f"because-{len(calls)}"
@@ -124,11 +179,13 @@ def test_collect_posthoc_explanations_processes_calls_in_reverse_message_order(m
         step_results=step_results,
         recorded_calls=recorded_calls,
         overall_pass=False,
+        tool_descriptions_text="wrong_tool:\nA wrong tool",
         explain_scope="mismatches",
     )
 
     assert [item["message_count"] for item in calls] == [7, 4]
     assert all(item["last_role"] == "assistant" for item in calls)
+    assert all(item["tool_descriptions_text"] == "wrong_tool:\nA wrong tool" for item in calls)
     assert step_results[0]["llm_explanation"] == "because-2"
     assert recorded_calls[0]["explanation"]["response"] == "because-2"
     assert recorded_calls[1]["explanation"]["response"] == "because-1"
@@ -153,12 +210,21 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
     ]
     calls = []
 
-    def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
+    def fake_request(
+        client,
+        model,
+        messages,
+        explanation_prompt,
+        tool_descriptions_text="",
+        temperature=0,
+        max_tokens=2048,
+    ):
         calls.append(
             {
                 "message_count": len(messages),
                 "last_role": messages[-1]["role"],
                 "prompt": explanation_prompt,
+                "tool_descriptions_text": tool_descriptions_text,
             }
         )
         return "because-no-tool"
@@ -172,6 +238,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
         step_results=step_results,
         recorded_calls=[],
         overall_pass=False,
+        tool_descriptions_text="find_incoming_calls:\nInbound description",
         explain_scope="mismatches",
     )
 
@@ -185,6 +252,7 @@ def test_collect_posthoc_explanations_explains_missing_step_without_tool_call(mo
                 "of 'find_incoming_calls' tool description that made you decide against calling one."
                 "Be concise. Do not output any fluff."
             ),
+            "tool_descriptions_text": "find_incoming_calls:\nInbound description",
         }
     ]
     assert step_results[0]["llm_explanation"] == "because-no-tool"
@@ -227,7 +295,16 @@ def test_run_scenario_explain_all_adds_posthoc_explanation(monkeypatch):
     store = FixtureStore()
     store._defaults["find_symbols_by_pattern"] = {"results": []}
 
-    def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
+    def fake_request(
+        client,
+        model,
+        messages,
+        explanation_prompt,
+        tool_descriptions_text="",
+        temperature=0,
+        max_tokens=2048,
+    ):
+        assert "find_incoming_calls:\nInbound description" in tool_descriptions_text
         return "posthoc explanation"
 
     monkeypatch.setattr(runner, "_request_explanation", fake_request)
@@ -247,7 +324,16 @@ def test_run_scenario_explain_all_adds_posthoc_explanation(monkeypatch):
                 }
             ],
         },
-        openai_tools=[],
+        openai_tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "find_incoming_calls",
+                    "description": "Inbound description",
+                    "parameters": {},
+                },
+            }
+        ],
         store=store,
         system_prompt="system",
         explain_all=True,
@@ -280,12 +366,21 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
     )
     prompts = []
 
-    def fake_request(client, model, messages, explanation_prompt, temperature=0, max_tokens=2048):
+    def fake_request(
+        client,
+        model,
+        messages,
+        explanation_prompt,
+        tool_descriptions_text="",
+        temperature=0,
+        max_tokens=2048,
+    ):
         prompts.append(
             {
                 "message_count": len(messages),
                 "last_role": messages[-1]["role"],
                 "prompt": explanation_prompt,
+                "tool_descriptions_text": tool_descriptions_text,
             }
         )
         return "posthoc no-tool explanation"
@@ -307,7 +402,16 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
                 }
             ],
         },
-        openai_tools=[],
+        openai_tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "find_incoming_calls",
+                    "description": "Inbound description",
+                    "parameters": {},
+                },
+            }
+        ],
         store=FixtureStore(),
         system_prompt="system",
         explain_all=True,
@@ -329,5 +433,6 @@ def test_run_scenario_explain_all_explains_missing_tool_call(monkeypatch):
                 "of 'find_incoming_calls' tool description that made you decide against calling one."
                 "Be concise. Do not output any fluff."
             ),
+            "tool_descriptions_text": "find_incoming_calls:\nInbound description",
         }
     ]
