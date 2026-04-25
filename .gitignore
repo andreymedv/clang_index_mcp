@@ -22,6 +22,7 @@ mcp_env/
 !.claude/skills/
 .claude/skills/**/__pycache__/
 .mcp.json
+.kimi/
 
 # IDE files
 .idea/
