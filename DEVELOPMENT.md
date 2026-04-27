@@ -59,7 +59,7 @@ clang_index_mcp/
 
 ### Prerequisites
 
-- **Python**: 3.9 or higher
+- **Python**: 3.10 or higher
 - **Git**: Latest version
 - **Platform-specific requirements**:
   - **Windows**: Visual Studio Build Tools or MSVC
