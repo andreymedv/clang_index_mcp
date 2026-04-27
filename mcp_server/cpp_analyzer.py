@@ -2320,13 +2320,23 @@ class CppAnalyzer:
 
         return False
 
+    def _get_common_symbol_data(self, cursor: Any) -> Dict[str, Any]:
+        """Extract common metadata for any symbol (qualified name, namespace, location, docs)."""
+        qualified_name = self._get_qualified_name(cursor)
+        return {
+            "qualified_name": qualified_name,
+            "namespace": self._extract_namespace(qualified_name),
+            "loc_info": self._extract_line_range_info(cursor),
+            "doc_info": self._extract_documentation(cursor),
+        }
+
     def _process_cursor(
         self,
-        cursor,
-        should_extract_from_file=None,
+        cursor: Any,
+        should_extract_from_file: bool,
         parent_class: str = "",
         parent_function_usr: str = "",
-    ):
+    ) -> None:
         """
         Process a cursor and its children, extracting symbols based on file filter.
 
@@ -2388,18 +2398,15 @@ class CppAnalyzer:
             CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
         ):
             if cursor.spelling and should_extract:
-                # Extract qualified name and namespace
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
 
                 # Get base classes (templates can inherit too)
                 base_classes = self._get_base_classes(cursor)
-
-                # Extract line range and location info
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation
-                doc_info = self._extract_documentation(cursor)
 
                 # Extract template parameters (Task 3.2)
                 template_params = self._extract_template_parameters(cursor)
@@ -2462,18 +2469,15 @@ class CppAnalyzer:
         # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
             if cursor.spelling and should_extract:
-                # Extract qualified name and namespace (Qualified Names Phase 1)
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
 
                 # Get base classes
                 base_classes = self._get_base_classes(cursor)
-
-                # Extract line range and location info (Phase 1: LLM Integration)
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation (Phase 2: LLM Integration)
-                doc_info = self._extract_documentation(cursor)
 
                 # Detect template specialization (Template Search Support)
                 is_class_template_spec = self._detect_template_specialization(cursor)
@@ -2550,20 +2554,17 @@ class CppAnalyzer:
         # Issue #99: Template Class Search and Specialization Discovery
         elif kind == CursorKind.FUNCTION_TEMPLATE:
             if cursor.spelling and should_extract:
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
+
                 # Get function signature (human-readable format)
                 signature = self._build_human_readable_signature(cursor)
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
-
-                # Extract qualified name and namespace
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
-
-                # Extract line range and location info
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation
-                doc_info = self._extract_documentation(cursor)
 
                 # Extract template parameters (Task 3.2)
                 template_params = self._extract_template_parameters(cursor)
