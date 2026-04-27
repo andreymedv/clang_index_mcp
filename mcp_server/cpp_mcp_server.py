@@ -521,15 +521,58 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                     )
                 ]
 
-            if not os.path.isdir(project_path):
+            # Hybrid approach: project_path can be a directory OR a config file
+            if os.path.isfile(project_path):
+                if not project_path.endswith(".json"):
+                    return [
+                        TextContent(
+                            type="text",
+                            text=f"Error: Config file '{project_path}' must have .json extension",
+                        )
+                    ]
+                try:
+                    with open(project_path, "r") as f:
+                        config_data = json.load(f)
+
+                    config_root = config_data.get("project_root")
+                    if not config_root:
+                        return [
+                            TextContent(
+                                type="text",
+                                text=f"Error: Config file '{project_path}' is missing 'project_root' field",
+                            )
+                        ]
+
+                    # Resolve project_root relative to config file directory
+                    config_dir = os.path.dirname(project_path)
+                    resolved_root = os.path.abspath(os.path.join(config_dir, config_root))
+
+                    if not os.path.isdir(resolved_root):
+                        return [
+                            TextContent(
+                                type="text",
+                                text=f"Error: 'project_root' in config '{resolved_root}' is not a directory or does not exist",
+                            )
+                        ]
+
+                    # Swap: the file becomes the config_file, the extracted path becomes project_path
+                    config_file = project_path
+                    project_path = resolved_root
+                    diagnostics.info(
+                        f"Hybrid setup: Using config {config_file} for root {project_path}"
+                    )
+                except Exception as e:
+                    return [TextContent(type="text", text=f"Error reading config file: {str(e)}")]
+            elif not os.path.isdir(project_path):
                 return [
                     TextContent(
-                        type="text", text=f"Error: Directory '{project_path}' does not exist"
+                        type="text",
+                        text=f"Error: Directory or config file '{project_path}' does not exist",
                     )
                 ]
 
-            # Validate config_file if provided
-            if config_file:
+            # Validate config_file if provided (and not already set by hybrid path)
+            if config_file and not os.path.isfile(config_file):
                 if not isinstance(config_file, str) or not config_file.strip():
                     return [
                         TextContent(

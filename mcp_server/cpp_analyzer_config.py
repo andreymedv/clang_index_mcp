@@ -50,21 +50,30 @@ class CppAnalyzerConfig:
         "diagnostics": {"level": "info", "enabled": True},  # debug, info, warning, error, fatal
     }
 
-    def __init__(self, project_root: Path):
+    def __init__(self, project_root: Path, config_path: Optional[Path] = None):
         self.project_root = project_root
-        self.config_path: Optional[Path] = None  # Will be set by _find_config_file
+        self.config_path = config_path  # Pre-specified config path
         self.config = self._load_config()
 
     def _find_config_file(self) -> Tuple[Optional[Path], Optional[str]]:
         """Find config file by checking multiple locations in priority order.
 
         Priority order:
-        1. Environment variable CPP_ANALYZER_CONFIG
-        2. Project root (.cpp-analyzer-config.json)
+        1. Pre-specified config_path (from constructor)
+        2. Environment variable CPP_ANALYZER_CONFIG
+        3. Project root (.cpp-analyzer-config.json)
 
         Returns tuple of (config_path, source_description) or (None, None) if not found.
         """
-        # 1. Check environment variable
+        # 1. Check pre-specified path
+        if self.config_path:
+            if self.config_path.exists():
+                diagnostics.debug(f"Using pre-specified config: {self.config_path}")
+                return (self.config_path, "specified config file")
+            else:
+                diagnostics.warning(f"Specified config file not found: {self.config_path}")
+
+        # 2. Check environment variable
         env_config = os.environ.get("CPP_ANALYZER_CONFIG")
         if env_config:
             env_path = Path(env_config)

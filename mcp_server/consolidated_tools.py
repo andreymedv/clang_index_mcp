@@ -156,22 +156,23 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="set_project",
             description=(
-                "REQUIRED FIRST STEP: Set the C++ project directory to analyze. "
-                "Must be called before any other tools. Indexes all C++ files "
-                "using libclang. Waits synchronously for indexing to complete "
-                "(up to sync_timeout seconds). Returns status 'ready' when "
-                "indexing finishes, or 'indexing_in_progress' if timeout exceeded."
+                "REQUIRED FIRST STEP: Set the C++ project to analyze. "
+                "The 'path' can be either a project root directory OR a .json configuration file "
+                "defining 'project_root'. Using a config file allows multiple analysis profiles "
+                "without polluting the source tree.\n\n"
+                "Indexes all C++ files and waits for completion (up to sync_timeout seconds). "
+                "Returns 'ready' when finished, or 'indexing_in_progress' if timeout exceeded."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Absolute path to C++ project root directory.",
+                        "description": "Absolute path to C++ project root directory OR a .json config file.",
                     },
                     "config_file": {
                         "type": "string",
-                        "description": "Optional: Path to cpp-analyzer-config.json.",
+                        "description": "Optional: Path to cpp-analyzer-config.json (if 'path' is a directory).",
                     },
                     "sync_timeout": {
                         "type": "number",

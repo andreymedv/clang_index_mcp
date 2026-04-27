@@ -80,6 +80,25 @@ Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project roo
 
 **Use case**: Per-project settings that persist with your codebase.
 
+### 3. Hybrid Project Entry Point (External Configuration)
+You can use a `.json` configuration file as the primary project "path" when calling `set_project`. This file does not need to be inside your source tree.
+
+To use this mode, the configuration file **must** include a `project_root` field:
+
+```json
+{
+  "project_root": "/path/to/my/cpp/project",
+  "exclude_directories": ["build", "tests"],
+  "compile_commands": {
+    "path": "build/compile_commands.json"
+  }
+}
+```
+
+If `project_root` is a relative path, it is resolved **relative to the directory containing the config file**.
+
+**Use case**: Multiple configurations for the same source, or keeping your source tree completely clean of MCP-specific files.
+
 ## Configuration File Format
 
 ```json
