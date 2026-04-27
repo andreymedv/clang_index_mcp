@@ -527,7 +527,7 @@ class CppAnalyzer:
         self.project_identity = ProjectIdentity(self.project_root, config_path)
 
         # Load project configuration
-        self.config = CppAnalyzerConfig(self.project_root)
+        self.config = CppAnalyzerConfig(self.project_root, config_path=config_path)
 
         # Indexes for fast lookup
         self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
