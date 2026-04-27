@@ -20,7 +20,7 @@ This project follows the standard open-source code of conduct. Please be respect
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - Git
 - Basic understanding of C++ and libclang
 

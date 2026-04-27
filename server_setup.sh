@@ -12,7 +12,7 @@ log() {
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "ERROR: Could not find Python interpreter ('$PYTHON_BIN')." >&2
-  echo "Please install Python 3.9+ and re-run this script." >&2
+  echo "Please install Python 3.10+ and re-run this script." >&2
   exit 1
 fi
 
