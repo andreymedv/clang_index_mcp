@@ -2333,7 +2333,7 @@ class CppAnalyzer:
     def _process_cursor(
         self,
         cursor: Any,
-        should_extract_from_file: bool,
+        should_extract_from_file: Optional[Callable[[str], bool]] = None,
         parent_class: str = "",
         parent_function_usr: str = "",
     ) -> None:
@@ -2652,20 +2652,17 @@ class CppAnalyzer:
             CursorKind.CONVERSION_FUNCTION,
         ):
             if cursor.spelling and should_extract:
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
+
                 # Get function signature (human-readable format)
                 signature = self._build_human_readable_signature(cursor)
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
-
-                # Extract qualified name and namespace (Qualified Names Phase 1)
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
-
-                # Extract line range and location info (Phase 1: LLM Integration)
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation (Phase 2: LLM Integration)
-                doc_info = self._extract_documentation(cursor)
 
                 # Detect template specialization (Phase 3: Qualified Names)
                 is_template_spec = self._detect_template_specialization(cursor)
