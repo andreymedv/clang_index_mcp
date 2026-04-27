@@ -12,47 +12,47 @@ This project is a fork of [kandrwmrtn/cplusplus_mcp](https://github.com/kandrwmr
 
 ## Why Use This?
 
-Instead of having Claude grep through your C++ codebase trying to understand the structure, this server provides semantic understanding of your code. Claude can instantly find classes, functions, and their relationships without getting lost in thousands of files. It understands C++ syntax, inheritance hierarchies, and call graphs - giving Claude the ability to navigate your codebase like an IDE would.
+Instead of having an AI Agent grep through your C++ codebase trying to understand the structure, this server provides semantic understanding of your code. Agents can instantly find classes, functions, and their relationships without getting lost in thousands of files. It understands C++ syntax, inheritance hierarchies, and call graphs - giving the AI Agent the ability to navigate your codebase like an IDE would.
+
+**Note**: These tools are primarily intended for use with weaker LLM models running locally (e.g., via LM Studio or Ollama) to help them understand complex codebases, but they work equally well with frontier models like Claude 3.5 Sonnet or GPT-4o.
 
 ## Features
 
 Consolidated C++ code analysis tools (unified from multiple individual tools):
-- **set_project** - Set project directory and wait for indexing completion
-- **sync_project** - Check system status and trigger project refresh
-- **find_symbols_by_pattern** - Unified search for classes and functions by pattern
-- **find_in_file** - Search symbols within specific files
-- **get_class_info** - Get detailed class information (methods, members, inheritance)
-- **get_class_hierarchy** - Get complete inheritance hierarchy for a class (all descendants and ancestors)
-- **get_type_alias_info** - Get information about type aliases and template aliases
-- **get_functions_called_by** - Find all functions called by a specific function (combines outgoing calls and call sites)
-- **find_callers** - Find all functions that call a specific function
-- **trace_execution_path** - Find call paths from one function to another
+- **set_project** - REQUIRED FIRST STEP: Set project directory or config file and wait for indexing completion.
+- **sync_project** - Check system status or trigger an incremental/full project refresh.
+- **find_symbols_by_pattern** - Discover classes and functions by name pattern with namespace and file filters.
+- **find_in_file** - List all symbols defined in a specific file.
+- **get_class_info** - Get detailed class information (methods, members, inheritance).
+- **get_class_hierarchy** - Get complete inheritance hierarchy for a class (ancestors, descendants, or both).
+- **get_type_alias_info** - Resolve type aliases (`using`, `typedef`) and template aliases.
+- **find_outgoing_calls** - Find functions called by a specific function (callees).
+- **find_incoming_calls** - Find functions that call a specific function (callers).
+- **trace_execution_path** - Find execution paths (call chains) between two functions.
 
-**Qualified Names Support** (Unreleased - v10.1):
-- **Namespace-Aware Search**: Search by qualified patterns like `"ui::View"`, `"app::Database::save"`
-- **Four Pattern Modes**: Unqualified, qualified suffix, exact match (`::`), and regex
-- **Template Specialization Detection**: Distinguish `template<> void foo<int>()` from generic `template<typename T> void foo(T)`
-- **Disambiguation**: All results include `qualified_name` and `namespace` fields
-- **Performance**: Sub-10ms queries even with 1000+ classes
+**Qualified Names Support**:
+- **Namespace-Aware Search**: Search by qualified patterns like `"ui::View"`, `"app::Database::save"`.
+- **Template Specialization Detection**: Distinguish `template<> void foo<int>()` from generic `template<typename T> void foo(T)`.
+- **Disambiguation**: All results include `qualified_name` and `namespace` fields.
 
 **Additional Capabilities:**
-- **Automatic Header Analysis**: When using `compile_commands.json`, project headers are automatically analyzed when included by source files
-- **Smart Deduplication**: Headers included by multiple source files are processed only once for optimal performance
-- **Incremental Analysis**: Detects changes and re-analyzes only affected files for fast refreshes (30-300x faster than full re-analysis)
-- **Error Recovery**: Leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors, providing partial results instead of complete failure
+- **Automatic Header Analysis**: Project headers are automatically analyzed when included by source files.
+- **Smart Deduplication**: Headers are processed only once for optimal performance.
+- **Incremental Analysis**: Detects changes and re-analyzes only affected files (30-300x faster).
+- **Error Recovery**: Extracts symbols even from files with non-fatal parsing errors.
 
 ## Transport Protocols
 
-The server supports multiple transport protocols for different use cases:
+The server supports multiple transport protocols:
 
 ### stdio (Default)
-Standard input/output transport for MCP client integration (Claude Desktop, Claude Code, etc.):
+Standard input/output transport for MCP client integration (Claude Desktop, etc.):
 ```bash
 python -m mcp_server.cpp_mcp_server
 ```
 
 ### HTTP (Streamable HTTP)
-RESTful HTTP transport for API access and web integrations:
+RESTful HTTP transport for API access:
 ```bash
 python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
 ```
@@ -63,18 +63,11 @@ Real-time streaming transport for event-driven applications:
 python -m mcp_server.cpp_mcp_server --transport sse --host 127.0.0.1 --port 8000
 ```
 
-**Features:**
-- Multi-session support with automatic session management
-- 1-hour session timeout with automatic cleanup
-- Health check endpoints for monitoring
-- JSON-RPC 2.0 protocol compliance
-- Graceful shutdown with resource cleanup
-
-For detailed HTTP/SSE usage instructions, examples, and API reference, see **[HTTP_USAGE.md](docs/HTTP_USAGE.md)**
+For detailed HTTP/SSE usage, see **[HTTP_USAGE.md](docs/HTTP_USAGE.md)**
 
 ## Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - pip (Python package manager)
 - Git (for cloning the repository)
 - LLVM's libclang (the setup scripts will attempt to download a portable build)
@@ -87,210 +80,47 @@ git clone https://github.com/andreymedv/clang_index_mcp.git
 cd clang_index_mcp
 ```
 
-2. Run the setup script (this creates a virtual environment, installs dependencies, and fetches libclang if possible):
-   - **Linux/macOS** (recommended):
+2. Run the setup script:
+   - **Linux/macOS**:
      ```bash
      ./server_setup.sh
      ```
-   - **Windows** (not primary platform):
+   - **Windows**:
      ```bash
      server_setup.bat
      ```
 
-3. Test the installation (recommended):
+3. Test the installation:
 ```bash
-# Activate the virtual environment first
 source mcp_env/bin/activate  # Linux/macOS
-# OR: mcp_env\Scripts\activate  # Windows
-
-# Run the installation test
 python scripts/test_installation.py
 ```
 
-This will verify that all components are properly installed and working. The test script lives at `scripts/test_installation.py`.
-
 ## Performance Optimization
 
-The analyzer is optimized for performance on multi-core systems, but you can further improve performance with these optional enhancements:
+The analyzer is optimized for performance on multi-core systems.
 
 ### Optional Dependencies
-
-**For Large Projects (recommended):**
-
-Install the performance extras package:
+For large projects, install `orjson` for 3-5x faster JSON parsing:
 ```bash
 pip install .[performance]
 ```
 
-Or install orjson directly:
-```bash
-pip install orjson>=3.0.0
-```
-
-Benefits:
-- **3-5x faster** JSON parsing for large `compile_commands.json` files (40MB+)
-- Automatically used if installed, no configuration needed
-- Particularly beneficial for projects with 1000+ compilation units
-- Falls back gracefully to stdlib json if not available
-
-### Performance Features
-
-The analyzer includes several automatic optimizations:
-
-1. **GIL Bypass (enabled by default)**
-   - Uses `ProcessPoolExecutor` for true parallel parsing
-   - Bypasses Python's Global Interpreter Lock
-   - 6-7x speedup on 4+ core systems
-   - Can be disabled via `CPP_ANALYZER_USE_THREADS=true` environment variable
-
-2. **Binary Caching**
-   - Parsed `compile_commands.json` cached in `.mcp_cache/<project>/compile_commands/<hash>.cache`
-   - 10-100x faster subsequent startups for large projects
-   - Automatically invalidated when `compile_commands.json` changes
-
-3. **Bulk Symbol Writes**
-   - Dramatically reduced lock contention during parallel parsing
-   - Symbols collected in thread-local buffers, written in bulk
-   - Reduces lock acquisitions from O(symbols) to O(1) per file
-
-### Performance Diagnostics
-
-If you experience slow analysis, use the diagnostic tools:
-
-```bash
-# Profile analysis performance (identify bottlenecks)
-python scripts/profile_analysis.py /path/to/project
-
-# Check if GIL is limiting parallelism
-python scripts/diagnose_gil.py /path/to/project
-```
-
-The profiling tool shows time spent in:
-- libclang parsing
-- AST traversal
-- Lock contention
-- Cache operations
-
-### Worker Configuration
-
-By default, the analyzer uses `os.cpu_count()` workers. For slow hosts or limited resources:
-- This is automatically optimized for CPU-bound parsing workload
-- ProcessPool mode provides best performance on multi-core systems
-- ThreadPool mode available via `CPP_ANALYZER_USE_THREADS=true` (not recommended)
-
-## SQLite Cache
-
-The analyzer uses a high-performance SQLite cache for symbol storage:
-
-### Key Features
-
-- **FTS5 Full-Text Search**: Lightning-fast symbol searches with prefix matching (2-5ms for 100K symbols)
-- **Concurrent Access**: WAL mode enables safe multi-process access
-- **Efficient Storage**: Compact database format with automatic maintenance
-- **Health Monitoring**: Built-in diagnostics and integrity checks
-- **Database Maintenance**: Automatic VACUUM, OPTIMIZE, and ANALYZE
-
-### Diagnostic Tools
-
-Two command-line tools are included for cache management:
-
-```bash
-# View comprehensive cache statistics
-python scripts/cache_stats.py
-
-# Diagnose cache health and get recommendations
-python scripts/diagnose_cache.py
-```
-
-### More Information
-
-- **Configuration**: See [CONFIGURATION.md](CONFIGURATION.md) for cache settings
-- **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for cache-specific issues
-
-## Intelligent Incremental Analysis
-
-The analyzer now features intelligent incremental analysis that dramatically reduces re-analysis time when files change. Instead of re-analyzing your entire project, only affected files are re-parsed.
-
-### How It Works
-
-The incremental analysis system automatically:
-- **Tracks file changes** via MD5 hashing
-- **Builds dependency graphs** to understand which files include which headers
-- **Detects compilation changes** by diffing `compile_commands.json` entries
-- **Cascades header changes** to all dependent files
-
-When you refresh the project, the analyzer intelligently determines the minimal set of files that need re-analysis.
-
-### Performance Impact
-
-| Scenario | Before (Full Re-analysis) | After (Incremental) | Speedup |
-|----------|--------------------------|---------------------|---------|
-| Single source file changed | 30-60s | <1s | **30-60x faster** |
-| Header file changed (10 dependents) | 30-60s | 3-5s | **6-10x faster** |
-| No changes detected | 30-60s | <0.1s | **300-600x faster** |
-| `compile_commands.json` changed (1 entry) | 30-60s | 1-2s | **15-30x faster** |
-
-*Times based on a medium-sized project (~1000 files)*
-
-### Multi-Configuration Support
-
-Projects are uniquely identified by the combination of:
-- Source directory path
-- Configuration file path
-
-This enables you to work with the same source code using different build configurations (Debug/Release, different compiler flags, etc.) without cache conflicts. Each configuration gets its own cache directory.
-
-### Using Incremental Analysis
-
-**1. Automatic refresh on project initialization (recommended):**
-```
-"Set project directory to /my/project with config file /my/project/.cpp-analyzer-config.json and auto_refresh enabled"
-```
-
-The analyzer will automatically detect and re-analyze any changes since the last session.
-
-**2. Manual refresh:**
-```
-"Refresh the project using incremental analysis"
-```
-
-The analyzer will detect all changes and re-analyze only affected files.
-
-**3. Force full refresh (when needed):**
-```
-"Refresh the project with force_full enabled"
-```
-
-Re-analyzes everything from scratch. Use this after major configuration changes or if the cache seems corrupted.
-
-### What Changes Are Detected?
-
-1. **Source File Changes** → Only that file is re-analyzed
-2. **Header File Changes** → All files that include it (directly or transitively) are re-analyzed
-3. **New Files Added** → New files are analyzed
-4. **Files Deleted** → Removed from cache (no re-analysis needed)
-5. **`compile_commands.json` Changes** → Only files with changed compilation flags are re-analyzed
-
-### More Information
-
-- **User Guide**: See [CONFIGURATION.md](CONFIGURATION.md#incremental-analysis) for detailed usage instructions
-- **Architecture**: See [docs/development/INCREMENTAL_ANALYSIS_DESIGN.md](docs/development/INCREMENTAL_ANALYSIS_DESIGN.md) for technical details
+### Automatic Optimizations
+1. **GIL Bypass**: Uses `ProcessPoolExecutor` for true parallel parsing.
+2. **Binary Caching**: Parsed `compile_commands.json` and symbols are cached for fast subsequent startups.
+3. **Intelligent Incremental Analysis**: Re-analyzes only affected files when changes are detected.
 
 ## Client Configuration
 
-This MCP server can be used with various AI coding assistants and IDEs. See **[CLIENT_SETUP.md](CLIENT_SETUP.md)** for detailed configuration instructions for:
+This MCP server can be used with various AI coding assistants and IDEs. See **[CLIENT_SETUP.md](CLIENT_SETUP.md)** for detailed instructions for:
+- Claude Desktop / Claude Code
+- Cursor / Windsurf
+- Cline / Continue
 
-- **Claude Desktop** - Anthropic's desktop application
-- **Claude Code** - VS Code extension by Anthropic
-- **Cursor** - AI-first IDE
-- **Cline** - VS Code extension (formerly Claude Dev)
-- **Windsurf** - AI-native IDE
-- **Continue** - Open-source VS Code extension
-- **Other MCP clients** - Generic configuration guide
+### Generic CLI Agent Configuration
 
-### Quick Start (Claude Desktop)
-
-For Claude Desktop, add to your config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+To use this with an MCP-compatible CLI Agent, add the server to your configuration:
 
 ```json
 {
@@ -307,133 +137,53 @@ For Claude Desktop, add to your config file (`~/Library/Application Support/Clau
 }
 ```
 
-Replace `/absolute/path/to/clang_index_mcp` with your actual installation path, then restart Claude Desktop.
+## Usage with AI Agent
 
-**For complete setup instructions for your specific client, see [CLIENT_SETUP.md](CLIENT_SETUP.md)**
+Once configured, you can use the C++ analyzer in your conversations:
 
-## Usage with Claude
-
-Once configured, you can use the C++ analyzer in your conversations with Claude:
-
-1. First, ask Claude to set your project directory using the MCP tool:
+1. First, set your project directory:
    ```
-   "Use the cpp-analyzer tool to set the project directory to /path/to/your/cpp/project"
+   "Set the project directory to /path/to/your/cpp/project"
    ```
-
-   **Note:** The initial indexing might take a long time for very large projects (several minutes for codebases with thousands of files). The server will cache the results for faster subsequent queries.
 
 2. Then you can ask questions like:
    - "Find all classes containing 'Actor'"
    - "Show me the Component class details"
-   - "What's the signature of BeginPlay function?"
-   - "Search for physics-related functions"
-   - "Show me the inheritance hierarchy for GameObject"
    - "Find all functions that call Update()"
    - "What functions does Render() call?"
-
-## Architecture
-
-- Uses libclang for accurate C++ parsing
-- Caches parsed AST for improved performance
-- Supports incremental analysis and project-wide search
-- Provides detailed symbol information including:
-  - Function signatures with parameter types and names
-  - Class members, methods, and inheritance
-  - Call graph analysis for understanding code flow
-  - File locations for easy navigation
-
-## Tool Description Testing & Benchmarking
-
-This project includes a comprehensive toolkit for testing and optimizing MCP tool descriptions to improve LLM tool-calling accuracy. These tools are located in `tools/mock_server/`.
-
-### Purpose
-
-The benchmarking instruments help developers:
-- Test how well AI models understand and select the correct MCP tools
-- Identify ambiguities in tool descriptions that cause wrong tool selection
-- Compare performance across different models (local LLMs via LM Studio, Claude models)
-- Iteratively improve tool descriptions based on test results
-
-### Available Tools
-
-| Tool | Purpose |
-|------|---------|
-| `runner.py` | LLM test runner - runs scenario-based tests against LM Studio models |
-| `server.py` | Mock MCP server - returns canned responses for rapid iteration |
-| `optimize.py` | Automated optimization loop - test→analyze→fix→retest with Claude Code |
-| `bench_models.py` | Multi-model benchmark - compare tool-calling accuracy across models |
-| `bench_claude.py` | Claude model benchmark - test Claude Code tool selection directly |
-| `diagnose_looping.py` | Diagnostic tool - identify infinite loop issues in LLM tool calls |
-
-### Quick Test Example
-
-```bash
-# Run tool description tests against a local model
-python tools/mock_server/runner.py --scenarios tools/mock_server/scenarios/basic.yaml
-
-# Or test with Claude Code directly
-python tools/mock_server/bench_claude.py --scenarios-file scenarios/probes_rootcauses.yaml
-```
-
-For detailed documentation on each testing tool, see [tools/mock_server/README.md](tools/mock_server/README.md).
+   - "Show me the inheritance hierarchy for GameObject"
 
 ## Configuration Options
 
-The server behavior can be configured via `.cpp-analyzer-config.json` (in project root):
+The server behavior can be configured via a `.cpp-analyzer-config.json` file. The server looks for this file in:
+1. The path specified by the `CPP_ANALYZER_CONFIG` environment variable.
+2. The project root directory.
+3. A path explicitly passed to the `set_project` tool.
+
+### Example Configuration
 
 ```json
 {
-  "exclude_directories": [".git", ".svn", ".hg", "node_modules", "__pycache__", ".vs", ".vscode", ".idea", "CMakeFiles"],
-  "exclude_patterns": [],
-  "dependency_directories": ["vcpkg_installed", "third_party", "ThirdParty", "external", "External", "vendor", "dependencies", "packages"],
+  "project_root": ".",
+  "exclude_directories": [".git", "build", "node_modules"],
   "include_dependencies": true,
-  "max_file_size_mb": 10,
-  "max_parse_retries": 2,
   "max_workers": null,
   "query_behavior": "allow_partial",
-  "diagnostics": {"level": "info", "enabled": true},
   "compile_commands": {
     "enabled": true,
-    "path": "compile_commands.json",
-    "cache_enabled": true,
-    "fallback_to_hardcoded": true,
-    "cache_expiry_seconds": 300,
-    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
-    "exclude_patterns": []
+    "path": "compile_commands.json"
   }
 }
 ```
 
-### General Options
+### Key Options
 
-- **exclude_directories**: Directories to skip during project scanning (default includes `.git`, `.svn`, `.hg`, `node_modules`, `__pycache__`, `.vs`, `.vscode`, `.idea`, `CMakeFiles`)
-- **exclude_patterns**: File patterns to exclude from analysis (default: `[]`)
-- **dependency_directories**: Directories containing third-party dependencies (default includes `vcpkg_installed`, `third_party`, `ThirdParty`, `external`, `External`, `vendor`, `dependencies`, `packages`)
-- **include_dependencies**: Whether to analyze files in dependency directories (default: `true`)
-- **max_file_size_mb**: Maximum file size to analyze in MB (default: `10`)
-- **max_parse_retries**: Maximum number of times to retry parsing a failed file (default: `2`)
-- **max_workers**: Number of worker processes for parallel parsing (default: `null` = use `cpu_count()`)
-- **query_behavior**: Query behavior policy - `allow_partial` (return partial results), `block` (block until indexing complete), or `reject` (reject queries during indexing) (default: `allow_partial`)
-- **diagnostics**: Diagnostics output configuration with `level` (`debug`, `info`, `warning`, `error`, `fatal`) and `enabled` (default: `{level: "info", enabled: true}`)
-
-### Compile Commands Integration
-
-The server supports using `compile_commands.json` to provide accurate compilation arguments:
-
-- **compile_commands.enabled**: Enable/disable compile commands support (default: `true`)
-- **compile_commands.path**: Path to compile_commands.json file (default: `"compile_commands.json"`)
-  - Can be relative to project root or absolute path
-  - Examples: `"build/compile_commands.json"`, `"../compile_commands.json"`
-- **compile_commands.cache_enabled**: Enable caching of compile commands (default: `true`)
-- **compile_commands.fallback_to_hardcoded**: Fall back to default args if compile_commands.json not found (default: `true`)
-- **compile_commands.cache_expiry_seconds**: Cache expiry time in seconds (default: `300`)
-- **compile_commands.supported_extensions**: List of source file extensions to analyze (default: `[".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]`)
-- **compile_commands.exclude_patterns**: Additional file patterns to exclude from compile_commands processing (default: `[]`)
-
-**Header File Analysis:**
-- Project headers included by source files are automatically analyzed
-- Headers processed only once even if included by multiple sources (5-10× performance improvement)
-- Restart analyzer after modifying `compile_commands.json` for best results
+- **project_root**: (Optional) Specify the source root relative to the config file. This allows placing the config file outside the source tree.
+- **exclude_directories**: Directories to skip during project scanning.
+- **include_dependencies**: Whether to analyze files in dependency directories (e.g., `third_party`).
+- **max_workers**: Number of worker processes (default: `null` = use all CPU cores).
+- **query_behavior**: `allow_partial` (return results during indexing), `block` (wait for indexing), or `reject`.
+- **compile_commands**: Configure the path and behavior for `compile_commands.json` integration.
 
 **For detailed information about compile_commands.json integration, see [COMPILE_COMMANDS_INTEGRATION.md](docs/COMPILE_COMMANDS_INTEGRATION.md)**
 
@@ -442,52 +192,10 @@ The server supports using `compile_commands.json` to provide accurate compilatio
 ### Common Issues
 
 1. **"libclang not found" error**
-   - Run `server_setup.bat` (Windows) or `./server_setup.sh` (Linux/macOS) to let the project download libclang automatically
-   - If automatic download fails, manually download libclang:
-     1. Go to: https://github.com/llvm/llvm-project/releases
-     2. Download the appropriate file for your system:
-        - **Windows**: `clang+llvm-*-x86_64-pc-windows-msvc.tar.xz`
-        - **macOS**: `clang+llvm-*-x86_64-apple-darwin.tar.xz`
-        - **Linux**: `clang+llvm-*-x86_64-linux-gnu-ubuntu-*.tar.xz`
-     3. Extract and copy the libclang library to the appropriate location:
-        - **Windows**: Copy `bin\libclang.dll` to `lib\windows\libclang.dll`
-        - **macOS**: Copy `lib\libclang.dylib` to `lib\macos\libclang.dylib`
-        - **Linux**: Copy `lib\libclang.so.*` to `lib\linux\libclang.so`
+   - Run the setup script to download libclang automatically, or set `LIBCLANG_PATH` environment variable to the path of your `libclang.so`/`.dylib`/`.dll`.
 
 2. **Server fails to start**
-   - Check that Python 3.9+ is installed: `python --version`
-   - Verify all dependencies are installed: `pip install -r requirements.txt`
-   - Run the installation test to identify issues:
-     ```bash
-     source mcp_env/bin/activate  # Linux/macOS
-     python scripts/test_installation.py
-     ```
+   - Ensure Python 3.10+ is installed and all dependencies from `requirements.txt` are available.
 
-3. **Claude doesn't recognize the server**
-   - Ensure the paths in `.claude.json` are absolute paths
-   - Restart Claude Desktop after modifying the configuration
-
-4. **Claude uses grep/glob instead of the C++ analyzer**
-   - Be explicit in prompts: Say "use the cpp-analyzer to..." when asking about C++ code
-   - Add instructions to your project's `CLAUDE.md` file telling Claude to prefer the cpp-analyzer for C++ symbol searches
-   - The cpp-analyzer is much faster than grep for finding classes, functions, and understanding code structure
-
-5. **Parse warnings vs. fatal errors**
-   - **Note**: The analyzer now continues processing files with non-fatal parsing errors (syntax/semantic errors), extracting partial symbols. Only true fatal errors (TranslationUnitLoadError) cause file rejection.
-   - If you see warnings like "Continuing despite N error(s)", this is expected behavior - the analyzer extracts what it can from the partial AST.
-   - Diagnose why a specific file fails fatally:
-     ```bash
-     python scripts/diagnose_parse_errors.py /path/to/project /path/to/file.cpp
-     ```
-   - Check if files are found in compile_commands.json:
-     ```bash
-     python scripts/test_compile_commands_lookup.py /path/to/project /path/to/file.cpp
-     ```
-   - Common causes of **fatal** errors:
-     - Path mismatch in compile_commands.json (e.g., generated in Docker with different username)
-     - Missing source file
-     - Severely malformed file that prevents TU creation
-   - View all parse errors (including warnings):
-     ```bash
-     python scripts/view_parse_errors.py /path/to/project
-     ```
+3. **Parse warnings vs. fatal errors**
+   - The analyzer extracts what it can from files with syntax errors. If a file fails fatally, check its entry in `compile_commands.json` or run `python scripts/diagnose_parse_errors.py`.

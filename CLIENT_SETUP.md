@@ -720,15 +720,15 @@ If it prints initialization messages and waits for input, it's working correctly
 
 ### Issue: Wrong Python version
 
-**Solution:** Ensure Python 3.9+ is used:
+**Solution:** Ensure Python 3.10+ is used:
 ```bash
-python --version  # Should be 3.9 or higher
+python --version  # Should be 3.10 or higher
 ```
 
 If needed, explicitly specify the Python path:
 ```json
 {
-  "command": "/usr/bin/python3.11"  // or your Python 3.9+ path
+  "command": "/usr/bin/python3.11"  // or your Python 3.10+ path
 }
 ```
 
