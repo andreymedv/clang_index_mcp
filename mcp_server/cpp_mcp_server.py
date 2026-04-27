@@ -97,99 +97,93 @@ def find_and_configure_libclang():
     # ========================================================================
     diagnostics.info("Searching for system-installed libclang...")
 
-    if system == "Windows":
-        system_paths = [
-            # LLVM official installer paths
-            r"C:\Program Files\LLVM\bin\libclang.dll",
-            r"C:\Program Files (x86)\LLVM\bin\libclang.dll",
-            # vcpkg paths
-            r"C:\vcpkg\installed\x64-windows\bin\clang.dll",
-            r"C:\vcpkg\installed\x86-windows\bin\clang.dll",
-            # Conda paths
-            r"C:\ProgramData\Anaconda3\Library\bin\libclang.dll",
-        ]
+    # Platform-specific library names and search patterns
+    PLATFORM_CONFIG = {
+        "Windows": {
+            "lib_names": ["libclang.dll", "clang.dll"],
+            "system_paths": [
+                r"C:\Program Files\LLVM\bin",
+                r"C:\Program Files (x86)\LLVM\bin",
+                r"C:\vcpkg\installed\x64-windows\bin",
+                r"C:\vcpkg\installed\x86-windows\bin",
+                r"C:\ProgramData\Anaconda3\Library\bin",
+            ],
+            "llvm_config_query": "--libdir",
+        },
+        "Darwin": {
+            "lib_names": ["libclang.dylib"],
+            "system_paths": [
+                "/Library/Developer/CommandLineTools/usr/lib",
+                "/opt/homebrew/Cellar/llvm/*/lib",
+                "/opt/homebrew/Cellar/llvm@*/*/lib",
+                "/opt/homebrew/lib",
+                "/usr/local/Cellar/llvm/*/lib",
+                "/usr/local/Cellar/llvm@*/*/lib",
+                "/usr/local/lib",
+                "/opt/local/libexec/llvm-*/lib",
+                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib",
+            ],
+            "llvm_config_query": "--libdir",
+        },
+        "Linux": {
+            "lib_names": ["libclang.so.1", "libclang.so"],
+            "system_paths": [
+                "/usr/lib/llvm-*/lib",
+                "/usr/lib/x86_64-linux-gnu",
+                "/usr/lib",
+            ],
+            "llvm_config_query": "--libdir",
+        },
+    }
 
-        # Try to find in system PATH using llvm-config
-        llvm_config = shutil.which("llvm-config")
-        if llvm_config:
-            try:
-                result = subprocess.run(
-                    [llvm_config, "--libdir"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0:
-                    lib_dir = result.stdout.strip()
-                    system_paths.insert(0, os.path.join(lib_dir, "libclang.dll"))
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
+    config = PLATFORM_CONFIG.get(system, PLATFORM_CONFIG["Linux"])
+    lib_names = config["lib_names"]
+    system_base_paths = list(config["system_paths"])
 
-    elif system == "Darwin":  # macOS
-        system_paths = [
-            # Xcode Command Line Tools (most common, FIX FOR ISSUE #003)
-            "/Library/Developer/CommandLineTools/usr/lib/libclang.dylib",
-            # Homebrew Apple Silicon (versioned, use glob)
-            "/opt/homebrew/Cellar/llvm/*/lib/libclang.dylib",
-            "/opt/homebrew/Cellar/llvm@*/*/lib/libclang.dylib",  # Versioned (llvm@19, llvm@20, etc.)
-            "/opt/homebrew/lib/libclang.dylib",  # Symlink
-            # Homebrew Intel
-            "/usr/local/Cellar/llvm/*/lib/libclang.dylib",
-            "/usr/local/Cellar/llvm@*/*/lib/libclang.dylib",  # Versioned (llvm@19, llvm@20, etc.)
-            "/usr/local/lib/libclang.dylib",
-            # MacPorts
-            "/opt/local/libexec/llvm-*/lib/libclang.dylib",
-            # Xcode.app (less common)
-            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib",
-        ]
+    # Try to find in system PATH using llvm-config
+    llvm_config = shutil.which("llvm-config")
+    if llvm_config:
+        try:
+            result = subprocess.run(
+                [llvm_config, config["llvm_config_query"]],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                lib_dir = result.stdout.strip()
+                if os.path.exists(lib_dir):
+                    system_base_paths.insert(0, lib_dir)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
 
-    else:  # Linux
-        system_paths = [
-            "/usr/lib/llvm-*/lib/libclang.so.1",
-            "/usr/lib/x86_64-linux-gnu/libclang-*.so.1",
-            "/usr/lib/libclang.so.1",
-            "/usr/lib/libclang.so",
-        ]
-
-    # Try each system path (with glob support)
-    for path_pattern in system_paths:
-        if "*" in path_pattern:
-            # Handle glob patterns - sort to prefer latest version
-            matches = sorted(glob.glob(path_pattern), reverse=True)
-            if matches:
-                path = matches[0]  # Use latest/first match
+    # Try each system path and library name combination
+    for base_path in system_base_paths:
+        for lib_name in lib_names:
+            path_pattern = os.path.join(base_path, lib_name)
+            if "*" in path_pattern:
+                matches = sorted(glob.glob(path_pattern), reverse=True)
+                paths_to_check = matches
             else:
-                continue
-        else:
-            path = path_pattern
+                paths_to_check = [path_pattern]
 
-        if os.path.exists(path):
-            diagnostics.info(f"Found system libclang at: {path}")
-            Config.set_library_file(path)
-            return True
+            for path in paths_to_check:
+                if os.path.exists(path):
+                    diagnostics.info(f"Found system libclang at: {path}")
+                    Config.set_library_file(path)
+                    return True
 
     # ========================================================================
     # STEP 4: Try bundled libraries (fallback)
     # ========================================================================
     diagnostics.info("No system libclang found, trying bundled libraries...")
 
-    bundled_paths = []
-    if system == "Windows":
-        bundled_paths = [
-            os.path.join(parent_dir, "lib", "windows", "lib", "libclang.dll"),
-            os.path.join(parent_dir, "lib", "windows", "lib", "clang.dll"),
-        ]
-    elif system == "Darwin":  # macOS
-        bundled_paths = [
-            os.path.join(parent_dir, "lib", "macos", "lib", "libclang.dylib"),
-        ]
-    else:  # Linux
-        bundled_paths = [
-            os.path.join(parent_dir, "lib", "linux", "lib", "libclang.so.1"),
-            os.path.join(parent_dir, "lib", "linux", "lib", "libclang.so"),
-        ]
+    # Platform to bundled subdir mapping
+    BUNDLED_SUBDIRS = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
+    platform_subdir = BUNDLED_SUBDIRS.get(system, "linux")
 
-    for path in bundled_paths:
+    for lib_name in lib_names:
+        path = os.path.join(parent_dir, "lib", platform_subdir, "lib", lib_name)
         if os.path.exists(path):
             diagnostics.info(f"Using bundled libclang at: {path}")
             Config.set_library_file(path)
