@@ -19,7 +19,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .cache_manager import CacheManager
 from .call_graph import CallGraphAnalyzer
@@ -2320,13 +2320,23 @@ class CppAnalyzer:
 
         return False
 
+    def _get_common_symbol_data(self, cursor: Any) -> Dict[str, Any]:
+        """Extract common metadata for any symbol (qualified name, namespace, location, docs)."""
+        qualified_name = self._get_qualified_name(cursor)
+        return {
+            "qualified_name": qualified_name,
+            "namespace": self._extract_namespace(qualified_name),
+            "loc_info": self._extract_line_range_info(cursor),
+            "doc_info": self._extract_documentation(cursor),
+        }
+
     def _process_cursor(
         self,
-        cursor,
-        should_extract_from_file=None,
+        cursor: Any,
+        should_extract_from_file: Optional[Callable[[str], bool]] = None,
         parent_class: str = "",
         parent_function_usr: str = "",
-    ):
+    ) -> None:
         """
         Process a cursor and its children, extracting symbols based on file filter.
 
@@ -2388,18 +2398,15 @@ class CppAnalyzer:
             CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
         ):
             if cursor.spelling and should_extract:
-                # Extract qualified name and namespace
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
 
                 # Get base classes (templates can inherit too)
                 base_classes = self._get_base_classes(cursor)
-
-                # Extract line range and location info
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation
-                doc_info = self._extract_documentation(cursor)
 
                 # Extract template parameters (Task 3.2)
                 template_params = self._extract_template_parameters(cursor)
@@ -2462,18 +2469,15 @@ class CppAnalyzer:
         # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
             if cursor.spelling and should_extract:
-                # Extract qualified name and namespace (Qualified Names Phase 1)
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
 
                 # Get base classes
                 base_classes = self._get_base_classes(cursor)
-
-                # Extract line range and location info (Phase 1: LLM Integration)
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation (Phase 2: LLM Integration)
-                doc_info = self._extract_documentation(cursor)
 
                 # Detect template specialization (Template Search Support)
                 is_class_template_spec = self._detect_template_specialization(cursor)
@@ -2550,20 +2554,17 @@ class CppAnalyzer:
         # Issue #99: Template Class Search and Specialization Discovery
         elif kind == CursorKind.FUNCTION_TEMPLATE:
             if cursor.spelling and should_extract:
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
+
                 # Get function signature (human-readable format)
                 signature = self._build_human_readable_signature(cursor)
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
-
-                # Extract qualified name and namespace
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
-
-                # Extract line range and location info
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation
-                doc_info = self._extract_documentation(cursor)
 
                 # Extract template parameters (Task 3.2)
                 template_params = self._extract_template_parameters(cursor)
@@ -2651,20 +2652,17 @@ class CppAnalyzer:
             CursorKind.CONVERSION_FUNCTION,
         ):
             if cursor.spelling and should_extract:
+                # Extract common symbol data
+                common = self._get_common_symbol_data(cursor)
+                qualified_name = common["qualified_name"]
+                namespace = common["namespace"]
+                loc_info = common["loc_info"]
+                doc_info = common["doc_info"]
+
                 # Get function signature (human-readable format)
                 signature = self._build_human_readable_signature(cursor)
 
                 function_usr = cursor.get_usr() if cursor.get_usr() else ""
-
-                # Extract qualified name and namespace (Qualified Names Phase 1)
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
-
-                # Extract line range and location info (Phase 1: LLM Integration)
-                loc_info = self._extract_line_range_info(cursor)
-
-                # Extract documentation (Phase 2: LLM Integration)
-                doc_info = self._extract_documentation(cursor)
 
                 # Detect template specialization (Phase 3: Qualified Names)
                 is_template_spec = self._detect_template_specialization(cursor)
@@ -5242,6 +5240,54 @@ class CppAnalyzer:
                 "derived_classes": derived_keys,
             }
 
+        # --- Helper: BFS traversal ---
+        def bfs_traverse(
+            start_key: str,
+            direction: str,
+            max_depth: Optional[int],
+            max_nodes: Optional[int],
+            initial_visited: Optional[Set[str]] = None,
+        ) -> Tuple[Set[str], bool]:
+            """Perform BFS traversal in specified direction.
+            Returns (set of visited keys, truncated flag).
+            """
+            visited: Set[str] = initial_visited if initial_visited is not None else set()
+            queue: deque = deque([(start_key, 0)])
+            local_truncated = False
+            neighbor_attr = "base_classes" if direction == "up" else "derived_classes"
+
+            while queue:
+                current, depth = queue.popleft()
+                if current in visited and initial_visited is None:
+                    continue
+                if current in visited and current != start_key:
+                    continue
+                visited.add(current)
+
+                node_data = collect_node_data(current)
+                if node_data is None:
+                    continue
+
+                # Add to classes if not already there (for final collection)
+                if current not in classes:
+                    classes[current] = node_data
+
+                # Check node cap AFTER adding current node
+                if max_nodes is not None and len(classes) >= max_nodes:
+                    local_truncated = True
+                    break
+
+                next_depth = depth + 1
+                if max_depth is not None and next_depth > max_depth:
+                    if any(n not in visited for n in node_data[neighbor_attr]):
+                        local_truncated = True
+                else:
+                    for neighbor in node_data[neighbor_attr]:
+                        if neighbor not in visited:
+                            queue.append((neighbor, next_depth))
+
+            return visited, local_truncated
+
         # --- Phase 1: resolve the start class ---
         start_infos = lookup_infos(class_name)
         if not start_infos:
@@ -5255,147 +5301,24 @@ class CppAnalyzer:
         truncated = False
 
         if direction == "up":
-            # Traverse UP: only follow base_classes (ancestors)
-            visited: Set[str] = set()
-            queue: deque = deque([(start_key, 0)])
-
-            while queue:
-                current, depth = queue.popleft()
-                if current in visited:
-                    continue
-                visited.add(current)
-
-                node_data = collect_node_data(current)
-                if node_data is None:
-                    continue
-
-                classes[current] = node_data
-
-                # Check node cap
-                if max_nodes is not None and len(classes) >= max_nodes:
-                    truncated = True
-                    break
-
-                # Only enqueue base classes (ancestors)
-                next_depth = depth + 1
-                if max_depth is not None and next_depth > max_depth:
-                    if any(b not in visited for b in node_data["base_classes"]):
-                        truncated = True
-                else:
-                    for base in node_data["base_classes"]:
-                        if base not in visited:
-                            queue.append((base, next_depth))
+            _, truncated = bfs_traverse(start_key, "up", max_depth, max_nodes)
 
         elif direction == "down":
-            # Traverse DOWN: only follow derived_classes (descendants)
-            visited: Set[str] = set()
-            queue: deque = deque([(start_key, 0)])
-
-            while queue:
-                current, depth = queue.popleft()
-                if current in visited:
-                    continue
-                visited.add(current)
-
-                node_data = collect_node_data(current)
-                if node_data is None:
-                    continue
-
-                classes[current] = node_data
-
-                # Check node cap
-                if max_nodes is not None and len(classes) >= max_nodes:
-                    truncated = True
-                    break
-
-                # Only enqueue derived classes (descendants)
-                next_depth = depth + 1
-                if max_depth is not None and next_depth > max_depth:
-                    if any(d not in visited for d in node_data["derived_classes"]):
-                        truncated = True
-                else:
-                    for derived in node_data["derived_classes"]:
-                        if derived not in visited:
-                            queue.append((derived, next_depth))
+            _, truncated = bfs_traverse(start_key, "down", max_depth, max_nodes)
 
         else:  # direction == "both"
-            # Two-phase algorithm to avoid shared-base explosion:
             # Phase A: Collect ancestors (UP from start only)
+            visited_up, trunc_up = bfs_traverse(start_key, "up", max_depth, max_nodes)
+
             # Phase B: Collect descendants (DOWN from start only)
-            # This prevents traversing from intermediate bases to unrelated derived classes
+            # Only skip if we've already hit the node cap
+            trunc_down = False
+            if max_nodes is None or len(classes) < max_nodes:
+                visited_down, trunc_down = bfs_traverse(
+                    start_key, "down", max_depth, max_nodes, initial_visited=visited_up
+                )
 
-            ancestor_keys: Set[str] = set()
-            descendant_keys: Set[str] = set()
-
-            # Phase A: Collect ancestors
-            visited_up: Set[str] = set()
-            queue_up: deque = deque([(start_key, 0)])
-
-            while queue_up:
-                current, depth = queue_up.popleft()
-                if current in visited_up:
-                    continue
-                visited_up.add(current)
-                ancestor_keys.add(current)
-
-                # Check caps during ancestor collection
-                if max_nodes is not None and len(ancestor_keys) >= max_nodes:
-                    truncated = True
-                    break
-
-                node_data = collect_node_data(current)
-                if node_data is None:
-                    continue
-
-                next_depth = depth + 1
-                if max_depth is not None and next_depth > max_depth:
-                    if any(b not in visited_up for b in node_data["base_classes"]):
-                        truncated = True
-                else:
-                    for base in node_data["base_classes"]:
-                        if base not in visited_up:
-                            queue_up.append((base, next_depth))
-
-            # Phase B: Collect descendants (only if not already truncated)
-            if not truncated or len(descendant_keys) < (max_nodes or 1000):
-                visited_down: Set[str] = set()
-                queue_down: deque = deque([(start_key, 0)])
-
-                while queue_down:
-                    current, depth = queue_down.popleft()
-                    if current in visited_down:
-                        continue
-                    visited_down.add(current)
-                    descendant_keys.add(current)
-
-                    # Check combined node cap
-                    total_nodes = (
-                        len(ancestor_keys) + len(descendant_keys) - 1
-                    )  # -1 for start_key counted twice
-                    if max_nodes is not None and total_nodes >= max_nodes:
-                        truncated = True
-                        break
-
-                    node_data = collect_node_data(current)
-                    if node_data is None:
-                        continue
-
-                    next_depth = depth + 1
-                    if max_depth is not None and next_depth > max_depth:
-                        if any(d not in visited_down for d in node_data["derived_classes"]):
-                            truncated = True
-                    else:
-                        for derived in node_data["derived_classes"]:
-                            if derived not in visited_down:
-                                queue_down.append((derived, next_depth))
-
-            # Combine all keys and collect node data
-            all_keys = ancestor_keys | descendant_keys
-            for key in all_keys:
-                if key not in classes:
-                    node_data = collect_node_data(key)
-                    if node_data:
-                        classes[key] = node_data
+            truncated = trunc_up or trunc_down
 
         result: Dict[str, Any] = {
             "queried_class": start_key,
