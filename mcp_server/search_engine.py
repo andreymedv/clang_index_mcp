@@ -570,6 +570,56 @@ class SearchEngine:
 
         return results
 
+    def _matches_function_criteria(
+        self,
+        info: SymbolInfo,
+        pattern: str,
+        pattern_type: str,
+        project_only: bool,
+        class_name: Optional[str],
+        namespace: Optional[str],
+        signature_pattern: Optional[str],
+    ) -> bool:
+        """Helper to check if a function symbol matches the search criteria."""
+        if info.kind not in ("function", "method", "function_template"):
+            return False
+
+        # Use qualified pattern matching (Phase 2)
+        # Fallback to info.name if qualified_name is empty (backward compatibility)
+        qualified_name = info.qualified_name if info.qualified_name else info.name
+
+        # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
+        # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
+        matches = self.matches_qualified_pattern(qualified_name, pattern)
+        if not matches and pattern_type == "regex":
+            # Also try matching against unqualified name for backward compatibility
+            matches = self.matches_qualified_pattern(info.name, pattern)
+
+        if not matches:
+            return False
+
+        if project_only and not info.is_project:
+            return False
+
+        # Filter by class name if specified
+        if class_name and info.parent_class != class_name:
+            return False
+
+        # Filter by namespace if specified (supports partial matching)
+        if namespace is not None:
+            if not self._matches_namespace(info.namespace, namespace):
+                return False
+
+        # Filter by prototype substring (case-insensitive)
+        # Prototype supersedes raw signature: contains return type,
+        # qualified name, params, const/virtual/static qualifiers.
+        if signature_pattern is not None:
+            prototype = _build_function_prototype(info) or ""
+            if signature_pattern.lower() not in prototype.lower():
+                return False
+
+        return True
+
     def search_functions(
         self,
         pattern: str,
@@ -663,78 +713,30 @@ class SearchEngine:
                         continue
 
                     for info in infos:
-                        # Only include functions (not classes)
-                        if info.kind not in ("function", "method"):
-                            continue
-
-                        # Use qualified pattern matching (Phase 2)
-                        # Fallback to info.name if qualified_name is empty (backward compatibility)
-                        qualified_name = info.qualified_name if info.qualified_name else info.name
-
-                        # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
-                        # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
-                        matches = self.matches_qualified_pattern(qualified_name, pattern)
-                        if not matches and pattern_type == "regex":
-                            # Also try matching against unqualified name for backward compatibility
-                            matches = self.matches_qualified_pattern(info.name, pattern)
-
-                        if not matches:
-                            continue
-
-                        if not project_only or info.is_project:
-                            # Filter by class name if specified
-                            if class_name and info.parent_class != class_name:
-                                continue
-
-                            # Filter by namespace if specified (supports partial matching)
-                            if namespace is not None:
-                                if not self._matches_namespace(info.namespace, namespace):
-                                    continue
-
-                            # Filter by prototype substring (case-insensitive)
-                            # Prototype supersedes raw signature: contains return type,
-                            # qualified name, params, const/virtual/static qualifiers.
-                            if signature_pattern is not None:
-                                prototype = _build_function_prototype(info) or ""
-                                if signature_pattern.lower() not in prototype.lower():
-                                    continue
-
+                        if self._matches_function_criteria(
+                            info,
+                            pattern,
+                            pattern_type,
+                            project_only,
+                            class_name,
+                            namespace,
+                            signature_pattern,
+                        ):
                             results.append(_create_result(info))
         else:
             # Original logic: search function_index
             with self.index_lock:
                 for name, infos in self.function_index.items():
                     for info in infos:
-                        # Use qualified pattern matching (Phase 2)
-                        # Fallback to info.name if qualified_name is empty (backward compatibility)
-                        qualified_name = info.qualified_name if info.qualified_name else info.name
-
-                        # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
-                        # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
-                        matches = self.matches_qualified_pattern(qualified_name, pattern)
-                        if not matches and pattern_type == "regex":
-                            # Also try matching against unqualified name for backward compatibility
-                            matches = self.matches_qualified_pattern(info.name, pattern)
-
-                        if not matches:
-                            continue
-
-                        if not project_only or info.is_project:
-                            # Filter by class name if specified
-                            if class_name and info.parent_class != class_name:
-                                continue
-
-                            # Filter by namespace if specified (supports partial matching)
-                            if namespace is not None:
-                                if not self._matches_namespace(info.namespace, namespace):
-                                    continue
-
-                            # Filter by prototype substring (case-insensitive)
-                            if signature_pattern is not None:
-                                prototype = _build_function_prototype(info) or ""
-                                if signature_pattern.lower() not in prototype.lower():
-                                    continue
-
+                        if self._matches_function_criteria(
+                            info,
+                            pattern,
+                            pattern_type,
+                            project_only,
+                            class_name,
+                            namespace,
+                            signature_pattern,
+                        ):
                             results.append(_create_result(info))
 
         # Handle max_results truncation
