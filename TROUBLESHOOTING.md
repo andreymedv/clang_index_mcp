@@ -189,9 +189,14 @@ python3 -c "import clang.cindex; print(clang.cindex.conf.lib.clang_getClangVersi
 # Find system libclang
 find /Library/Developer -name "libclang.dylib" 2>/dev/null
 
-# Set environment variable before running
+# Set exact library file
 export LIBCLANG_PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib
+
+# OR set the directory containing the library
+export CLANG_LIBRARY_PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib
 ```
+
+*Note: `LIBCLANG_PATH` can also point to a directory; the server will automatically detect whether it's a file or a folder.*
 
 #### Option 2: Install Matching libclang Version
 ```bash

@@ -110,12 +110,17 @@ export LD_LIBRARY_PATH=/usr/lib/llvm-16/lib:$LD_LIBRARY_PATH
 # Install LLVM via Homebrew
 brew install llvm
 
-# Set library path
+# Set library path (exact file)
 export LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib/libclang.dylib
+
+# OR set library directory
+export CLANG_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib
 
 # For Intel Macs:
 export LIBCLANG_PATH=/usr/local/opt/llvm/lib/libclang.dylib
 ```
+
+*Note: `LIBCLANG_PATH` also supports directory paths; the server will automatically use `Config.set_library_path` if it points to a folder.*
 
 #### Windows:
 ```powershell
@@ -415,6 +420,15 @@ clang.cindex.Config.set_library_file('/usr/lib/x86_64-linux-gnu/libclang-16.so.1
 from clang.cindex import Index
 index = Index.create()
 ```
+
+### Environment Variables Summary
+
+The MCP server supports these environment variables for manual configuration:
+
+- `LIBCLANG_PATH`: Full path to the `libclang` file (e.g., `.so`, `.dylib`, `.dll`) **OR** a directory containing it.
+- `CLANG_LIBRARY_PATH`: Directory containing the `libclang` library.
+
+Priority is given to `LIBCLANG_PATH` (file), then `LIBCLANG_PATH` (directory), then `CLANG_LIBRARY_PATH`.
 
 ---
 
