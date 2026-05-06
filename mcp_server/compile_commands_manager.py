@@ -274,20 +274,23 @@ class CompileCommandsManager:
         """
         try:
             # Try to get resource directory from clang itself
-            result = subprocess.run(
-                ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
-            )
+            try:
+                result = subprocess.run(
+                    ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
+                )
 
-            if result.returncode == 0:
-                resource_dir = result.stdout.strip()
-                include_dir = os.path.join(resource_dir, "include")
+                if result.returncode == 0:
+                    resource_dir = result.stdout.strip()
+                    include_dir = os.path.join(resource_dir, "include")
 
-                # Verify the directory exists and contains stddef.h
-                if os.path.isdir(include_dir):
-                    stddef_path = os.path.join(include_dir, "stddef.h")
-                    if os.path.isfile(stddef_path):
-                        diagnostics.debug(f"Found clang resource directory: {include_dir}")
-                        return include_dir
+                    # Verify the directory exists and contains stddef.h
+                    if os.path.isdir(include_dir):
+                        stddef_path = os.path.join(include_dir, "stddef.h")
+                        if os.path.isfile(stddef_path):
+                            diagnostics.debug(f"Found clang resource directory: {include_dir}")
+                            return include_dir
+            except (subprocess.SubprocessError, FileNotFoundError) as e:
+                diagnostics.debug(f"Clang execution failed, trying fallback locations: {e}")
 
             # Fallback: try common locations
             # Format: /usr/lib/clang/<version>/include
