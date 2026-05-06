@@ -79,7 +79,10 @@ def test_mcp_server(project_path: str):
     if classes:
         print("   First 5 classes:")
         for cls in classes[:5]:
-            print(f"   - {cls['name']} at {cls['file']}:{cls['line']}")
+            name = cls.get("qualified_name") or cls.get("name")
+            loc = cls.get("definition") or cls.get("declaration")
+            loc_str = f"{loc['file']}:{loc['line']}" if loc else "unknown"
+            print(f"   - {name} at {loc_str}")
 
     # 5. Search for functions
     print("\n5. Searching for functions (pattern: '.*')...")
@@ -88,27 +91,34 @@ def test_mcp_server(project_path: str):
     if functions:
         print("   First 5 functions:")
         for func in functions[:5]:
-            print(f"   - {func['name']} at {func['file']}:{func['line']}")
+            name = func.get("qualified_name") or func.get("name")
+            loc = func.get("definition") or func.get("declaration")
+            loc_str = f"{loc['file']}:{loc['line']}" if loc else "unknown"
+            print(f"   - {name} at {loc_str}")
 
     # 6. Get detailed class info (if classes exist)
     if classes:
-        print(f"\n6. Getting detailed info for class: {classes[0]['name']}")
-        class_info = analyzer.get_class_info(classes[0]["name"])
+        cls_name = classes[0].get("qualified_name") or classes[0].get("name")
+        print(f"\n6. Getting detailed info for class: {cls_name}")
+        class_info = analyzer.get_class_info(cls_name)
         if class_info:
             print("[OK] Class info:")
-            print(f"   Name: {class_info['name']}")
-            print(f"   File: {class_info['file']}:{class_info['line']}")
-            print(f"   Methods: {len(class_info['methods'])}")
-            print(f"   Members: {len(class_info['members'])}")
-            if class_info["methods"]:
+            print(f"   Name: {class_info.get('qualified_name') or class_info.get('name')}")
+            loc = class_info.get("definition") or class_info.get("declaration")
+            loc_str = f"{loc['file']}:{loc['line']}" if loc else "unknown"
+            print(f"   File: {loc_str}")
+            print(f"   Methods: {len(class_info.get('methods', []))}")
+            print(f"   Members: {len(class_info.get('members', []))}")
+            if class_info.get("methods"):
                 print("   First 3 methods:")
                 for method in class_info["methods"][:3]:
                     print(f"   - {method['name']} ({method['access']})")
 
     # 7. Get function signature (if functions exist)
     if functions:
-        print(f"\n7. Getting signature for function: {functions[0]['name']}")
-        signatures = analyzer.get_function_signature(functions[0]["name"])
+        func_name = functions[0].get("qualified_name") or functions[0].get("name")
+        print(f"\n7. Getting signature for function: {func_name}")
+        signatures = analyzer.get_function_signature(func_name)
         if signatures:
             print(f"[OK] Found {len(signatures)} function(s) with this name:")
             for sig in signatures[:3]:
@@ -117,36 +127,51 @@ def test_mcp_server(project_path: str):
 
     # 8. Get class hierarchy (if classes exist)
     if classes:
-        print(f"\n8. Getting class hierarchy for: {classes[0]['name']}")
-        hierarchy = analyzer.get_class_hierarchy(classes[0]["name"])
-        if hierarchy:
+        cls_name = classes[0].get("qualified_name") or classes[0].get("name")
+        print(f"\n8. Getting class hierarchy for: {cls_name}")
+        hierarchy = analyzer.get_class_hierarchy(cls_name)
+        if hierarchy and "queried_class" in hierarchy:
             print("[OK] Class hierarchy:")
-            print(f"   Class: {hierarchy['name']}")
-            if hierarchy.get("base_classes"):
-                print(f"   Base classes: {', '.join(hierarchy['base_classes'])}")
-            if hierarchy.get("derived_classes"):
-                print(f"   Derived classes: {len(hierarchy['derived_classes'])}")
+            queried_cls = hierarchy["queried_class"]
+            print(f"   Class: {queried_cls}")
+
+            # hierarchy["classes"] contains detailed info for each class in the graph
+            if "classes" in hierarchy and queried_cls in hierarchy["classes"]:
+                cls_data = hierarchy["classes"][queried_cls]
+                if cls_data.get("base_classes"):
+                    print(f"   Base classes: {', '.join(cls_data['base_classes'])}")
+                if cls_data.get("derived_classes"):
+                    print(f"   Derived classes: {len(cls_data['derived_classes'])}")
 
     # 9. Find callers (if functions exist)
     if functions:
-        print(f"\n9. Finding callers of function: {functions[0]['name']}")
-        callers_result = analyzer.find_incoming_calls(functions[0]["name"])
+        func_name = functions[0].get("qualified_name") or functions[0].get("name")
+        print(f"\n9. Finding callers of function: {func_name}")
+        callers_result = analyzer.find_incoming_calls(func_name)
         callers_list = callers_result.get("callers", [])
         print(f"[OK] Found {len(callers_list)} caller(s)")
         if callers_list:
             print("   First 3 callers:")
             for caller in callers_list[:3]:
-                print(f"   - {caller['name']} at {caller['file']}:{caller['line']}")
+                name = caller.get("qualified_name") or caller.get("name")
+                loc = caller.get("definition") or caller.get("declaration")
+                loc_str = f"{loc['file']}:{loc['line']}" if loc else "unknown"
+                print(f"   - {name} at {loc_str}")
 
     # 10. Find callees (if functions exist)
     if functions and len(functions) > 1:
-        print(f"\n10. Finding callees of function: {functions[0]['name']}")
-        callees = analyzer.find_callees(functions[0]["name"])
-        print(f"[OK] Found {len(callees)} callee(s)")
-        if callees:
+        func_name = functions[0].get("qualified_name") or functions[0].get("name")
+        print(f"\n10. Finding callees of function: {func_name}")
+        callees_result = analyzer.find_callees(func_name)
+        callees_list = callees_result.get("callees", [])
+        print(f"[OK] Found {len(callees_list)} callee(s)")
+        if callees_list:
             print("   First 3 callees:")
-            for callee in callees[:3]:
-                print(f"   - {callee['name']} at {callee['file']}:{callee['line']}")
+            for callee in callees_list[:3]:
+                name = callee.get("qualified_name") or callee.get("name")
+                loc = callee.get("definition") or callee.get("declaration")
+                loc_str = f"{loc['file']}:{loc['line']}" if loc else "unknown"
+                print(f"   - {name} at {loc_str}")
 
     print("\n" + "=" * 60)
     print("Test completed successfully!")
