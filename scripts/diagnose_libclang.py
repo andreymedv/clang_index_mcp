@@ -147,8 +147,10 @@ If libclang can't find system headers (like stdbool.h), try these solutions:
 
 3. Use the system libclang instead of the pip-installed one:
    - Find system libclang: find /Library/Developer -name "libclang.dylib" 2>/dev/null
-   - Set LIBCLANG_PATH environment variable:
+   - Set environment variable:
      export LIBCLANG_PATH=/path/to/libclang.dylib
+     # OR (if pointing to a directory)
+     export CLANG_LIBRARY_PATH=/path/to/directory/containing/libclang
 
 4. Add resource directory to compilation arguments:
    - Find resource dir: clang -print-resource-dir

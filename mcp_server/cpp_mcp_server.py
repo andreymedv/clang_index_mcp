@@ -58,15 +58,29 @@ def find_and_configure_libclang():
     parent_dir = os.path.dirname(script_dir)
 
     # ========================================================================
-    # STEP 1: Check LIBCLANG_PATH environment variable (user override)
+    # STEP 1: Check environment variables (user override)
     # ========================================================================
+    # 1a. LIBCLANG_PATH (can be file OR directory)
     env_path = os.environ.get("LIBCLANG_PATH")
     if env_path and os.path.exists(env_path):
-        diagnostics.info(f"Using libclang from LIBCLANG_PATH: {env_path}")
-        Config.set_library_file(env_path)
+        if os.path.isdir(env_path):
+            diagnostics.info(f"Using libclang search path from LIBCLANG_PATH: {env_path}")
+            Config.set_library_path(env_path)
+        else:
+            diagnostics.info(f"Using libclang from LIBCLANG_PATH: {env_path}")
+            Config.set_library_file(env_path)
         return True
     elif env_path:
-        diagnostics.warning(f"LIBCLANG_PATH set but file not found: {env_path}")
+        diagnostics.warning(f"LIBCLANG_PATH set but path not found: {env_path}")
+
+    # 1b. CLANG_LIBRARY_PATH (directory)
+    lib_path = os.environ.get("CLANG_LIBRARY_PATH")
+    if lib_path and os.path.exists(lib_path) and os.path.isdir(lib_path):
+        diagnostics.info(f"Using libclang search path from CLANG_LIBRARY_PATH: {lib_path}")
+        Config.set_library_path(lib_path)
+        return True
+    elif lib_path:
+        diagnostics.warning(f"CLANG_LIBRARY_PATH set but directory not found: {lib_path}")
 
     # ========================================================================
     # STEP 2: Smart discovery (macOS only for now)
