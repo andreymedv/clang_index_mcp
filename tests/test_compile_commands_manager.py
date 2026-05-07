@@ -474,6 +474,33 @@ class TestCompileCommandsManager(unittest.TestCase):
         self.assertEqual(stats["cache_enabled"], True)
         self.assertEqual(stats["fallback_enabled"], True)
         self.assertIn("compile_commands_path", stats)
+        self.assertIn("clang_resource_dir", stats)
+        self.assertIn("fallback_cxx_standards", stats)
+        self.assertIn("fallback_system_include_dirs", stats)
+
+    def test_get_compile_arg_profile_from_compile_commands(self):
+        """Compile arg profile should expose source, standards and system includes."""
+        config = {"compile_commands_enabled": True}
+        manager = CompileCommandsManager(self.project_root, config)
+
+        source_file = self.project_root / "src" / "main.cpp"
+        profile = manager.get_compile_arg_profile(source_file)
+
+        self.assertEqual(profile["args_source"], "compile_commands")
+        self.assertIn("c++17", profile["cxx_standards"])
+        self.assertIsInstance(profile["system_include_dirs"], list)
+        self.assertIn("clang_resource_dir", profile)
+
+    def test_get_compile_arg_profile_from_fallback(self):
+        """When file is not in compile DB, fallback profile should be reported."""
+        config = {"compile_commands_enabled": True, "fallback_to_hardcoded": True}
+        manager = CompileCommandsManager(self.project_root, config)
+
+        missing_file = self.project_root / "src" / "missing.cpp"
+        profile = manager.get_compile_arg_profile(missing_file)
+
+        self.assertEqual(profile["args_source"], "fallback")
+        self.assertIn("c++17", profile["cxx_standards"])
 
     def test_is_file_supported(self):
         """Test file support checking."""

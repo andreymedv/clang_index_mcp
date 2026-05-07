@@ -3392,6 +3392,7 @@ class CppAnalyzer:
             return 0
 
         diagnostics.debug(f"Found {len(files)} C++ files to index")
+        self._log_compilation_environment(files)
 
         # Show detailed progress
         indexed_count = 0
@@ -4089,6 +4090,35 @@ class CppAnalyzer:
             return {"enabled": False}
 
         return self.compile_commands_manager.get_stats()
+
+    def _log_compilation_environment(self, files: List[str]) -> None:
+        """Log libclang compilation environment for diagnostics."""
+        if self.compile_commands_manager is None:
+            return
+
+        compile_stats = self.compile_commands_manager.get_stats()
+        diagnostics.info(
+            "Compilation environment: "
+            f"compile_commands_enabled={compile_stats.get('enabled')} "
+            f"compile_commands_count={compile_stats.get('compile_commands_count')} "
+            f"clang_resource_dir={compile_stats.get('clang_resource_dir')} "
+            f"fallback_cxx_standards={compile_stats.get('fallback_cxx_standards')} "
+            f"fallback_system_include_dirs={compile_stats.get('fallback_system_include_dirs')}"
+        )
+
+        if not files:
+            return
+
+        sample_count = min(3, len(files))
+        for source_file in files[:sample_count]:
+            profile = self.compile_commands_manager.get_compile_arg_profile(Path(source_file))
+            diagnostics.info(
+                "Compile args profile: "
+                f"file={profile.get('file')} "
+                f"source={profile.get('args_source')} "
+                f"cxx_standards={profile.get('cxx_standards')} "
+                f"system_include_dirs={profile.get('system_include_dirs')}"
+            )
 
     def refresh_if_needed(self, progress_callback: Optional[Callable] = None) -> int:
         """
