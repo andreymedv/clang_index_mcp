@@ -156,23 +156,19 @@ def list_tools_b() -> List[Tool]:
         Tool(
             name="set_project",
             description=(
-                "REQUIRED FIRST STEP: Set the C++ project to analyze. "
-                "The 'path' can be either a project root directory OR a .json configuration file "
-                "defining 'project_root'. Using a config file allows multiple analysis profiles "
-                "without polluting the source tree.\n\n"
+                "REQUIRED FIRST STEP: Set the C++ project to analyze using a configuration file. "
+                "The configuration file MUST be a .json file that defines 'project_root' "
+                "(absolute path or relative to the config file).\n\n"
+                "This allows multiple analysis profiles without polluting the source tree.\n\n"
                 "Indexes all C++ files and waits for completion (up to sync_timeout seconds). "
                 "Returns 'ready' when finished, or 'indexing_in_progress' if timeout exceeded."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to C++ project root directory OR a .json config file.",
-                    },
                     "config_file": {
                         "type": "string",
-                        "description": "Optional: Path to cpp-analyzer-config.json (if 'path' is a directory).",
+                        "description": "Absolute path to the .json configuration file defining 'project_root'.",
                     },
                     "sync_timeout": {
                         "type": "number",
@@ -183,7 +179,7 @@ def list_tools_b() -> List[Tool]:
                         "default": 30,
                     },
                 },
-                "required": ["path"],
+                "required": ["config_file"],
             },
         ),
         Tool(
@@ -628,15 +624,13 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
 
 
 async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
-    """Handle set_project: set directory + synchronous wait for indexing."""
+    """Handle set_project: set directory via config file + synchronous wait for indexing."""
     from mcp_server.cpp_mcp_server import _handle_tool_call
 
-    # Map 'path' -> 'project_path' for internal handler
+    config_file = arguments["config_file"]
     internal_args: Dict[str, Any] = {
-        "project_path": arguments["path"],
+        "config_file": config_file,
     }
-    if "config_file" in arguments:
-        internal_args["config_file"] = arguments["config_file"]
 
     # Step 1: Set project directory (starts background indexing)
     await _handle_tool_call("set_project_directory", internal_args)
@@ -658,7 +652,7 @@ async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
         system_state = "not_ready"
 
     response = {
-        "project_path": arguments["path"],
+        "config_file": config_file,
         "status": "ready" if system_state == "ready" else "indexing_in_progress",
     }
 

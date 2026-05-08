@@ -72,7 +72,7 @@ def test_config_validation(results):
             with open(valid_config, "w") as f:
                 json.dump({"max_file_size_mb": 20}, f)
 
-            config = CppAnalyzerConfig(valid_dir)
+            config = CppAnalyzerConfig(valid_dir, config_path=valid_config)
             assert config.get_max_file_size_mb() == 20, "Config value should be loaded"
             results.record_pass("Valid config (JSON object) loads correctly")
         except Exception as e:
@@ -86,7 +86,7 @@ def test_config_validation(results):
             with open(invalid_config, "w") as f:
                 json.dump([{"file": "test.cpp"}], f)
 
-            config = CppAnalyzerConfig(invalid_dir)
+            config = CppAnalyzerConfig(invalid_dir, config_path=invalid_config)
             # Should fall back to defaults without crashing
             assert config.get_max_file_size_mb() == 10, "Should use default on invalid config"
             results.record_pass("Invalid config (JSON array) falls back to defaults")
@@ -112,7 +112,7 @@ def test_config_validation(results):
             with open(retry_config, "w") as f:
                 json.dump({"max_parse_retries": 5}, f)
 
-            config = CppAnalyzerConfig(retry_dir)
+            config = CppAnalyzerConfig(retry_dir, config_path=retry_config)
             assert config.config.get("max_parse_retries") == 5, "Custom retry count should load"
             results.record_pass("Config with max_parse_retries loads correctly")
         except Exception as e:
@@ -414,7 +414,7 @@ def test_integration(results):
             with open(config_file, "w") as f:
                 json.dump({"max_parse_retries": 3}, f)
 
-            config = CppAnalyzerConfig(tmpdir_path)
+            config = CppAnalyzerConfig(tmpdir_path, config_path=config_file)
             assert config.config.get("max_parse_retries") == 3, "Custom retry loaded"
 
             # Create cache manager

@@ -214,7 +214,7 @@ pip install libclang==14.0.0
 clang -print-resource-dir
 # Example: /Library/Developer/CommandLineTools/usr/lib/clang/14.0.0
 
-# Add to .cpp-analyzer-config.json
+# Add to your configuration file
 {
   "compile_commands": {
     "fallback_args": [

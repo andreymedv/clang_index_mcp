@@ -32,7 +32,7 @@ Quick reference for C++ code analysis tools. All examples use YAML format for re
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ PROJECT MANAGEMENT                                                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ set_project_directory │ Set project root, start indexing                    │
+│ set_project        │ Set project via config file, start indexing            │
 │ refresh_project    │ Re-index changed files                                 │
 │ check_system_status │ Server health, indexing progress, statistics           │
 │ wait_for_indexing  │ Block until indexing complete                          │
@@ -372,23 +372,21 @@ path_length: 5
 
 ## Project Management Tools
 
-### set_project_directory
+### set_project
 
-Initialize project and start indexing.
+Initialize project using a configuration file.
 
 **Input:**
 ```yaml
-path: "/home/user/myproject"    # Required: project root
-config_file: "cpp-analyzer-config.json"  # Optional: custom config
+config_file: "/path/to/my-config.json"  # Required: path to config file
+sync_timeout: 30                        # Optional: seconds to wait
 ```
 
 **Output:**
 ```yaml
 status: indexing_started
-project_root: /home/user/myproject
-total_files: 1250
-config_used: /home/user/myproject/cpp-analyzer-config.json
-compile_commands: /home/user/myproject/build/compile_commands.json
+config_file: /path/to/my-config.json
+project_root: /path/to/resolved/root
 ```
 
 ### check_system_status

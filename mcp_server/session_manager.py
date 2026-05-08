@@ -25,22 +25,20 @@ class SessionManager:
         self.cache_dir = Path(cache_dir)
         self.session_file = self.cache_dir / "session.json"
 
-    def save_session(self, project_path: str, config_file: Optional[str] = None) -> None:
+    def save_session(self, config_file: str) -> None:
         """Save current session to disk
 
         Args:
-            project_path: Absolute path to project directory
-            config_file: Optional path to config file
+            config_file: Absolute path to the configuration file
         """
         try:
             # Ensure cache directory exists
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
             session_data = {
-                "project_path": str(project_path),
-                "config_file": str(config_file) if config_file else None,
+                "config_file": str(config_file),
                 "last_accessed": datetime.now(timezone.utc).isoformat(),
-                "version": "1.0",
+                "version": "2.0",  # Bump version due to schema change
             }
 
             # Atomic write via temp file
@@ -51,7 +49,7 @@ class SessionManager:
             # Atomic rename
             temp_file.replace(self.session_file)
 
-            diagnostics.debug(f"Session saved: {project_path}")
+            diagnostics.debug(f"Session saved: {config_file}")
 
         except Exception as e:
             diagnostics.warning(f"Failed to save session: {e}")
@@ -61,7 +59,7 @@ class SessionManager:
 
         Returns:
             Session data dict if valid session exists, None otherwise
-            Dict contains: project_path, config_file, last_accessed
+            Dict contains: config_file, last_accessed
         """
         try:
             if not self.session_file.exists():
@@ -76,17 +74,17 @@ class SessionManager:
                 diagnostics.warning("Invalid session file format")
                 return None
 
-            if "project_path" not in session_data:
-                diagnostics.warning("Session missing project_path")
+            if "config_file" not in session_data:
+                diagnostics.warning("Session missing config_file")
                 return None
 
-            # Check if project directory still exists
-            project_path = Path(session_data["project_path"])
-            if not project_path.exists() or not project_path.is_dir():
-                diagnostics.info(f"Saved project directory no longer exists: {project_path}")
+            # Check if config file still exists
+            config_file = Path(session_data["config_file"])
+            if not config_file.exists() or not config_file.is_file():
+                diagnostics.info(f"Saved config file no longer exists: {config_file}")
                 return None
 
-            diagnostics.debug(f"Loaded session: {session_data['project_path']}")
+            diagnostics.debug(f"Loaded session: {session_data['config_file']}")
             return session_data
 
         except Exception as e:
