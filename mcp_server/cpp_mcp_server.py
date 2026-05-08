@@ -334,105 +334,65 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
         if name == "set_project_directory":
-            project_path = arguments["project_path"]
-            config_file = arguments.get("config_file", None)
+            config_file = arguments.get("config_file")
             auto_refresh = arguments.get("auto_refresh", True)
 
-            if not isinstance(project_path, str) or not project_path.strip():
+            if not config_file or not isinstance(config_file, str) or not config_file.strip():
+                return [
+                    TextContent(type="text", text="Error: 'config_file' must be a non-empty string")
+                ]
+
+            config_file = config_file.strip()
+
+            if not os.path.isabs(config_file):
+                return [
+                    TextContent(type="text", text=f"Error: '{config_file}' is not an absolute path")
+                ]
+
+            if not os.path.isfile(config_file):
                 return [
                     TextContent(
-                        type="text", text="Error: 'project_path' must be a non-empty string"
+                        type="text", text=f"Error: Config file '{config_file}' does not exist"
                     )
                 ]
 
-            if project_path != project_path.strip():
+            if not config_file.endswith(".json"):
                 return [
                     TextContent(
                         type="text",
-                        text="Error: 'project_path' may not include leading or trailing whitespace",
+                        text=f"Error: Config file '{config_file}' must have .json extension",
                     )
                 ]
 
-            project_path = project_path.strip()
+            try:
+                with open(config_file, "r") as f:
+                    config_data = json.load(f)
 
-            if not os.path.isabs(project_path):
-                return [
-                    TextContent(
-                        type="text", text=f"Error: '{project_path}' is not an absolute path"
-                    )
-                ]
-
-            # Hybrid approach: project_path can be a directory OR a config file
-            if os.path.isfile(project_path):
-                if not project_path.endswith(".json"):
+                config_root = config_data.get("project_root")
+                if not config_root:
                     return [
                         TextContent(
                             type="text",
-                            text=f"Error: Config file '{project_path}' must have .json extension",
+                            text=f"Error: Config file '{config_file}' is missing 'project_root' field",
                         )
                     ]
-                try:
-                    with open(project_path, "r") as f:
-                        config_data = json.load(f)
 
-                    config_root = config_data.get("project_root")
-                    if not config_root:
-                        return [
-                            TextContent(
-                                type="text",
-                                text=f"Error: Config file '{project_path}' is missing 'project_root' field",
-                            )
-                        ]
+                # Resolve project_root relative to config file directory
+                config_dir = os.path.dirname(config_file)
+                project_path = os.path.abspath(os.path.join(config_dir, config_root))
 
-                    # Resolve project_root relative to config file directory
-                    config_dir = os.path.dirname(project_path)
-                    resolved_root = os.path.abspath(os.path.join(config_dir, config_root))
-
-                    if not os.path.isdir(resolved_root):
-                        return [
-                            TextContent(
-                                type="text",
-                                text=f"Error: 'project_root' in config '{resolved_root}' is not a directory or does not exist",
-                            )
-                        ]
-
-                    # Swap: the file becomes the config_file, the extracted path becomes project_path
-                    config_file = project_path
-                    project_path = resolved_root
-                    diagnostics.info(
-                        f"Hybrid setup: Using config {config_file} for root {project_path}"
-                    )
-                except Exception as e:
-                    return [TextContent(type="text", text=f"Error reading config file: {str(e)}")]
-            elif not os.path.isdir(project_path):
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Error: Directory or config file '{project_path}' does not exist",
-                    )
-                ]
-
-            # Validate config_file if provided (and not already set by hybrid path)
-            if config_file and not os.path.isfile(config_file):
-                if not isinstance(config_file, str) or not config_file.strip():
+                if not os.path.isdir(project_path):
                     return [
                         TextContent(
-                            type="text", text="Error: 'config_file' must be a non-empty string"
+                            type="text",
+                            text=f"Error: 'project_root' in config '{project_path}' is not a directory or does not exist",
                         )
                     ]
-                config_file = config_file.strip()
-                if not os.path.isabs(config_file):
-                    return [
-                        TextContent(
-                            type="text", text=f"Error: '{config_file}' is not an absolute path"
-                        )
-                    ]
-                if not os.path.isfile(config_file):
-                    return [
-                        TextContent(
-                            type="text", text=f"Error: Config file '{config_file}' does not exist"
-                        )
-                    ]
+
+                diagnostics.info(f"Using config {config_file} for root {project_path}")
+
+            except Exception as e:
+                return [TextContent(type="text", text=f"Error reading config file: {str(e)}")]
 
             # Re-initialize analyzer with new path and config
             global analyzer, background_indexer, tool_call_logger
@@ -511,10 +471,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             asyncio.create_task(run_background_indexing())
 
             # Save session for auto-resume on restart
-            session_manager.save_session(project_path, config_file)
+            session_manager.save_session(config_file=config_file)
 
             # Build response message
-            config_msg = f" with config '{config_file}'" if config_file else ""
             auto_refresh_msg = (
                 " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
             )
@@ -523,7 +482,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return [
                 TextContent(
                     type="text",
-                    text=f"Set project directory to: {project_path}{config_msg}\n"
+                    text=f"Set project via config: {config_file}\n"
+                    f"Resolved project root: {project_path}\n"
                     f"Indexing started in background.{auto_refresh_msg}\n"
                     f"Use 'sync_project' to check progress.\n"
                     f"Tools are available but will return partial results until indexing completes.",
@@ -1100,12 +1060,24 @@ async def main():
     disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
     saved_session = None if disable_auto_resume else session_manager.load_session()
     if saved_session:
-        project_path = saved_session["project_path"]
         config_file = saved_session.get("config_file")
 
-        diagnostics.info(f"Auto-resuming last session: {project_path}")
-
         try:
+            # Extract project_root from config file
+            with open(config_file, "r") as f:
+                config_data = json.load(f)
+
+            config_root = config_data.get("project_root")
+            if not config_root:
+                raise ValueError(f"Config file {config_file} missing 'project_root'")
+
+            # Resolve project_root relative to config file directory
+            config_dir = os.path.dirname(config_file)
+            project_path = os.path.abspath(os.path.join(config_dir, config_root))
+
+            diagnostics.info(f"Auto-resuming session via config: {config_file}")
+            diagnostics.info(f"Resolved project root: {project_path}")
+
             # Initialize analyzer with saved project
             state_manager.transition_to(AnalyzerState.INITIALIZING)
             analyzer = CppAnalyzer(project_path, config_file=config_file)

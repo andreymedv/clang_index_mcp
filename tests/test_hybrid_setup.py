@@ -13,33 +13,28 @@ from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
 from mcp_server.cpp_mcp_server import _handle_tool_call
 
 @pytest.mark.asyncio
-async def test_cpp_analyzer_config_prioritization():
-    """Test that CppAnalyzerConfig prioritizes the explicitly passed path."""
+async def test_cpp_analyzer_config_explicit_only():
+    """Test that CppAnalyzerConfig only uses the explicitly passed path."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         
-        # 1. Project root config (lower priority)
         project_root = tmp_path / "project"
         project_root.mkdir()
-        root_config = project_root / ".cpp-analyzer-config.json"
-        with open(root_config, "w") as f:
-            json.dump({"max_file_size_mb": 50}, f)
-            
-        # 2. External config (higher priority)
+        
+        # External config
         external_config = tmp_path / "external.json"
         with open(external_config, "w") as f:
             json.dump({"max_file_size_mb": 99}, f)
             
-        # Initialize config with both present
+        # Initialize config with explicit path
         config = CppAnalyzerConfig(project_root, config_path=external_config)
         
-        # Should pick external_config (99) over root_config (50)
         assert config.get_max_file_size_mb() == 99
         assert config.config_path == external_config
 
 @pytest.mark.asyncio
 async def test_hybrid_project_setup():
-    """Test setting project directory via a configuration file."""
+    """Test setting project via a configuration file."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         
@@ -73,7 +68,7 @@ async def test_hybrid_project_setup():
             
             # Call set_project_directory with the config file path
             arguments = {
-                "project_path": str(config_file.absolute()),
+                "config_file": str(config_file.absolute()),
                 "auto_refresh": True
             }
             
@@ -81,13 +76,11 @@ async def test_hybrid_project_setup():
             results = await _handle_tool_call("set_project_directory", arguments)
             
             # Verify results
-            assert "Set project directory to" in results[0].text
+            assert "Set project via config" in results[0].text
             assert str(project_dir.absolute()) in results[0].text
             assert str(config_file.absolute()) in results[0].text
             
             # Verify MockAnalyzer was called with resolved paths
-            # The first argument should be the resolved project root
-            # The config_file argument should be the config file path
             args, kwargs = MockAnalyzer.call_args
             assert args[0] == str(project_dir.absolute())
             assert kwargs["config_file"] == str(config_file.absolute())
@@ -106,7 +99,7 @@ async def test_hybrid_project_setup_invalid_root():
             json.dump(config_data, f)
             
         arguments = {
-            "project_path": str(config_file.absolute())
+            "config_file": str(config_file.absolute())
         }
         
         results = await _handle_tool_call("set_project_directory", arguments)
@@ -127,7 +120,7 @@ async def test_hybrid_project_setup_missing_field():
             json.dump(config_data, f)
             
         arguments = {
-            "project_path": str(config_file.absolute())
+            "config_file": str(config_file.absolute())
         }
         
         results = await _handle_tool_call("set_project_directory", arguments)
