@@ -23,7 +23,15 @@ _analyzer = None
 def test_mcp_server(project_path: str):
     """Test the MCP server with a real codebase"""
 
-    # Import the analyzer
+    # Configure libclang exactly like production MCP server
+    from mcp_server.libclang_setup import configure_libclang, get_libclang_runtime_info
+
+    if not configure_libclang():
+        print("Error: Could not find libclang library")
+        return
+    print(f"[OK] libclang runtime config: {get_libclang_runtime_info()}")
+
+    # Import the analyzer after libclang setup
     from mcp_server.cpp_analyzer import CppAnalyzer
 
     print("=" * 60)
@@ -71,6 +79,19 @@ def test_mcp_server(project_path: str):
     print("[OK] Server status:")
     for key, value in status.items():
         print(f"   {key}: {value}")
+
+    # 3.1. Show compile args profile for a sample file
+    if analyzer.compile_commands_manager:
+        source_files = analyzer.compile_commands_manager.get_all_files()
+        if source_files:
+            profile = analyzer.compile_commands_manager.get_compile_arg_profile(
+                Path(source_files[0])
+            )
+            print("   compile_arg_profile(sample):")
+            print(f"      file: {profile['file']}")
+            print(f"      args_source: {profile['args_source']}")
+            print(f"      cxx_standards: {profile['cxx_standards']}")
+            print(f"      system_include_dirs: {profile['system_include_dirs']}")
 
     # 4. Search for classes
     print("\n4. Searching for classes (pattern: '.*')...")

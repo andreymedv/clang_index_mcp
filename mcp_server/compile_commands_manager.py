@@ -863,6 +863,7 @@ class CompileCommandsManager:
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the compile commands manager."""
         with self.cache_lock:
+            fallback_profile = self._extract_arg_insights(self.fallback_args)
             return {
                 "enabled": self.enabled,
                 "compile_commands_count": len(self.compile_commands),
@@ -871,7 +872,60 @@ class CompileCommandsManager:
                 "fallback_enabled": self.fallback_to_hardcoded,
                 "last_modified": self.last_modified,
                 "compile_commands_path": str(self.project_root / self.compile_commands_path),
+                "clang_resource_dir": self.clang_resource_dir,
+                "fallback_cxx_standards": fallback_profile["cxx_standards"],
+                "fallback_system_include_dirs": fallback_profile["system_include_dirs"],
             }
+
+    def _extract_arg_insights(self, args: List[str]) -> Dict[str, List[str]]:
+        """Extract concise diagnostics from compile arguments."""
+        standards: List[str] = []
+        system_includes: List[str] = []
+
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg.startswith("-std="):
+                standards.append(arg[len("-std=") :])
+            elif arg == "-std" and i + 1 < len(args):
+                standards.append(args[i + 1])
+                i += 1
+            elif arg.startswith("-isystem="):
+                system_includes.append(arg[len("-isystem=") :])
+            elif arg == "-isystem" and i + 1 < len(args):
+                system_includes.append(args[i + 1])
+                i += 1
+            i += 1
+
+        # De-duplicate while preserving order
+        unique_standards = list(dict.fromkeys(standards))
+        unique_system_includes = list(dict.fromkeys(system_includes))
+        return {
+            "cxx_standards": unique_standards,
+            "system_include_dirs": unique_system_includes,
+        }
+
+    def get_compile_arg_profile(self, file_path: Path) -> Dict[str, Any]:
+        """Return compile argument profile for a specific source file."""
+        compile_args = self.get_compile_args(file_path)
+        if compile_args is not None:
+            args_source = "compile_commands"
+            final_args = compile_args
+        elif self.fallback_to_hardcoded:
+            args_source = "fallback"
+            final_args = self.fallback_args.copy()
+        else:
+            args_source = "none"
+            final_args = []
+
+        insights = self._extract_arg_insights(final_args)
+        return {
+            "file": str(file_path),
+            "args_source": args_source,
+            "cxx_standards": insights["cxx_standards"],
+            "system_include_dirs": insights["system_include_dirs"],
+            "clang_resource_dir": self.clang_resource_dir,
+        }
 
     def is_file_supported(self, file_path: Path) -> bool:
         """Check if a file has compile commands available."""
