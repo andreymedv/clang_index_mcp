@@ -4627,7 +4627,9 @@ class CppAnalyzer:
                     alias_names = self.cache_manager.get_aliases_for_canonical(
                         row["canonical_type"]
                     )
-                    aliases = []
+
+                    # Deduplicate aliases using qualified_name as key
+                    unique_aliases = {}
                     for alias_name in alias_names:
                         alias_cursor = conn.execute(
                             """
@@ -4640,21 +4642,25 @@ class CppAnalyzer:
                         )
                         alias_row = alias_cursor.fetchone()
                         if alias_row:
-                            alias_dict = {
-                                "name": alias_row["alias_name"],
-                                "qualified_name": alias_row["qualified_name"],
-                                "file": alias_row["file"],
-                                "line": alias_row["line"],
-                            }
-                            if alias_row["is_template_alias"]:
-                                alias_dict["is_template_alias"] = True
-                                if alias_row["template_params"]:
-                                    import json
+                            qualified_name = alias_row["qualified_name"]
+                            if qualified_name not in unique_aliases:
+                                alias_dict = {
+                                    "name": alias_row["alias_name"],
+                                    "qualified_name": qualified_name,
+                                    "file": alias_row["file"],
+                                    "line": alias_row["line"],
+                                }
+                                if alias_row["is_template_alias"]:
+                                    alias_dict["is_template_alias"] = True
+                                    if alias_row["template_params"]:
+                                        import json
 
-                                    alias_dict["template_params"] = json.loads(
-                                        alias_row["template_params"]
-                                    )
-                            aliases.append(alias_dict)
+                                        alias_dict["template_params"] = json.loads(
+                                            alias_row["template_params"]
+                                        )
+                                unique_aliases[qualified_name] = alias_dict
+
+                    aliases = list(unique_aliases.values())
 
                     return {
                         "canonical_type": row["canonical_type"],
@@ -4736,10 +4742,13 @@ class CppAnalyzer:
                 self.cache_manager.backend._ensure_connected()
                 conn = self.cache_manager.backend.conn
                 assert conn is not None
+
+                # Deduplicate aliases using qualified_name as key
+                unique_aliases = {}
                 for alias_name in alias_names:
                     cursor = conn.execute(
                         """
-                        SELECT alias_name, canonical_type, file, line, namespace,
+                        SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
                                is_template_alias, template_params
                         FROM type_aliases
                         WHERE alias_name = ? OR qualified_name = ?
@@ -4748,30 +4757,30 @@ class CppAnalyzer:
                     )
                     row = cursor.fetchone()
                     if row:
-                        # Build qualified name
-                        qualified_alias = (
-                            f"{row['namespace']}::{row['alias_name']}"
-                            if row["namespace"]
-                            else row["alias_name"]
-                        )
+                        qualified_alias = row["qualified_name"]
 
-                        # Build alias dictionary
-                        alias_dict = {
-                            "name": row["alias_name"],
-                            "qualified_name": qualified_alias,
-                            "file": row["file"],
-                            "line": row["line"],
-                        }
+                        if qualified_alias not in unique_aliases:
+                            # Build alias dictionary
+                            alias_dict = {
+                                "name": row["alias_name"],
+                                "qualified_name": qualified_alias,
+                                "file": row["file"],
+                                "line": row["line"],
+                            }
 
-                        # Add template information if present (Phase 2.0)
-                        if row["is_template_alias"]:
-                            alias_dict["is_template_alias"] = True
-                            if row["template_params"]:
-                                import json
+                            # Add template information if present (Phase 2.0)
+                            if row["is_template_alias"]:
+                                alias_dict["is_template_alias"] = True
+                                if row["template_params"]:
+                                    import json
 
-                                alias_dict["template_params"] = json.loads(row["template_params"])
+                                    alias_dict["template_params"] = json.loads(
+                                        row["template_params"]
+                                    )
 
-                        aliases.append(alias_dict)
+                            unique_aliases[qualified_alias] = alias_dict
+
+                aliases = list(unique_aliases.values())
             except Exception as e:
                 # Log error but continue
                 diagnostics.debug(f"Failed to get alias details: {e}")
