@@ -155,16 +155,17 @@ Once configured, you can use the C++ analyzer in your conversations:
 
 ## Configuration Options
 
-The server behavior can be configured via a `.cpp-analyzer-config.json` file. The server looks for this file in:
-1. The path specified by the `CPP_ANALYZER_CONFIG` environment variable.
-2. The project root directory.
-3. A path explicitly passed to the `set_project` tool.
+The server behavior is configured via a `.json` configuration file. You must provide the path to this file when initializing the project.
+
+The server loads configuration from:
+1. The path explicitly passed to the `set_project` tool (recommended).
+2. The path specified by the `CPP_ANALYZER_CONFIG` environment variable.
 
 ### Example Configuration
 
 ```json
 {
-  "project_root": ".",
+  "project_root": "/path/to/source",
   "exclude_directories": [".git", "build", "node_modules"],
   "include_dependencies": true,
   "max_workers": null,

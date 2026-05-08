@@ -680,10 +680,10 @@ class TestSetProjectRouting:
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
-            result = await handle_tool_call_b("set_project", {"path": "/tmp/proj"})
+            result = await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             parsed = _parse_tc(result)
             assert parsed["status"] == "ready"
-            assert parsed["project_path"] == "/tmp/proj"
+            assert parsed["config_file"] == "/tmp/c.json"
             # Should have called: set_project_directory, wait_for_indexing, check_system_status
             call_names = [c[0] for c in calls]
             assert "set_project_directory" in call_names
@@ -691,8 +691,8 @@ class TestSetProjectRouting:
             assert "check_system_status" in call_names
 
     @pytest.mark.asyncio
-    async def test_set_project_maps_path_param(self) -> None:
-        """set_project 'path' param maps to 'project_path' internally."""
+    async def test_set_project_passes_config_param(self) -> None:
+        """set_project 'config_file' param is forwarded to internal handler."""
         captured_args: dict[str, Any] = {}
 
         async def mock_handle(name: str, args: Any) -> list[TextContent]:
@@ -703,9 +703,8 @@ class TestSetProjectRouting:
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
-            await handle_tool_call_b("set_project", {"path": "/tmp/proj", "config_file": "/c.json"})
-            assert captured_args["project_path"] == "/tmp/proj"
-            assert captured_args["config_file"] == "/c.json"
+            await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
+            assert captured_args["config_file"] == "/tmp/c.json"
 
     @pytest.mark.asyncio
     async def test_set_project_indexing_in_progress(self) -> None:
@@ -717,7 +716,7 @@ class TestSetProjectRouting:
             return _tc({"result": "ok"})
 
         with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
-            result = await handle_tool_call_b("set_project", {"path": "/tmp/proj"})
+            result = await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             parsed = _parse_tc(result)
             assert parsed["status"] == "indexing_in_progress"
 

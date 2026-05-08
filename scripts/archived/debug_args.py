@@ -12,8 +12,9 @@ from mcp_server.compile_commands_manager import CompileCommandsManager
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
 
 project_root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
+config_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 
-config = CppAnalyzerConfig(project_root)
+config = CppAnalyzerConfig(project_root, config_path=config_path)
 cc_config = config.get_compile_commands_config()
 cc_manager = CompileCommandsManager(project_root, cc_config)
 
