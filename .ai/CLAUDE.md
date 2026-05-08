@@ -282,7 +282,8 @@ make ie                         # install-editable
 
 ## Configuration
 
-**Project config:** `cpp-analyzer-config.json` (project root or specified path)
+**Mandatory Project setup:** Projects MUST be initialized via a `.json` configuration file passed to `set_project`.
+- `project_root`: (Required) Path to the C++ source directory (absolute or relative to config file).
 - `exclude_directories`: Dirs to skip (e.g., [".git", "build", "node_modules"])
 - `exclude_patterns`: File patterns to exclude (e.g., ["*.generated.h", "*_test.cpp"])
 - `dependency_directories`: Third-party deps (e.g., ["vcpkg_installed", "third_party"])
@@ -293,6 +294,7 @@ make ie                         # install-editable
 - `compile_commands.cache_enabled`: Cache parsed compile commands (default: true)
 
 **Environment variables:**
+- `CPP_ANALYZER_CONFIG=/path/to/config.json`: Override configuration for CLI usage
 - `CPP_ANALYZER_USE_THREADS=true`: Disable ProcessPoolExecutor, use ThreadPoolExecutor
 - `MCP_DEBUG=1`: Enable debug logging
 - `PYTHONUNBUFFERED=1`: Unbuffered Python output
@@ -468,9 +470,11 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 5. **Incremental analysis is automatic:** When using `sync_project(refresh_mode="incremental")`, the analyzer intelligently detects changes. Only use `refresh_mode="full"` after major config changes or if cache corruption is suspected.
 
-6. **Performance monitoring:** On large projects (1000+ files), use `sync_project` to monitor progress. The `set_project` tool waits synchronously for indexing to complete (default 30s timeout).
+6. **Project Identity is Config-Based:** Project identity and cache directories are determined solely by the absolute path of the configuration file. This allows same-source, multi-config workflows.
 
-7. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
+7. **No Automatic Discovery:** Legacy discovery of `.cpp-analyzer-config.json` in project root is removed. Always provide an explicit path to a configuration file.
+
+8. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 
 8. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
 
