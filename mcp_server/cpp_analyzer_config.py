@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 # Handle both package and script imports
 try:
@@ -14,8 +14,6 @@ except ImportError:
 
 class CppAnalyzerConfig:
     """Loads and manages configuration for the C++ analyzer."""
-
-    CONFIG_FILENAME = ".cpp-analyzer-config.json"
 
     DEFAULT_CONFIG = {
         "exclude_directories": [
@@ -55,70 +53,26 @@ class CppAnalyzerConfig:
         self.config_path = config_path  # Pre-specified config path
         self.config = self._load_config()
 
-    def _find_config_file(self) -> Tuple[Optional[Path], Optional[str]]:
-        """Find config file by checking multiple locations in priority order.
-
-        Priority order:
-        1. Pre-specified config_path (from constructor)
-        2. Environment variable CPP_ANALYZER_CONFIG
-        3. Project root (.cpp-analyzer-config.json)
-
-        Returns tuple of (config_path, source_description) or (None, None) if not found.
-        """
-        # 1. Check pre-specified path
-        if self.config_path:
-            if self.config_path.exists():
-                diagnostics.debug(f"Using pre-specified config: {self.config_path}")
-                return (self.config_path, "specified config file")
-            else:
-                diagnostics.warning(f"Specified config file not found: {self.config_path}")
-
-        # 2. Check environment variable
-        env_config = os.environ.get("CPP_ANALYZER_CONFIG")
-        if env_config:
-            env_path = Path(env_config)
-            if env_path.exists():
-                diagnostics.debug(f"Using config from CPP_ANALYZER_CONFIG: {env_path}")
-                return (env_path, "environment variable CPP_ANALYZER_CONFIG")
-            else:
-                diagnostics.warning(f"CPP_ANALYZER_CONFIG points to non-existent file: {env_path}")
-
-        # 2. Check project root
-        project_config = self.project_root / self.CONFIG_FILENAME
-        if project_config.exists():
-            diagnostics.debug(f"Using config from project root: {project_config}")
-            return (project_config, "project root directory")
-
-        diagnostics.debug(
-            f"No config file found. Checked: {project_config}, env var: {'set' if env_config else 'not set'}"
-        )
-        return (None, None)
-
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file or use defaults."""
-        config_file, config_source = self._find_config_file()
-
         config = self.DEFAULT_CONFIG.copy()
 
-        if config_file:
-            self.config_path = config_file
+        if self.config_path:
+            if not self.config_path.exists():
+                diagnostics.warning(f"Specified config file not found: {self.config_path}")
+                diagnostics.configure_from_config(config)
+                return config
+
             try:
-                with open(config_file, "r") as f:
+                with open(self.config_path, "r") as f:
                     user_config = json.load(f)
 
                 # Validate that the config file contains a JSON object, not an array
                 if not isinstance(user_config, dict):
-                    diagnostics.error(f"Invalid config file format at {config_file}")
+                    diagnostics.error(f"Invalid config file format at {self.config_path}")
                     diagnostics.error(
                         f"Expected a JSON object (dict), but got {type(user_config).__name__}"
                     )
-                    diagnostics.error(
-                        "Note: If you see 'compile_commands.json' here, you may have:"
-                    )
-                    diagnostics.error(
-                        "  1. Set CPP_ANALYZER_CONFIG environment variable to wrong file"
-                    )
-                    diagnostics.error("  2. Named .cpp-analyzer-config.json incorrectly")
                     diagnostics.warning("Using default configuration")
                     return config
 
@@ -128,19 +82,15 @@ class CppAnalyzerConfig:
                 # Configure diagnostics system from config
                 diagnostics.configure_from_config(config)
 
-                diagnostics.debug(f"Configuration loaded from {config_source}: {config_file}")
+                diagnostics.debug(f"Configuration loaded from specified file: {self.config_path}")
                 return config
             except Exception as e:
-                diagnostics.error(f"Error loading config from {config_file}: {e}")
+                diagnostics.error(f"Error loading config from {self.config_path}: {e}")
                 diagnostics.warning("Using default configuration")
         else:
             # Configure diagnostics with defaults
             diagnostics.configure_from_config(config)
-
-            diagnostics.debug("No config file found, using defaults")
-            diagnostics.debug(
-                f"You can create a config file at: {self.project_root / self.CONFIG_FILENAME}"
-            )
+            diagnostics.debug("No config file provided, using defaults")
 
         return config
 
@@ -247,19 +197,18 @@ class CppAnalyzerConfig:
             "exclude_patterns": compile_commands.get("exclude_patterns", []),
         }
 
-    def create_example_config(self, location: str = "project") -> Path:
-        """Create an example configuration file.
+    def create_example_config(self, target_path: Path) -> Path:
+        """Create an example configuration file at the specified path.
 
         Args:
-            location: Where to create the config file:
-                     'project' - Project root directory (default)
-                     'path' - Custom path (uses self.config_path if set)
+            target_path: Absolute path to the file to be created.
 
         Returns:
             Path to the created config file
         """
         example_config = {
             "_comment": "C++ Analyzer configuration file",
+            "project_root": ".",
             "exclude_directories": [
                 ".git",
                 ".svn",
@@ -292,18 +241,6 @@ class CppAnalyzerConfig:
             },
             "diagnostics": {"level": "info", "enabled": True},
         }
-
-        # Determine target path
-        if location == "project":
-            target_path = self.project_root / self.CONFIG_FILENAME
-        elif location == "path":
-            if self.config_path:
-                target_path = self.config_path
-            else:
-                # Default to project root
-                target_path = self.project_root / self.CONFIG_FILENAME
-        else:
-            raise ValueError(f"Invalid location: {location}. Use 'project' or 'path'.")
 
         # Write the config file
         with open(target_path, "w") as f:

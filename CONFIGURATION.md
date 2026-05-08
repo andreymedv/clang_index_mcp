@@ -52,36 +52,10 @@ All available configuration options:
 
 ## Configuration File Locations
 
-The analyzer looks for configuration files in the following locations (in priority order):
+The analyzer requires an **explicit** configuration file to be provided during project setup.
 
-### 1. Environment Variable (Highest Priority)
-Set the `CPP_ANALYZER_CONFIG` environment variable to point to a custom config file:
-
-```bash
-# Linux/macOS
-export CPP_ANALYZER_CONFIG="/path/to/my-custom-config.json"
-
-# Windows
-set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
-```
-
-**Use case**: Temporary overrides, CI/CD pipelines, or testing different configurations.
-
-### 2. Project-Specific Configuration
-Place `.cpp-analyzer-config.json` (note the leading dot) in your C++ project root directory:
-
-```
-/path/to/your/cpp/project/
-├── .cpp-analyzer-config.json    ← Project-specific config (hidden on Unix)
-├── src/
-├── include/
-└── compile_commands.json
-```
-
-**Use case**: Per-project settings that persist with your codebase.
-
-### 3. Hybrid Project Entry Point (External Configuration)
-You can use a `.json` configuration file as the primary project "path" when calling `set_project`. This file does not need to be inside your source tree.
+### 1. Mandatory Project Configuration (Recommended)
+You must use a `.json` configuration file as the primary project "entry point" when calling `set_project`. This file does not need to be inside your source tree.
 
 To use this mode, the configuration file **must** include a `project_root` field:
 
@@ -98,6 +72,21 @@ To use this mode, the configuration file **must** include a `project_root` field
 If `project_root` is a relative path, it is resolved **relative to the directory containing the config file**.
 
 **Use case**: Multiple configurations for the same source, or keeping your source tree completely clean of MCP-specific files.
+
+### 2. Environment Variable Fallback
+If you are running the analyzer via scripts or CLI (outside of the MCP `set_project` tool), you can set the `CPP_ANALYZER_CONFIG` environment variable to point to a custom config file:
+
+```bash
+# Linux/macOS
+export CPP_ANALYZER_CONFIG="/path/to/my-custom-config.json"
+
+# Windows
+set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
+```
+
+**Use case**: CI/CD pipelines or automated scripts.
+
+> **Note on Legacy Behavior**: Predefined configuration file discovery (e.g., searching for `.cpp-analyzer-config.json` in the project root) has been removed to ensure deterministic behavior. You must always provide an explicit path to a configuration file.
 
 ## Configuration File Format
 
@@ -324,7 +313,7 @@ python3 scripts/diagnose_cache.py
 
 ### Method 1: Manually Create
 
-Create `.cpp-analyzer-config.json` in your project root with your desired settings.
+Create a `.json` configuration file (e.g., `analysis-config.json`) with your desired settings.
 
 ### Method 2: Using Python API
 
@@ -332,23 +321,22 @@ Create `.cpp-analyzer-config.json` in your project root with your desired settin
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
 from pathlib import Path
 
+# Initialize (project_root is required)
 config = CppAnalyzerConfig(Path("/path/to/your/project"))
 
-# Create in project root (recommended)
-config.create_example_config(location='project')
-
-# Or create at a custom path
-config.create_example_config(location='path')
+# Create example config at an explicit path
+config.create_example_config(Path("/path/to/analysis-config.json"))
 ```
 
 ## Configuration Priority Examples
 
 ### Example 1: Project-Specific Settings
 
-Create `/path/to/my/project/.cpp-analyzer-config.json`:
+Create `/path/to/my/project/config.json`:
 
 ```json
 {
+  "project_root": ".",
   "include_dependencies": false,
   "compile_commands": {
     "path": "build/compile_commands.json"
@@ -356,7 +344,7 @@ Create `/path/to/my/project/.cpp-analyzer-config.json`:
 }
 ```
 
-This configuration applies only to this specific project.
+This configuration applies to the project root where it's located.
 
 ### Example 2: Environment Variable Override
 
@@ -364,6 +352,7 @@ This configuration applies only to this specific project.
 # Create a custom config file
 cat > /tmp/special-config.json << 'EOF'
 {
+  "project_root": "/path/to/actual/project",
   "include_dependencies": true,
   "max_file_size_mb": 20,
   "compile_commands": {
@@ -378,16 +367,16 @@ export CPP_ANALYZER_CONFIG="/tmp/special-config.json"
 # Run your analysis - the analyzer will use /tmp/special-config.json
 ```
 
-This takes precedence over project-specific config.
+This takes precedence over any other configuration method.
 
 ### Example 3: Different Configs for Different Build Types
 
 ```bash
 # For debug builds
-export CPP_ANALYZER_CONFIG="$PWD/.cpp-analyzer-debug.json"
+export CPP_ANALYZER_CONFIG="$PWD/config-debug.json"
 
 # For release builds
-export CPP_ANALYZER_CONFIG="$PWD/.cpp-analyzer-release.json"
+export CPP_ANALYZER_CONFIG="$PWD/config-release.json"
 ```
 
 ## Recommendations
@@ -396,20 +385,20 @@ export CPP_ANALYZER_CONFIG="$PWD/.cpp-analyzer-release.json"
 
 When distributing as a Python package:
 
-1. **Include in .gitignore** (optional):
-   ```gitignore
-   # Optionally ignore the config if it's machine-specific
-   .cpp-analyzer-config.json
+1. **Keep configs separate** (optional):
+   ```
+   /configs/default.json
+   /configs/full-analysis.json
    ```
 
 2. **Include example config in repo**:
    ```
-   .cpp-analyzer-config.json.example
+   analysis-config.json.example
    ```
 
    Users can copy and customize:
    ```bash
-   cp .cpp-analyzer-config.json.example .cpp-analyzer-config.json
+   cp analysis-config.json.example analysis-config.json
    ```
 
 3. **Document in README**:
@@ -446,24 +435,22 @@ Use environment variable for build-specific settings:
 
 ### Config File Not Found
 
-If you see "No config file found, using defaults":
+If you see "Specified config file not found":
 
 ```
-No config file found, using defaults
-You can create a config file at:
-  - Project: /path/to/your/project/.cpp-analyzer-config.json
-  - Or set:  CPP_ANALYZER_CONFIG=<path>
+Specified config file not found: /path/to/missing-config.json
+Using default configuration
 ```
 
-**Solution**: Create `.cpp-analyzer-config.json` in your project root or set the environment variable.
+**Solution**: Ensure the path passed to `set_project` or `CPP_ANALYZER_CONFIG` is correct and absolute.
 
 ### Config File Not Loaded
 
 Check:
-1. File exists at the expected location
-2. Filename is exactly `.cpp-analyzer-config.json` (with leading dot)
-3. File contains valid JSON
-4. File has read permissions
+1. File exists at the specified location
+2. File contains valid JSON
+3. File has read permissions
+4. File contains a `project_root` field (if used as the primary entry point)
 5. Check stderr output for error messages
 
 ### Which Config is Being Used?
@@ -471,23 +458,10 @@ Check:
 The analyzer prints which config file is loaded:
 
 ```
-Loaded config from: /path/to/your/project/.cpp-analyzer-config.json
+Configuration loaded from specified file: /path/to/analysis-config.json
 ```
 
 If no message appears, defaults are being used.
-
-### Hidden File on Unix
-
-The leading dot makes the file hidden on Unix-like systems. To view it:
-
-```bash
-# List hidden files
-ls -la
-
-# Edit with your preferred editor
-nano .cpp-analyzer-config.json
-vim .cpp-analyzer-config.json
-```
 
 ## Examples
 
@@ -595,45 +569,44 @@ When you refresh the project, the analyzer:
 
 ### Project Identity
 
-Projects are uniquely identified by the combination of:
-- **Source directory path** (absolute)
-- **Configuration file path** (absolute, optional)
+Projects are uniquely identified by the **configuration file path** (absolute).
 
-Different combinations create separate cache directories:
+Different config file paths create separate cache directories:
 
 ```bash
-# Same source, no config → Same cache
-/project + (no config) → cache: project_abc123def456
-
 # Same source, different config → Different caches
-/project + /project/config1.json → cache: project_111aaa222bbb
-/project + /project/config2.json → cache: project_333ccc444ddd
+/configs/debug.json (points to /src) → cache: debug_abc123
+/configs/release.json (points to /src) → cache: release_def456
 
-# Different source, same config name → Different caches
-/project1 + /project1/config.json → cache: project1_555eee666fff
-/project2 + /project2/config.json → cache: project2_777ggg888hhh
+# Different source, same config name (but different paths) → Different caches
+/project1/config.json → cache: p1_111aaa
+/project2/config.json → cache: p2_222bbb
 ```
 
 This enables **multi-configuration workflows** where you can work with the same source code using different build configurations (Debug/Release, different compiler flags, etc.) without cache conflicts.
 
 ### MCP Tool Integration
 
-#### `set_project_directory` Tool
+#### `set_project` Tool
 
-When initializing a project, you can control incremental analysis behavior:
+This is the **mandatory first step** for any analysis. It initializes the project using a configuration file.
 
 ```json
 {
-  "project_path": "/path/to/project",
-  "config_file": "/path/to/project/.cpp-analyzer-config.json",
-  "auto_refresh": true
+  "config_file": "/path/to/my-project-config.json",
+  "sync_timeout": 30
 }
 ```
 
 **Parameters:**
-- `project_path` (required): Absolute path to project root
-- `config_file` (optional): Path to configuration file for project identity
-- `auto_refresh` (optional, default `true`): Automatically detect and re-analyze changes after loading cache
+- `config_file` (required): Absolute path to the `.json` configuration file. This file **must** contain a `project_root` field.
+- `sync_timeout` (optional, default `30`): Maximum seconds to wait for initial indexing to complete.
+
+**Behavior:**
+- The server reads the `config_file`, extracts and resolves the `project_root`.
+- Initializes the `CppAnalyzer` and starts background indexing.
+- Saves the session to `session.json` for auto-resume on restart.
+- Returns status `ready` if indexing completes within the timeout, or `indexing_in_progress` otherwise.
 
 **With `auto_refresh=true` (recommended):**
 - Loads cache if available

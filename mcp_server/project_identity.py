@@ -109,7 +109,7 @@ class ProjectIdentity:
 
         Example:
             Source: /home/user/myproject
-            Config: /home/user/myproject/.cpp-analyzer-config.json
+            Config: /home/user/configs/my-config.json
             Result: "myproject_a1b2c3d4e5f6g7h8"
         """
         project_name = self.source_directory.name or "project"

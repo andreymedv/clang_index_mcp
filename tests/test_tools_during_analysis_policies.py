@@ -52,7 +52,7 @@ def test_config_file_query_behavior(temp_project_with_config):
     config_file.write_text(json.dumps(config_data))
 
     # Load config
-    config = CppAnalyzerConfig(temp_project_with_config)
+    config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
 
     policy = config.get_query_behavior_policy()
     assert policy == "block", "Should read policy from config file"
@@ -64,7 +64,7 @@ def test_config_file_reject_policy(temp_project_with_config):
     config_data = {"query_behavior": "reject"}
     config_file.write_text(json.dumps(config_data))
 
-    config = CppAnalyzerConfig(temp_project_with_config)
+    config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
     policy = config.get_query_behavior_policy()
     assert policy == "reject", "Should read reject policy from config file"
 
@@ -78,7 +78,7 @@ def test_env_var_overrides_config_file(temp_project_with_config):
 
     # Set environment variable to block
     with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "block"}):
-        config = CppAnalyzerConfig(temp_project_with_config)
+        config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
         policy = config.get_query_behavior_policy()
         assert policy == "block", "Env var should override config file"
 
@@ -97,7 +97,7 @@ def test_invalid_config_value_defaults_to_allow_partial(temp_project_with_config
     config_data = {"query_behavior": "invalid_value"}
     config_file.write_text(json.dumps(config_data))
 
-    config = CppAnalyzerConfig(temp_project_with_config)
+    config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
     policy = config.get_query_behavior_policy()
     assert policy == "allow_partial", "Invalid value should default to allow_partial"
 
@@ -109,7 +109,7 @@ def test_invalid_env_var_falls_back_to_config(temp_project_with_config):
     config_file.write_text(json.dumps(config_data))
 
     with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "invalid"}):
-        config = CppAnalyzerConfig(temp_project_with_config)
+        config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
         policy = config.get_query_behavior_policy()
         assert policy == "reject", "Invalid env var should fall back to config"
 
@@ -125,12 +125,12 @@ def test_priority_order_env_config_default(temp_project_with_config):
     config_data = {"query_behavior": "block"}
     config_file.write_text(json.dumps(config_data))
 
-    config = CppAnalyzerConfig(temp_project_with_config)
+    config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
     assert config.get_query_behavior_policy() == "block"
 
     # Test 3: Env overrides config
     with patch.dict(os.environ, {"CPP_ANALYZER_QUERY_BEHAVIOR": "reject"}):
-        config = CppAnalyzerConfig(temp_project_with_config)
+        config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
         assert config.get_query_behavior_policy() == "reject"
 
 
@@ -189,7 +189,8 @@ def test_example_config_includes_query_behavior(temp_project_with_config):
     config = CppAnalyzerConfig(temp_project_with_config)
 
     # Create example config
-    example_path = config.create_example_config(location="project")
+    target_path = temp_project_with_config / "example-config.json"
+    example_path = config.create_example_config(target_path)
 
     # Read it back
     with open(example_path) as f:
@@ -227,7 +228,7 @@ def test_config_with_all_three_policies(temp_project_with_config):
         config_data = {"query_behavior": policy_value}
         config_file.write_text(json.dumps(config_data))
 
-        config = CppAnalyzerConfig(temp_project_with_config)
+        config = CppAnalyzerConfig(temp_project_with_config, config_path=config_file)
         assert config.get_query_behavior_policy() == policy_value
 
 

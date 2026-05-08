@@ -996,13 +996,14 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 ### 7.1 Configuration File
 
-**REQ-7.1.1**: The system SHALL support configuration file named `.cpp-analyzer-config.json`.
+**REQ-7.1.1**: The system SHALL support an explicit JSON configuration file provided during initialization.
 
-**REQ-7.1.2**: Configuration file locations SHALL be checked in order:
-1. Environment variable CPP_ANALYZER_CONFIG
-2. Project root directory
+**REQ-7.1.2**: Configuration file SHALL be provided via:
+1. `set_project` tool parameter `config_file`
+2. Environment variable `CPP_ANALYZER_CONFIG` (for CLI usage)
 
 **REQ-7.1.3**: Configuration SHALL support:
+- `project_root`: Absolute or relative path to the C++ project root
 - `exclude_directories`: List of directories to exclude (default: .git, .svn, node_modules, etc.)
 - `dependency_directories`: List of directories containing dependencies (default: vcpkg_installed, third_party, external, etc.)
 - `exclude_patterns`: List of file patterns to exclude (e.g., "*.generated.h")
