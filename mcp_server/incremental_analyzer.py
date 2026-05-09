@@ -473,7 +473,7 @@ class IncrementalAnalyzer:
             # Process results as they complete
             for i, future in enumerate(as_completed(future_to_file)):
                 # Check for interruption
-                if getattr(self.analyzer, "_interrupted", False):
+                if getattr(self.analyzer, "_interrupted", False) is True:
                     # Cancel all pending futures
                     for f in future_to_file:
                         f.cancel()
