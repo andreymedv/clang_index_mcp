@@ -89,7 +89,9 @@ class IncrementalAnalyzer:
         self.scanner = ChangeScanner(analyzer)
 
     def perform_incremental_analysis(
-        self, progress_callback: Optional[Callable] = None
+        self,
+        progress_callback: Optional[Callable] = None,
+        wait_for_tools_callback: Optional[Callable[[], None]] = None,
     ) -> AnalysisResult:
         """
         Perform incremental analysis of changed files.
@@ -160,7 +162,9 @@ class IncrementalAnalyzer:
         # 4. Re-analyze files
         if files_to_analyze:
             diagnostics.info(f"Re-analyzing {len(files_to_analyze)} files...")
-            analyzed_count = self._reanalyze_files(files_to_analyze, start_time, progress_callback)
+            analyzed_count = self._reanalyze_files(
+                files_to_analyze, start_time, progress_callback, wait_for_tools_callback
+            )
         else:
             analyzed_count = 0
 
@@ -325,6 +329,7 @@ class IncrementalAnalyzer:
         files: Set[str],
         start_time: float,
         progress_callback: Optional[Callable] = None,
+        wait_for_tools_callback: Optional[Callable[[], None]] = None,
     ) -> int:
         """
         Re-analyze a set of files using parallel processing.
@@ -455,6 +460,9 @@ class IncrementalAnalyzer:
 
             # Process results as they complete
             for i, future in enumerate(as_completed(future_to_file)):
+                if wait_for_tools_callback:
+                    wait_for_tools_callback()
+
                 file_path = future_to_file[future]
                 try:
                     result = future.result()

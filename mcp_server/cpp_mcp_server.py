@@ -532,12 +532,18 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             max_results = arguments.get("max_results", None)
             include_base_classes = arguments.get("include_base_classes", True)
             # Run synchronous method in executor to avoid blocking event loop
-            raw_results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.search_classes(
-                    pattern, project_only, file_name, namespace, max_results, include_base_classes
-                ),
-            )
+            with state_manager.tool_execution():
+                raw_results = await loop.run_in_executor(
+                    None,
+                    lambda: analyzer.search_classes(
+                        pattern,
+                        project_only,
+                        file_name,
+                        namespace,
+                        max_results,
+                        include_base_classes,
+                    ),
+                )
             fallback = analyzer.pop_last_fallback()
             # Handle tuple return (results, total_count) when max_results is specified
             if isinstance(raw_results, tuple):
@@ -567,19 +573,20 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             signature_pattern = arguments.get("signature_pattern", None)
             include_attributes = arguments.get("include_attributes", False)
             # Run synchronous method in executor to avoid blocking event loop
-            raw_results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.search_functions(
-                    pattern,
-                    project_only,
-                    class_name,
-                    file_name,
-                    namespace,
-                    max_results,
-                    signature_pattern,
-                    include_attributes,
-                ),
-            )
+            with state_manager.tool_execution():
+                raw_results = await loop.run_in_executor(
+                    None,
+                    lambda: analyzer.search_functions(
+                        pattern,
+                        project_only,
+                        class_name,
+                        file_name,
+                        namespace,
+                        max_results,
+                        signature_pattern,
+                        include_attributes,
+                    ),
+                )
             fallback = analyzer.pop_last_fallback()
             # Handle tuple return (results, total_count) when max_results is specified
             if isinstance(raw_results, tuple):
@@ -655,9 +662,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             file_path = arguments["file_path"]
             pattern = arguments["pattern"]
             # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
-                None, lambda: analyzer.find_in_file(file_path, pattern)
-            )
+            with state_manager.tool_execution():
+                results = await loop.run_in_executor(
+                    None, lambda: analyzer.find_in_file(file_path, pattern)
+                )
             # find_in_file returns {"results": [...], "matched_files": [...], ...}
             # Count the actual symbol results for metadata logic
             result_list = results.get("results", []) if isinstance(results, dict) else []
@@ -707,7 +715,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                             result = await loop.run_in_executor(
                                 None,
                                 lambda: incremental_analyzer.perform_incremental_analysis(
-                                    progress_callback
+                                    progress_callback, state_manager.wait_for_tools_to_finish
                                 ),
                             )
 
@@ -729,7 +737,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                             diagnostics.info("Falling back to full refresh...")
                             # Fallback to full refresh
                             modified_count = await loop.run_in_executor(
-                                None, lambda: analyzer.refresh_if_needed(progress_callback)
+                                None,
+                                lambda: analyzer.refresh_if_needed(
+                                    progress_callback, state_manager.wait_for_tools_to_finish
+                                ),
                             )
                             diagnostics.info(
                                 f"Fallback full refresh complete: re-analyzed {modified_count} files"
@@ -1025,9 +1036,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             to_function = arguments["to_function"]
             max_depth = arguments.get("max_depth", 10)
             # Run synchronous method in executor to avoid blocking event loop
-            paths = await loop.run_in_executor(
-                None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
-            )
+            with state_manager.tool_execution():
+                paths = await loop.run_in_executor(
+                    None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
+                )
             output_paths: Dict[str, Any] = {"paths": paths}
             if not paths:
                 output_paths["metadata"] = {

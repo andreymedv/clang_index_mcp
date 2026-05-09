@@ -26,20 +26,16 @@ class TestMultipleForwardDeclarations:
         """Test that first forward declaration wins when no definition exists."""
         # Create two headers with forward declarations
         fwd1_h = tmp_path / "fwd1.h"
-        fwd1_h.write_text(
-            """
+        fwd1_h.write_text("""
 // fwd1.h
 class Parser;  // Line 3
-"""
-        )
+""")
 
         fwd2_h = tmp_path / "fwd2.h"
-        fwd2_h.write_text(
-            """
+        fwd2_h.write_text("""
 // fwd2.h
 class Parser;  // Line 3
-"""
-        )
+""")
 
         # Index both files
         analyzer = CppAnalyzer(project_root=str(tmp_path))
@@ -65,23 +61,19 @@ class TestForwardDeclarationPlusRealClass:
         """Test that real class definition replaces forward declaration."""
         # Create forward declaration header
         forward_h = tmp_path / "forward.h"
-        forward_h.write_text(
-            """
+        forward_h.write_text("""
 // forward.h
 class QString;  // Line 3 - IDE-suggested forward decl
-"""
-        )
+""")
 
         # Create real class header
         qstring_h = tmp_path / "QString.h"
-        qstring_h.write_text(
-            """
+        qstring_h.write_text("""
 // QString.h
 class QString {  // Lines 3-5
     int length;
 };
-"""
-        )
+""")
 
         # Index forward declaration first
         analyzer = CppAnalyzer(project_root=str(tmp_path))
@@ -114,23 +106,19 @@ class QString {  // Lines 3-5
         """Test that definition is kept when forward decl comes later."""
         # Create real class header
         qstring_h = tmp_path / "QString.h"
-        qstring_h.write_text(
-            """
+        qstring_h.write_text("""
 // QString.h
 class QString {  // Lines 3-5
     int length;
 };
-"""
-        )
+""")
 
         # Create forward declaration header
         forward_h = tmp_path / "forward.h"
-        forward_h.write_text(
-            """
+        forward_h.write_text("""
 // forward.h
 class QString;  // Line 3
-"""
-        )
+""")
 
         # Index real class first
         analyzer = CppAnalyzer(project_root=str(tmp_path))
@@ -164,32 +152,26 @@ class TestMultipleFunctionDeclarations:
         """Test function declared in multiple headers - definition wins."""
         # Create first header with declaration
         util_h = tmp_path / "util.h"
-        util_h.write_text(
-            """
+        util_h.write_text("""
 // util.h
 void processData(int x);  // Line 3
-"""
-        )
+""")
 
         # Create second header with duplicate declaration
         helper_h = tmp_path / "helper.h"
-        helper_h.write_text(
-            """
+        helper_h.write_text("""
 // helper.h
 void processData(int x);  // Line 3 - manually redeclared
-"""
-        )
+""")
 
         # Create source with definition
         util_cpp = tmp_path / "util.cpp"
-        util_cpp.write_text(
-            """
+        util_cpp.write_text("""
 // util.cpp
 void processData(int x) {  // Lines 3-5
     // implementation
 }
-"""
-        )
+""")
 
         # Index all files
         analyzer = CppAnalyzer(project_root=str(tmp_path))
@@ -212,23 +194,19 @@ void processData(int x) {  // Lines 3-5
         """Test that declaration is replaced when definition is encountered."""
         # Create header with declaration
         api_h = tmp_path / "api.h"
-        api_h.write_text(
-            """
+        api_h.write_text("""
 // api.h
 int calculate(int a, int b);  // Line 3
-"""
-        )
+""")
 
         # Create source with definition
         api_cpp = tmp_path / "api.cpp"
-        api_cpp.write_text(
-            """
+        api_cpp.write_text("""
 // api.cpp
 int calculate(int a, int b) {  // Lines 3-5
     return a + b;
 }
-"""
-        )
+""")
 
         # Index header first
         analyzer = CppAnalyzer(project_root=str(tmp_path))
@@ -265,23 +243,19 @@ class TestProcessingOrderIndependence:
         """Test that definition wins regardless of processing order."""
         # Create forward declaration
         fwd_h = tmp_path / "fwd.h"
-        fwd_h.write_text(
-            """
+        fwd_h.write_text("""
 // fwd.h
 class Data;  // Line 3
-"""
-        )
+""")
 
         # Create definition
         data_h = tmp_path / "data.h"
-        data_h.write_text(
-            """
+        data_h.write_text("""
 // data.h
 class Data {  // Lines 3-5
     int value;
 };
-"""
-        )
+""")
 
         # Test order 1: Forward first, then definition
         analyzer1 = CppAnalyzer(project_root=str(tmp_path))
@@ -325,21 +299,18 @@ class TestIDEForwardDeclarationScenario:
         """Test IDE-suggested forward declaration scenario."""
         # Simulate IDE suggesting forward declaration in widget.h
         widget_h = tmp_path / "widget.h"
-        widget_h.write_text(
-            """
+        widget_h.write_text("""
 // widget.h
 class QString;  // Line 3 - IDE-suggested forward decl
 
 class Widget {
     QString* name;
 };
-"""
-        )
+""")
 
         # Real QString class in Qt headers
         qstring_h = tmp_path / "QString.h"
-        qstring_h.write_text(
-            """
+        qstring_h.write_text("""
 // QString.h
 class QString {  // Lines 3-10
     char* data;
@@ -349,8 +320,7 @@ public:
     QString(const char* str);
     int size() const;
 };
-"""
-        )
+""")
 
         # Index widget.h first (as might happen due to compile_commands order)
         analyzer = CppAnalyzer(project_root=str(tmp_path))

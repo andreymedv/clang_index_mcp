@@ -34,25 +34,21 @@ class TestFilePermissionErrors:
         """Test handling of files with no read permission - Task 1.2.1"""
         # Create a file with no read permissions
         restricted_file = temp_project_dir / "src" / "restricted.cpp"
-        restricted_file.write_text(
-            """
+        restricted_file.write_text("""
 class RestrictedClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # Create a normal file
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text(
-            """
+        normal_file.write_text("""
 class NormalClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # Remove read permission from restricted file
         os.chmod(restricted_file, 0o000)
@@ -91,14 +87,12 @@ class TestMissingFileHandling:
         non_existent = temp_project_dir / "src" / "doesnt_exist.cpp"
         existing = temp_project_dir / "src" / "exists.cpp"
 
-        existing.write_text(
-            """
+        existing.write_text("""
 class ExistingClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         compile_commands = [
             {
@@ -145,14 +139,12 @@ class TestMalformedFiles:
 
         # Create normal file for comparison
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text(
-            """
+        normal_file.write_text("""
 class NormalClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # Create analyzer - should handle empty files gracefully
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -173,14 +165,12 @@ public:
 
         # Create normal file
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text(
-            """
+        normal_file.write_text("""
 class NormalClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # Create analyzer - should handle null bytes gracefully
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -197,8 +187,7 @@ public:
         """Test handling of C++ files with syntax errors - Task 1.2.8"""
         # Create file with syntax errors
         syntax_error_file = temp_project_dir / "src" / "syntax_error.cpp"
-        syntax_error_file.write_text(
-            """
+        syntax_error_file.write_text("""
 class InvalidSyntax {
     this is not valid C++ code !!!
     missing semicolons
@@ -207,19 +196,16 @@ class InvalidSyntax {
 
 void brokenFunction( {
     // missing closing paren
-"""
-        )
+""")
 
         # Create normal file
         normal_file = temp_project_dir / "src" / "normal.cpp"
-        normal_file.write_text(
-            """
+        normal_file.write_text("""
 class NormalClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # Create analyzer - should handle syntax errors gracefully
         analyzer = CppAnalyzer(str(temp_project_dir))
