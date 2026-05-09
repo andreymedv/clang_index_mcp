@@ -31,16 +31,14 @@ class TestProgressTracking:
         # Create multiple C++ files to index
         for i in range(5):
             file_path = temp_project_dir / "src" / f"file{i}.cpp"
-            file_path.write_text(
-                f"""
+            file_path.write_text(f"""
 class TestClass{i} {{
 public:
     void method{i}();
 }};
 
 void function{i}() {{}}
-"""
-            )
+""")
 
         # Create analyzer
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -71,14 +69,12 @@ void function{i}() {{}}
     def test_progress_with_cache(self, temp_project_dir):
         """Test progress tracking with cache hits"""
         # Create C++ files
-        (temp_project_dir / "src" / "cached.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "cached.cpp").write_text("""
 class CachedClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # First indexing - no cache
         analyzer1 = CppAnalyzer(str(temp_project_dir))

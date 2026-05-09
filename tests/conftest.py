@@ -206,18 +206,15 @@ def indexed_analyzer(temp_project_dir):
             assert len(results) > 0
     """
     # Create sample files
-    (temp_project_dir / "src" / "main.cpp").write_text(
-        """
+    (temp_project_dir / "src" / "main.cpp").write_text("""
 #include "utils.h"
 
 int main() {
     return 0;
 }
-"""
-    )
+""")
 
-    (temp_project_dir / "include" / "utils.h").write_text(
-        """
+    (temp_project_dir / "include" / "utils.h").write_text("""
 #pragma once
 
 class TestClass {
@@ -232,8 +229,7 @@ public:
 };
 
 void globalFunction();
-"""
-    )
+""")
 
     # Create compile_commands.json
     temp_compile_commands(

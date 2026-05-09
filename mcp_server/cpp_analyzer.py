@@ -3357,6 +3357,7 @@ class CppAnalyzer:
         force: bool = False,
         include_dependencies: bool = True,
         progress_callback: Optional[Callable] = None,
+        wait_for_tools_callback: Optional[Callable[[], None]] = None,
     ) -> int:
         """
         Index all C++ files in the project
@@ -3497,6 +3498,9 @@ class CppAnalyzer:
                 }
 
             for i, future in enumerate(as_completed(future_to_file)):
+                if wait_for_tools_callback:
+                    wait_for_tools_callback()
+
                 file_path = future_to_file[future]
                 try:
                     result = future.result()
@@ -4120,7 +4124,11 @@ class CppAnalyzer:
                 f"system_include_dirs={profile.get('system_include_dirs')}"
             )
 
-    def refresh_if_needed(self, progress_callback: Optional[Callable] = None) -> int:
+    def refresh_if_needed(
+        self,
+        progress_callback: Optional[Callable] = None,
+        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+    ) -> int:
         """
         Refresh index for changed files and remove deleted files
 
@@ -4312,6 +4320,9 @@ class CppAnalyzer:
 
             # Process results as they complete
             for i, future in enumerate(as_completed(future_to_file)):
+                if wait_for_tools_callback:
+                    wait_for_tools_callback()
+
                 file_path = future_to_file[future]
                 try:
                     if self.use_processes:

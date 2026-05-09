@@ -33,15 +33,13 @@ class TestBasicIndexing:
     def test_basic_class_indexing(self, temp_project_dir):
         """Test indexing simple class definitions - Task 1.1.1"""
         # Create a simple C++ file with a class
-        (temp_project_dir / "src" / "test_class.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test_class.cpp").write_text("""
 class SimpleClass {
 public:
     void method();
     int value;
 };
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -63,8 +61,7 @@ public:
     def test_basic_function_indexing(self, temp_project_dir):
         """Test indexing simple function definitions - Task 1.1.2"""
         # Create a simple C++ file with functions
-        (temp_project_dir / "src" / "functions.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "functions.cpp").write_text("""
 int add(int a, int b) {
     return a + b;
 }
@@ -72,8 +69,7 @@ int add(int a, int b) {
 void printHello() {
     // print
 }
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -102,8 +98,7 @@ class TestSearchOperations:
     def test_search_classes_basic(self, temp_project_dir):
         """Test basic class search with patterns - Task 1.1.3"""
         # Create multiple classes
-        (temp_project_dir / "src" / "classes.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "classes.cpp").write_text("""
 class TestClass1 {
 public:
     void method1();
@@ -118,8 +113,7 @@ class OtherClass {
 public:
     void method3();
 };
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -141,14 +135,12 @@ public:
     def test_search_functions_basic(self, temp_project_dir):
         """Test basic function search with patterns - Task 1.1.4"""
         # Create multiple functions
-        (temp_project_dir / "src" / "functions.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "functions.cpp").write_text("""
 void processData() {}
 void processList() {}
 void handleEvent() {}
 int calculate() { return 0; }
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -173,27 +165,23 @@ int calculate() { return 0; }
         file1 = temp_project_dir / "src" / "file1.cpp"
         file2 = temp_project_dir / "src" / "file2.cpp"
 
-        file1.write_text(
-            """
+        file1.write_text("""
 class ClassInFile1 {
 public:
     void method1();
 };
 
 void functionInFile1() {}
-"""
-        )
+""")
 
-        file2.write_text(
-            """
+        file2.write_text("""
 class ClassInFile2 {
 public:
     void method2();
 };
 
 void functionInFile2() {}
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -226,8 +214,7 @@ class TestHierarchyAnalysis:
     def test_get_class_hierarchy_basic(self, temp_project_dir):
         """Test getting inheritance hierarchy for a class - Task 1.1.6"""
         # Create inheritance hierarchy
-        (temp_project_dir / "src" / "hierarchy.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "hierarchy.cpp").write_text("""
 class BaseClass {
 public:
     virtual void baseMethod();
@@ -242,8 +229,7 @@ class FurtherDerived : public DerivedClass {
 public:
     void furtherMethod();
 };
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -286,8 +272,7 @@ class TestCallGraphAnalysis:
     def test_find_incoming_calls_basic(self, temp_project_dir):
         """Test finding callers of a function - Task 1.1.7"""
         # Create function call relationships
-        (temp_project_dir / "src" / "calls.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "calls.cpp").write_text("""
 void helperFunction() {
     // does something
 }
@@ -303,8 +288,7 @@ void caller2() {
 void unrelatedFunction() {
     // does not call helperFunction
 }
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -326,8 +310,7 @@ void unrelatedFunction() {
     def test_find_callees_basic(self, temp_project_dir):
         """Test finding callees of a function - Task 1.1.8"""
         # Create function call relationships
-        (temp_project_dir / "src" / "callees.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "callees.cpp").write_text("""
 void function1() {}
 void function2() {}
 void function3() {}
@@ -337,8 +320,7 @@ void mainFunction() {
     function2();
     // function3 is not called
 }
-"""
-        )
+""")
 
         # Index the project
         analyzer = CppAnalyzer(str(temp_project_dir))
