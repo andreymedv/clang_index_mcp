@@ -29,14 +29,12 @@ class TestDiskErrors:
     def test_disk_full_during_cache_write(self, temp_project_dir, mocker):
         """Test handling disk full error during cache write - Task 1.2.3"""
         # Create a simple C++ file
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {
 public:
     void method();
 };
-"""
-        )
+""")
 
         # Mock the cache save to raise OSError (disk full)
         from mcp_server.cache_manager import CacheManager

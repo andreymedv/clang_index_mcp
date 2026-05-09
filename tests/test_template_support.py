@@ -975,8 +975,7 @@ def param_inheritance_project(tmp_path):
     """
     # Create header with template inheriting from parameter
     header = tmp_path / "param_inheritance.h"
-    header.write_text(
-        """
+    header.write_text("""
 #ifndef PARAM_INHERITANCE_H
 #define PARAM_INHERITANCE_H
 
@@ -1025,13 +1024,11 @@ class InheritsSecond : public Second {
 }  // namespace testns
 
 #endif
-"""
-    )
+""")
 
     # Create main.cpp
     main = tmp_path / "main.cpp"
-    main.write_text(
-        """
+    main.write_text("""
 #include "param_inheritance.h"
 
 int main() {
@@ -1039,8 +1036,7 @@ int main() {
     impl.method_a();
     return 0;
 }
-"""
-    )
+""")
 
     # Create compile_commands.json
     compile_commands = tmp_path / "compile_commands.json"
@@ -1227,8 +1223,7 @@ def embedded_type_param_project(tmp_path):
     We need to replace 'type-parameter-0-0' with 'BaseParam'.
     """
     header = tmp_path / "chain_resolver.h"
-    header.write_text(
-        """
+    header.write_text("""
 #ifndef CHAIN_RESOLVER_H
 #define CHAIN_RESOLVER_H
 
@@ -1288,12 +1283,10 @@ public:
 } // namespace testns
 
 #endif
-"""
-    )
+""")
 
     main = tmp_path / "main.cpp"
-    main.write_text(
-        """
+    main.write_text("""
 #include "chain_resolver.h"
 
 int main() {
@@ -1301,8 +1294,7 @@ int main() {
     w.concrete_method();
     return 0;
 }
-"""
-    )
+""")
 
     compile_commands = tmp_path / "compile_commands.json"
     compile_commands.write_text(

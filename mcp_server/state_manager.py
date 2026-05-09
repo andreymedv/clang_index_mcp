@@ -71,6 +71,9 @@ class AnalyzerStateManager:
         self._lock = Lock()
         self._indexed_event = Event()  # Signals when indexing completes
         self._progress: Optional[IndexingProgress] = None
+        self._active_tools = 0
+        self._tools_event = Event()
+        self._tools_event.set()  # Set when 0 tools active
 
     @property
     def state(self) -> AnalyzerState:
@@ -78,6 +81,35 @@ class AnalyzerStateManager:
         with self._lock:
             result: AnalyzerState = self._state
             return result
+
+    def wait_for_tools_to_finish(self, timeout: Optional[float] = None) -> bool:
+        """Wait until there are no active tool calls."""
+        return self._tools_event.wait(timeout)
+
+    def tool_started(self):
+        """Mark a tool call as started."""
+        with self._lock:
+            self._active_tools += 1
+            if self._active_tools == 1:
+                self._tools_event.clear()
+
+    def tool_finished(self):
+        """Mark a tool call as finished."""
+        with self._lock:
+            self._active_tools = max(0, self._active_tools - 1)
+            if self._active_tools == 0:
+                self._tools_event.set()
+
+    import contextlib
+
+    @contextlib.contextmanager
+    def tool_execution(self):
+        """Context manager for tracking tool execution to prioritize tools over background indexing."""
+        self.tool_started()
+        try:
+            yield
+        finally:
+            self.tool_finished()
 
     def transition_to(self, new_state: AnalyzerState):
         """
@@ -233,6 +265,7 @@ class BackgroundIndexer:
                     force=force,
                     include_dependencies=include_dependencies,
                     progress_callback=progress_callback,
+                    wait_for_tools_callback=self.state_manager.wait_for_tools_to_finish,
                 ),
             )
 
