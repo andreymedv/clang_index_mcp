@@ -26,8 +26,7 @@ class TestSearchClassesWithDocumentation:
 
     def test_search_classes_returns_brief(self, temp_project_dir):
         """Test that search_classes() includes brief field."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Main application class
 class Application {
 };
@@ -35,8 +34,7 @@ class Application {
 /// Configuration manager
 class ConfigManager {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -64,8 +62,7 @@ class ConfigManager {
 
     def test_search_classes_returns_doc_comment(self, temp_project_dir):
         """Test that search_classes() includes doc_comment field."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * @brief Database connection pool
  *
@@ -74,8 +71,7 @@ class ConfigManager {
  */
 class ConnectionPool {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -98,13 +94,11 @@ class ConnectionPool {
 
     def test_search_classes_json_serialization(self, temp_project_dir):
         """Test that documentation fields serialize to JSON properly."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Test class with documentation
 class TestClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -137,15 +131,13 @@ class TestSearchFunctionsWithDocumentation:
 
     def test_search_functions_returns_brief(self, temp_project_dir):
         """Test that search_functions() includes brief field."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Initializes the application
 void initialize();
 
 /// Processes user input
 void processInput();
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -167,8 +159,7 @@ void processInput();
 
     def test_search_functions_returns_doc_comment(self, temp_project_dir):
         """Test that search_functions() includes doc_comment field."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * @brief Validates user credentials
  *
@@ -179,8 +170,7 @@ void processInput();
  * @return true if valid, false otherwise
  */
 bool validateCredentials(const char* username, const char* password);
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -202,12 +192,10 @@ bool validateCredentials(const char* username, const char* password);
 
     def test_search_functions_json_serialization(self, temp_project_dir):
         """Test that function documentation serializes to JSON."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Test function
 void testFunction();
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -240,8 +228,7 @@ class TestGetClassInfoWithDocumentation:
 
     def test_get_class_info_includes_class_docs(self, temp_project_dir):
         """Test that get_class_info() includes class documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /**
  * @brief Main application controller
  *
@@ -251,8 +238,7 @@ class Controller {
 public:
     void start();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -278,8 +264,7 @@ public:
 
     def test_get_class_info_includes_method_docs(self, temp_project_dir):
         """Test that get_class_info() includes method documentation."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class Service {
 public:
     /// Starts the service
@@ -292,8 +277,7 @@ public:
      */
     void stop();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -328,8 +312,7 @@ public:
 
     def test_get_class_info_json_format(self, temp_project_dir):
         """Test that get_class_info() JSON format includes all doc fields."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 /// Widget class
 class Widget {
 public:
@@ -339,8 +322,7 @@ public:
     /// Show widget
     void show();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -370,12 +352,10 @@ class TestDocumentationWithNullValues:
 
     def test_search_classes_with_null_docs(self, temp_project_dir):
         """Test that search_classes handles NULL documentation correctly."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class UndocumentedClass {
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
@@ -402,14 +382,12 @@ class UndocumentedClass {
 
     def test_get_class_info_with_null_docs(self, temp_project_dir):
         """Test that get_class_info handles NULL documentation correctly."""
-        (temp_project_dir / "src" / "test.cpp").write_text(
-            """
+        (temp_project_dir / "src" / "test.cpp").write_text("""
 class NoDocsClass {
 public:
     void undocumentedMethod();
 };
-"""
-        )
+""")
 
         temp_compile_commands(
             temp_project_dir,
