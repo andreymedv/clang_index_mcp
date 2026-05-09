@@ -18,6 +18,7 @@ Usage:
         print(f"Re-analyzed {result.files_analyzed} files")
 """
 
+import multiprocessing
 import os
 import time
 from dataclasses import dataclass
@@ -373,20 +374,31 @@ class IncrementalAnalyzer:
             max_workers = os.cpu_count() or 4
 
         # Choose executor based on configuration
-        executor_class = ProcessPoolExecutor if use_processes else ThreadPoolExecutor
-
         if use_processes:
-            diagnostics.debug(
-                f"Incremental refresh: Using ProcessPoolExecutor with {max_workers} workers (GIL bypass)"
-            )
+            # Use 'spawn' context to avoid inheriting open file descriptors
+            try:
+                mp_context = multiprocessing.get_context("spawn")
+                executor_class = ProcessPoolExecutor
+                diagnostics.debug(
+                    f"Incremental refresh: Using ProcessPoolExecutor (spawn) with {max_workers} workers"
+                )
+            except Exception as e:
+                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
+                executor_class = ProcessPoolExecutor
+                mp_context = None
         else:
+            executor_class = ThreadPoolExecutor
+            mp_context = None
             diagnostics.debug(
                 f"Incremental refresh: Using ThreadPoolExecutor with {max_workers} workers"
             )
 
         executor = None
         try:
-            executor = executor_class(max_workers=max_workers)
+            if use_processes and mp_context:
+                executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_context)
+            else:
+                executor = executor_class(max_workers=max_workers)
 
             if use_processes:
                 # ProcessPoolExecutor: use worker function (same as index_project)
@@ -460,6 +472,14 @@ class IncrementalAnalyzer:
 
             # Process results as they complete
             for i, future in enumerate(as_completed(future_to_file)):
+                # Check for interruption
+                if getattr(self.analyzer, "_interrupted", False):
+                    # Cancel all pending futures
+                    for f in future_to_file:
+                        f.cancel()
+                    diagnostics.info("Incremental refresh interrupted by request")
+                    raise KeyboardInterrupt("Incremental refresh interrupted by request")
+
                 if wait_for_tools_callback:
                     wait_for_tools_callback()
 
@@ -616,8 +636,20 @@ class IncrementalAnalyzer:
                             # Don't fail refresh if progress callback fails
                             diagnostics.debug(f"Progress callback failed: {e}")
 
+        except KeyboardInterrupt:
+            # Gracefully handle Ctrl-C or requested interruption
+            diagnostics.info("\nIncremental refresh interrupted")
+            if executor is not None:
+                # Call the shared shutdown helper on the main analyzer
+                self.analyzer._shutdown_executor(executor, name="Incremental Refresh")
+            raise
+
         finally:
-            if executor:
-                executor.shutdown(wait=True)
+            if executor is not None:
+                # Final cleanup (non-blocking)
+                try:
+                    executor.shutdown(wait=False)
+                except Exception:
+                    pass
 
         return analyzed
