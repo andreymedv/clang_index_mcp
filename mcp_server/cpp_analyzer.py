@@ -10,6 +10,7 @@ import dataclasses
 import gc
 import hashlib
 import json
+import multiprocessing
 import os
 import re
 import sys
@@ -546,6 +547,11 @@ class CppAnalyzer:
         self.file_hashes: Dict[str, str] = {}
         self._no_op_lock = _NoOpLock()  # Reusable no-op lock for isolated processes
         self._thread_local = threading.local()
+
+        # Cancellation support
+        self._interrupted = False
+        self._interrupt_lock = threading.Lock()
+
         cpu_count = os.cpu_count() or 1
 
         # Determine max_workers from config or default to cpu_count
@@ -594,7 +600,6 @@ class CppAnalyzer:
         # Instead of loading ALL call sites at startup (~150-200 MB for large projects),
         # call sites are queried on-demand from the database
         self.call_graph_analyzer.cache_backend = self.cache_manager.backend
-
         # Apply configuration to file scanner
         self.file_scanner.EXCLUDE_DIRS = set(self.config.get_exclude_directories())
         self.file_scanner.DEPENDENCY_DIRS = set(self.config.get_dependency_directories())
@@ -671,6 +676,121 @@ class CppAnalyzer:
                 diagnostics.debug("Compile commands disabled in configuration")
         else:
             diagnostics.debug("Worker mode: using precomputed compile args from main process")
+
+    def interrupt(self):
+        """
+        Interrupt any ongoing indexing operations.
+        Sets the interrupted flag which is checked by indexing loops.
+        """
+        with self._interrupt_lock:
+            self._interrupted = True
+        diagnostics.info("Indexing interrupt requested")
+
+    def _is_interrupted(self) -> bool:
+        """Check if indexing has been interrupted."""
+        with self._interrupt_lock:
+            return self._interrupted
+
+    def _shutdown_executor(self, executor, name="Indexing"):
+        """
+        Cleanly shut down a ProcessPoolExecutor or ThreadPoolExecutor.
+        Provides informative logging and handles stuck workers with timeouts.
+        """
+        if executor is None:
+            return
+
+        # 1. Identify worker processes (if using ProcessPoolExecutor)
+        # MUST do this before shutdown() as shutdown clears _processes
+        is_process_pool = hasattr(executor, "_processes")
+        workers = []
+        if is_process_pool:
+            # Internal access to worker processes
+            workers = list(executor._processes.values()) if executor._processes else []
+
+        # 2. Cancel all pending futures (if possible)
+        try:
+            # shutdown(cancel_futures=True) is Python 3.9+
+            if sys.version_info >= (3, 9):
+                executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                executor.shutdown(wait=False)
+        except Exception:
+            executor.shutdown(wait=False)
+
+        if not workers:
+            # ThreadPool or no active processes, just do a normal wait
+            diagnostics.info(f"{name} shutdown: waiting for workers to finish...")
+            try:
+                executor.shutdown(wait=True)
+                diagnostics.info(f"{name} workers stopped cleanly")
+            except Exception as e:
+                diagnostics.debug(f"Error during {name} executor shutdown: {e}")
+            return
+
+        # 3. Informative logging for ProcessPool
+        num_workers = len(workers)
+        alive_workers = [w for w in workers if w.is_alive()]
+        num_alive = len(alive_workers)
+
+        if num_alive == 0:
+            diagnostics.info(f"{name} workers already finished")
+            return
+
+        diagnostics.info(f"There are {num_alive} active {name} subprocesses. Terminating...")
+
+        # 4. Graceful wait with progress updates
+        start_wait = time.time()
+        timeout = 5.0
+        last_alive_count = num_alive
+
+        while time.time() - start_wait < timeout:
+            alive_workers = [w for w in workers if w.is_alive()]
+            current_alive = len(alive_workers)
+
+            if current_alive == 0:
+                diagnostics.info(f"All {num_workers} {name} subprocesses stopped cleanly")
+                return
+
+            if current_alive != last_alive_count:
+                finished = num_workers - current_alive
+                diagnostics.info(
+                    f"Shutdown progress: {finished}/{num_workers} subprocesses finished"
+                )
+                last_alive_count = current_alive
+
+            time.sleep(0.5)
+
+        # 5. Forceful termination if timeout reached
+        alive_workers = [w for w in workers if w.is_alive()]
+        if alive_workers:
+            diagnostics.warning(
+                f"Timeout reached: {len(alive_workers)} subprocesses still running. Killing them..."
+            )
+            for w in alive_workers:
+                try:
+                    if w.is_alive():
+                        # Try terminate (SIGTERM)
+                        w.terminate()
+                except Exception:
+                    pass
+
+            # Give a moment for SIGTERM to work
+            time.sleep(0.5)
+
+            # Check if any still alive and use SIGKILL
+            still_alive = [w for w in alive_workers if w.is_alive()]
+            if still_alive:
+                diagnostics.warning(
+                    f"Killing {len(still_alive)} remaining subprocesses with SIGKILL"
+                )
+                for w in still_alive:
+                    try:
+                        if hasattr(w, "kill"):  # kill() is Python 3.7+
+                            w.kill()
+                    except Exception:
+                        pass
+
+            diagnostics.info(f"{name} subprocesses forcefully terminated")
 
     def close(self):
         """
@@ -3395,6 +3515,10 @@ class CppAnalyzer:
         diagnostics.debug(f"Found {len(files)} C++ files to index")
         self._log_compilation_environment(files)
 
+        # Reset interrupt flag at start of indexing
+        with self._interrupt_lock:
+            self._interrupted = False
+
         # Show detailed progress
         indexed_count = 0
         cache_hits = 0
@@ -3421,18 +3545,31 @@ class CppAnalyzer:
 
         # Choose executor based on configuration
         # ProcessPoolExecutor bypasses Python's GIL for true parallelism
-        executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
-
         if self.use_processes:
-            diagnostics.debug(
-                f"Using ProcessPoolExecutor with {self.max_workers} workers (GIL bypass)"
-            )
+            # Use 'spawn' context to avoid inheriting open file descriptors (like SSE sockets)
+            # This is critical for MCP servers where subprocesses might keep sockets open
+            # and prevent server restart after Ctrl-C.
+            try:
+                mp_context = multiprocessing.get_context("spawn")
+                executor_class = ProcessPoolExecutor
+                diagnostics.debug(
+                    f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers"
+                )
+            except Exception as e:
+                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
+                executor_class = ProcessPoolExecutor
+                mp_context = None
         else:
+            executor_class = ThreadPoolExecutor
+            mp_context = None
             diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
 
         executor = None
         try:
-            executor = executor_class(max_workers=self.max_workers)
+            if self.use_processes and mp_context:
+                executor = ProcessPoolExecutor(max_workers=self.max_workers, mp_context=mp_context)
+            else:
+                executor = executor_class(max_workers=self.max_workers)
 
             if self.use_processes:
                 # ProcessPoolExecutor: use worker function that returns symbols
@@ -3498,6 +3635,10 @@ class CppAnalyzer:
                 }
 
             for i, future in enumerate(as_completed(future_to_file)):
+                # Check if we've been interrupted (e.g. by BackgroundIndexer.cancel())
+                if self._is_interrupted():
+                    raise KeyboardInterrupt("Indexing interrupted by request")
+
                 if wait_for_tools_callback:
                     wait_for_tools_callback()
 
@@ -3709,84 +3850,16 @@ class CppAnalyzer:
             # Gracefully handle Ctrl-C: shutdown executor and clean up
             diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
             if executor is not None:
-                # Cancel all pending futures
-                for future in future_to_file:
-                    future.cancel()
-
-                # CRITICAL FIX FOR ISSUE #16: Shutdown with timeout to prevent hang
-                # Previous bug: executor.shutdown(wait=True) blocked indefinitely
-                # if workers were stuck in libclang parsing or I/O operations
-                diagnostics.info(
-                    f"Cancelling pending work and stopping {self.max_workers} workers..."
-                )
-
-                # First, try graceful shutdown with cancel_futures=True
-                # This cancels any pending work that hasn't started yet
-                executor.shutdown(wait=False, cancel_futures=True)
-
-                # Now wait for running workers with timeout (5 seconds)
-                # Workers may be processing files and need time to finish current operation
-                import threading
-
-                shutdown_complete = threading.Event()
-
-                def wait_for_shutdown():
-                    # Wait for all worker processes to exit
-                    # This happens in background thread so we can timeout
-                    try:
-                        executor.shutdown(wait=True)
-                        shutdown_complete.set()
-                    except Exception:
-                        pass  # Ignore errors during shutdown
-
-                shutdown_thread = threading.Thread(target=wait_for_shutdown, daemon=True)
-                shutdown_thread.start()
-
-                # Wait up to 5 seconds for workers to finish
-                if shutdown_complete.wait(timeout=5.0):
-                    diagnostics.info("All workers stopped cleanly")
-                else:
-                    diagnostics.warning(
-                        "Workers did not exit within 5 seconds - forcefully terminating"
-                    )
-                    # Force terminate worker processes if they don't exit gracefully
-                    # This is safe because we've cancelled pending futures
-                    # and workers are isolated processes
-                    if hasattr(executor, "_processes") and executor._processes:
-                        for pid, process in executor._processes.items():
-                            try:
-                                if process.is_alive():
-                                    diagnostics.warning(f"Forcefully terminating worker {pid}")
-                                    process.terminate()  # SIGTERM first
-                            except Exception:
-                                pass  # Ignore errors during force terminate
-
-                    # Give terminated processes a moment to die
-                    time.sleep(0.5)
-
-                    # SIGKILL any that are still alive
-                    if hasattr(executor, "_processes") and executor._processes:
-                        for pid, process in executor._processes.items():
-                            try:
-                                if process.is_alive():
-                                    diagnostics.warning(f"Killing worker {pid} with SIGKILL")
-                                    process.kill()  # SIGKILL as last resort
-                            except Exception:
-                                pass
-
-                    diagnostics.info("Worker processes terminated")
-
+                self._shutdown_executor(executor, name="Indexing")
             raise
         finally:
             # Always ensure executor is properly shut down
             if executor is not None:
-                # This will be called even after normal completion or exception
-                # shutdown() is idempotent, so safe to call multiple times
-                # Use wait=False to avoid blocking on cleanup
+                # Use wait=False for final cleanup to avoid blocking
                 try:
-                    executor.shutdown(wait=False, cancel_futures=False)
+                    executor.shutdown(wait=False)
                 except Exception:
-                    pass  # Ignore errors during final cleanup
+                    pass
 
         self.indexed_file_count = indexed_count
         self.last_index_time = time.time() - start_time
