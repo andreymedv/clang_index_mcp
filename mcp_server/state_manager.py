@@ -84,7 +84,7 @@ class AnalyzerStateManager:
 
     def wait_for_tools_to_finish(self, timeout: Optional[float] = None) -> bool:
         """Wait until there are no active tool calls."""
-        return self._tools_event.wait(timeout)
+        return bool(self._tools_event.wait(timeout))
 
     def tool_started(self):
         """Mark a tool call as started."""
