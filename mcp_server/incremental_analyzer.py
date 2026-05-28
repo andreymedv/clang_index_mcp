@@ -23,7 +23,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable, Optional, Set
+from typing import Callable, Optional, Set, Union
 
 # Handle both package and script imports
 try:
@@ -357,7 +357,12 @@ class IncrementalAnalyzer:
 
         # Use analyzer's parallel processing infrastructure (same pattern as index_project)
         # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
-        from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+        from concurrent.futures import (
+            Executor,
+            ProcessPoolExecutor,
+            ThreadPoolExecutor,
+            as_completed,
+        )
         from unittest.mock import Mock
 
         use_processes = getattr(self.analyzer, "use_processes", True)
@@ -374,6 +379,7 @@ class IncrementalAnalyzer:
             max_workers = os.cpu_count() or 4
 
         # Choose executor based on configuration
+        executor_class: Union[type[ProcessPoolExecutor], type[ThreadPoolExecutor]]
         if use_processes:
             # Use 'spawn' context to avoid inheriting open file descriptors
             try:
@@ -393,7 +399,7 @@ class IncrementalAnalyzer:
                 f"Incremental refresh: Using ThreadPoolExecutor with {max_workers} workers"
             )
 
-        executor = None
+        executor: Optional[Executor] = None
         try:
             if use_processes and mp_context:
                 executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_context)
@@ -401,6 +407,7 @@ class IncrementalAnalyzer:
                 executor = executor_class(max_workers=max_workers)
 
             if use_processes:
+                assert executor is not None
                 # ProcessPoolExecutor: use worker function (same as index_project)
                 from pathlib import Path
 
@@ -465,6 +472,7 @@ class IncrementalAnalyzer:
                 }
             else:
                 # ThreadPoolExecutor: use index_file method directly
+                assert executor is not None
                 future_to_file = {
                     executor.submit(self.analyzer.index_file, file_path, force=True): file_path
                     for file_path in file_list

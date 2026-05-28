@@ -114,7 +114,7 @@ def configure_libclang() -> bool:
     if llvm_config:
         try:
             result = subprocess.run(
-                [llvm_config, config["llvm_config_query"]],
+                [llvm_config, str(config["llvm_config_query"])],
                 capture_output=True,
                 text=True,
                 timeout=5,
