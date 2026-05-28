@@ -17,10 +17,10 @@ import sys
 import threading
 import time
 from collections import defaultdict, deque
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from .cache_manager import CacheManager
 from .call_graph import CallGraphAnalyzer
@@ -3545,6 +3545,7 @@ class CppAnalyzer:
 
         # Choose executor based on configuration
         # ProcessPoolExecutor bypasses Python's GIL for true parallelism
+        executor_class: Union[type[ProcessPoolExecutor], type[ThreadPoolExecutor]]
         if self.use_processes:
             # Use 'spawn' context to avoid inheriting open file descriptors (like SSE sockets)
             # This is critical for MCP servers where subprocesses might keep sockets open
@@ -3564,7 +3565,7 @@ class CppAnalyzer:
             mp_context = None
             diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
 
-        executor = None
+        executor: Optional[Executor] = None
         try:
             if self.use_processes and mp_context:
                 executor = ProcessPoolExecutor(max_workers=self.max_workers, mp_context=mp_context)
@@ -3572,6 +3573,7 @@ class CppAnalyzer:
                 executor = executor_class(max_workers=self.max_workers)
 
             if self.use_processes:
+                assert executor is not None
                 # ProcessPoolExecutor: use worker function that returns symbols
                 # Pass config_file to ensure workers use the same cache directory
                 config_file_str = (
@@ -3627,6 +3629,7 @@ class CppAnalyzer:
                 }
             else:
                 # ThreadPoolExecutor: use index_file method directly
+                assert executor is not None
                 future_to_file = {
                     executor.submit(
                         self.index_file, os.path.abspath(file_path), force
