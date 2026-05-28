@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 _analyzer = None
 
 
-def test_mcp_server(project_path: str):
+def test_mcp_server(project_path: str, config_file: str = None):
     """Test the MCP server with a real codebase"""
 
     # Configure libclang exactly like production MCP server
@@ -40,12 +40,15 @@ def test_mcp_server(project_path: str):
 
     # 1. Configure - Set project directory
     print(f"\n1. Configuring analyzer with project: {project_path}")
+    if config_file:
+        print(f"   Using configuration file: {config_file}")
+
     if not os.path.isdir(project_path):
         print(f"Error: Directory '{project_path}' does not exist")
         return
 
     global _analyzer
-    analyzer = CppAnalyzer(project_path)
+    analyzer = CppAnalyzer(project_path, config_file=config_file)
     _analyzer = analyzer
     print("[OK] Analyzer created")
 
@@ -202,17 +205,39 @@ def test_mcp_server(project_path: str):
 def main():
     """Main entry point"""
     if len(sys.argv) < 2:
-        print("Usage: python test_mcp_console.py <path-to-cpp-project>")
+        print("Usage: python test_mcp_console.py <path-to-cpp-project> OR <path-to-config.json>")
         print("\nExample:")
         print("  python test_mcp_console.py /path/to/your/cpp/project")
-        print("  python test_mcp_console.py C:\\Users\\YourName\\MyProject")
+        print("  python test_mcp_console.py /path/to/my-config.json")
         sys.exit(1)
 
-    project_path = sys.argv[1]
+    path_arg = sys.argv[1]
+    project_path = None
+    config_file = None
+
+    if os.path.isfile(path_arg) and path_arg.endswith(".json"):
+        import json
+
+        config_file = os.path.abspath(path_arg)
+        try:
+            with open(config_file, "r") as f:
+                config_data = json.load(f)
+            config_root = config_data.get("project_root")
+            if not config_root:
+                print(f"Error: Config file {config_file} missing 'project_root'", file=sys.stderr)
+                sys.exit(1)
+
+            config_dir = os.path.dirname(config_file)
+            project_path = os.path.abspath(os.path.join(config_dir, config_root))
+        except Exception as e:
+            print(f"Error reading config file: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        project_path = path_arg
 
     try:
         # Run the test
-        test_mcp_server(project_path)
+        test_mcp_server(project_path, config_file=config_file)
     except KeyboardInterrupt:
         # Handle Ctrl-C gracefully
         print("\n\nInterrupted by user (Ctrl-C)", file=sys.stderr)
