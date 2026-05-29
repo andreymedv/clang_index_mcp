@@ -125,7 +125,7 @@ class AnalyzerStateManager:
             # Set/clear indexed event based on state
             if new_state == AnalyzerState.INDEXED:
                 self._indexed_event.set()
-            elif new_state == AnalyzerState.INDEXING:
+            elif new_state in (AnalyzerState.INDEXING, AnalyzerState.REFRESHING):
                 self._indexed_event.clear()
 
             # Debug logging (will be picked up by diagnostics module)
