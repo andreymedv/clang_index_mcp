@@ -693,12 +693,12 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                     "and sufficient for 99% of cases."
                 )
 
+            # Transition to REFRESHING state synchronously
+            state_manager.transition_to(AnalyzerState.REFRESHING)
+
             # Start refresh in background (non-blocking, similar to set_project_directory)
             async def run_background_refresh():
                 try:
-                    # Transition to REFRESHING state
-                    state_manager.transition_to(AnalyzerState.REFRESHING)
-
                     loop = asyncio.get_event_loop()
 
                     # Create progress callback that updates state_manager (same as BackgroundIndexer)
