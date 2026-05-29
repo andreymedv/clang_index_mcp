@@ -32,9 +32,8 @@ jobs:
       - name: Lint (flake8)
         run: make lint
 
-      - name: Type check (mypy) [informational]
+      - name: Type check (mypy)
         run: make type-check
-        continue-on-error: true
 
   test:
     name: Test (Python ${{ matrix.python-version }})
