@@ -20,7 +20,7 @@ from collections import defaultdict, deque
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .cache_manager import CacheManager
 from .call_graph import CallGraphAnalyzer
@@ -32,6 +32,7 @@ from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
 from .search_engine import SearchEngine
 from .smart_fallback import FallbackResult, SmartFallback
+from .state_manager import IndexingProgress
 from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
@@ -3472,6 +3473,319 @@ class CppAnalyzer:
             diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
             return (False, False)  # Failed, not from cache
 
+    def _is_terminal(self) -> bool:
+        """Check if stderr is a terminal for progress reporting."""
+        return (
+            hasattr(sys.stderr, "isatty")
+            and sys.stderr.isatty()
+            and not os.environ.get("MCP_SESSION_ID")
+            and not os.environ.get("CLAUDE_CODE_SESSION")
+        )
+
+    def _handle_cache_initial_index(self, force: bool) -> Optional[int]:
+        """Try to load from cache if not forcing."""
+        if not force and self._load_cache():
+            refreshed = self.refresh_if_needed()
+            if refreshed > 0:
+                diagnostics.debug(f"Using cached index (updated {refreshed} files)")
+            else:
+                diagnostics.debug("Using cached index")
+            return self.indexed_file_count
+        return None
+
+    def _prepare_indexing_files(self, include_dependencies: bool) -> List[str]:
+        """Find C++ files to index and log compilation environment."""
+        diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
+        files = self._find_cpp_files(include_dependencies=include_dependencies)
+
+        if not files:
+            diagnostics.warning("No C++ files found in project")
+            return []
+
+        diagnostics.debug(f"Found {len(files)} C++ files to index")
+        self._log_compilation_environment(files)
+        return files
+
+    def _setup_executor(self) -> Tuple[Executor, Optional[Any]]:
+        """Choose and setup executor based on configuration."""
+        if self.use_processes:
+            self.cache_manager.ensure_schema_current()
+            try:
+                mp_context = multiprocessing.get_context("spawn")
+                diagnostics.debug(
+                    f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers"
+                )
+                return (
+                    ProcessPoolExecutor(max_workers=self.max_workers, mp_context=mp_context),
+                    mp_context,
+                )
+            except Exception as e:
+                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
+                return ProcessPoolExecutor(max_workers=self.max_workers), None
+        else:
+            diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
+            return ThreadPoolExecutor(max_workers=self.max_workers), None
+
+    def _prepare_worker_compile_args(self, files: List[str]) -> Dict[str, List[str]]:
+        """Pre-calculate compile arguments for each file to save worker memory."""
+        file_compile_args = {}
+        assert self.compile_commands_manager is not None
+        vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_paths = [
+            "C:/vcpkg/installed/x64-windows/include",
+            "C:/dev/vcpkg/installed/x64-windows/include",
+        ]
+
+        for file_path in files:
+            file_path_obj = Path(file_path)
+            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+
+            if not self.compile_commands_manager.is_file_supported(file_path_obj):
+                if vcpkg_include.exists():
+                    args.append(f"-I{vcpkg_include}")
+                for path in vcpkg_paths:
+                    if Path(path).exists():
+                        args.append(f"-I{path}")
+                        break
+            file_compile_args[file_path] = args
+        return file_compile_args
+
+    def _add_to_file_index(self, symbol: SymbolInfo):
+        """Add symbol to file index with deduplication."""
+        if symbol.file not in self.file_index:
+            self.file_index[symbol.file] = []
+            self.file_index[symbol.file].append(symbol)
+            return
+
+        if not symbol.usr:
+            self.file_index[symbol.file].append(symbol)
+            return
+
+        for idx_pos, existing in enumerate(self.file_index[symbol.file]):
+            if existing.usr == symbol.usr:
+                if (symbol.is_definition and not existing.is_definition) or (
+                    symbol.is_definition
+                    and existing.is_definition
+                    and is_richer_definition(symbol, existing)
+                ):
+                    self.file_index[symbol.file][idx_pos] = symbol
+                return
+
+        self.file_index[symbol.file].append(symbol)
+
+    def _merge_symbol_into_indexes(self, symbol: SymbolInfo):
+        """Merge a single symbol into the main process indexes with deduplication."""
+        if symbol.usr and symbol.usr in self.usr_index:
+            existing = self.usr_index[symbol.usr]
+            if symbol.is_definition and not existing.is_definition:
+                self._remove_symbol_from_indexes(existing)
+            elif symbol.is_definition and existing.is_definition:
+                if is_richer_definition(symbol, existing):
+                    self._remove_symbol_from_indexes(existing)
+                else:
+                    return
+            else:
+                return
+
+        if symbol.kind in CLASS_KINDS:
+            self.class_index[symbol.name].append(symbol)
+        else:
+            self.function_index[symbol.name].append(symbol)
+
+        if symbol.usr:
+            self.usr_index[symbol.usr] = symbol
+
+        if symbol.file:
+            self._add_to_file_index(symbol)
+
+    def _stream_call_sites(self, file_path: str, call_sites: List[Dict]):
+        """Stream call sites to SQLite and update in-memory call graph."""
+        diagnostics.debug(f"Streaming {len(call_sites)} call sites from {file_path} to SQLite")
+        if self.cache_manager and self.cache_manager.backend:
+            self.cache_manager.backend.delete_call_sites_by_file(file_path)
+            self.cache_manager.backend.save_call_sites_batch(call_sites)
+
+        for cs_dict in call_sites:
+            self.call_graph_analyzer.add_call(
+                cs_dict["caller_usr"],
+                cs_dict["callee_usr"],
+                cs_dict["file"],
+                cs_dict["line"],
+                cs_dict.get("column"),
+                store_call_site=False,
+            )
+
+    def _merge_worker_result(self, result: Tuple, file_path: str):
+        """Merge symbols and call sites from a worker process result."""
+        _, success, was_cached, symbols, call_sites, processed_headers = result
+
+        if success and symbols:
+            with self.index_lock:
+                for symbol in symbols:
+                    self._merge_symbol_into_indexes(symbol)
+
+            if call_sites:
+                self._stream_call_sites(file_path, call_sites)
+
+            if processed_headers:
+                for header_path, header_hash in processed_headers.items():
+                    self.header_tracker.mark_completed(header_path, header_hash)
+
+            file_hash = self._get_file_hash(file_path)
+            self.file_hashes[file_path] = file_hash
+
+    def _should_report_progress(
+        self,
+        processed: int,
+        total: int,
+        current_time: float,
+        last_report_time: float,
+        is_terminal: bool,
+    ) -> bool:
+        """Determine if progress should be reported based on interval and environment."""
+        if is_terminal:
+            return (
+                (processed <= 5)
+                or (processed % 5 == 0)
+                or ((current_time - last_report_time) > 2.0)
+                or (processed == total)
+            )
+        return (
+            (processed % 50 == 0)
+            or ((current_time - last_report_time) > 5.0)
+            or (processed == total)
+        )
+
+    def _report_indexing_progress(
+        self,
+        processed: int,
+        total: int,
+        indexed_count: int,
+        failed_count: int,
+        cache_hits: int,
+        start_time: float,
+        is_terminal: bool,
+        progress_callback: Optional[Callable],
+        file_path: str,
+    ):
+        """Log progress and invoke callback."""
+        current_time = time.time()
+        elapsed = current_time - start_time
+        rate = processed / elapsed if elapsed > 0 else 0
+        eta = (total - processed) / rate if rate > 0 else 0
+        cache_rate = (cache_hits * 100 // processed) if processed > 0 else 0
+
+        progress_str = (
+            f"Progress: {processed}/{total} files ({100 * processed // total}%) - "
+            f"Success: {indexed_count} - Failed: {failed_count} - "
+            f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s"
+        )
+
+        if is_terminal:
+            print(f"\033[2K\r{progress_str}", end="", file=sys.stderr, flush=True)
+        else:
+            print(progress_str, file=sys.stderr, flush=True)
+
+        if progress_callback:
+            try:
+                estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
+                progress = IndexingProgress(
+                    total_files=total,
+                    indexed_files=indexed_count,
+                    failed_files=failed_count,
+                    cache_hits=cache_hits,
+                    current_file=file_path if processed < total else None,
+                    start_time=datetime.fromtimestamp(start_time),
+                    estimated_completion=estimated_completion,
+                )
+                progress_callback(progress)
+            except Exception as e:
+                diagnostics.debug(f"Progress callback failed: {e}")
+
+    def _submit_indexing_tasks(
+        self, executor: Executor, files: List[str], force: bool, include_dependencies: bool
+    ) -> Dict:
+        """Submit indexing tasks to executor."""
+        if self.use_processes:
+            config_file_str = (
+                str(self.project_identity.config_file_path)
+                if self.project_identity.config_file_path
+                else None
+            )
+            file_compile_args = self._prepare_worker_compile_args(files)
+
+            return {
+                executor.submit(
+                    _process_file_worker,
+                    (
+                        str(self.project_root),
+                        config_file_str,
+                        os.path.abspath(f),
+                        force,
+                        include_dependencies,
+                        file_compile_args[f],
+                    ),
+                ): os.path.abspath(f)
+                for f in files
+            }
+        else:
+            return {
+                executor.submit(self.index_file, os.path.abspath(f), force): os.path.abspath(f)
+                for f in files
+            }
+
+    def _finalize_indexing(
+        self,
+        indexed_count: int,
+        total_files: int,
+        start_time: float,
+        is_terminal: bool,
+        cache_hits: int,
+        failed_count: int,
+    ) -> int:
+        """Finalize indexing by saving state and reporting summary."""
+        self.indexed_file_count = indexed_count
+        self.last_index_time = time.time() - start_time
+
+        if is_terminal:
+            print("", file=sys.stderr)
+
+        with self.index_lock:
+            class_count = sum(len(infos) for infos in self.class_index.values())
+            function_count = sum(len(infos) for infos in self.function_index.values())
+
+        diagnostics.info(f"Indexing complete in {self.last_index_time:.2f}s")
+        diagnostics.info(
+            f"Indexed {indexed_count}/{total_files} files successfully "
+            f"({cache_hits} from cache, {failed_count} failed)"
+        )
+        diagnostics.info(f"Found {class_count} classes, {function_count} functions")
+
+        if failed_count > 0:
+            diagnostics.info(
+                f"Note: {failed_count} files failed to parse - this is normal for complex projects"
+            )
+
+        self._resolve_deferred_instantiation_bases()
+        self._save_cache()
+        self._save_progress_summary(indexed_count, total_files, cache_hits, failed_count)
+        self._save_header_tracking()
+        self.cache_manager.backend.rebuild_fts()
+
+        return indexed_count
+
+    def _get_worker_result(self, future, file_path) -> Tuple[bool, bool]:
+        """Get result from future and merge into indexes."""
+        try:
+            result = future.result()
+            if self.use_processes:
+                self._merge_worker_result(result, file_path)
+                return result[1], result[2]  # success, was_cached
+            return result
+        except Exception as exc:
+            diagnostics.error(f"Error indexing {file_path}: {exc}")
+            return False, False
+
     def index_project(
         self,
         force: bool = False,
@@ -3492,286 +3806,43 @@ class CppAnalyzer:
             Number of files indexed
         """
         start_time = time.time()
-
-        # Store the include_dependencies setting BEFORE loading cache
         self.include_dependencies = include_dependencies
 
-        # Try to load from cache if not forcing
-        if not force and self._load_cache():
-            refreshed = self.refresh_if_needed()
-            if refreshed > 0:
-                diagnostics.debug(f"Using cached index (updated {refreshed} files)")
-            else:
-                diagnostics.debug("Using cached index")
-            return self.indexed_file_count
+        # 1. Handle cache
+        cached_count = self._handle_cache_initial_index(force)
+        if cached_count is not None:
+            return cached_count
 
-        diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
-        files = self._find_cpp_files(include_dependencies=include_dependencies)
-
+        # 2. Find files
+        files = self._prepare_indexing_files(include_dependencies)
         if not files:
-            diagnostics.warning("No C++ files found in project")
             return 0
 
-        diagnostics.debug(f"Found {len(files)} C++ files to index")
-        self._log_compilation_environment(files)
-
-        # Reset interrupt flag at start of indexing
+        # 3. Setup state
         with self._interrupt_lock:
             self._interrupted = False
+        is_terminal = self._is_terminal()
+        indexed_count, cache_hits, failed_count = 0, 0, 0
+        last_report_time = start_time
 
-        # Show detailed progress
-        indexed_count = 0
-        cache_hits = 0
-        failed_count = 0
-        last_report_time = time.time()
+        # 4. Setup executor
+        executor, _ = self._setup_executor()
 
-        # Check if stderr is a terminal (for proper progress display)
-        # In MCP context or when output is redirected, use less frequent reporting
-        # Check multiple conditions to detect non-interactive environments
-        is_terminal = (
-            hasattr(sys.stderr, "isatty")
-            and sys.stderr.isatty()
-            and not os.environ.get("MCP_SESSION_ID")
-            and not os.environ.get("CLAUDE_CODE_SESSION")
-        )
-
-        # No special test mode needed - we'll handle Windows console properly
-
-        # CRITICAL: Ensure schema is current BEFORE creating workers
-        # This prevents race conditions where multiple workers detect schema mismatch
-        # and try to recreate the database simultaneously (causing "disk I/O error")
-        if self.use_processes:
-            self.cache_manager.ensure_schema_current()
-
-        # Choose executor based on configuration
-        # ProcessPoolExecutor bypasses Python's GIL for true parallelism
-        executor_class: Union[type[ProcessPoolExecutor], type[ThreadPoolExecutor]]
-        if self.use_processes:
-            # Use 'spawn' context to avoid inheriting open file descriptors (like SSE sockets)
-            # This is critical for MCP servers where subprocesses might keep sockets open
-            # and prevent server restart after Ctrl-C.
-            try:
-                mp_context = multiprocessing.get_context("spawn")
-                executor_class = ProcessPoolExecutor
-                diagnostics.debug(
-                    f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers"
-                )
-            except Exception as e:
-                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-                executor_class = ProcessPoolExecutor
-                mp_context = None
-        else:
-            executor_class = ThreadPoolExecutor
-            mp_context = None
-            diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
-
-        executor: Optional[Executor] = None
         try:
-            if self.use_processes and mp_context:
-                executor = ProcessPoolExecutor(max_workers=self.max_workers, mp_context=mp_context)
-            else:
-                executor = executor_class(max_workers=self.max_workers)
+            # 5. Submit tasks
+            future_to_file = self._submit_indexing_tasks(
+                executor, files, force, include_dependencies
+            )
 
-            if self.use_processes:
-                assert executor is not None
-                # ProcessPoolExecutor: use worker function that returns symbols
-                # Pass config_file to ensure workers use the same cache directory
-                config_file_str = (
-                    str(self.project_identity.config_file_path)
-                    if self.project_identity.config_file_path
-                    else None
-                )
-
-                # Task 3.2: Prepare compile args for each file in main process
-                # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
-                file_compile_args = {}
-                assert self.compile_commands_manager is not None
-                for file_path in files:
-                    file_path_obj = Path(file_path)
-                    args = self.compile_commands_manager.get_compile_args_with_fallback(
-                        file_path_obj
-                    )
-
-                    # If compile commands are not available and we're using fallback, add vcpkg includes
-                    if not self.compile_commands_manager.is_file_supported(file_path_obj):
-                        # Add vcpkg includes if available
-                        vcpkg_include = (
-                            self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-                        )
-                        if vcpkg_include.exists():
-                            args.append(f"-I{vcpkg_include}")
-
-                        # Add common vcpkg paths
-                        vcpkg_paths = [
-                            "C:/vcpkg/installed/x64-windows/include",
-                            "C:/dev/vcpkg/installed/x64-windows/include",
-                        ]
-                        for path in vcpkg_paths:
-                            if Path(path).exists():
-                                args.append(f"-I{path}")
-                                break
-
-                    file_compile_args[file_path] = args
-
-                future_to_file = {
-                    executor.submit(
-                        _process_file_worker,
-                        (
-                            str(self.project_root),
-                            config_file_str,
-                            os.path.abspath(file_path),
-                            force,
-                            include_dependencies,
-                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
-                        ),
-                    ): os.path.abspath(file_path)
-                    for file_path in files
-                }
-            else:
-                # ThreadPoolExecutor: use index_file method directly
-                assert executor is not None
-                future_to_file = {
-                    executor.submit(
-                        self.index_file, os.path.abspath(file_path), force
-                    ): os.path.abspath(file_path)
-                    for file_path in files
-                }
-
+            # 6. Process results
             for i, future in enumerate(as_completed(future_to_file)):
-                # Check if we've been interrupted (e.g. by BackgroundIndexer.cancel())
                 if self._is_interrupted():
                     raise KeyboardInterrupt("Indexing interrupted by request")
-
                 if wait_for_tools_callback:
                     wait_for_tools_callback()
 
                 file_path = future_to_file[future]
-                try:
-                    result = future.result()
-
-                    if self.use_processes:
-                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
-                        _, success, was_cached, symbols, call_sites, processed_headers = result
-
-                        # Merge symbols into main process indexes
-                        if success and symbols:
-                            with self.index_lock:
-                                for symbol in symbols:
-                                    # CRITICAL FIX FOR ISSUE #8: Apply same deduplication logic as _bulk_write_symbols
-                                    # Check for duplicates before adding
-                                    skip_symbol = False
-
-                                    if symbol.usr and symbol.usr in self.usr_index:
-                                        existing = self.usr_index[symbol.usr]
-
-                                        # Definition-wins: if new is definition and existing is not, replace
-                                        if symbol.is_definition and not existing.is_definition:
-                                            self._remove_symbol_from_indexes(existing)
-                                            # Will add new definition below (fall through)
-                                        elif symbol.is_definition and existing.is_definition:
-                                            # Both definitions: pick richer one
-                                            if is_richer_definition(symbol, existing):
-                                                self._remove_symbol_from_indexes(existing)
-                                            else:
-                                                skip_symbol = True
-                                        else:
-                                            # Keep existing (existing is definition, new is declaration)
-                                            skip_symbol = True
-
-                                    if not skip_symbol:
-                                        # Add to appropriate index
-                                        if symbol.kind in CLASS_KINDS:
-                                            self.class_index[symbol.name].append(symbol)
-                                        else:
-                                            self.function_index[symbol.name].append(symbol)
-
-                                        # Add to USR index
-                                        if symbol.usr:
-                                            self.usr_index[symbol.usr] = symbol
-
-                                        # Add to file index (with deduplication)
-                                        if symbol.file:
-                                            if symbol.file not in self.file_index:
-                                                self.file_index[symbol.file] = []
-
-                                            # Check for duplicates in file_index
-                                            already_in_file_index = False
-                                            if symbol.usr:
-                                                for idx_pos, existing in enumerate(
-                                                    self.file_index[symbol.file]
-                                                ):
-                                                    if existing.usr == symbol.usr:
-                                                        # Replace if new is richer
-                                                        if (
-                                                            symbol.is_definition
-                                                            and not existing.is_definition
-                                                        ) or (
-                                                            symbol.is_definition
-                                                            and existing.is_definition
-                                                            and is_richer_definition(
-                                                                symbol, existing
-                                                            )
-                                                        ):
-                                                            self.file_index[symbol.file][
-                                                                idx_pos
-                                                            ] = symbol
-                                                        already_in_file_index = True
-                                                        break
-
-                                            if not already_in_file_index:
-                                                self.file_index[symbol.file].append(symbol)
-
-                                    # v9.0: calls/called_by removed from SymbolInfo
-                                    # Call graph is restored from call_sites below
-
-                                # Phase 4: Stream call sites directly to SQLite
-                                # This avoids accumulating ~1.9 GB in memory for large projects
-                                if call_sites:
-                                    diagnostics.debug(
-                                        f"Streaming {len(call_sites)} call sites from {file_path} to SQLite"
-                                    )
-                                    # Delete existing call sites for this file (re-indexing case)
-                                    if self.cache_manager and self.cache_manager.backend:
-                                        self.cache_manager.backend.delete_call_sites_by_file(
-                                            file_path
-                                        )
-                                        # Save call sites directly to SQLite
-                                        self.cache_manager.backend.save_call_sites_batch(call_sites)
-
-                                    # Update in-memory call graph (for current session queries)
-                                    # but DON'T store CallSite objects in memory
-                                    for cs_dict in call_sites:
-                                        self.call_graph_analyzer.add_call(
-                                            cs_dict["caller_usr"],
-                                            cs_dict["callee_usr"],
-                                            cs_dict["file"],
-                                            cs_dict["line"],
-                                            cs_dict.get("column"),
-                                            store_call_site=False,  # Phase 4: Don't accumulate in memory
-                                        )
-
-                                # Merge header tracking from worker (critical for incremental analysis)
-                                # Workers claim headers during parsing, we need to merge that state
-                                # back into the main process's header_tracker
-                                if processed_headers:
-                                    for header_path, header_hash in processed_headers.items():
-                                        # Use mark_completed to update main process tracker
-                                        # This is safe because workers already claimed these headers
-                                        self.header_tracker.mark_completed(header_path, header_hash)
-                                    diagnostics.debug(
-                                        f"Merged {len(processed_headers)} header tracking entries from {file_path}"
-                                    )
-
-                                # Update file hash tracking
-                                file_hash = self._get_file_hash(file_path)
-                                self.file_hashes[file_path] = file_hash
-                    else:
-                        # ThreadPoolExecutor returns (success, was_cached)
-                        success, was_cached = result
-
-                except Exception as exc:
-                    diagnostics.error(f"Error indexing {file_path}: {exc}")
-                    success, was_cached = False, False
+                success, was_cached = self._get_worker_result(future, file_path)
 
                 if success:
                     indexed_count += 1
@@ -3780,129 +3851,36 @@ class CppAnalyzer:
                 else:
                     failed_count += 1
 
-                processed = i + 1
-
                 # Progress reporting
-                current_time = time.time()
-
-                if is_terminal:
-                    should_report = (
-                        (processed <= 5)
-                        or (processed % 5 == 0)
-                        or ((current_time - last_report_time) > 2.0)
-                        or (processed == len(files))
+                processed = i + 1
+                if self._should_report_progress(
+                    processed, len(files), time.time(), last_report_time, is_terminal
+                ):
+                    self._report_indexing_progress(
+                        processed,
+                        len(files),
+                        indexed_count,
+                        failed_count,
+                        cache_hits,
+                        start_time,
+                        is_terminal,
+                        progress_callback,
+                        file_path,
                     )
-                else:
-                    should_report = (
-                        (processed % 50 == 0)
-                        or ((current_time - last_report_time) > 5.0)
-                        or (processed == len(files))
-                    )
-
-                if should_report:
-                    elapsed = current_time - start_time
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    eta = (len(files) - processed) / rate if rate > 0 else 0
-
-                    cache_rate = (cache_hits * 100 // processed) if processed > 0 else 0
-
-                    if is_terminal:
-                        progress_str = (
-                            f"Progress: {processed}/{len(files)} files ({100 * processed // len(files)}%) - "
-                            f"Success: {indexed_count} - Failed: {failed_count} - "
-                            f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s"
-                        )
-                        print(f"\033[2K\r{progress_str}", end="", file=sys.stderr, flush=True)
-                    else:
-                        print(
-                            f"Progress: {processed}/{len(files)} files ({100 * processed // len(files)}%) - "
-                            f"Success: {indexed_count} - Failed: {failed_count} - "
-                            f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s",
-                            file=sys.stderr,
-                            flush=True,
-                        )
-
-                    # Call progress callback if provided
-                    if progress_callback:
-                        try:
-                            # Import IndexingProgress here to avoid circular dependency
-                            from .state_manager import IndexingProgress
-
-                            estimated_completion = (
-                                datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-                            )
-
-                            progress = IndexingProgress(
-                                total_files=len(files),
-                                indexed_files=indexed_count,
-                                failed_files=failed_count,
-                                cache_hits=cache_hits,
-                                current_file=file_path if processed < len(files) else None,
-                                start_time=datetime.fromtimestamp(start_time),
-                                estimated_completion=estimated_completion,
-                            )
-
-                            progress_callback(progress)
-                        except Exception as e:
-                            # Don't fail indexing if progress callback fails
-                            diagnostics.debug(f"Progress callback failed: {e}")
-
-                    last_report_time = current_time
+                    last_report_time = time.time()
 
         except KeyboardInterrupt:
-            # Gracefully handle Ctrl-C: shutdown executor and clean up
             diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
-            if executor is not None:
-                self._shutdown_executor(executor, name="Indexing")
+            self._shutdown_executor(executor, name="Indexing")
             raise
         finally:
-            # Always ensure executor is properly shut down
-            if executor is not None:
-                # Use wait=False for final cleanup to avoid blocking
-                try:
-                    executor.shutdown(wait=False)
-                except Exception:
-                    pass
+            if executor:
+                executor.shutdown(wait=False)
 
-        self.indexed_file_count = indexed_count
-        self.last_index_time = time.time() - start_time
-
-        with self.index_lock:
-            # Count total symbols (not just unique names)
-            class_count = sum(len(infos) for infos in self.class_index.values())
-            function_count = sum(len(infos) for infos in self.function_index.values())
-
-        # Print newline after progress to move to next line (only if using terminal progress)
-        if is_terminal:
-            print("", file=sys.stderr)
-        diagnostics.info(f"Indexing complete in {self.last_index_time:.2f}s")
-        diagnostics.info(
-            f"Indexed {indexed_count}/{len(files)} files successfully ({cache_hits} from cache, {failed_count} failed)"
+        # 7. Finalize
+        return self._finalize_indexing(
+            indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
         )
-        diagnostics.info(f"Found {class_count} classes, {function_count} functions")
-
-        if failed_count > 0:
-            diagnostics.info(
-                f"Note: {failed_count} files failed to parse - this is normal for complex projects"
-            )
-
-        # Resolve base_classes for template instantiations that couldn't resolve during parsing
-        # (workers have isolated indexes, so primary template lookup may have failed)
-        self._resolve_deferred_instantiation_bases()
-
-        # Save overall cache and progress summary
-        self._save_cache()
-        self._save_progress_summary(indexed_count, len(files), cache_hits, failed_count)
-
-        # Save header tracking state (once at end to avoid race conditions in multi-process mode)
-        self._save_header_tracking()
-
-        # Rebuild FTS5 index after full indexing to clean up stale entries
-        # INSERT OR REPLACE causes rowid changes and FTS5 internal tables
-        # accumulate stale entries that need to be cleaned up via 'rebuild'
-        self.cache_manager.backend.rebuild_fts()
-
-        return indexed_count
 
     def _save_cache(self):
         """Save index to cache file"""
