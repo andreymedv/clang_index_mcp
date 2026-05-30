@@ -17,7 +17,13 @@ import sys
 import threading
 import time
 from collections import defaultdict, deque
-from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    Executor,
+    Future,
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    as_completed,
+)
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -1077,30 +1083,34 @@ class CppAnalyzer:
         )
 
     def _remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
-        """Remove a symbol from class_index/function_index and usr_index.
+        """Remove a single symbol from class/function/USR indexes and call graph."""
+        # 1. Global name-based indexes
+        target_index = (
+            self.class_index
+            if symbol.kind in ("class", "struct", "class_template", "partial_specialization")
+            else self.function_index
+        )
 
-        Used during definition-wins deduplication to replace an existing symbol.
-        Does NOT remove from file_index (declarations stay indexed under headers).
-        """
-        if symbol.kind in CLASS_KINDS:
-            if symbol.name in self.class_index:
-                try:
-                    self.class_index[symbol.name].remove(symbol)
-                    if not self.class_index[symbol.name]:
-                        del self.class_index[symbol.name]
-                except ValueError:
-                    pass
-        else:
-            if symbol.name in self.function_index:
-                try:
-                    self.function_index[symbol.name].remove(symbol)
-                    if not self.function_index[symbol.name]:
-                        del self.function_index[symbol.name]
-                except ValueError:
-                    pass
+        if symbol.name in target_index:
+            # Use USR for identity check if available, otherwise fallback to object equality
+            if symbol.usr:
+                target_index[symbol.name] = [
+                    i for i in target_index[symbol.name] if i.usr != symbol.usr
+                ]
+            else:
+                target_index[symbol.name] = [i for i in target_index[symbol.name] if i != symbol]
 
-        if symbol.usr and symbol.usr in self.usr_index:
-            del self.usr_index[symbol.usr]
+            if not target_index[symbol.name]:
+                del target_index[symbol.name]
+
+        # 2. USR and Call Graph
+        if symbol.usr:
+            if symbol.usr in self.usr_index:
+                # Only delete if it's actually the same symbol (to avoid accidental deletion of replacements)
+                existing = self.usr_index[symbol.usr]
+                if existing == symbol or existing.usr == symbol.usr:
+                    del self.usr_index[symbol.usr]
+            self.call_graph_analyzer.remove_symbol(symbol.usr)
 
     def _bulk_write_symbols(self):
         """
@@ -3191,19 +3201,7 @@ class CppAnalyzer:
 
     def _clear_file_index_entries(self, file_path: str) -> None:
         """Clear existing index entries for a file (atomicity should be handled by caller)."""
-        if file_path in self.file_index:
-            for info in self.file_index[file_path]:
-                if info.kind in ("class", "struct", "class_template", "partial_specialization"):
-                    if info.name in self.class_index:
-                        self.class_index[info.name] = [
-                            i for i in self.class_index[info.name] if i.file != file_path
-                        ]
-                else:
-                    if info.name in self.function_index:
-                        self.function_index[info.name] = [
-                            i for i in self.function_index[info.name] if i.file != file_path
-                        ]
-            self.file_index[file_path].clear()
+        self._remove_file_from_indexes(file_path)
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
@@ -3459,6 +3457,10 @@ class CppAnalyzer:
 
         if success and symbols:
             with self.index_lock:
+                # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
+                # This ensures that modified files don't have duplicate/stale symbols
+                self._clear_file_index_entries(file_path)
+
                 for symbol in symbols:
                     self._merge_symbol_into_indexes(symbol)
 
@@ -4019,346 +4021,198 @@ class CppAnalyzer:
                 f"system_include_dirs={profile.get('system_include_dirs')}"
             )
 
+    def _handle_deleted_files(self, current_files: Set[str]) -> int:
+        """Find and remove deleted files from indexes."""
+        tracked_files = set(self.file_hashes.keys())
+        deleted_files = set()
+        for tracked_file in tracked_files:
+            if tracked_file in current_files:
+                continue
+
+            if tracked_file.endswith((".h", ".hpp", ".hxx", ".h++")):
+                if not os.path.exists(tracked_file):
+                    deleted_files.add(tracked_file)
+            else:
+                deleted_files.add(tracked_file)
+
+        deleted_count = 0
+        for file_path in deleted_files:
+            self._remove_file_from_indexes(file_path)
+            if file_path in self.file_hashes:
+                del self.file_hashes[file_path]
+            self.cache_manager.remove_file_cache(file_path)
+            deleted_count += 1
+        return deleted_count
+
+    def _identify_refresh_files(self, current_files: Set[str]) -> Tuple[List[str], List[str]]:
+        """Identify modified and new files needing refresh."""
+        tracked_files = set(self.file_hashes.keys())
+        new_files = list(current_files - tracked_files)
+        modified_files = []
+        for file_path in self.file_hashes:
+            if not os.path.exists(file_path):
+                continue
+            if self._get_file_hash(file_path) != self.file_hashes.get(file_path):
+                modified_files.append(file_path)
+        return modified_files, new_files
+
+    def _prepare_refresh_compile_args(
+        self, all_files_to_process: List[str]
+    ) -> Dict[str, List[str]]:
+        """Prepare compilation arguments for all files in main process."""
+        file_compile_args = {}
+        for file_path in all_files_to_process:
+            file_path_obj = Path(file_path)
+            file_compile_args[file_path] = self._get_compile_args_for_file(file_path_obj)
+        return file_compile_args
+
+    def _submit_refresh_tasks(
+        self, executor: Executor, modified_files: List[str], new_files: List[str]
+    ) -> Dict[Future, str]:
+        """Submit indexing tasks for modified and new files."""
+        future_to_file = {}
+        if self.use_processes:
+            project_root = str(self.project_root)
+            config_file_str = (
+                str(self.project_identity.config_file_path)
+                if self.project_identity.config_file_path
+                else None
+            )
+
+            all_files_to_process = list(modified_files) + list(new_files)
+            file_compile_args = self._prepare_refresh_compile_args(all_files_to_process)
+
+            for f in modified_files:
+                future = executor.submit(
+                    _process_file_worker,
+                    (
+                        project_root,
+                        config_file_str,
+                        os.path.abspath(f),
+                        True,
+                        self.include_dependencies,
+                        file_compile_args[f],
+                    ),
+                )
+                future_to_file[future] = f
+            for f in new_files:
+                future = executor.submit(
+                    _process_file_worker,
+                    (
+                        project_root,
+                        config_file_str,
+                        os.path.abspath(f),
+                        False,
+                        self.include_dependencies,
+                        file_compile_args[f],
+                    ),
+                )
+                future_to_file[future] = f
+        else:
+            for f in modified_files:
+                future_to_file[executor.submit(self.index_file, f, True)] = f
+            for f in new_files:
+                future_to_file[executor.submit(self.index_file, f, False)] = f
+        return future_to_file
+
+    def _finalize_refresh(self, refreshed: int, deleted: int) -> None:
+        """Perform post-refresh cleanup and optimizations."""
+        if refreshed > 0 or deleted > 0:
+            self._resolve_deferred_instantiation_bases()
+            self._save_cache()
+            self._save_header_tracking()
+            if deleted > 0:
+                diagnostics.info(f"Removed {deleted} deleted files from indexes")
+            if refreshed > 0:
+                self.cache_manager.backend.rebuild_fts()
+        self.indexed_file_count = len(self.file_hashes)
+
+    def _process_refresh_result(self, file_path: str, res: Any) -> bool:
+        """Process result from indexing worker during refresh. Returns True if successful."""
+        success = res[1] if self.use_processes else res[0]
+        if success:
+            if self.use_processes:
+                self._merge_worker_result(res, file_path)
+            return True
+        return False
+
+    def _prepare_refresh_set(self) -> Tuple[List[str], List[str], int]:
+        """Identify files to refresh and handle deleted files. Returns (modified, new, deleted_count)."""
+        current_files = set(self._find_cpp_files(self.include_dependencies))
+        deleted_count = self._handle_deleted_files(current_files)
+        modified_files, new_files = self._identify_refresh_files(current_files)
+        return modified_files, new_files, deleted_count
+
+    def _run_refresh_loop(
+        self,
+        executor: Executor,
+        modified_files: List[str],
+        new_files: List[str],
+        total_to_check: int,
+        start_time: float,
+        progress_callback: Optional[Callable],
+        wait_for_tools_callback: Optional[Callable[[], None]],
+    ) -> Tuple[int, int]:
+        """Run the parallel refresh loop and return (refreshed_count, failed_count)."""
+        refreshed, failed = 0, 0
+        future_to_file = self._submit_refresh_tasks(executor, modified_files, new_files)
+        for i, future in enumerate(as_completed(future_to_file)):
+            if wait_for_tools_callback:
+                wait_for_tools_callback()
+
+            file_path = future_to_file[future]
+            try:
+                if self._process_refresh_result(file_path, future.result()):
+                    refreshed += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                failed += 1
+                diagnostics.error(f"Error refreshing {file_path}: {e}")
+
+            if progress_callback and ((i + 1) % 10 == 0 or (i + 1) == total_to_check):
+                self._report_refresh_progress(
+                    progress_callback, total_to_check, refreshed, failed, file_path, start_time
+                )
+        return refreshed, failed
+
     def refresh_if_needed(
         self,
         progress_callback: Optional[Callable] = None,
         wait_for_tools_callback: Optional[Callable[[], None]] = None,
     ) -> int:
-        """
-        Refresh index for changed files and remove deleted files
+        """Refresh index for changed files and remove deleted files."""
+        refreshed, deleted, start_time = 0, 0, time.time()
 
-        Args:
-            progress_callback: Optional callback for progress updates.
-                             Called with IndexingProgress object during refresh.
-
-        Returns:
-            Number of files refreshed
-        """
-        refreshed = 0
-        deleted = 0
-        start_time = time.time()
-
-        # Refresh compile commands if needed
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
         if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
-            compile_commands_refreshed = self.compile_commands_manager.refresh_if_needed()
-            if compile_commands_refreshed:
+            if self.compile_commands_manager.refresh_if_needed():
                 diagnostics.debug("Compile commands refreshed")
 
-        # Get currently existing files
-        current_files = set(self._find_cpp_files(self.include_dependencies))
-        tracked_files = set(self.file_hashes.keys())
+        modified_files, new_files, deleted = self._prepare_refresh_set()
+        total_to_check = len(modified_files) + len(new_files)
 
-        # Find deleted files
-        # CRITICAL FIX FOR ISSUE #8: When using compile_commands.json, current_files only
-        # contains source files (.cpp), not headers. Headers are tracked via header_tracker
-        # and dependency graph, so we must not treat them as "deleted" just because they're
-        # not in compile_commands.json. Only check if source files were deleted.
-        # For headers, check if they physically exist on disk.
-        deleted_files = set()
-        for tracked_file in tracked_files:
-            if tracked_file in current_files:
-                continue  # Still in current scan, not deleted
-
-            # File not in current_files - check if it's a header
-            if tracked_file.endswith((".h", ".hpp", ".hxx", ".h++")):
-                # Header file - only consider deleted if it doesn't exist on disk
-                if not os.path.exists(tracked_file):
-                    deleted_files.add(tracked_file)
-                # else: Header exists but not in compile_commands (expected), keep it
-            else:
-                # Source file not in scan - it was deleted
-                deleted_files.add(tracked_file)
-
-        # Remove deleted files from all indexes
-        for file_path in deleted_files:
-            self._remove_file_from_indexes(file_path)
-            # Remove from tracking
-            if file_path in self.file_hashes:
-                del self.file_hashes[file_path]
-            # Note: translation_units dict removed - was never used, caused FD leak
-            # Clean up per-file cache
-            self.cache_manager.remove_file_cache(file_path)
-            deleted += 1
-
-        # PHASE 1: Identify files that need refreshing (hash comparison)
-        tracked_file_list = list(self.file_hashes.keys())
-        new_files = current_files - tracked_files
-
-        # Scan for modified files (quick hash comparison)
-        modified_files = []
-        for file_path in tracked_file_list:
-            if not os.path.exists(file_path):
-                continue  # Skip files that no longer exist (already handled in deleted_files)
-
-            current_hash = self._get_file_hash(file_path)
-            if current_hash != self.file_hashes.get(file_path):
-                modified_files.append(file_path)
-
-        # Collect all files to process: modified + new
-        files_to_process = modified_files + list(new_files)
-        total_files_to_check = len(files_to_process)
-
-        if total_files_to_check == 0:
-            # No files to process, just cleanup and return
+        if total_to_check == 0:
             if deleted > 0:
-                self._save_cache()
-                self._save_header_tracking()
-                diagnostics.info(f"Removed {deleted} deleted files from indexes")
+                self._finalize_refresh(0, deleted)
             return 0
 
         diagnostics.debug(f"Refresh: {len(modified_files)} modified, {len(new_files)} new files")
-
-        # PHASE 2: Process files in parallel using ProcessPoolExecutor or ThreadPoolExecutor
-        # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
-        # ThreadPoolExecutor used as fallback when use_processes=False
-        from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-
-        # CRITICAL: Ensure schema is current BEFORE creating workers
-        # This prevents race conditions where multiple workers detect schema mismatch
-        # and try to recreate the database simultaneously (causing "disk I/O error")
         if self.use_processes:
             self.cache_manager.ensure_schema_current()
 
         executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
-        executor_type = "ProcessPoolExecutor" if self.use_processes else "ThreadPoolExecutor"
+        with executor_class(max_workers=self.max_workers) as executor:
+            refreshed, failed = self._run_refresh_loop(
+                executor,
+                modified_files,
+                new_files,
+                total_to_check,
+                start_time,
+                progress_callback,
+                wait_for_tools_callback,
+            )
 
-        diagnostics.debug(f"Full refresh: Using {executor_type} with {self.max_workers} workers")
-
-        executor = None
-        failed = 0
-        try:
-            executor = executor_class(max_workers=self.max_workers)
-
-            # Submit all files for parallel processing
-            future_to_file = {}
-
-            if self.use_processes:
-                # ProcessPoolExecutor: use worker function (same as index_project)
-                # Convert config_file to string for serialization
-                project_root = str(self.project_root)
-                config_file_str = (
-                    str(self.project_identity.config_file_path)
-                    if self.project_identity.config_file_path
-                    else None
-                )
-
-                # Task 3.2: Prepare compile args for all files in main process
-                # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
-                all_files_to_process = list(modified_files) + list(new_files)
-                file_compile_args = {}
-                assert self.compile_commands_manager is not None
-                for file_path in all_files_to_process:
-                    file_path_obj = Path(file_path)
-                    args = self.compile_commands_manager.get_compile_args_with_fallback(
-                        file_path_obj
-                    )
-
-                    # If compile commands are not available and we're using fallback, add vcpkg includes
-                    if not self.compile_commands_manager.is_file_supported(file_path_obj):
-                        # Add vcpkg includes if available
-                        vcpkg_include = (
-                            self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-                        )
-                        if vcpkg_include.exists():
-                            args.append(f"-I{vcpkg_include}")
-
-                        # Add common vcpkg paths
-                        vcpkg_paths = [
-                            "C:/vcpkg/installed/x64-windows/include",
-                            "C:/dev/vcpkg/installed/x64-windows/include",
-                        ]
-                        for path in vcpkg_paths:
-                            if Path(path).exists():
-                                args.append(f"-I{path}")
-                                break
-
-                    file_compile_args[file_path] = args
-
-                # Submit modified files (force=True)
-                for file_path in modified_files:
-                    abs_path = os.path.abspath(file_path)
-                    future = executor.submit(
-                        _process_file_worker,
-                        (
-                            project_root,
-                            config_file_str,
-                            abs_path,
-                            True,  # force=True for modified files
-                            self.include_dependencies,
-                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
-                        ),
-                    )
-                    future_to_file[future] = file_path
-
-                # Submit new files (force=False)
-                for file_path in new_files:
-                    abs_path = os.path.abspath(file_path)
-                    future = executor.submit(
-                        _process_file_worker,
-                        (
-                            project_root,
-                            config_file_str,
-                            abs_path,
-                            False,  # force=False for new files
-                            self.include_dependencies,
-                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
-                        ),
-                    )
-                    future_to_file[future] = file_path
-            else:
-                # ThreadPoolExecutor: use bound method (same as before)
-                for file_path in modified_files:
-                    future_to_file[executor.submit(self.index_file, file_path, True)] = file_path
-                for file_path in new_files:
-                    future_to_file[executor.submit(self.index_file, file_path, False)] = file_path
-
-            # Process results as they complete
-            for i, future in enumerate(as_completed(future_to_file)):
-                if wait_for_tools_callback:
-                    wait_for_tools_callback()
-
-                file_path = future_to_file[future]
-                try:
-                    if self.use_processes:
-                        # ProcessPoolExecutor: worker returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
-                        result = future.result()
-                        if result is None:
-                            failed += 1
-                            diagnostics.warning(f"Failed to refresh: {file_path}")
-                            continue
-
-                        _, success, was_cached, symbols, call_sites, processed_headers = result
-
-                        if success and symbols:
-                            # Merge symbols into main process (same logic as index_file)
-                            with self.index_lock:
-                                # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
-                                # This ensures that modified files don't have duplicate/stale symbols
-                                if file_path in self.file_index:
-                                    for old_symbol in self.file_index[file_path]:
-                                        # Remove from class_index or function_index
-                                        # Issue #99: Include template kinds in class_index
-                                        if old_symbol.kind in (
-                                            "class",
-                                            "struct",
-                                            "class_template",
-                                            "partial_specialization",
-                                        ):
-                                            if old_symbol.name in self.class_index:
-                                                self.class_index[old_symbol.name] = [
-                                                    s
-                                                    for s in self.class_index[old_symbol.name]
-                                                    if s.file != file_path
-                                                ]
-                                        else:
-                                            if old_symbol.name in self.function_index:
-                                                self.function_index[old_symbol.name] = [
-                                                    s
-                                                    for s in self.function_index[old_symbol.name]
-                                                    if s.file != file_path
-                                                ]
-
-                                # Clear the file_index for this file
-                                self.file_index[file_path] = []
-
-                                # Now add all new symbols
-                                for symbol in symbols:
-                                    # Add to appropriate index
-                                    if symbol.kind in ("class", "struct"):
-                                        self.class_index[symbol.name].append(symbol)
-                                    else:
-                                        self.function_index[symbol.name].append(symbol)
-
-                                    # USR and file indexes
-                                    if symbol.usr:
-                                        self.usr_index[symbol.usr] = symbol
-                                    self.file_index[file_path].append(symbol)
-
-                                # Phase 4: Stream call sites directly to SQLite
-                                # This avoids accumulating ~1.9 GB in memory for large projects
-                                if call_sites:
-                                    diagnostics.debug(
-                                        f"Streaming {len(call_sites)} call sites from {file_path} to SQLite"
-                                    )
-                                    # Delete existing call sites for this file (re-indexing case)
-                                    if self.cache_manager and self.cache_manager.backend:
-                                        self.cache_manager.backend.delete_call_sites_by_file(
-                                            file_path
-                                        )
-                                        # Save call sites directly to SQLite
-                                        self.cache_manager.backend.save_call_sites_batch(call_sites)
-
-                                    # Update in-memory call graph (for current session queries)
-                                    # but DON'T store CallSite objects in memory
-                                    for cs_dict in call_sites:
-                                        self.call_graph_analyzer.add_call(
-                                            cs_dict["caller_usr"],
-                                            cs_dict["callee_usr"],
-                                            cs_dict["file"],
-                                            cs_dict["line"],
-                                            cs_dict.get("column"),
-                                            store_call_site=False,  # Phase 4: Don't accumulate in memory
-                                        )
-
-                                # Merge header tracking from worker process
-                                if processed_headers:
-                                    for header_path, header_hash in processed_headers.items():
-                                        self.header_tracker.mark_completed(header_path, header_hash)
-
-                            refreshed += 1
-                        else:
-                            failed += 1
-                            diagnostics.warning(f"Failed to refresh: {file_path}")
-                    else:
-                        # ThreadPoolExecutor: bound method returns (success, _)
-                        success, _ = future.result()
-
-                        if success:
-                            refreshed += 1
-                        else:
-                            failed += 1
-                            diagnostics.warning(f"Failed to refresh: {file_path}")
-
-                except Exception as e:
-                    failed += 1
-                    diagnostics.error(f"Error refreshing {file_path}: {e}")
-
-                # Report progress periodically
-                if progress_callback:
-                    processed = i + 1
-                    # Report every 10 files or at completion
-                    if processed % 10 == 0 or processed == total_files_to_check:
-                        self._report_refresh_progress(
-                            progress_callback,
-                            total_files_to_check,
-                            refreshed,
-                            failed,
-                            file_path,
-                            start_time,
-                        )
-
-        finally:
-            if executor:
-                executor.shutdown(wait=True)
-
-        if refreshed > 0 or deleted > 0:
-            # Resolve deferred template instantiation bases after refresh
-            self._resolve_deferred_instantiation_bases()
-            self._save_cache()
-            # Save header tracking state after refresh
-            self._save_header_tracking()
-            if deleted > 0:
-                diagnostics.info(f"Removed {deleted} deleted files from indexes")
-            # Rebuild FTS5 index after refresh to clean up stale entries
-            # INSERT OR REPLACE causes rowid changes and FTS5 internal tables
-            # accumulate stale entries that need to be cleaned up via 'rebuild'
-            if refreshed > 0:
-                self.cache_manager.backend.rebuild_fts()
-
-        # Keep tracked file count in sync with current state
-        self.indexed_file_count = len(self.file_hashes)
-
+        self._finalize_refresh(refreshed, deleted)
         return refreshed
 
     def _report_refresh_progress(
@@ -4411,43 +4265,17 @@ class CppAnalyzer:
         """Remove all symbols from a deleted file from all indexes"""
         with self.index_lock:
             # Get all symbols that were in this file
-            symbols_to_remove = self.file_index.get(file_path, [])
+            symbols_to_remove = self.file_index.get(file_path, []).copy()
+            if symbols_to_remove:
+                diagnostics.debug(f"Removing {len(symbols_to_remove)} symbols for file {file_path}")
 
-            # Remove from class_index
             for symbol in symbols_to_remove:
-                # Issue #99: Include template kinds in class_index
-                if symbol.kind in ("class", "struct", "class_template", "partial_specialization"):
-                    if symbol.name in self.class_index:
-                        self.class_index[symbol.name] = [
-                            info for info in self.class_index[symbol.name] if info.file != file_path
-                        ]
-                        # Remove empty entries
-                        if not self.class_index[symbol.name]:
-                            del self.class_index[symbol.name]
+                self._remove_symbol_from_indexes(symbol)
 
-                # Remove from function_index
-                elif symbol.kind in ("function", "method"):
-                    if symbol.name in self.function_index:
-                        self.function_index[symbol.name] = [
-                            info
-                            for info in self.function_index[symbol.name]
-                            if info.file != file_path
-                        ]
-                        # Remove empty entries
-                        if not self.function_index[symbol.name]:
-                            del self.function_index[symbol.name]
-
-                # Remove from usr_index
-                if symbol.usr and symbol.usr in self.usr_index:
-                    del self.usr_index[symbol.usr]
-
-                # Remove from call graph
-                if symbol.usr:
-                    self.call_graph_analyzer.remove_symbol(symbol.usr)
-
-            # Remove from file_index
+            # Finally remove from file_index
             if file_path in self.file_index:
                 del self.file_index[file_path]
+                diagnostics.debug(f"Removed file {file_path} from file_index")
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific class, including direct derived classes."""
@@ -6091,7 +5919,7 @@ def create_analyzer(project_root: str) -> CppAnalyzer:
 
 # Test function
 if __name__ == "__main__":
-    print("Testing Python CppAnalyzer...")
+    diagnostics.debug("Testing Python CppAnalyzer...")
     analyzer = CppAnalyzer(".")
 
     # Try to load from cache first
@@ -6099,10 +5927,10 @@ if __name__ == "__main__":
         analyzer.index_project()
 
     stats = analyzer.get_stats()
-    print(f"Stats: {stats}")
+    diagnostics.debug(f"Stats: {stats}")
 
     classes = analyzer.search_classes(".*", project_only=True)
-    print(f"Found {len(classes)} project classes")
+    diagnostics.debug(f"Found {len(classes)} project classes")
 
     functions = analyzer.search_functions(".*", project_only=True)
-    print(f"Found {len(functions)} project functions")
+    diagnostics.debug(f"Found {len(functions)} project functions")
