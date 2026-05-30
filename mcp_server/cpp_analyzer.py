@@ -2460,24 +2460,6 @@ class CppAnalyzer:
     ) -> None:
         """
         Process a cursor and its children, extracting symbols based on file filter.
-
-        Args:
-            cursor: libclang cursor to process
-            should_extract_from_file: Optional callback function(file_path) -> bool
-                                     If provided, only extract symbols from files where this returns True
-                                     If None, extract from all files (backward compatibility)
-            parent_class: Name of parent class for nested symbols
-            parent_function_usr: USR of parent function for call tracking
-
-        Design:
-            - Traverse AST of project files only (skip system headers for performance)
-            - Only extract symbols when should_extract_from_file returns True
-            - This enables multi-file extraction (source + headers) in single pass
-            - Collects symbols in thread-local buffers to avoid lock contention
-            - Early exit optimization: skip non-project file subtrees (5-7x speedup)
-
-        Implements:
-            REQ-10.1.6: Use cursor.location.file to determine which file symbol belongs to
         """
         # Get thread-local buffers for lock-free collection
         symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
@@ -2489,12 +2471,6 @@ class CppAnalyzer:
             should_extract = should_extract_from_file(file_path)
 
             # PERFORMANCE OPTIMIZATION: Early exit for non-project files
-            # Skip traversing AST subtrees from system headers and external dependencies
-            # This provides 5-7x speedup by avoiding millions of unnecessary node visits
-            # Safe because:
-            # - We don't extract symbols from non-project files (should_extract=False)
-            # - We're not tracking calls (parent_function_usr empty means not in project function)
-            # - Dependency discovery uses tu.get_includes() API (doesn't need AST traversal)
             if not should_extract and not parent_function_usr:
                 return
 
@@ -2502,9 +2478,6 @@ class CppAnalyzer:
         try:
             kind = cursor.kind
         except ValueError as e:
-            # This can happen when libclang library supports newer C++ features
-            # but Python bindings have outdated cursor kind enums
-            # Just skip this cursor and continue with children
             diagnostics.debug(f"Skipping cursor with unknown kind: {e}")
             for child in cursor.get_children():
                 self._process_cursor(
@@ -2512,471 +2485,430 @@ class CppAnalyzer:
                 )
             return
 
-        # Process template classes (generic and partial specializations)
-        # Issue #99: Template Class Search and Specialization Discovery
-        if kind in (
-            CursorKind.CLASS_TEMPLATE,
-            CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
-        ):
-            if cursor.spelling and should_extract:
-                # Extract common symbol data
-                common = self._get_common_symbol_data(cursor)
-                qualified_name = common["qualified_name"]
-                namespace = common["namespace"]
-                loc_info = common["loc_info"]
-                doc_info = common["doc_info"]
+        # Process cursor based on kind
+        if kind in (CursorKind.CLASS_TEMPLATE, CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION):
+            self._handle_class_template_cursor(
+                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
+            )
+            return
 
-                # Get base classes (templates can inherit too)
-                base_classes = self._get_base_classes(cursor)
-
-                # Extract template parameters (Task 3.2)
-                template_params = self._extract_template_parameters(cursor)
-
-                # Determine kind and get primary template USR for specializations
-                if kind == CursorKind.CLASS_TEMPLATE:
-                    symbol_kind = "class_template"
-                    primary_usr = None  # Primary templates don't have a parent
-                else:  # CLASS_TEMPLATE_PARTIAL_SPECIALIZATION
-                    symbol_kind = "partial_specialization"
-                    # Task 3.4: Link to primary template
-                    primary_usr = self._get_primary_template_usr(cursor)
-
-                info = SymbolInfo(
-                    name=cursor.spelling,
-                    kind=symbol_kind,
-                    file=loc_info["file"],
-                    line=loc_info["line"],
-                    column=loc_info["column"],
-                    qualified_name=qualified_name,
-                    is_project=(
-                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                    ),
-                    namespace=namespace,
-                    parent_class="",
-                    base_classes=base_classes,
-                    usr=cursor.get_usr() if cursor.get_usr() else "",
-                    # Template tracking (Template Search Support)
-                    is_template=True,  # CLASS_TEMPLATE and partial specs are templates
-                    template_kind=symbol_kind,  # 'class_template' or 'partial_specialization'
-                    template_parameters=template_params,  # Task 3.2: JSON array of template params
-                    primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
-                    # Line ranges
-                    start_line=loc_info["start_line"],
-                    end_line=loc_info["end_line"],
-                    header_file=loc_info["header_file"],
-                    header_line=loc_info["header_line"],
-                    header_start_line=loc_info["header_start_line"],
-                    header_end_line=loc_info["header_end_line"],
-                    # Definition-wins logic
-                    is_definition=cursor.is_definition(),
-                    # Documentation
-                    brief=doc_info["brief"],
-                    doc_comment=doc_info["doc_comment"],
-                )
-
-                # Collect symbol in thread-local buffer
-                symbols_buffer.append(info)
-
-            # Always process children (template members, nested types, etc.)
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child,
-                    should_extract_from_file,
-                    cursor.spelling if should_extract else parent_class,
-                    parent_function_usr,
-                )
-            return  # Don't process children again below
-
-        # Process classes and structs (only if should extract)
         if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
-            if cursor.spelling and should_extract:
-                # Extract common symbol data
-                common = self._get_common_symbol_data(cursor)
-                qualified_name = common["qualified_name"]
-                namespace = common["namespace"]
-                loc_info = common["loc_info"]
-                doc_info = common["doc_info"]
+            self._handle_class_cursor(
+                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
+            )
+            return
 
-                # Get base classes
-                base_classes = self._get_base_classes(cursor)
+        if kind == CursorKind.FUNCTION_TEMPLATE:
+            self._handle_function_template_cursor(
+                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
+            )
+            return
 
-                # Detect template specialization (Template Search Support)
-                is_class_template_spec = self._detect_template_specialization(cursor)
-
-                # Task 3.4: Get primary template USR for full specializations
-                primary_usr = None
-                stored_template_args = None
-                if is_class_template_spec:
-                    primary_usr = self._get_primary_template_usr(cursor)
-
-                    # For explicit instantiations (extern template), libclang doesn't provide
-                    # base specifiers. Resolve them from the primary template.
-                    # This makes inheritance visible to LLMs for template instantiations.
-                    if not base_classes and primary_usr:
-                        base_classes = self._resolve_instantiation_base_classes(cursor, primary_usr)
-
-                        # If resolution failed (primary template not in this worker's index),
-                        # store template args for deferred post-indexing resolution.
-                        if not base_classes:
-                            targs = self._extract_template_args_from_displayname(cursor.displayname)
-                            if targs:
-                                stored_template_args = json.dumps(targs)
-
-                info = SymbolInfo(
-                    name=cursor.spelling,
-                    kind="class" if kind == CursorKind.CLASS_DECL else "struct",
-                    file=loc_info["file"],
-                    line=loc_info["line"],
-                    column=loc_info["column"],
-                    qualified_name=qualified_name,
-                    is_project=(
-                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                    ),
-                    namespace=namespace,
-                    parent_class="",  # Classes don't have parent classes in this context
-                    base_classes=base_classes,
-                    usr=cursor.get_usr() if cursor.get_usr() else "",
-                    # Overload metadata (Phase 3: Qualified Names Support)
-                    is_template_specialization=is_class_template_spec,
-                    # Template tracking (Template Search Support)
-                    is_template=is_class_template_spec,  # True for explicit specializations
-                    template_kind="full_specialization" if is_class_template_spec else None,
-                    primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
-                    template_arguments=stored_template_args,  # For deferred resolution
-                    # Phase 1: Line ranges
-                    start_line=loc_info["start_line"],
-                    end_line=loc_info["end_line"],
-                    header_file=loc_info["header_file"],
-                    header_line=loc_info["header_line"],
-                    header_start_line=loc_info["header_start_line"],
-                    header_end_line=loc_info["header_end_line"],
-                    # Phase 1: Definition-wins logic
-                    is_definition=cursor.is_definition(),
-                    # Phase 2: Documentation
-                    brief=doc_info["brief"],
-                    doc_comment=doc_info["doc_comment"],
-                )
-
-                # Collect symbol in thread-local buffer (no lock needed)
-                symbols_buffer.append(info)
-
-            # Always process children (even if we didn't extract this symbol)
-            # Children might be in different files
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child,
-                    should_extract_from_file,
-                    cursor.spelling if should_extract else parent_class,
-                    parent_function_usr,
-                )
-            return  # Don't process children again below
-
-        # Process template functions
-        # Issue #99: Template Class Search and Specialization Discovery
-        elif kind == CursorKind.FUNCTION_TEMPLATE:
-            if cursor.spelling and should_extract:
-                # Extract common symbol data
-                common = self._get_common_symbol_data(cursor)
-                qualified_name = common["qualified_name"]
-                namespace = common["namespace"]
-                loc_info = common["loc_info"]
-                doc_info = common["doc_info"]
-
-                # Get function signature (human-readable format)
-                signature = self._build_human_readable_signature(cursor)
-
-                function_usr = cursor.get_usr() if cursor.get_usr() else ""
-
-                # Extract template parameters (Task 3.2)
-                template_params = self._extract_template_parameters(cursor)
-
-                # Phase 5: Extract virtual/const/static/access for template methods
-                # Check if this is a method template (has parent_class or semantic parent is class)
-                effective_parent_class = parent_class
-                if not parent_class:
-                    sem_parent = cursor.semantic_parent
-                    if sem_parent and sem_parent.kind in (
-                        CursorKind.CLASS_DECL,
-                        CursorKind.STRUCT_DECL,
-                        CursorKind.CLASS_TEMPLATE,
-                    ):
-                        effective_parent_class = sem_parent.spelling
-                is_method_template = bool(effective_parent_class)
-                is_virtual = cursor.is_virtual_method() if is_method_template else False
-                is_pure_virtual = cursor.is_pure_virtual_method() if is_method_template else False
-                is_const = cursor.is_const_method() if is_method_template else False
-                is_static = cursor.is_static_method()
-                access_spec = cursor.access_specifier
-                access = access_spec.name.lower() if access_spec else "public"
-                if access in ("none", "invalid"):
-                    access = "public"
-
-                info = SymbolInfo(
-                    name=cursor.spelling,
-                    kind="function_template",
-                    file=loc_info["file"],
-                    line=loc_info["line"],
-                    column=loc_info["column"],
-                    qualified_name=qualified_name,
-                    signature=signature,
-                    is_project=(
-                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                    ),
-                    namespace=namespace,
-                    access=access,
-                    parent_class=effective_parent_class,  # Could be template method
-                    usr=function_usr,
-                    # Template functions are not specializations themselves
-                    is_template_specialization=False,
-                    # Template tracking (Template Search Support)
-                    is_template=True,  # FUNCTION_TEMPLATE is a template
-                    template_kind="function_template",
-                    template_parameters=template_params,  # Task 3.2: JSON array of template params
-                    # Line ranges
-                    start_line=loc_info["start_line"],
-                    end_line=loc_info["end_line"],
-                    header_file=loc_info["header_file"],
-                    header_line=loc_info["header_line"],
-                    header_start_line=loc_info["header_start_line"],
-                    header_end_line=loc_info["header_end_line"],
-                    # Phase 5: Virtual/abstract indicators
-                    is_virtual=is_virtual,
-                    is_pure_virtual=is_pure_virtual,
-                    is_const=is_const,
-                    is_static=is_static,
-                    # Definition-wins logic
-                    is_definition=cursor.is_definition(),
-                    # Documentation
-                    brief=doc_info["brief"],
-                    doc_comment=doc_info["doc_comment"],
-                )
-
-                # Collect symbol in thread-local buffer
-                symbols_buffer.append(info)
-
-            # Process children for function body
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child,
-                    should_extract_from_file,
-                    parent_class,
-                    cursor.get_usr() if cursor.get_usr() else parent_function_usr,
-                )
-            return  # Don't process children again below
-
-        # Process functions and methods (only if should extract)
-        elif kind in (
+        if kind in (
             CursorKind.FUNCTION_DECL,
             CursorKind.CXX_METHOD,
             CursorKind.CONSTRUCTOR,
             CursorKind.DESTRUCTOR,
             CursorKind.CONVERSION_FUNCTION,
         ):
-            if cursor.spelling and should_extract:
-                # Extract common symbol data
-                common = self._get_common_symbol_data(cursor)
-                qualified_name = common["qualified_name"]
-                namespace = common["namespace"]
-                loc_info = common["loc_info"]
-                doc_info = common["doc_info"]
-
-                # Get function signature (human-readable format)
-                signature = self._build_human_readable_signature(cursor)
-
-                function_usr = cursor.get_usr() if cursor.get_usr() else ""
-
-                # Detect template specialization (Phase 3: Qualified Names)
-                is_template_spec = self._detect_template_specialization(cursor)
-
-                # Task 3.4: Get primary template USR for full specializations
-                primary_usr = None
-                if is_template_spec:
-                    primary_usr = self._get_primary_template_usr(cursor)
-
-                # Phase 5: Extract virtual/const/static/access for methods
-                is_method = kind in (
-                    CursorKind.CXX_METHOD,
-                    CursorKind.CONSTRUCTOR,
-                    CursorKind.DESTRUCTOR,
-                    CursorKind.CONVERSION_FUNCTION,
-                )
-                is_virtual = cursor.is_virtual_method() if is_method else False
-                is_pure_virtual = cursor.is_pure_virtual_method() if is_method else False
-                is_const = cursor.is_const_method() if is_method else False
-                is_static = cursor.is_static_method()
-                # Access specifier: PUBLIC, PRIVATE, PROTECTED, NONE, INVALID
-                access_spec = cursor.access_specifier
-                access = access_spec.name.lower() if access_spec else "public"
-                # Normalize: treat "none" and "invalid" as "public" for functions
-                if access in ("none", "invalid"):
-                    access = "public"
-
-                # Resolve parent_class for out-of-line method definitions.
-                # AST traversal passes parent_class from parent cursor, but out-of-line
-                # definitions (e.g., void Foo::bar() {}) are children of the namespace
-                # cursor, not the class cursor. Use semantic_parent to recover it.
-                effective_parent_class = parent_class
-                if is_method and not parent_class:
-                    sem_parent = cursor.semantic_parent
-                    if sem_parent and sem_parent.kind in (
-                        CursorKind.CLASS_DECL,
-                        CursorKind.STRUCT_DECL,
-                        CursorKind.CLASS_TEMPLATE,
-                    ):
-                        effective_parent_class = sem_parent.spelling
-
-                info = SymbolInfo(
-                    name=cursor.spelling,
-                    kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
-                    file=loc_info["file"],
-                    line=loc_info["line"],
-                    column=loc_info["column"],
-                    qualified_name=qualified_name,
-                    signature=signature,
-                    is_project=(
-                        self._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                    ),
-                    namespace=namespace,
-                    access=access,
-                    parent_class=effective_parent_class if is_method else "",
-                    usr=function_usr,
-                    # Phase 3: Overload metadata
-                    is_template_specialization=is_template_spec,
-                    # Template tracking (Template Search Support)
-                    is_template=is_template_spec,  # True for explicit function specializations
-                    template_kind="full_specialization" if is_template_spec else None,
-                    primary_template_usr=primary_usr,  # Task 3.4: Link to primary template
-                    # Phase 1: Line ranges
-                    start_line=loc_info["start_line"],
-                    end_line=loc_info["end_line"],
-                    header_file=loc_info["header_file"],
-                    header_line=loc_info["header_line"],
-                    header_start_line=loc_info["header_start_line"],
-                    header_end_line=loc_info["header_end_line"],
-                    # Phase 5: Virtual/abstract indicators
-                    is_virtual=is_virtual,
-                    is_pure_virtual=is_pure_virtual,
-                    is_const=is_const,
-                    is_static=is_static,
-                    # Phase 1: Definition-wins logic
-                    is_definition=cursor.is_definition(),
-                    # Phase 2: Documentation
-                    brief=doc_info["brief"],
-                    doc_comment=doc_info["doc_comment"],
-                )
-
-                # Collect symbol in thread-local buffer (no lock needed)
-                symbols_buffer.append(info)
-
-            # Always process children (for call tracking and nested symbols)
-            # Use function_usr only if we extracted this function
-            current_function_usr = (
-                cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+            self._handle_function_cursor(
+                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
             )
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child, should_extract_from_file, parent_class, current_function_usr
-                )
-            return  # Don't process children again below
+            return
 
-        # Process type aliases (Phase 1.3: Type Alias Tracking, Phase 2.0: Template Alias Tracking)
-        elif kind in (
+        if kind in (
             CursorKind.TYPEDEF_DECL,
             CursorKind.TYPE_ALIAS_DECL,
             CursorKind.TYPE_ALIAS_TEMPLATE_DECL,
         ):
-            if cursor.spelling and should_extract:
-                try:
-                    # Extract alias information
-                    alias_info = self._extract_alias_info(cursor)
+            self._handle_type_alias_cursor(
+                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
+            )
+            return
 
-                    # Collect alias in thread-local buffer (no lock needed)
-                    aliases_buffer.append(alias_info)
-
-                    diagnostics.debug(
-                        f"Extracted alias: {alias_info['alias_name']} -> {alias_info['canonical_type']} "
-                        f"(kind: {alias_info['alias_kind']}, template: {alias_info['is_template_alias']}, "
-                        f"file: {alias_info['file']}:{alias_info['line']})"
-                    )
-                except Exception as e:
-                    # Alias extraction failures are not critical, just log and continue
-                    diagnostics.warning(
-                        f"Failed to extract alias info for {cursor.spelling} at "
-                        f"{cursor.location.file.name if cursor.location.file else 'unknown'}:"
-                        f"{cursor.location.line}: {e}"
-                    )
-
-            # For template aliases, don't process children (the nested TYPE_ALIAS_DECL is handled in _extract_alias_info)
-            # For simple aliases, process children (nested declarations within namespace, etc.)
-            if kind != CursorKind.TYPE_ALIAS_TEMPLATE_DECL:
-                for child in cursor.get_children():
-                    self._process_cursor(
-                        child, should_extract_from_file, parent_class, parent_function_usr
-                    )
-            return  # Don't process children again below
-
-        # Process function calls within function bodies
-        elif kind == CursorKind.CALL_EXPR and parent_function_usr:
-            # This is a function call inside a function
-            referenced = cursor.referenced
-            if referenced and referenced.get_usr():
-                called_usr = referenced.get_usr()
-
-                # BUG FIX (cplusplus_mcp-y6j): Template call tracking USR mismatch
-                # For template function calls, cursor.referenced returns the instantiation USR
-                # (e.g., someFunction<const char[6], int>), but function_index stores the
-                # generic template USR (e.g., someFunction<T...>). This causes find_incoming_calls,
-                # find_callees, get_call_sites, and get_call_path to fail for templates.
-                #
-                # Solution: Use clang_getSpecializedCursorTemplate to get the canonical
-                # template USR when the referenced cursor is a template instantiation.
-                # This ensures call sites are stored with the same USR as the template
-                # definition, enabling successful lookups.
-                from clang import cindex
-
-                # Extract template arg info BEFORE y6j mapping erases specialization
-                display_name = None
-                template_project_types = None
-
-                try:
-                    template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(referenced)
-                    if template_cursor and not template_cursor.kind.is_invalid():
-                        template_usr = template_cursor.get_usr()
-                        if template_usr:
-                            # Extract template info using the instantiation cursor
-                            # (before we lose it to canonical mapping)
-                            display_name, template_project_types = self._extract_template_call_info(
-                                referenced, template_usr
-                            )
-                            # Use canonical template USR instead of instantiation USR
-                            called_usr = template_usr
-                except Exception:
-                    # If not a template instantiation or API fails, use original USR
-                    pass
-
-                # Phase 3: Extract call site location information
-                location = cursor.location
-                call_file = location.file.name if location.file else None
-                call_line = location.line if location.line else None
-                call_column = location.column if location.column else None
-
-                # Collect call relationship with location in thread-local buffer
-                # 7-tuple: includes template metadata for template-mediated calls
-                calls_buffer.append(
-                    (
-                        parent_function_usr,
-                        called_usr,
-                        call_file,
-                        call_line,
-                        call_column,
-                        display_name,
-                        template_project_types,
-                    )
-                )
+        if kind == CursorKind.CALL_EXPR and parent_function_usr:
+            self._handle_call_cursor(cursor, parent_function_usr)
 
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
             self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
+
+    def _handle_class_template_cursor(
+        self,
+        cursor: Any,
+        should_extract: bool,
+        should_extract_from_file: Optional[Callable[[str], bool]],
+        parent_class: str,
+        parent_function_usr: str,
+    ) -> None:
+        """Process template classes (generic and partial specializations)."""
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        kind = cursor.kind
+
+        if cursor.spelling and should_extract:
+            # Extract common symbol data
+            common = self._get_common_symbol_data(cursor)
+            qualified_name = common["qualified_name"]
+            namespace = common["namespace"]
+            loc_info = common["loc_info"]
+            doc_info = common["doc_info"]
+
+            # Get base classes (templates can inherit too)
+            base_classes = self._get_base_classes(cursor)
+
+            # Extract template parameters (Task 3.2)
+            template_params = self._extract_template_parameters(cursor)
+
+            # Determine kind and get primary template USR for specializations
+            if kind == CursorKind.CLASS_TEMPLATE:
+                symbol_kind = "class_template"
+                primary_usr = None
+            else:  # CLASS_TEMPLATE_PARTIAL_SPECIALIZATION
+                symbol_kind = "partial_specialization"
+                primary_usr = self._get_primary_template_usr(cursor)
+
+            info = SymbolInfo(
+                name=cursor.spelling,
+                kind=symbol_kind,
+                file=loc_info["file"],
+                line=loc_info["line"],
+                column=loc_info["column"],
+                qualified_name=qualified_name,
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
+                namespace=namespace,
+                parent_class="",
+                base_classes=base_classes,
+                usr=cursor.get_usr() if cursor.get_usr() else "",
+                is_template=True,
+                template_kind=symbol_kind,
+                template_parameters=template_params,
+                primary_template_usr=primary_usr,
+                start_line=loc_info["start_line"],
+                end_line=loc_info["end_line"],
+                header_file=loc_info["header_file"],
+                header_line=loc_info["header_line"],
+                header_start_line=loc_info["header_start_line"],
+                header_end_line=loc_info["header_end_line"],
+                is_definition=cursor.is_definition(),
+                brief=doc_info["brief"],
+                doc_comment=doc_info["doc_comment"],
+            )
+            symbols_buffer.append(info)
+
+        # Always process children
+        for child in cursor.get_children():
+            self._process_cursor(
+                child,
+                should_extract_from_file,
+                cursor.spelling if should_extract else parent_class,
+                parent_function_usr,
+            )
+
+    def _handle_class_cursor(
+        self,
+        cursor: Any,
+        should_extract: bool,
+        should_extract_from_file: Optional[Callable[[str], bool]],
+        parent_class: str,
+        parent_function_usr: str,
+    ) -> None:
+        """Process classes and structs."""
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        kind = cursor.kind
+
+        if cursor.spelling and should_extract:
+            # Extract common symbol data
+            common = self._get_common_symbol_data(cursor)
+            qualified_name = common["qualified_name"]
+            namespace = common["namespace"]
+            loc_info = common["loc_info"]
+            doc_info = common["doc_info"]
+
+            base_classes = self._get_base_classes(cursor)
+            is_class_template_spec = self._detect_template_specialization(cursor)
+
+            primary_usr = None
+            stored_template_args = None
+            if is_class_template_spec:
+                primary_usr = self._get_primary_template_usr(cursor)
+                if not base_classes and primary_usr:
+                    base_classes = self._resolve_instantiation_base_classes(cursor, primary_usr)
+                    if not base_classes:
+                        targs = self._extract_template_args_from_displayname(cursor.displayname)
+                        if targs:
+                            stored_template_args = json.dumps(targs)
+
+            info = SymbolInfo(
+                name=cursor.spelling,
+                kind="class" if kind == CursorKind.CLASS_DECL else "struct",
+                file=loc_info["file"],
+                line=loc_info["line"],
+                column=loc_info["column"],
+                qualified_name=qualified_name,
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
+                namespace=namespace,
+                parent_class="",
+                base_classes=base_classes,
+                usr=cursor.get_usr() if cursor.get_usr() else "",
+                is_template_specialization=is_class_template_spec,
+                is_template=is_class_template_spec,
+                template_kind="full_specialization" if is_class_template_spec else None,
+                primary_template_usr=primary_usr,
+                template_arguments=stored_template_args,
+                start_line=loc_info["start_line"],
+                end_line=loc_info["end_line"],
+                header_file=loc_info["header_file"],
+                header_line=loc_info["header_line"],
+                header_start_line=loc_info["header_start_line"],
+                header_end_line=loc_info["header_end_line"],
+                is_definition=cursor.is_definition(),
+                brief=doc_info["brief"],
+                doc_comment=doc_info["doc_comment"],
+            )
+            symbols_buffer.append(info)
+
+        for child in cursor.get_children():
+            self._process_cursor(
+                child,
+                should_extract_from_file,
+                cursor.spelling if should_extract else parent_class,
+                parent_function_usr,
+            )
+
+    def _handle_function_template_cursor(
+        self,
+        cursor: Any,
+        should_extract: bool,
+        should_extract_from_file: Optional[Callable[[str], bool]],
+        parent_class: str,
+        parent_function_usr: str,
+    ) -> None:
+        """Process template functions."""
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        if cursor.spelling and should_extract:
+            common = self._get_common_symbol_data(cursor)
+            qualified_name = common["qualified_name"]
+            namespace = common["namespace"]
+            loc_info = common["loc_info"]
+            doc_info = common["doc_info"]
+
+            signature = self._build_human_readable_signature(cursor)
+            function_usr = cursor.get_usr() if cursor.get_usr() else ""
+            template_params = self._extract_template_parameters(cursor)
+
+            effective_parent_class = parent_class
+            if not parent_class:
+                sem_parent = cursor.semantic_parent
+                if sem_parent and sem_parent.kind in (
+                    CursorKind.CLASS_DECL,
+                    CursorKind.STRUCT_DECL,
+                    CursorKind.CLASS_TEMPLATE,
+                ):
+                    effective_parent_class = sem_parent.spelling
+
+            is_method_template = bool(effective_parent_class)
+            is_virtual = cursor.is_virtual_method() if is_method_template else False
+            is_pure_virtual = cursor.is_pure_virtual_method() if is_method_template else False
+            is_const = cursor.is_const_method() if is_method_template else False
+            is_static = cursor.is_static_method()
+            access_spec = cursor.access_specifier
+            access = access_spec.name.lower() if access_spec else "public"
+            if access in ("none", "invalid"):
+                access = "public"
+
+            info = SymbolInfo(
+                name=cursor.spelling,
+                kind="function_template",
+                file=loc_info["file"],
+                line=loc_info["line"],
+                column=loc_info["column"],
+                qualified_name=qualified_name,
+                signature=signature,
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
+                namespace=namespace,
+                access=access,
+                parent_class=effective_parent_class,
+                usr=function_usr,
+                is_template_specialization=False,
+                is_template=True,
+                template_kind="function_template",
+                template_parameters=template_params,
+                start_line=loc_info["start_line"],
+                end_line=loc_info["end_line"],
+                header_file=loc_info["header_file"],
+                header_line=loc_info["header_line"],
+                header_start_line=loc_info["header_start_line"],
+                header_end_line=loc_info["header_end_line"],
+                is_virtual=is_virtual,
+                is_pure_virtual=is_pure_virtual,
+                is_const=is_const,
+                is_static=is_static,
+                is_definition=cursor.is_definition(),
+                brief=doc_info["brief"],
+                doc_comment=doc_info["doc_comment"],
+            )
+            symbols_buffer.append(info)
+
+        for child in cursor.get_children():
+            self._process_cursor(
+                child,
+                should_extract_from_file,
+                parent_class,
+                cursor.get_usr() if cursor.get_usr() else parent_function_usr,
+            )
+
+    def _handle_function_cursor(
+        self,
+        cursor: Any,
+        should_extract: bool,
+        should_extract_from_file: Optional[Callable[[str], bool]],
+        parent_class: str,
+        parent_function_usr: str,
+    ) -> None:
+        """Process functions and methods."""
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        kind = cursor.kind
+        if cursor.spelling and should_extract:
+            common = self._get_common_symbol_data(cursor)
+            qualified_name = common["qualified_name"]
+            namespace = common["namespace"]
+            loc_info = common["loc_info"]
+            doc_info = common["doc_info"]
+
+            signature = self._build_human_readable_signature(cursor)
+            function_usr = cursor.get_usr() if cursor.get_usr() else ""
+            is_template_spec = self._detect_template_specialization(cursor)
+            primary_usr = self._get_primary_template_usr(cursor) if is_template_spec else None
+
+            is_method = kind in (
+                CursorKind.CXX_METHOD,
+                CursorKind.CONSTRUCTOR,
+                CursorKind.DESTRUCTOR,
+                CursorKind.CONVERSION_FUNCTION,
+            )
+            is_virtual = cursor.is_virtual_method() if is_method else False
+            is_pure_virtual = cursor.is_pure_virtual_method() if is_method else False
+            is_const = cursor.is_const_method() if is_method else False
+            is_static = cursor.is_static_method()
+            access_spec = cursor.access_specifier
+            access = access_spec.name.lower() if access_spec else "public"
+            if access in ("none", "invalid"):
+                access = "public"
+
+            effective_parent_class = parent_class
+            if is_method and not parent_class:
+                sem_parent = cursor.semantic_parent
+                if sem_parent and sem_parent.kind in (
+                    CursorKind.CLASS_DECL,
+                    CursorKind.STRUCT_DECL,
+                    CursorKind.CLASS_TEMPLATE,
+                ):
+                    effective_parent_class = sem_parent.spelling
+
+            info = SymbolInfo(
+                name=cursor.spelling,
+                kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
+                file=loc_info["file"],
+                line=loc_info["line"],
+                column=loc_info["column"],
+                qualified_name=qualified_name,
+                signature=signature,
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
+                namespace=namespace,
+                access=access,
+                parent_class=effective_parent_class if is_method else "",
+                usr=function_usr,
+                is_template_specialization=is_template_spec,
+                is_template=is_template_spec,
+                template_kind="full_specialization" if is_template_spec else None,
+                primary_template_usr=primary_usr,
+                start_line=loc_info["start_line"],
+                end_line=loc_info["end_line"],
+                header_file=loc_info["header_file"],
+                header_line=loc_info["header_line"],
+                header_start_line=loc_info["header_start_line"],
+                header_end_line=loc_info["header_end_line"],
+                is_virtual=is_virtual,
+                is_pure_virtual=is_pure_virtual,
+                is_const=is_const,
+                is_static=is_static,
+                is_definition=cursor.is_definition(),
+                brief=doc_info["brief"],
+                doc_comment=doc_info["doc_comment"],
+            )
+            symbols_buffer.append(info)
+
+        current_function_usr = (
+            cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+        )
+        for child in cursor.get_children():
+            self._process_cursor(
+                child, should_extract_from_file, parent_class, current_function_usr
+            )
+
+    def _handle_type_alias_cursor(
+        self,
+        cursor: Any,
+        should_extract: bool,
+        should_extract_from_file: Optional[Callable[[str], bool]],
+        parent_class: str,
+        parent_function_usr: str,
+    ) -> None:
+        """Process type aliases."""
+        _, _, aliases_buffer = self._get_thread_local_buffers()
+        kind = cursor.kind
+        if cursor.spelling and should_extract:
+            try:
+                alias_info = self._extract_alias_info(cursor)
+                aliases_buffer.append(alias_info)
+            except Exception as e:
+                diagnostics.warning(
+                    f"Failed to extract alias info for {cursor.spelling} at "
+                    f"{cursor.location.file.name if cursor.location.file else 'unknown'}:"
+                    f"{cursor.location.line}: {e}"
+                )
+
+        if kind != CursorKind.TYPE_ALIAS_TEMPLATE_DECL:
+            for child in cursor.get_children():
+                self._process_cursor(
+                    child, should_extract_from_file, parent_class, parent_function_usr
+                )
+
+    def _handle_call_cursor(self, cursor: Any, parent_function_usr: str) -> None:
+        """Process function calls within function bodies."""
+        _, calls_buffer, _ = self._get_thread_local_buffers()
+        referenced = cursor.referenced
+        if referenced and referenced.get_usr():
+            called_usr = referenced.get_usr()
+            from clang import cindex
+
+            display_name = None
+            template_project_types = None
+
+            try:
+                template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(referenced)
+                if template_cursor and not template_cursor.kind.is_invalid():
+                    template_usr = template_cursor.get_usr()
+                    if template_usr:
+                        display_name, template_project_types = self._extract_template_call_info(
+                            referenced, template_usr
+                        )
+                        called_usr = template_usr
+            except Exception:
+                pass
+
+            location = cursor.location
+            calls_buffer.append(
+                (
+                    parent_function_usr,
+                    called_usr,
+                    location.file.name if location.file else None,
+                    location.line if location.line else None,
+                    location.column if location.column else None,
+                    display_name,
+                    template_project_types,
+                )
+            )
 
     def _index_translation_unit(self, tu, source_file: str) -> Dict[str, Any]:
         """
