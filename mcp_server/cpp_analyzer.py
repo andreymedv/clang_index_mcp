@@ -3250,8 +3250,9 @@ class CppAnalyzer:
                 retry_count = cache_data["retry_count"] + 1
 
         try:
-            tu, error_msg = self._try_parse_with_fallback(file_path, args)
+            tu, error_msg_opt = self._try_parse_with_fallback(file_path, args)
             if not tu:
+                error_msg = error_msg_opt or "Unknown libclang error"
                 self._handle_index_file_failure(
                     file_path, error_msg, args, current_hash, compile_args_hash, retry_count
                 )
@@ -3616,9 +3617,12 @@ class CppAnalyzer:
         try:
             result = future.result()
             if self.use_processes:
+                # ProcessPoolExecutor: result is 6-tuple
                 self._merge_worker_result(result, file_path)
-                return result[1], result[2]  # success, was_cached
-            return result
+                return bool(result[1]), bool(result[2])  # success, was_cached
+
+            # ThreadPoolExecutor: result is (success, was_cached)
+            return bool(result[0]), bool(result[1])
         except Exception as exc:
             diagnostics.error(f"Error indexing {file_path}: {exc}")
             return False, False
