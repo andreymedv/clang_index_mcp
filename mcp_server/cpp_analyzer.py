@@ -3029,6 +3029,182 @@ class CppAnalyzer:
             "skipped": list(skipped_headers),
         }
 
+    def _get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
+        """Get compilation arguments for a file, handling worker and fallback modes."""
+        if self._provided_compile_args is not None:
+            # Worker mode: use compile args provided by main process
+            return self._provided_compile_args
+
+        # Main process mode: query CompileCommandsManager
+        assert self.compile_commands_manager is not None
+        args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
+
+        # If compile commands are not available and we're using fallback, add vcpkg includes
+        if not self.compile_commands_manager.is_file_supported(file_path_obj):
+            # Add vcpkg includes if available
+            vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
+            if vcpkg_include.exists():
+                args.append(f"-I{vcpkg_include}")
+
+            # Add common vcpkg paths
+            vcpkg_paths = [
+                "C:/vcpkg/installed/x64-windows/include",
+                "C:/dev/vcpkg/installed/x64-windows/include",
+            ]
+            for path in vcpkg_paths:
+                if Path(path).exists():
+                    args.append(f"-I{path}")
+                    break
+        return args
+
+    def _apply_cached_symbols(
+        self, file_path: str, cached_symbols: List[SymbolInfo], current_hash: str
+    ) -> None:
+        """Apply cached symbols to indexes and update file hash."""
+        # Build updates for class_index and function_index
+        class_updates = defaultdict(list)
+        function_updates = defaultdict(list)
+        usr_updates = {}
+
+        for symbol in cached_symbols:
+            if symbol.kind in ("class", "struct"):
+                class_updates[symbol.name].append(symbol)
+            else:
+                function_updates[symbol.name].append(symbol)
+
+            if symbol.usr:
+                usr_updates[symbol.usr] = symbol
+
+        # Apply all updates with a single lock acquisition
+        with self._get_lock():
+            # Clear old entries for this file
+            self._clear_file_index_entries(file_path)
+
+            # Add cached symbols
+            self.file_index[file_path] = cached_symbols
+
+            # Apply class/function/USR updates
+            for name, symbols in class_updates.items():
+                self.class_index[name].extend(symbols)
+            for name, symbols in function_updates.items():
+                self.function_index[name].extend(symbols)
+            self.usr_index.update(usr_updates)
+
+            self.file_hashes[file_path] = current_hash
+
+    def _try_parse_with_fallback(
+        self, file_path: str, args: List[str]
+    ) -> Tuple[Optional[Any], Optional[str]]:
+        """Try parsing with progressive fallback if initial attempt fails."""
+        index = self._get_thread_index()
+        parse_options_attempts = [
+            (
+                TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
+                "full detailed processing",
+            ),
+            (TranslationUnit.PARSE_INCOMPLETE, "incomplete parsing"),
+            (0, "minimal options"),
+        ]
+
+        last_error = None
+        for options, description in parse_options_attempts:
+            try:
+                tu = index.parse(file_path, args=args, options=options)
+                if tu:
+                    if description != "full detailed processing":
+                        diagnostics.debug(f"{file_path}: parsed with {description}")
+                    return tu, None
+            except TranslationUnitLoadError as e:
+                last_error = e
+                continue
+
+        error_msg = (
+            f"TranslationUnitLoadError: {last_error}" if last_error else "libclang returned None"
+        )
+        return None, error_msg
+
+    def _handle_index_file_failure(
+        self,
+        file_path: str,
+        error_msg: str,
+        args: List[str],
+        current_hash: str,
+        compile_args_hash: str,
+        retry_count: int,
+    ) -> None:
+        """Log failure and save to cache."""
+        diagnostics.error(f"Failed to parse {file_path}")
+        diagnostics.error(f"  Error: {error_msg}")
+
+        # Log first 10 args to avoid overwhelming output
+        diagnostics.error(f"  Compilation args ({len(args)} total):")
+        for i, arg in enumerate(args[:10]):
+            diagnostics.error(f"    [{i}] {arg}")
+
+        # Log to centralized error log
+        parse_error = Exception(f"{error_msg}\nArgs: {args}")
+        self.cache_manager.log_parse_error(
+            file_path, parse_error, current_hash, compile_args_hash, retry_count
+        )
+
+        # Save failure to cache
+        self._save_file_cache(
+            file_path,
+            [],
+            current_hash,
+            compile_args_hash,
+            success=False,
+            error_message=error_msg[:200],
+            retry_count=retry_count,
+        )
+
+    def _handle_index_file_diagnostics(
+        self, file_path: str, tu: Any, current_hash: str, compile_args_hash: str, retry_count: int
+    ) -> Optional[str]:
+        """Extract and process diagnostics. Returns error message if any."""
+        error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
+        cache_error_msg = None
+
+        if error_diagnostics:
+            formatted_errors = self._format_diagnostics(error_diagnostics, max_count=5)
+            full_error_msg = (
+                f"libclang parsing errors ({len(error_diagnostics)} total):\n{formatted_errors}"
+            )
+            cache_error_msg = full_error_msg[:200]
+
+            parse_error = Exception(full_error_msg)
+            self.cache_manager.log_parse_error(
+                file_path, parse_error, current_hash, compile_args_hash, retry_count
+            )
+
+            diagnostics.warning(
+                f"{file_path}: Continuing despite {len(error_diagnostics)} error(s):\n{cache_error_msg}"
+            )
+
+        if warning_diagnostics:
+            formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
+            diagnostics.debug(
+                f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}"
+            )
+
+        return cache_error_msg
+
+    def _clear_file_index_entries(self, file_path: str) -> None:
+        """Clear existing index entries for a file (atomicity should be handled by caller)."""
+        if file_path in self.file_index:
+            for info in self.file_index[file_path]:
+                if info.kind in ("class", "struct", "class_template", "partial_specialization"):
+                    if info.name in self.class_index:
+                        self.class_index[info.name] = [
+                            i for i in self.class_index[info.name] if i.file != file_path
+                        ]
+                else:
+                    if info.name in self.function_index:
+                        self.function_index[info.name] = [
+                            i for i in self.function_index[info.name] if i.file != file_path
+                        ]
+            self.file_index[file_path].clear()
+
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
 
@@ -3039,325 +3215,73 @@ class CppAnalyzer:
         file_path = os.path.abspath(file_path)
 
         # Check if source file exists before attempting to parse
-        # This prevents expensive libclang parse attempts on non-existent files
         if not Path(file_path).exists():
             error_msg = f"Source file does not exist: {file_path}"
             diagnostics.error(error_msg)
-
-            # Log to centralized error log for diagnostics
             file_not_found_error = FileNotFoundError(error_msg)
             self.cache_manager.log_parse_error(file_path, file_not_found_error, "", None, 0)
-
             return (False, False)
 
         current_hash = self._get_file_hash(file_path)
-
-        # Get compilation arguments to compute hash (needed for cache validation)
-        # Task 3.2: Use precomputed args if provided (worker mode), otherwise query CompileCommandsManager
-        file_path_obj = Path(file_path)
-        if self._provided_compile_args is not None:
-            # Worker mode: use compile args provided by main process
-            args = self._provided_compile_args
-        else:
-            # Main process mode: query CompileCommandsManager
-            assert self.compile_commands_manager is not None
-            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
-
-            # If compile commands are not available and we're using fallback, add vcpkg includes
-            if not self.compile_commands_manager.is_file_supported(file_path_obj):
-                # Add vcpkg includes if available
-                vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-                if vcpkg_include.exists():
-                    args.append(f"-I{vcpkg_include}")
-
-                # Add common vcpkg paths
-                vcpkg_paths = [
-                    "C:/vcpkg/installed/x64-windows/include",
-                    "C:/dev/vcpkg/installed/x64-windows/include",
-                ]
-                for path in vcpkg_paths:
-                    if Path(path).exists():
-                        args.append(f"-I{path}")
-                        break
-
-        # Compute hash of compilation arguments for cache validation
+        args = self._get_compile_args_for_file(Path(file_path))
         compile_args_hash = self._compute_compile_args_hash(args)
 
         # Try to load from per-file cache first
         if not force:
             cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
             if cache_data is not None:
-                # Check if this file previously failed and if we should retry
                 if not cache_data["success"]:
                     retry_count = cache_data["retry_count"]
                     if retry_count >= self.max_parse_retries:
-                        # File has failed too many times, skip it
                         diagnostics.debug(
                             f"Skipping {file_path} - failed {retry_count} times "
                             f"(last error: {cache_data['error_message']})"
                         )
-                        return (False, True)  # Failed, but from cache (skip retry)
-                    else:
-                        # Retry the file
-                        diagnostics.debug(
-                            f"Retrying {file_path} (attempt {retry_count + 1}/{self.max_parse_retries + 1}, "
-                            f"last error: {cache_data['error_message']})"
-                        )
-                        # Continue to parsing below (will increment retry_count on failure)
+                        return (False, True)
                 else:
-                    # Successfully cached - load symbols
-                    cached_symbols = cache_data["symbols"]
+                    self._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
+                    return (True, True)
 
-                    # Prepare index updates outside the lock to minimize lock duration
-                    # Build updates for class_index and function_index
-                    class_updates = defaultdict(list)
-                    function_updates = defaultdict(list)
-                    usr_updates = {}
-
-                    for symbol in cached_symbols:
-                        if symbol.kind in ("class", "struct"):
-                            class_updates[symbol.name].append(symbol)
-                        else:
-                            function_updates[symbol.name].append(symbol)
-
-                        if symbol.usr:
-                            usr_updates[symbol.usr] = symbol
-
-                        # v9.0: calls/called_by removed from SymbolInfo
-                        # Call graph is now loaded lazily from call_sites table
-
-                    # Apply all updates with a single lock acquisition
-                    # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
-                    with self._get_lock():
-                        # Clear old entries for this file
-                        if file_path in self.file_index:
-                            for info in self.file_index[file_path]:
-                                if info.kind in ("class", "struct"):
-                                    self.class_index[info.name] = [
-                                        i
-                                        for i in self.class_index[info.name]
-                                        if i.file != file_path
-                                    ]
-                                else:
-                                    self.function_index[info.name] = [
-                                        i
-                                        for i in self.function_index[info.name]
-                                        if i.file != file_path
-                                    ]
-
-                        # Add cached symbols
-                        self.file_index[file_path] = cached_symbols
-
-                        # Apply class updates
-                        for name, symbols in class_updates.items():
-                            self.class_index[name].extend(symbols)
-
-                        # Apply function updates
-                        for name, symbols in function_updates.items():
-                            self.function_index[name].extend(symbols)
-
-                        # Apply USR updates
-                        self.usr_index.update(usr_updates)
-
-                        # v9.0: call graph restored lazily from call_sites table
-
-                        self.file_hashes[file_path] = current_hash
-
-                    return (True, True)  # Successfully loaded from cache
-
-        # Determine retry count for this attempt
+        # Determine retry count
         retry_count = 0
         if not force:
             cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
             if cache_data is not None and not cache_data["success"]:
-                retry_count = cache_data["retry_count"] + 1  # Increment for this retry
+                retry_count = cache_data["retry_count"] + 1
 
         try:
-            # Create translation unit with detailed diagnostics
-            # Note: We no longer skip function bodies to enable call graph analysis
-            index = self._get_thread_index()
-
-            # Try parsing with progressive fallback if initial attempt fails
-            tu = None
-            parse_options_attempts = [
-                # Attempt 1: Full detailed processing (best for analysis)
-                (
-                    TranslationUnit.PARSE_INCOMPLETE
-                    | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
-                    "full detailed processing",
-                ),
-                # Attempt 2: Just incomplete (more compatible)
-                (TranslationUnit.PARSE_INCOMPLETE, "incomplete parsing"),
-                # Attempt 3: Minimal options (maximum compatibility)
-                (0, "minimal options"),
-            ]
-
-            last_error = None
-            for options, description in parse_options_attempts:
-                try:
-                    tu = index.parse(file_path, args=args, options=options)
-                    if tu:
-                        if description != "full detailed processing":
-                            diagnostics.debug(f"{file_path}: parsed with {description}")
-                        break
-                except TranslationUnitLoadError as e:
-                    last_error = e
-                    continue
-
+            tu, error_msg = self._try_parse_with_fallback(file_path, args)
             if not tu:
-                # All parse attempts failed
-                if last_error:
-                    error_msg = f"TranslationUnitLoadError: {last_error}"
-                else:
-                    error_msg = "Failed to create translation unit (libclang returned None)"
-
-                # Provide helpful diagnostic information
-                diagnostics.error(f"Failed to parse {file_path}")
-                diagnostics.error(f"  Error: {error_msg}")
-                diagnostics.error(f"  Compilation args ({len(args)} total):")
-                # Log first 10 args to avoid overwhelming output
-                for i, arg in enumerate(args[:10]):
-                    diagnostics.error(f"    [{i}] {arg}")
-                if len(args) > 10:
-                    diagnostics.error(f"    ... and {len(args) - 10} more args")
-
-                # Check for common issues
-                hints = []
-                if any("-std=c++" in arg for arg in args):
-                    std_args = [arg for arg in args if "-std=c++" in arg]
-                    hints.append(f"C++ standard specified: {std_args}")
-                # Task 3.2: Check CompileCommandsManager only if initialized
-                if self.compile_commands_manager is not None:
-                    if not self.compile_commands_manager.clang_resource_dir:
-                        hints.append(
-                            "Clang resource directory not detected - system headers may be missing"
-                        )
-                    if self.compile_commands_manager.is_file_supported(Path(file_path)):
-                        hints.append(
-                            "Using args from compile_commands.json - check if they are libclang-compatible"
-                        )
-                    else:
-                        hints.append(
-                            "Using fallback compilation args - compile_commands.json may be needed"
-                        )
-                else:
-                    hints.append("Using precomputed compile args from main process")
-
-                if hints:
-                    diagnostics.error("  Possible issues:")
-                    for hint in hints:
-                        diagnostics.error(f"    - {hint}")
-
-                # Log to centralized error log
-                full_error_msg = f"{error_msg}\nArgs: {args}"
-                parse_error = Exception(full_error_msg)
-                self.cache_manager.log_parse_error(
-                    file_path, parse_error, current_hash, compile_args_hash, retry_count
-                )
-
-                # Save failure to cache
-                self._save_file_cache(
-                    file_path,
-                    [],
-                    current_hash,
-                    compile_args_hash,
-                    success=False,
-                    error_message=error_msg[:200],
-                    retry_count=retry_count,
+                self._handle_index_file_failure(
+                    file_path, error_msg, args, current_hash, compile_args_hash, retry_count
                 )
                 return (False, False)
 
-            # Extract and check libclang diagnostics for errors
-            error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
+            cache_error_msg = self._handle_index_file_diagnostics(
+                file_path, tu, current_hash, compile_args_hash, retry_count
+            )
 
-            # Track if there were errors (for logging and cache metadata)
-            cache_error_msg = None
-
-            # Log errors but continue processing (libclang provides usable partial AST)
-            if error_diagnostics:
-                # Format error messages from libclang diagnostics
-                formatted_errors = self._format_diagnostics(error_diagnostics, max_count=5)
-                full_error_msg = (
-                    f"libclang parsing errors ({len(error_diagnostics)} total):\n{formatted_errors}"
-                )
-
-                # Truncate for cache
-                cache_error_msg = full_error_msg[:200]
-
-                # Log to centralized error log with full message
-                parse_error = Exception(full_error_msg)
-                self.cache_manager.log_parse_error(
-                    file_path, parse_error, current_hash, compile_args_hash, retry_count
-                )
-
-                # Log as warning but continue processing
-                # libclang provides a usable partial AST even with errors
-                diagnostics.warning(
-                    f"{file_path}: Continuing despite {len(error_diagnostics)} error(s):\n{cache_error_msg}"
-                )
-
-            # Log warnings at debug level but continue processing
-            if warning_diagnostics:
-                formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
-                diagnostics.debug(
-                    f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}"
-                )
-
-            # Clear old entries for this file before re-parsing
-            # This must be atomic to ensure index consistency
-            # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
+            # Clear old entries and process TU
             with self._get_lock():
-                if file_path in self.file_index:
-                    # Remove old entries from class and function indexes
-                    for info in self.file_index[file_path]:
-                        # Issue #99: Include template kinds in class_index
-                        if info.kind in (
-                            "class",
-                            "struct",
-                            "class_template",
-                            "partial_specialization",
-                        ):
-                            self.class_index[info.name] = [
-                                i for i in self.class_index[info.name] if i.file != file_path
-                            ]
-                        else:
-                            self.function_index[info.name] = [
-                                i for i in self.function_index[info.name] if i.file != file_path
-                            ]
+                self._clear_file_index_entries(file_path)
 
-                    self.file_index[file_path].clear()
-
-            # Collect symbols for this file
-            collected_symbols = []
-
-            # Process the translation unit with header extraction (modifies indexes)
             extraction_result = self._index_translation_unit(tu, file_path)
-
-            # Log header extraction results
             processed_count = len(extraction_result["processed"])
-            skipped_count = len(extraction_result["skipped"])
-            if processed_count > 1:  # More than just the source file
-                header_count = processed_count - 1
+            if processed_count > 1:
                 diagnostics.debug(
                     f"{file_path}: processed {processed_count} files "
-                    f"({header_count} headers extracted, {skipped_count} headers skipped)"
+                    f"({processed_count - 1} headers extracted, {len(extraction_result['skipped'])} skipped)"
                 )
 
-            # Get the symbols we just added for this file (quick copy under lock)
-            # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
+            # Get symbols just added and save to cache
             with self._get_lock():
-                if file_path in self.file_index:
-                    collected_symbols = self.file_index[file_path].copy()
-                else:
-                    collected_symbols = []
+                collected_symbols = self.file_index.get(file_path, []).copy()
+                del tu
+                import gc
 
-            # v9.0: calls/called_by fields removed from SymbolInfo
-            # Call graph data is stored in call_sites table and queried on-demand
-            # No need to populate symbol.calls/called_by here anymore
+                gc.collect()
+                self.file_hashes[file_path] = current_hash
 
-            # Save to per-file cache (mark as successfully parsed, even if there were errors)
-            # Note: success=True means we got a usable TU and extracted symbols
-            # error_message will be set if there were parsing errors (partial parse)
             self._save_file_cache(
                 file_path,
                 collected_symbols,
@@ -3367,31 +3291,13 @@ class CppAnalyzer:
                 error_message=cache_error_msg,
                 retry_count=0,
             )
-
-            # Update tracking
-            # Use conditional lock (no-op in ProcessPoolExecutor worker processes)
-            with self._get_lock():
-                # CRITICAL: Don't store TranslationUnits at all - they're never used!
-                # self.translation_units is a write-only dict that causes massive FD leak
-                # TUs hold system headers open (516+ .h files from /usr/include/c++/14/)
-                # We only need symbols extracted from TU, not the TU itself
-                # Explicitly delete to release file descriptors immediately
-                del tu
-                gc.collect()
-                self.file_hashes[file_path] = current_hash
-
-            return (True, False)  # Success, not from cache
+            return (True, False)
 
         except Exception as e:
-            # Log full error details to centralized error log for developer analysis
             self.cache_manager.log_parse_error(
                 file_path, e, current_hash, compile_args_hash, retry_count
             )
-
-            # Save failure information to cache (with truncated error message)
-            error_msg = str(e)[:200]  # Limit error message length for cache
-
-            # Save failure to cache so we don't keep retrying indefinitely
+            error_msg = str(e)[:200]
             self._save_file_cache(
                 file_path,
                 [],
@@ -3401,9 +3307,8 @@ class CppAnalyzer:
                 error_message=error_msg,
                 retry_count=retry_count,
             )
-
             diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
-            return (False, False)  # Failed, not from cache
+            return (False, False)
 
     def _is_terminal(self) -> bool:
         """Check if stderr is a terminal for progress reporting."""
