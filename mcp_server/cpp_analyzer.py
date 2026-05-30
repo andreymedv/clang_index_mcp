@@ -4867,6 +4867,159 @@ class CppAnalyzer:
 
         return derived_classes
 
+    def _resolve_base_key(self, raw: str) -> str:
+        """Resolve a raw base-class name to a canonical key (qualified name)."""
+        is_dependent = raw.startswith("typename ") or (
+            "<" in raw and ">" in raw and not raw.endswith(">")
+        )
+        if is_dependent:
+            return raw
+        has_targs = "<" in raw
+        lookup = SearchEngine._strip_template_args(raw) if has_targs else raw
+        is_qual = "::" in lookup
+        simple = SearchEngine._extract_simple_name(lookup)
+        with self.index_lock:
+            infos = self.class_index.get(simple, [])
+            for info in infos:
+                if is_qual:
+                    info_qn = info.qualified_name if info.qualified_name else info.name
+                    if not SearchEngine.matches_qualified_pattern(info_qn, lookup):
+                        continue
+                qn = info.qualified_name if info.qualified_name else info.name
+                return qn  # canonical key is bare qualified name (no template args)
+        return raw
+
+    def _lookup_class_infos(self, key: str) -> List[SymbolInfo]:
+        """Look up SymbolInfo objects for a class name/key."""
+        has_targs = "<" in key
+        lookup = SearchEngine._strip_template_args(key) if has_targs else key
+        is_qual = "::" in lookup
+        simple = SearchEngine._extract_simple_name(lookup)
+        with self.index_lock:
+            infos = list(self.class_index.get(simple, []))
+        if is_qual:
+            infos = [
+                i
+                for i in infos
+                if SearchEngine.matches_qualified_pattern(
+                    i.qualified_name if i.qualified_name else i.name, lookup
+                )
+            ]
+        if has_targs and not is_qual:
+            specs = [i for i in infos if i.is_template_specialization]
+            if specs:
+                infos = specs
+        return infos
+
+    def _collect_hierarchy_node_data(self, key: str) -> Optional[Dict[str, Any]]:
+        """Collect class node data for hierarchy building. Returns None if not found."""
+        infos = self._lookup_class_infos(key)
+        if not infos:
+            # Unresolved: external lib or template-dependent name
+            is_dep = key.startswith("typename ") or (
+                "<" in key and ">" in key and not key.endswith(">")
+            )
+            node: Dict[str, Any] = {
+                "qualified_name": key,
+                "kind": "unknown",
+                "is_project": False,
+                "base_classes": [],
+                "derived_classes": [],
+            }
+            if is_dep:
+                node["is_dependent_type"] = True
+            else:
+                node["is_unresolved"] = True
+            return node
+
+        info = infos[0]
+        info_key = info.qualified_name if info.qualified_name else info.name
+
+        # Resolve raw base class names to canonical keys (dedup, preserve order)
+        base_keys: List[str] = []
+        seen_base: Set[str] = set()
+        for raw_base in info.base_classes:
+            bk = self._resolve_base_key(raw_base)
+            if bk not in seen_base:
+                seen_base.add(bk)
+                base_keys.append(bk)
+
+        # Get derived classes for this node
+        derived = self.get_derived_classes(info_key, project_only=False)
+        derived_keys: List[str] = []
+        seen_derived: Set[str] = set()
+        for d in derived:
+            dk = d["qualified_name"]
+            if dk not in seen_derived:
+                seen_derived.add(dk)
+                derived_keys.append(dk)
+
+        return {
+            "qualified_name": info_key,
+            "kind": info.kind,
+            "is_project": info.is_project,
+            "base_classes": base_keys,
+            "derived_classes": derived_keys,
+        }
+
+    def _should_skip_hierarchy_node(
+        self, current: str, visited: Set[str], initial_visited: Optional[Set[str]], start_key: str
+    ) -> bool:
+        """Decide if a node should be skipped during BFS."""
+        if current in visited:
+            if initial_visited is None:
+                return True
+            if current != start_key:
+                return True
+        return False
+
+    def _bfs_traverse_hierarchy(
+        self,
+        start_key: str,
+        direction: str,
+        max_depth: Optional[int],
+        max_nodes: Optional[int],
+        classes: Dict[str, Any],
+        initial_visited: Optional[Set[str]] = None,
+    ) -> Tuple[Set[str], bool]:
+        """Perform BFS traversal in specified direction for class hierarchy.
+        Returns (set of visited keys, truncated flag).
+        """
+        visited: Set[str] = initial_visited if initial_visited is not None else set()
+        queue: deque = deque([(start_key, 0)])
+        local_truncated = False
+        neighbor_attr = "base_classes" if direction == "up" else "derived_classes"
+
+        while queue:
+            current, depth = queue.popleft()
+            if self._should_skip_hierarchy_node(current, visited, initial_visited, start_key):
+                continue
+            visited.add(current)
+
+            node_data = self._collect_hierarchy_node_data(current)
+            if node_data is None:
+                continue
+
+            # Add to classes if not already there (for final collection)
+            if current not in classes:
+                classes[current] = node_data
+
+            # Check node cap AFTER adding current node
+            if max_nodes is not None and len(classes) >= max_nodes:
+                local_truncated = True
+                break
+
+            next_depth = depth + 1
+            if max_depth is not None and next_depth > max_depth:
+                if any(n not in visited for n in node_data[neighbor_attr]):
+                    local_truncated = True
+            else:
+                for neighbor in node_data[neighbor_attr]:
+                    if neighbor not in visited:
+                        queue.append((neighbor, next_depth))
+
+        return visited, local_truncated
+
     def get_class_hierarchy(
         self,
         class_name: str,
@@ -4874,223 +5027,36 @@ class CppAnalyzer:
         max_depth: Optional[int] = None,
         direction: str = "both",
     ) -> Dict[str, Any]:
-        """
-        Get the inheritance graph for a class as a flat adjacency list.
-
-        Performs controlled BFS traversal to collect ancestors (base classes) and/or
-        descendants (derived classes) of the queried class. Uses a two-phase algorithm
-        for 'both' direction to avoid returning unrelated classes through shared
-        intermediate bases (e.g., common mixin classes like Reflectable or UUIDable).
-
-        Args:
-            class_name: Name of the class to analyze (simple or qualified)
-            max_nodes: Maximum number of nodes to include in the result (default 200).
-                       Prevents response explosion for widely-used base classes like
-                       QObject or std::exception with hundreds of descendants.
-                       Set to None to disable the cap.
-            max_depth: Maximum BFS depth from the queried class (default None = unlimited).
-                       Depth 0 = queried class, depth 1 = direct parents/children, etc.
-                       Set to None to disable the cap.
-            direction: Traversal direction (default 'both'):
-                       - 'up': ancestors only (base classes and their bases)
-                       - 'down': descendants only (derived classes and their derivations)
-                       - 'both': ancestors AND descendants (corrected algorithm)
-
-        Returns:
-            Dictionary containing:
-            - queried_class: Canonical qualified name of the queried class
-            - classes: Flat dict keyed by qualified name. Each entry has:
-                - name: Simple class name
-                - qualified_name: Fully qualified name (same as dict key)
-                - kind: Class kind (class, struct, class_template, etc.)
-                - is_project: Whether the class is from project files
-                - base_classes: List of qualified names (keys into 'classes')
-                - derived_classes: List of qualified names (keys into 'classes')
-                - is_unresolved: True if not found in index (external lib class)
-                - is_dependent_type: True if template-dependent (typename T::X)
-            - direction: The direction parameter used for this query
-            - truncated: True if the result was capped by max_nodes or max_depth
-            - nodes_returned: Total nodes returned (only when truncated=True)
-        """
-
-        # Validate direction parameter
+        """Get the inheritance graph for a class as a flat adjacency list."""
         if direction not in ("up", "down", "both"):
             return {"error": f"Invalid direction '{direction}'. Must be one of: up, down, both"}
 
-        # --- Helper: resolve a raw base-class name to a canonical key ---
-        def resolve_base_key(raw: str) -> str:
-            is_dependent = raw.startswith("typename ") or (
-                "<" in raw and ">" in raw and not raw.endswith(">")
-            )
-            if is_dependent:
-                return raw
-            has_targs = "<" in raw
-            lookup = SearchEngine._strip_template_args(raw) if has_targs else raw
-            is_qual = "::" in lookup
-            simple = SearchEngine._extract_simple_name(lookup)
-            with self.index_lock:
-                infos = self.class_index.get(simple, [])
-                for info in infos:
-                    if is_qual:
-                        info_qn = info.qualified_name if info.qualified_name else info.name
-                        if not SearchEngine.matches_qualified_pattern(info_qn, lookup):
-                            continue
-                    qn = info.qualified_name if info.qualified_name else info.name
-                    return qn  # canonical key is bare qualified name (no template args)
-            return raw
-
-        # --- Helper: look up SymbolInfo objects for a name/key ---
-        def lookup_infos(key: str) -> List:
-            has_targs = "<" in key
-            lookup = SearchEngine._strip_template_args(key) if has_targs else key
-            is_qual = "::" in lookup
-            simple = SearchEngine._extract_simple_name(lookup)
-            with self.index_lock:
-                infos = list(self.class_index.get(simple, []))
-            if is_qual:
-                infos = [
-                    i
-                    for i in infos
-                    if SearchEngine.matches_qualified_pattern(
-                        i.qualified_name if i.qualified_name else i.name, lookup
-                    )
-                ]
-            if has_targs and not is_qual:
-                specs = [i for i in infos if i.is_template_specialization]
-                if specs:
-                    infos = specs
-            return infos
-
-        # --- Helper: collect node data for a key ---
-        def collect_node_data(key: str) -> Optional[Dict[str, Any]]:
-            """Collect class node data. Returns None if not found."""
-            infos = lookup_infos(key)
-            if not infos:
-                # Unresolved: external lib or template-dependent name
-                is_dep = key.startswith("typename ") or (
-                    "<" in key and ">" in key and not key.endswith(">")
-                )
-                node: Dict[str, Any] = {
-                    "qualified_name": key,
-                    "kind": "unknown",
-                    "is_project": False,
-                    "base_classes": [],
-                    "derived_classes": [],
-                }
-                if is_dep:
-                    node["is_dependent_type"] = True
-                else:
-                    node["is_unresolved"] = True
-                return node
-
-            info = infos[0]
-            info_key = info.qualified_name if info.qualified_name else info.name
-
-            # Resolve raw base class names to canonical keys (dedup, preserve order)
-            base_keys: List[str] = []
-            seen_base: Set[str] = set()
-            for raw_base in info.base_classes:
-                bk = resolve_base_key(raw_base)
-                if bk not in seen_base:
-                    seen_base.add(bk)
-                    base_keys.append(bk)
-
-            # Get derived classes for this node
-            derived = self.get_derived_classes(info_key, project_only=False)
-            derived_keys: List[str] = []
-            seen_derived: Set[str] = set()
-            for d in derived:
-                dk = d["qualified_name"]
-                if dk not in seen_derived:
-                    seen_derived.add(dk)
-                    derived_keys.append(dk)
-
-            return {
-                "qualified_name": info_key,
-                "kind": info.kind,
-                "is_project": info.is_project,
-                "base_classes": base_keys,
-                "derived_classes": derived_keys,
-            }
-
-        # --- Helper: BFS traversal ---
-        def bfs_traverse(
-            start_key: str,
-            direction: str,
-            max_depth: Optional[int],
-            max_nodes: Optional[int],
-            initial_visited: Optional[Set[str]] = None,
-        ) -> Tuple[Set[str], bool]:
-            """Perform BFS traversal in specified direction.
-            Returns (set of visited keys, truncated flag).
-            """
-            visited: Set[str] = initial_visited if initial_visited is not None else set()
-            queue: deque = deque([(start_key, 0)])
-            local_truncated = False
-            neighbor_attr = "base_classes" if direction == "up" else "derived_classes"
-
-            while queue:
-                current, depth = queue.popleft()
-                if current in visited and initial_visited is None:
-                    continue
-                if current in visited and current != start_key:
-                    continue
-                visited.add(current)
-
-                node_data = collect_node_data(current)
-                if node_data is None:
-                    continue
-
-                # Add to classes if not already there (for final collection)
-                if current not in classes:
-                    classes[current] = node_data
-
-                # Check node cap AFTER adding current node
-                if max_nodes is not None and len(classes) >= max_nodes:
-                    local_truncated = True
-                    break
-
-                next_depth = depth + 1
-                if max_depth is not None and next_depth > max_depth:
-                    if any(n not in visited for n in node_data[neighbor_attr]):
-                        local_truncated = True
-                else:
-                    for neighbor in node_data[neighbor_attr]:
-                        if neighbor not in visited:
-                            queue.append((neighbor, next_depth))
-
-            return visited, local_truncated
-
-        # --- Phase 1: resolve the start class ---
-        start_infos = lookup_infos(class_name)
+        start_infos = self._lookup_class_infos(class_name)
         if not start_infos:
             return {"error": f"Class '{class_name}' not found"}
 
         start_info = start_infos[0]
-        start_key = start_info.qualified_name if start_info.qualified_name else start_info.name
-
-        # --- Phase 2: BFS traversal based on direction ---
+        start_key = start_info.qualified_name or start_info.name
         classes: Dict[str, Any] = {}
         truncated = False
 
         if direction == "up":
-            _, truncated = bfs_traverse(start_key, "up", max_depth, max_nodes)
-
+            _, truncated = self._bfs_traverse_hierarchy(
+                start_key, "up", max_depth, max_nodes, classes
+            )
         elif direction == "down":
-            _, truncated = bfs_traverse(start_key, "down", max_depth, max_nodes)
-
-        else:  # direction == "both"
-            # Phase A: Collect ancestors (UP from start only)
-            visited_up, trunc_up = bfs_traverse(start_key, "up", max_depth, max_nodes)
-
-            # Phase B: Collect descendants (DOWN from start only)
-            # Only skip if we've already hit the node cap
+            _, truncated = self._bfs_traverse_hierarchy(
+                start_key, "down", max_depth, max_nodes, classes
+            )
+        else:  # both
+            v_up, trunc_up = self._bfs_traverse_hierarchy(
+                start_key, "up", max_depth, max_nodes, classes
+            )
             trunc_down = False
             if max_nodes is None or len(classes) < max_nodes:
-                visited_down, trunc_down = bfs_traverse(
-                    start_key, "down", max_depth, max_nodes, initial_visited=visited_up
+                _, trunc_down = self._bfs_traverse_hierarchy(
+                    start_key, "down", max_depth, max_nodes, classes, initial_visited=v_up
                 )
-
             truncated = trunc_up or trunc_down
 
         result: Dict[str, Any] = {
@@ -5099,16 +5065,16 @@ class CppAnalyzer:
             "classes": classes,
         }
         if truncated:
-            result["truncated"] = True
-            result["nodes_returned"] = len(classes)
-            result["completeness"] = "partial"
+            result.update(
+                {"truncated": True, "nodes_returned": len(classes), "completeness": "partial"}
+            )
             result["completeness_note"] = (
-                "Hierarchy was truncated due to max_nodes or max_depth limit. Increase limits to get full hierarchy."
+                "Hierarchy was truncated due to max_nodes or max_depth limit."
             )
         else:
-            result["completeness"] = "complete"
+            result.update({"completeness": "complete"})
             result["completeness_note"] = (
-                "Full inheritance hierarchy including all ancestors and descendants. No further searching needed."
+                "Full inheritance hierarchy including all ancestors and descendants."
             )
         return result
 
