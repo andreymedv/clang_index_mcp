@@ -1370,6 +1370,59 @@ class SqliteCacheBackend:
             diagnostics.error(message)
             return False, message
 
+    def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
+        """Check FTS5 index health and update health dict."""
+        try:
+            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
+            fts_count = cursor.fetchone()[0]
+            symbol_count = stats.get("total_symbols", 0)
+
+            fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
+
+            if fts_count != symbol_count:
+                warning = (
+                    f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
+                    "Consider running optimize()."
+                )
+                health["warnings"].append(warning)
+                fts_health["status"] = "warning"
+
+            health["checks"]["fts_index"] = fts_health
+
+        except Exception as e:
+            health["errors"].append(f"FTS5 check failed: {e}")
+            health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
+
+    def _check_wal_mode(self, health: Dict[str, Any]) -> None:
+        """Check WAL journal mode and update health dict."""
+        try:
+            cursor = self._conn.execute("PRAGMA journal_mode")
+            journal_mode = cursor.fetchone()[0].lower()
+
+            wal_health = {
+                "journal_mode": journal_mode,
+                "status": "ok" if journal_mode == "wal" else "warning",
+            }
+
+            if journal_mode != "wal":
+                warning = f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
+                health["warnings"].append(warning)
+
+            health["checks"]["wal_mode"] = wal_health
+
+        except Exception as e:
+            health["errors"].append(f"WAL check failed: {e}")
+
+    @staticmethod
+    def _determine_overall_status(health: Dict[str, Any]) -> None:
+        """Set overall health status based on errors and warnings."""
+        if health["errors"]:
+            health["status"] = "error"
+        elif health["warnings"]:
+            health["status"] = "warning"
+        else:
+            health["status"] = "healthy"
+
     def get_health_status(self) -> Dict[str, Any]:
         """
         Get comprehensive database health status.
@@ -1398,66 +1451,21 @@ class SqliteCacheBackend:
             db_size_mb = stats.get("db_size_mb", 0)
             health["checks"]["size"] = {"db_size_mb": db_size_mb, "status": "ok"}
 
-            # Warn if database is very large (> 500 MB)
             if db_size_mb > 500:
                 warning = f"Database is very large ({db_size_mb:.2f} MB)"
                 health["warnings"].append(warning)
                 health["checks"]["size"]["status"] = "warning"
 
             # 3. FTS5 index health
-            try:
-                cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
-                fts_count = cursor.fetchone()[0]
-                symbol_count = stats.get("total_symbols", 0)
-
-                fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
-
-                # FTS count should match symbol count
-                if fts_count != symbol_count:
-                    warning = (
-                        f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
-                        "Consider running optimize()."
-                    )
-                    health["warnings"].append(warning)
-                    fts_health["status"] = "warning"
-
-                health["checks"]["fts_index"] = fts_health
-
-            except Exception as e:
-                health["errors"].append(f"FTS5 check failed: {e}")
-                health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
+            self._check_fts5_health(health, stats)
 
             # 4. WAL mode check
-            try:
-                cursor = self._conn.execute("PRAGMA journal_mode")
-                journal_mode = cursor.fetchone()[0].lower()
-
-                wal_health = {
-                    "journal_mode": journal_mode,
-                    "status": "ok" if journal_mode == "wal" else "warning",
-                }
-
-                if journal_mode != "wal":
-                    warning = (
-                        f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
-                    )
-                    health["warnings"].append(warning)
-
-                health["checks"]["wal_mode"] = wal_health
-
-            except Exception as e:
-                health["errors"].append(f"WAL check failed: {e}")
+            self._check_wal_mode(health)
 
             # 5. Table statistics
             health["checks"]["tables"] = self._get_table_sizes()
 
-            # Determine overall status
-            if health["errors"]:
-                health["status"] = "error"
-            elif health["warnings"]:
-                health["status"] = "warning"
-            else:
-                health["status"] = "healthy"
+            self._determine_overall_status(health)
 
             return health
 
