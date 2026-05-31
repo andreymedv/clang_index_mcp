@@ -1100,58 +1100,10 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
         ]
 
 
-async def main():
-    """Main entry point for the MCP server."""
+def _create_argument_parser():
+    """Create and configure the argument parser for the MCP server."""
     import argparse
 
-    # Auto-resume last session if available (unless disabled for tests)
-    global analyzer, analyzer_initialized, background_indexer
-    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
-    saved_session = None if disable_auto_resume else session_manager.load_session()
-    if saved_session:
-        config_file = saved_session.get("config_file")
-
-        try:
-            # Extract project_root from config file
-            with open(config_file, "r") as f:
-                config_data = json.load(f)
-
-            config_root = config_data.get("project_root")
-            if not config_root:
-                raise ValueError(f"Config file {config_file} missing 'project_root'")
-
-            # Resolve project_root relative to config file directory
-            config_dir = os.path.dirname(config_file)
-            project_path = os.path.abspath(os.path.join(config_dir, config_root))
-
-            diagnostics.info(f"Auto-resuming session via config: {config_file}")
-            diagnostics.info(f"Resolved project root: {project_path}")
-
-            # Initialize analyzer with saved project
-            state_manager.transition_to(AnalyzerState.INITIALIZING)
-            analyzer = CppAnalyzer(project_path, config_file=config_file)
-            background_indexer = BackgroundIndexer(analyzer, state_manager)
-
-            # Try to load cache immediately (fast path)
-            cache_loaded = analyzer._load_cache()
-            if cache_loaded:
-                diagnostics.info(
-                    f"Session restored from cache: {len(analyzer.class_index)} classes, "
-                    f"{len(analyzer.function_index)} functions"
-                )
-                state_manager.transition_to(AnalyzerState.INDEXED)
-                analyzer_initialized = True
-            else:
-                diagnostics.info("No valid cache for saved session, will need to re-index")
-                state_manager.transition_to(AnalyzerState.UNINITIALIZED)
-
-        except Exception as e:
-            diagnostics.warning(f"Failed to resume session: {e}")
-            analyzer = None
-            analyzer_initialized = False
-            state_manager.transition_to(AnalyzerState.UNINITIALIZED)
-
-    # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="C++ Code Analysis MCP Server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1187,51 +1139,106 @@ Examples:
         "--port", type=int, default=8000, help="Port number for HTTP/SSE server (default: 8000)"
     )
 
+    return parser
+
+
+def _try_resume_session(saved_session):
+    """Attempt to resume a saved session and return initialized components."""
+    config_file = saved_session.get("config_file")
+
+    try:
+        with open(config_file, "r") as f:
+            config_data = json.load(f)
+
+        config_root = config_data.get("project_root")
+        if not config_root:
+            raise ValueError(f"Config file {config_file} missing 'project_root'")
+
+        config_dir = os.path.dirname(config_file)
+        project_path = os.path.abspath(os.path.join(config_dir, config_root))
+
+        diagnostics.info(f"Auto-resuming session via config: {config_file}")
+        diagnostics.info(f"Resolved project root: {project_path}")
+
+        state_manager.transition_to(AnalyzerState.INITIALIZING)
+        new_analyzer = CppAnalyzer(project_path, config_file=config_file)
+        new_background_indexer = BackgroundIndexer(new_analyzer, state_manager)
+
+        cache_loaded = new_analyzer._load_cache()
+        if cache_loaded:
+            diagnostics.info(
+                f"Session restored from cache: {len(new_analyzer.class_index)} classes, "
+                f"{len(new_analyzer.function_index)} functions"
+            )
+            state_manager.transition_to(AnalyzerState.INDEXED)
+            return new_analyzer, new_background_indexer, True
+
+        diagnostics.info("No valid cache for saved session, will need to re-index")
+        state_manager.transition_to(AnalyzerState.UNINITIALIZED)
+        return new_analyzer, new_background_indexer, False
+
+    except Exception as e:
+        diagnostics.warning(f"Failed to resume session: {e}")
+        state_manager.transition_to(AnalyzerState.UNINITIALIZED)
+        return None, None, False
+
+
+async def _cleanup_resources():
+    """Cleanup resources on shutdown."""
+    diagnostics.debug("Starting cleanup...")
+
+    if background_indexer and background_indexer.is_indexing():
+        diagnostics.debug("Canceling background indexing...")
+        await background_indexer.cancel()
+
+    loop = asyncio.get_event_loop()
+    if hasattr(loop, "_default_executor") and loop._default_executor:
+        diagnostics.debug("Shutting down default executor...")
+        loop._default_executor.shutdown(wait=False, cancel_futures=True)
+
+    diagnostics.debug("Cleanup complete")
+
+
+async def _run_stdio_transport():
+    """Run the server using stdio transport."""
+    from mcp.server.stdio import stdio_server
+
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    finally:
+        await _cleanup_resources()
+
+
+async def _run_http_transport(host, port, transport):
+    """Run the server using HTTP or SSE transport."""
+    try:
+        from mcp_server.http_server import run_http_server
+    except ImportError:
+        from http_server import run_http_server
+
+    try:
+        await run_http_server(server, host, port, transport)
+    finally:
+        await _cleanup_resources()
+
+
+async def main():
+    """Main entry point for the MCP server."""
+    global analyzer, analyzer_initialized, background_indexer
+
+    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
+    saved_session = None if disable_auto_resume else session_manager.load_session()
+    if saved_session:
+        analyzer, background_indexer, analyzer_initialized = _try_resume_session(saved_session)
+
+    parser = _create_argument_parser()
     args = parser.parse_args()
 
-    async def cleanup():
-        """Cleanup resources on shutdown"""
-        diagnostics.debug("Starting cleanup...")
-
-        # Cancel background indexing if running
-        if background_indexer and background_indexer.is_indexing():
-            diagnostics.debug("Canceling background indexing...")
-            await background_indexer.cancel()
-
-        # Shutdown default executor to allow clean exit
-        # This is necessary because BackgroundIndexer uses run_in_executor(None, ...)
-        # which creates a default ThreadPoolExecutor that needs explicit shutdown
-        loop = asyncio.get_event_loop()
-        if hasattr(loop, "_default_executor") and loop._default_executor:
-            diagnostics.debug("Shutting down default executor...")
-            loop._default_executor.shutdown(wait=False, cancel_futures=True)
-
-        diagnostics.debug("Cleanup complete")
-
-    # Run with selected transport
     if args.transport == "stdio":
-        # Import here to avoid issues if mcp package not installed
-        from mcp.server.stdio import stdio_server
-
-        try:
-            async with stdio_server() as (read_stream, write_stream):
-                await server.run(read_stream, write_stream, server.create_initialization_options())
-        finally:
-            await cleanup()
-
+        await _run_stdio_transport()
     elif args.transport in ("http", "sse"):
-        # Import HTTP server module
-        try:
-            from mcp_server.http_server import run_http_server
-        except ImportError:
-            from http_server import run_http_server
-
-        # Run HTTP/SSE server with cleanup on shutdown
-        try:
-            await run_http_server(server, args.host, args.port, args.transport)
-        finally:
-            await cleanup()
-
+        await _run_http_transport(args.host, args.port, args.transport)
     else:
         diagnostics.fatal(f"Unknown transport: {args.transport}")
         sys.exit(1)
