@@ -2299,6 +2299,94 @@ class CppAnalyzer:
 
         return None
 
+    def _extract_template_alias_info(
+        self, cursor
+    ) -> Tuple[str, str, str, str, str, int, int, List[dict]]:
+        """Extract alias info from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
+        from clang.cindex import CursorKind
+
+        template_params = []
+        type_alias_decl = None
+
+        for child in cursor.get_children():
+            if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
+                template_params.append({"name": child.spelling, "kind": "type"})
+            elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
+                template_params.append(
+                    {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
+                )
+            elif child.kind == CursorKind.TYPE_ALIAS_DECL:
+                type_alias_decl = child
+
+        if type_alias_decl:
+            alias_name = type_alias_decl.spelling
+            qualified_name = self._get_qualified_name(type_alias_decl)
+
+            try:
+                underlying_type = type_alias_decl.underlying_typedef_type
+                target_type = underlying_type.spelling
+                canonical_type = underlying_type.get_canonical().spelling
+            except AttributeError:
+                target_type = type_alias_decl.type.spelling
+                canonical_type = type_alias_decl.type.get_canonical().spelling
+        else:
+            alias_name = cursor.spelling
+            qualified_name = self._get_qualified_name(cursor)
+            target_type = ""
+            canonical_type = ""
+
+        file_path = str(cursor.location.file.name) if cursor.location.file else ""
+        line = cursor.location.line
+        column = cursor.location.column
+
+        return (
+            alias_name,
+            qualified_name,
+            target_type,
+            canonical_type,
+            file_path,
+            line,
+            column,
+            template_params,
+        )
+
+    def _extract_simple_alias_info(self, cursor) -> Tuple[str, str, str, str, str, int, int, str]:
+        """Extract alias info from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
+        from clang.cindex import CursorKind
+
+        alias_name = cursor.spelling
+        qualified_name = self._get_qualified_name(cursor)
+
+        try:
+            underlying_type = cursor.underlying_typedef_type
+            target_type = underlying_type.spelling
+            canonical_type = underlying_type.get_canonical().spelling
+        except AttributeError:
+            target_type = cursor.type.spelling
+            canonical_type = cursor.type.get_canonical().spelling
+
+        if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
+            alias_kind = "using"
+        elif cursor.kind == CursorKind.TYPEDEF_DECL:
+            alias_kind = "typedef"
+        else:
+            alias_kind = "unknown"
+
+        file_path = str(cursor.location.file.name) if cursor.location.file else ""
+        line = cursor.location.line
+        column = cursor.location.column
+
+        return (
+            alias_name,
+            qualified_name,
+            target_type,
+            canonical_type,
+            file_path,
+            line,
+            column,
+            alias_kind,
+        )
+
     def _extract_alias_info(self, cursor) -> dict:
         """
         Extract type alias information from TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL cursor.
@@ -2329,92 +2417,34 @@ class CppAnalyzer:
 
         from clang.cindex import CursorKind
 
-        # Detect if this is a template alias
         is_template_alias = cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL
 
-        # Initialize template parameters
-        template_params = []
-
-        # For template aliases, extract from nested structure
         if is_template_alias:
-            # TYPE_ALIAS_TEMPLATE_DECL has children:
-            # - TEMPLATE_TYPE_PARAMETER cursors (one per template parameter)
-            # - TEMPLATE_NON_TYPE_PARAMETER cursors (for non-type params)
-            # - TYPE_ALIAS_DECL cursor (the actual alias declaration)
-
-            type_alias_decl = None
-
-            for child in cursor.get_children():
-                if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
-                    # Type parameter (e.g., "typename T")
-                    template_params.append({"name": child.spelling, "kind": "type"})
-                elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
-                    # Non-type parameter (e.g., "int N")
-                    template_params.append(
-                        {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
-                    )
-                elif child.kind == CursorKind.TYPE_ALIAS_DECL:
-                    # The nested alias declaration
-                    type_alias_decl = child
-
-            # Extract from nested TYPE_ALIAS_DECL
-            if type_alias_decl:
-                alias_name = type_alias_decl.spelling
-                qualified_name = self._get_qualified_name(type_alias_decl)
-                namespace = self._extract_namespace(qualified_name)
-
-                try:
-                    underlying_type = type_alias_decl.underlying_typedef_type
-                    target_type = underlying_type.spelling
-                    canonical_type = underlying_type.get_canonical().spelling
-                except AttributeError:
-                    target_type = type_alias_decl.type.spelling
-                    canonical_type = type_alias_decl.type.get_canonical().spelling
-
-                # Extract location from template declaration (not nested alias)
-                file_path = str(cursor.location.file.name) if cursor.location.file else ""
-                line = cursor.location.line
-                column = cursor.location.column
-            else:
-                # Fallback: extract from template cursor itself
-                alias_name = cursor.spelling
-                qualified_name = self._get_qualified_name(cursor)
-                namespace = self._extract_namespace(qualified_name)
-                target_type = ""
-                canonical_type = ""
-                file_path = str(cursor.location.file.name) if cursor.location.file else ""
-                line = cursor.location.line
-                column = cursor.location.column
-
-            alias_kind = "using"  # Template aliases use 'using' syntax
-
+            (
+                alias_name,
+                qualified_name,
+                target_type,
+                canonical_type,
+                file_path,
+                line,
+                column,
+                template_params,
+            ) = self._extract_template_alias_info(cursor)
+            alias_kind = "using"
         else:
-            # Simple alias (Phase 1 logic)
-            alias_name = cursor.spelling
-            qualified_name = self._get_qualified_name(cursor)
-            namespace = self._extract_namespace(qualified_name)
+            (
+                alias_name,
+                qualified_name,
+                target_type,
+                canonical_type,
+                file_path,
+                line,
+                column,
+                alias_kind,
+            ) = self._extract_simple_alias_info(cursor)
+            template_params = []
 
-            # Extract target type and canonical type
-            try:
-                underlying_type = cursor.underlying_typedef_type
-                target_type = underlying_type.spelling
-                canonical_type = underlying_type.get_canonical().spelling
-            except AttributeError:
-                target_type = cursor.type.spelling
-                canonical_type = cursor.type.get_canonical().spelling
-
-            # Determine alias kind
-            if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
-                alias_kind = "using"
-            elif cursor.kind == CursorKind.TYPEDEF_DECL:
-                alias_kind = "typedef"
-            else:
-                alias_kind = "unknown"
-
-            # Extract location info
-            file_path = str(cursor.location.file.name) if cursor.location.file else ""
-            line = cursor.location.line
-            column = cursor.location.column
+        namespace = self._extract_namespace(qualified_name)
 
         return {
             "alias_name": alias_name,
