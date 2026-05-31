@@ -355,9 +355,10 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
     config_file, error_response = _validate_config_file(config_file_raw)
     if error_response:
         return error_response
+    assert config_file is not None
 
     try:
-        with open(config_file, "r") as f:  # type: ignore[arg-type]
+        with open(config_file, "r") as f:
             config_data = json.load(f)
 
         config_root = config_data.get("project_root")
@@ -482,6 +483,7 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
 
 
 async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     project_only = _parse_search_scope(arguments)
     pattern = arguments["symbol_name"]
@@ -526,6 +528,7 @@ async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     project_only = _parse_search_scope(arguments)
     class_name = arguments.get("class_name", None)
@@ -569,12 +572,11 @@ async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextConten
 
 
 async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     class_name = str(arguments["class_name"])
     # Run synchronous method in executor to avoid blocking event loop
-    result = await loop.run_in_executor(
-        None, lambda: analyzer.get_class_info(class_name)  # type: ignore[arg-type]
-    )
+    result = await loop.run_in_executor(None, lambda: analyzer.get_class_info(class_name))
     # Wrap with metadata (even if not found)
     enhanced_result = EnhancedQueryResult.create_from_state(result, state_manager, "get_class_info")
     if result and "error" not in (result or {}):
@@ -583,6 +585,7 @@ async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     type_name = arguments["type_name"]
     # Run synchronous method in executor to avoid blocking event loop
@@ -595,6 +598,7 @@ async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextCon
 
 
 async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     pattern = arguments["symbol_name"]
     project_only = _parse_search_scope(arguments)
@@ -628,6 +632,7 @@ async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_find_in_file(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     file_path = arguments["file_path"]
     pattern = arguments["pattern"]
@@ -745,6 +750,7 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
 
 
 async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     # Combined server diagnostics and indexing status
     status_dict = state_manager.get_status_dict()
 
@@ -796,6 +802,7 @@ async def _handle_wait_for_indexing(arguments: Dict[str, Any]) -> List[TextConte
 
 
 async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     class_name = str(arguments["class_name"])
     max_nodes = arguments.get("max_nodes", 200)
@@ -805,8 +812,8 @@ async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextCon
     # Run synchronous method in executor to avoid blocking event loop
     hierarchy = await loop.run_in_executor(
         None,
-        lambda: analyzer.get_class_hierarchy(  # type: ignore[arg-type]
-            class_name, max_nodes=max_nodes, max_depth=max_depth, direction=direction  # type: ignore[arg-type]
+        lambda: analyzer.get_class_hierarchy(
+            class_name, max_nodes=max_nodes, max_depth=max_depth, direction=direction
         ),
     )
     if hierarchy:
@@ -829,6 +836,7 @@ async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextCon
 
 
 async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     function_name = str(arguments["function_name"])
     class_name = str(arguments.get("class_name", ""))
@@ -837,7 +845,7 @@ async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextCon
     # Run synchronous method in executor to avoid blocking event loop
     results = await loop.run_in_executor(
         None,
-        lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
+        lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=project_only),
     )
     # Results is dict with "callers" list - use that for metadata logic
     callers_list = results.get("callers", []) if isinstance(results, dict) else []
@@ -859,7 +867,7 @@ async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextCon
     if project_only and not callers_list and function_found and has_any_in_graph:
         expanded = await loop.run_in_executor(
             None,
-            lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=False),  # type: ignore[arg-type]
+            lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=False),
         )
         # Strip internal flags from expanded results
         expanded.pop("_function_found", None)
@@ -907,6 +915,7 @@ async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextCon
 
 
 async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     function_name = str(arguments["function_name"])
     class_name = str(arguments.get("class_name", ""))
@@ -915,7 +924,7 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
     # Run synchronous method in executor to avoid blocking event loop
     results = await loop.run_in_executor(
         None,
-        lambda: analyzer.find_callees(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
+        lambda: analyzer.find_callees(function_name, class_name, project_only=project_only),
     )
     # Results is dict with "callees" list - use that for metadata logic
     callees_list = results.get("callees", []) if isinstance(results, dict) else []
@@ -937,7 +946,7 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
     if project_only and not callees_list and function_found and has_any_in_graph:
         expanded = await loop.run_in_executor(
             None,
-            lambda: analyzer.find_callees(function_name, class_name, project_only=False),  # type: ignore[arg-type]
+            lambda: analyzer.find_callees(function_name, class_name, project_only=False),
         )
         # Strip internal flags from expanded results
         expanded.pop("_function_found", None)
@@ -955,7 +964,7 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
     # Apply truncation if max_results specified
     if max_results is not None and len(callees_list) > max_results:
         results["callees"] = callees_list[:max_results]
-    empty_suggestions = None
+    empty_suggestions: Optional[List[str]] = None
     if not function_found:
         pass  # None → default "check spelling / broaden pattern"
     elif has_any_in_graph:
@@ -985,6 +994,7 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
 
 
 async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     function_name = arguments["function_name"]
     class_name = arguments.get("class_name", "")
@@ -1001,6 +1011,7 @@ async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_get_call_path(arguments: Dict[str, Any]) -> List[TextContent]:
+    assert analyzer is not None
     loop = asyncio.get_event_loop()
     from_function = arguments["from_function"]
     to_function = arguments["to_function"]
