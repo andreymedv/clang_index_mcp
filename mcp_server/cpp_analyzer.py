@@ -5649,6 +5649,34 @@ class CppAnalyzer:
         else:
             return self._find_in_file_exact(file_path, pattern)
 
+    def _matches_glob(self, indexed_file: str, glob_pattern: str) -> bool:
+        """Check if an indexed file matches a glob pattern using multiple strategies."""
+        import fnmatch
+
+        if fnmatch.fnmatch(indexed_file, glob_pattern):
+            return True
+        if fnmatch.fnmatch(indexed_file, "**/" + glob_pattern):
+            return True
+        if self.project_root:
+            try:
+                rel_path = str(Path(indexed_file).relative_to(self.project_root))
+                return fnmatch.fnmatch(rel_path, glob_pattern)
+            except ValueError:
+                pass
+        return False
+
+    def _filter_results_by_files(
+        self, items: List[Dict[str, Any]], matched_files: set
+    ) -> List[Dict[str, Any]]:
+        """Filter search results to only include items from specified files."""
+        results = []
+        for item in items:
+            _item_loc = item.get("definition") or item.get("declaration") or {}
+            item_file = _item_loc.get("file") or item.get("file", "")
+            if item_file in matched_files:
+                results.append(item)
+        return results
+
     def _find_in_files_glob(self, glob_pattern: str, symbol_pattern: str) -> Dict[str, Any]:
         """Search for symbols in files matching a glob pattern.
 
@@ -5659,24 +5687,7 @@ class CppAnalyzer:
         Returns:
             Dict with results, matched_files, and message
         """
-        import fnmatch
-
-        # Match glob pattern against all indexed files
-        matched_files = []
-        for indexed_file in self.file_index.keys():
-            # Try both the pattern as-is and with **/ prefix for convenience
-            if fnmatch.fnmatch(indexed_file, glob_pattern):
-                matched_files.append(indexed_file)
-            elif fnmatch.fnmatch(indexed_file, "**/" + glob_pattern):
-                matched_files.append(indexed_file)
-            # Also try matching just the relative path from project root
-            elif self.project_root:
-                try:
-                    rel_path = str(Path(indexed_file).relative_to(self.project_root))
-                    if fnmatch.fnmatch(rel_path, glob_pattern):
-                        matched_files.append(indexed_file)
-                except ValueError:
-                    pass
+        matched_files = [f for f in self.file_index.keys() if self._matches_glob(f, glob_pattern)]
 
         if not matched_files:
             return {
@@ -5686,19 +5697,10 @@ class CppAnalyzer:
                 "message": f"No files found matching glob pattern '{glob_pattern}'",
             }
 
-        # Search in both class and function results
         all_classes = self.search_classes(symbol_pattern, project_only=False)
         all_functions = self.search_functions(symbol_pattern, project_only=False)
-
-        results = []
         matched_files_set = set(matched_files)
-
-        for item in all_classes + all_functions:
-            # Extract file from nested location object (definition or declaration)
-            _item_loc = item.get("definition") or item.get("declaration") or {}
-            item_file = _item_loc.get("file") or item.get("file", "")
-            if item_file in matched_files_set:
-                results.append(item)
+        results = self._filter_results_by_files(all_classes + all_functions, matched_files_set)
 
         return {
             "results": results,
