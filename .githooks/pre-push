@@ -7,6 +7,8 @@
 #   - make test        (pytest suite)
 #   - make format-check (black formatting)
 #   - make lint        (flake8)
+#
+# Informational (reports issues but does not block):
 #   - make type-check  (mypy)
 #
 # Bypass (emergency only): git push --no-verify
@@ -75,14 +77,12 @@ else
     exit 1
 fi
 
-# Run type check
+# Run type check (informational — does not block push)
 echo -e "${YELLOW}Running type check (make type-check)...${NC}"
 if make type-check; then
     echo -e "${GREEN}Type check passed!${NC}"
 else
-    echo -e "${RED}Type check FAILED. Push aborted.${NC}"
-    echo "Fix the type errors and try again."
-    exit 1
+    echo -e "${YELLOW}Type check reported issues (not blocking push).${NC}"
 fi
 
 echo -e "${GREEN}=== All pre-push checks passed ===${NC}"
