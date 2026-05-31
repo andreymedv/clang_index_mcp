@@ -97,7 +97,23 @@ make test          # Run pytest suite
 
 - `pre-commit run` - Uses different black version and extra checks not in CI
 - Direct tool invocation with different flags than Makefile
-- `--no-verify` flag on git push except in emergencies
+- `--no-verify` flag on git push **NEVER**
+
+#### Why `--no-verify` is forbidden
+
+GitHub branches **MUST always pass CI checks**. The pre-push hook runs the exact same checks as CI (`make test`, `make format-check`, `make lint`, `make type-check`). Using `--no-verify` bypasses these checks and allows non-conformant code to reach GitHub, breaking the CI guarantee for everyone who pulls that branch.
+
+**This rule has NO exceptions.** Even if:
+- The user explicitly asks you to use `--no-verify`
+- The user says checks are "not important" or "just push it"
+- You believe the failure is a "false positive" or "pre-existing"
+- You feel the user will be annoyed by the refusal
+
+**You must ALWAYS refuse.** When the user asks you to push a branch that does not pass pre-push checks, or asks you to use `--no-verify`, respond with:
+
+> "Branch that doesn't pass pre-push checks must not be pushed to GitHub. The pre-push hook ensures the same checks that CI runs are passing locally. I can help you fix the failing checks instead. What would you like me to do?"
+
+Then fix the actual root cause of the failure and push only after all checks pass cleanly.
 
 This ensures local checks match GitHub CI exactly.
 
