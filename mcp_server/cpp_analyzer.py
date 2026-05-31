@@ -3727,6 +3727,44 @@ class CppAnalyzer:
             diagnostics.error(f"Error indexing {file_path}: {exc}")
             return False, False
 
+    @staticmethod
+    def _update_indexing_counts(success: bool, was_cached: bool) -> Tuple[int, int, int]:
+        """Return (indexed_delta, cache_delta, failed_delta) for a single result."""
+        if success:
+            return 1, 1 if was_cached else 0, 0
+        return 0, 0, 1
+
+    def _maybe_report_indexing_progress(
+        self,
+        processed: int,
+        total: int,
+        indexed_count: int,
+        failed_count: int,
+        cache_hits: int,
+        start_time: float,
+        last_report_time: float,
+        is_terminal: bool,
+        progress_callback: Optional[Callable],
+        file_path: str,
+    ) -> float:
+        """Report progress if enough time has passed; return updated last_report_time."""
+        if self._should_report_progress(
+            processed, total, time.time(), last_report_time, is_terminal
+        ):
+            self._report_indexing_progress(
+                processed,
+                total,
+                indexed_count,
+                failed_count,
+                cache_hits,
+                start_time,
+                is_terminal,
+                progress_callback,
+                file_path,
+            )
+            return time.time()
+        return last_report_time
+
     def index_project(
         self,
         force: bool = False,
@@ -3749,33 +3787,27 @@ class CppAnalyzer:
         start_time = time.time()
         self.include_dependencies = include_dependencies
 
-        # 1. Handle cache
         cached_count = self._handle_cache_initial_index(force)
         if cached_count is not None:
             return cached_count
 
-        # 2. Find files
         files = self._prepare_indexing_files(include_dependencies)
         if not files:
             return 0
 
-        # 3. Setup state
         with self._interrupt_lock:
             self._interrupted = False
         is_terminal = self._is_terminal()
         indexed_count, cache_hits, failed_count = 0, 0, 0
         last_report_time = start_time
 
-        # 4. Setup executor
         executor, _ = self._setup_executor()
 
         try:
-            # 5. Submit tasks
             future_to_file = self._submit_indexing_tasks(
                 executor, files, force, include_dependencies
             )
 
-            # 6. Process results
             for i, future in enumerate(as_completed(future_to_file)):
                 if self._is_interrupted():
                     raise KeyboardInterrupt("Indexing interrupted by request")
@@ -3785,30 +3817,23 @@ class CppAnalyzer:
                 file_path = future_to_file[future]
                 success, was_cached = self._get_worker_result(future, file_path)
 
-                if success:
-                    indexed_count += 1
-                    if was_cached:
-                        cache_hits += 1
-                else:
-                    failed_count += 1
+                idx_d, cache_d, fail_d = self._update_indexing_counts(success, was_cached)
+                indexed_count += idx_d
+                cache_hits += cache_d
+                failed_count += fail_d
 
-                # Progress reporting
-                processed = i + 1
-                if self._should_report_progress(
-                    processed, len(files), time.time(), last_report_time, is_terminal
-                ):
-                    self._report_indexing_progress(
-                        processed,
-                        len(files),
-                        indexed_count,
-                        failed_count,
-                        cache_hits,
-                        start_time,
-                        is_terminal,
-                        progress_callback,
-                        file_path,
-                    )
-                    last_report_time = time.time()
+                last_report_time = self._maybe_report_indexing_progress(
+                    i + 1,
+                    len(files),
+                    indexed_count,
+                    failed_count,
+                    cache_hits,
+                    start_time,
+                    last_report_time,
+                    is_terminal,
+                    progress_callback,
+                    file_path,
+                )
 
         except KeyboardInterrupt:
             diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
@@ -3818,7 +3843,6 @@ class CppAnalyzer:
             if executor:
                 executor.shutdown(wait=False)
 
-        # 7. Finalize
         return self._finalize_indexing(
             indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
         )
