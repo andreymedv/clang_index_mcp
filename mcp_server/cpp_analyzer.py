@@ -1690,6 +1690,27 @@ class CppAnalyzer:
                     resolved.append(base)
         return resolved
 
+    def _find_primary_template_info(self, primary_template_usr: str) -> Optional[Any]:
+        """Look up the primary template in class_index by USR."""
+        with self.index_lock:
+            for name, infos in self.class_index.items():
+                for info in infos:
+                    if info.usr == primary_template_usr:
+                        return info
+        return None
+
+    @staticmethod
+    def _parse_template_params(primary_info) -> List[dict]:
+        """Parse template_parameters JSON from a primary template info."""
+        if not primary_info.template_parameters:
+            return []
+        try:
+            import json
+
+            return json.loads(primary_info.template_parameters)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
     def _resolve_instantiation_base_classes(
         self, cursor, primary_template_usr: Optional[str]
     ) -> List[str]:
@@ -1717,8 +1738,6 @@ class CppAnalyzer:
 
         Issue: Template base class resolution for LLM readability
         """
-        import json
-
         if not primary_template_usr:
             return []
 
@@ -1726,35 +1745,16 @@ class CppAnalyzer:
         if not template_args:
             return []
 
-        # Look up the primary template in class_index
-        primary_info = None
-        with self.index_lock:
-            for name, infos in self.class_index.items():
-                for info in infos:
-                    if info.usr == primary_template_usr:
-                        primary_info = info
-                        break
-                if primary_info:
-                    break
-
+        primary_info = self._find_primary_template_info(primary_template_usr)
         if not primary_info:
             return []
 
-        # Get template parameters from primary template
-        template_params = []
-        if primary_info.template_parameters:
-            try:
-                template_params = json.loads(primary_info.template_parameters)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
+        template_params = self._parse_template_params(primary_info)
         if not template_params:
             return []
 
-        # Build parameter name to argument mapping
         param_to_arg = self._build_param_to_arg_mapping(template_params, template_args)
 
-        # Resolve base classes by substituting parameter names
         return self._substitute_template_args_in_bases(
             primary_info.base_classes, param_to_arg, template_args
         )
