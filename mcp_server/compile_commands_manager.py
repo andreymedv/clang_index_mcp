@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from clang.cindex import CompilationDatabase
 
@@ -632,20 +632,10 @@ class CompileCommandsManager:
         """
         return self.argument_sanitizer.sanitize(args)
 
-    def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
-        """
-        Detect the C++ standard library include path based on compile arguments.
-
-        When using libclang programmatically, the C++ standard library headers
-        are not automatically found even when -stdlib and -isysroot are specified.
-        We need to explicitly add the C++ stdlib include path.
-
-        Args:
-            arguments: List of compilation arguments
-
-        Returns:
-            Path to C++ standard library includes, or None if not found
-        """
+    def _extract_stdlib_and_sysroot(
+        self, arguments: List[str]
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Extract -stdlib and -isysroot flags from arguments."""
         stdlib = None
         sysroot = None
 
@@ -663,6 +653,59 @@ class CompileCommandsManager:
             elif arg.startswith("-isysroot="):
                 sysroot = arg[10:]  # Remove '-isysroot=' prefix
 
+        return stdlib, sysroot
+
+    def _get_libcxx_path(self, sysroot: Optional[str]) -> Optional[str]:
+        """Get the path for libc++ headers."""
+        if sysroot:
+            cxx_path = os.path.join(sysroot, "usr", "include", "c++", "v1")
+            # Return the path even if directory doesn't exist on current system
+            # (e.g., when analyzing macOS code on Linux)
+            # libclang will handle missing directories gracefully
+            return cxx_path
+
+        # Try system paths
+        system_paths = ["/usr/include/c++/v1", "/usr/local/include/c++/v1"]
+        for path in system_paths:
+            if os.path.isdir(path):
+                return path
+        return None
+
+    def _get_libstdcxx_path(self, sysroot: Optional[str]) -> Optional[str]:
+        """Get the path for libstdc++ headers."""
+        if sysroot:
+            cxx_base = os.path.join(sysroot, "usr", "include", "c++")
+            if os.path.isdir(cxx_base):
+                # Find the highest version directory
+                try:
+                    versions = [
+                        d
+                        for d in os.listdir(cxx_base)
+                        if os.path.isdir(os.path.join(cxx_base, d)) and d[0].isdigit()
+                    ]
+                    if versions:
+                        versions.sort(reverse=True)
+                        return os.path.join(cxx_base, versions[0])
+                except Exception:
+                    pass
+        return None
+
+    def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
+        """
+        Detect the C++ standard library include path based on compile arguments.
+
+        When using libclang programmatically, the C++ standard library headers
+        are not automatically found even when -stdlib and -isysroot are specified.
+        We need to explicitly add the C++ stdlib include path.
+
+        Args:
+            arguments: List of compilation arguments
+
+        Returns:
+            Path to C++ standard library includes, or None if not found
+        """
+        stdlib, sysroot = self._extract_stdlib_and_sysroot(arguments)
+
         # If no stdlib specified, assume system default
         # For macOS, this is typically libc++
         if not stdlib and sysroot:
@@ -676,37 +719,9 @@ class CompileCommandsManager:
 
         # Build the C++ stdlib include path
         if stdlib == "libc++":
-            # For libc++, headers are in /usr/include/c++/v1
-            if sysroot:
-                cxx_path = os.path.join(sysroot, "usr", "include", "c++", "v1")
-                # Return the path even if directory doesn't exist on current system
-                # (e.g., when analyzing macOS code on Linux)
-                # libclang will handle missing directories gracefully
-                return cxx_path
-
-            # Try system paths
-            system_paths = ["/usr/include/c++/v1", "/usr/local/include/c++/v1"]
-            for path in system_paths:
-                if os.path.isdir(path):
-                    return path
-
+            return self._get_libcxx_path(sysroot)
         elif stdlib == "libstdc++":
-            # For libstdc++, headers are in /usr/include/c++/<version>
-            if sysroot:
-                cxx_base = os.path.join(sysroot, "usr", "include", "c++")
-                if os.path.isdir(cxx_base):
-                    # Find the highest version directory
-                    try:
-                        versions = [
-                            d
-                            for d in os.listdir(cxx_base)
-                            if os.path.isdir(os.path.join(cxx_base, d)) and d[0].isdigit()
-                        ]
-                        if versions:
-                            versions.sort(reverse=True)
-                            return os.path.join(cxx_base, versions[0])
-                    except Exception:
-                        pass
+            return self._get_libstdcxx_path(sysroot)
 
         return None
 
