@@ -4688,59 +4688,66 @@ class CppAnalyzer:
             List of parameter indices that are used as base classes.
             E.g., [0] means the template inherits from its first parameter.
         """
-        import json
-        import re
-
-        # Extract simple name for class_index lookup
         simple_name = template_name.split("::")[-1] if "::" in template_name else template_name
 
         param_indices = []
         with self.index_lock:
             infos = self.class_index.get(simple_name, [])
             for info in infos:
-                # Only check class_template entries
                 if info.kind != "class_template":
                     continue
+                if not self._template_info_matches_name(info, template_name):
+                    continue
 
-                # If qualified name was specified, must match using qualified pattern matching
-                # This supports partially qualified names (e.g., "ns::MyTemplate"
-                # matches "outer::ns::MyTemplate")
-                if "::" in template_name:
-                    info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not SearchEngine.matches_qualified_pattern(info_qualified, template_name):
-                        continue
-
-                # Get template parameters to build name-to-index mapping
-                param_name_to_index = {}
-                if info.template_parameters:
-                    try:
-                        params = json.loads(info.template_parameters)
-                        for i, param in enumerate(params):
-                            param_name = param.get("name", "")
-                            if param_name:
-                                param_name_to_index[param_name] = i
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                # Check base_classes for template parameter references
+                param_name_to_index = self._build_param_name_to_index(info.template_parameters)
                 for base in info.base_classes:
-                    # First, check if base class name matches a template parameter name
-                    # (new format after template base class improvement)
-                    if base in param_name_to_index:
-                        param_index = param_name_to_index[base]
-                        if param_index not in param_indices:
-                            param_indices.append(param_index)
-                        continue
-
-                    # Legacy format: "type-parameter-X-Y" where Y is the parameter index
-                    # Keep for backward compatibility with cached data
-                    match = re.match(r"type-parameter-(\d+)-(\d+)", base)
-                    if match:
-                        param_index = int(match.group(2))
-                        if param_index not in param_indices:
-                            param_indices.append(param_index)
+                    param_index = self._resolve_param_index(base, param_name_to_index)
+                    if param_index is not None and param_index not in param_indices:
+                        param_indices.append(param_index)
 
         return param_indices
+
+    @staticmethod
+    def _template_info_matches_name(info, template_name: str) -> bool:
+        """Check if a class info matches the requested template name."""
+        if "::" not in template_name:
+            return True
+        info_qualified = info.qualified_name if info.qualified_name else info.name
+        return SearchEngine.matches_qualified_pattern(info_qualified, template_name)
+
+    @staticmethod
+    def _build_param_name_to_index(template_parameters: Optional[str]) -> Dict[str, int]:
+        """Build a mapping from template parameter names to their indices."""
+        import json
+
+        param_name_to_index: Dict[str, int] = {}
+        if not template_parameters:
+            return param_name_to_index
+
+        try:
+            params = json.loads(template_parameters)
+            for i, param in enumerate(params):
+                param_name = param.get("name", "")
+                if param_name:
+                    param_name_to_index[param_name] = i
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        return param_name_to_index
+
+    @staticmethod
+    def _resolve_param_index(base: str, param_name_to_index: Dict[str, int]) -> Optional[int]:
+        """Resolve a base class name to a template parameter index if applicable."""
+        import re
+
+        if base in param_name_to_index:
+            return param_name_to_index[base]
+
+        match = re.match(r"type-parameter-(\d+)-(\d+)", base)
+        if match:
+            return int(match.group(2))
+
+        return None
 
     def _parse_template_args(self, args_str: str) -> List[str]:
         """
