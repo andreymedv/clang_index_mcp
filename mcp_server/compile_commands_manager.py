@@ -395,6 +395,44 @@ class CompileCommandsManager:
             diagnostics.error(f"Error loading from {compile_commands_file}: {e}")
             return False
 
+    def _process_compile_command_entry(
+        self, entry: dict, index: int, compdb: CompilationDatabase
+    ) -> Optional[Tuple[str, dict]]:
+        """Process a single compile command entry. Returns (normalized_path, command_dict) or None."""
+        if not isinstance(entry, dict):
+            diagnostics.warning(f"Skipping invalid command at index {index}")
+            return None
+
+        if "file" not in entry:
+            diagnostics.warning(f"Skipping command without 'file' field at index {index}")
+            return None
+
+        file_path = entry["file"]
+        directory = entry.get("directory", str(self.project_root))
+        normalized_path = self._normalize_path(file_path, directory)
+
+        compile_cmds = compdb.getCompileCommands(normalized_path)
+        if compile_cmds is None or len(list(compile_cmds)) == 0:
+            compile_cmds = compdb.getCompileCommands(file_path)
+
+        if compile_cmds is None:
+            return None
+
+        for cmd in compile_cmds:
+            raw_arguments = list(cmd.arguments)
+            filtered_args = self._filter_arguments(raw_arguments)
+            arguments = self._sanitize_args_for_libclang(filtered_args)
+
+            command = {
+                "arguments": arguments,
+                "directory": cmd.directory,
+                "command": "",
+                "index": index,
+            }
+            return normalized_path, command
+
+        return None
+
     def _parse_compile_commands_from_db(self, compdb: CompilationDatabase) -> None:
         """Parse compile commands from CompilationDatabase and build file-to-command mapping.
 
@@ -404,12 +442,9 @@ class CompileCommandsManager:
         self.compile_commands.clear()
         self.file_to_command_map.clear()
 
-        # We still need to read the JSON to know which files are in the database
-        # since CompilationDatabase doesn't provide a method to list all files
         compile_commands_file = self.project_root / self.compile_commands_path
 
         try:
-            # Read JSON to get file list (minimal parsing, just to get filenames)
             with open(compile_commands_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
@@ -417,61 +452,15 @@ class CompileCommandsManager:
                 diagnostics.error("compile_commands.json must contain a list of commands")
                 return
 
-            # Process each entry using CompilationDatabase API
             for i, entry in enumerate(data):
-                if not isinstance(entry, dict):
-                    diagnostics.warning(f"Skipping invalid command at index {i}")
+                result = self._process_compile_command_entry(entry, i, compdb)
+                if result is None:
                     continue
-
-                # Extract required fields
-                if "file" not in entry:
-                    diagnostics.warning(f"Skipping command without 'file' field at index {i}")
-                    continue
-
-                file_path = entry["file"]
-                directory = entry.get("directory", str(self.project_root))
-
-                # Normalize file path
-                normalized_path = self._normalize_path(file_path, directory)
-
-                # Get compile commands from the database for this file
-                # This returns a CompileCommands object (iterator of CompileCommand)
-                compile_cmds = compdb.getCompileCommands(normalized_path)
-
-                if compile_cmds is None or len(list(compile_cmds)) == 0:
-                    # Try with the original (non-normalized) path
-                    compile_cmds = compdb.getCompileCommands(file_path)
-
-                if compile_cmds is not None:
-                    # Get the first (usually only) compile command for this file
-                    for cmd in compile_cmds:
-                        # Get arguments from CompileCommand - this is already parsed!
-                        # The arguments property returns a list of strings
-                        raw_arguments = list(cmd.arguments)
-
-                        # Filter out compiler executable, -o, -c, and source files
-                        filtered_args = self._filter_arguments(raw_arguments)
-
-                        # Sanitize for libclang
-                        arguments = self._sanitize_args_for_libclang(filtered_args)
-
-                        # Store the command
-                        self.compile_commands[normalized_path] = {
-                            "arguments": arguments,
-                            "directory": cmd.directory,
-                            "command": "",  # Not needed since we have arguments
-                            "index": i,
-                        }
-
-                        # Build mapping from file to command
-                        if normalized_path not in self.file_to_command_map:
-                            self.file_to_command_map[normalized_path] = []
-                        self.file_to_command_map[normalized_path].append(
-                            self.compile_commands[normalized_path]
-                        )
-
-                        # Usually only one command per file, use the first
-                        break
+                normalized_path, command = result
+                self.compile_commands[normalized_path] = command
+                if normalized_path not in self.file_to_command_map:
+                    self.file_to_command_map[normalized_path] = []
+                self.file_to_command_map[normalized_path].append(command)
 
         except Exception as e:
             diagnostics.error(f"Error parsing compile commands from database: {e}")
