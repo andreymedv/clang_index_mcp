@@ -470,6 +470,49 @@ class SearchEngine:
 
         return False
 
+    def _matches_class_criteria(
+        self,
+        info: SymbolInfo,
+        pattern: str,
+        project_only: bool,
+        file_name: Optional[str],
+        namespace: Optional[str],
+    ) -> bool:
+        """Check if a class symbol matches the search criteria."""
+        qualified_name = info.qualified_name if info.qualified_name else info.name
+        if not self.matches_qualified_pattern(qualified_name, pattern):
+            return False
+
+        if project_only and not info.is_project:
+            return False
+
+        if file_name and file_name not in info.file:
+            return False
+
+        if namespace is not None and not self._matches_namespace(info.namespace, namespace):
+            return False
+
+        return True
+
+    def _create_class_result(self, info: SymbolInfo, include_base_classes: bool) -> Dict[str, Any]:
+        """Build a result dictionary for a class search hit."""
+        entry = {
+            "prototype": _build_class_prototype(info),
+            "qualified_name": info.qualified_name or info.name,
+            "namespace": info.namespace,
+            "kind": info.kind,
+            "is_project": info.is_project,
+            "template_kind": info.template_kind,
+            "template_parameters": info.template_parameters,
+            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+            **build_location_objects(info),
+            "brief": info.brief,
+            "doc_comment": info.doc_comment,
+        }
+        if include_base_classes:
+            entry["base_classes"] = info.base_classes
+        return omit_empty(entry)
+
     def search_classes(
         self,
         pattern: str,
@@ -512,63 +555,21 @@ class SearchEngine:
 
         Task: T2.2.1 (Qualified Names Phase 2)
         """
-        # Validate regex patterns for ReDoS prevention
         pattern_type = self._detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
-        results = []
+        results: List[Dict[str, Any]] = []
 
-        # Iterate all classes and use qualified pattern matching
         with self.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
-                    # Use qualified pattern matching (Phase 2)
-                    # Fallback to info.name if qualified_name is empty (backward compatibility)
-                    qualified_name = info.qualified_name if info.qualified_name else info.name
-                    if not self.matches_qualified_pattern(qualified_name, pattern):
-                        continue
+                    if self._matches_class_criteria(
+                        info, pattern, project_only, file_name, namespace
+                    ):
+                        results.append(self._create_class_result(info, include_base_classes))
 
-                    # Apply filters
-                    if not project_only or info.is_project:
-                        # Filter by file name if specified
-                        if file_name:
-                            # Match if the file path contains the specified file_name
-                            # Supports full paths, relative paths, filenames, or prefixes
-                            if file_name not in info.file:
-                                continue
-
-                        # Filter by namespace if specified (supports partial matching)
-                        if namespace is not None:
-                            if not self._matches_namespace(info.namespace, namespace):
-                                continue
-
-                        entry = {
-                            "prototype": _build_class_prototype(info),
-                            "qualified_name": info.qualified_name or info.name,
-                            "namespace": info.namespace,
-                            "kind": info.kind,
-                            "is_project": info.is_project,
-                            "template_kind": info.template_kind,
-                            "template_parameters": info.template_parameters,
-                            "specialization_of": self._resolve_specialization_of(
-                                info.primary_template_usr
-                            ),
-                            **build_location_objects(info),
-                            "brief": info.brief,
-                            "doc_comment": info.doc_comment,
-                        }
-                        if include_base_classes:
-                            entry["base_classes"] = info.base_classes
-                        results.append(omit_empty(entry))
-
-        # Handle max_results truncation
-        if max_results is not None:
-            total_count = len(results)
-            truncated_results = results[:max_results]
-            return (truncated_results, total_count)
-
-        return results
+        return self._apply_max_results(results, max_results)
 
     def _matches_function_criteria(
         self,
