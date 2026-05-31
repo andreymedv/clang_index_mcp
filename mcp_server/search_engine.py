@@ -371,6 +371,33 @@ class SearchEngine:
         # Fallback (should never reach here)
         return False
 
+    def _collect_alias_expansions(self, type_name: str) -> List[str]:
+        """Collect all alias and canonical type expansions for a given type name."""
+        expanded_names = [type_name]
+
+        try:
+            canonical = self.cache_manager.get_canonical_for_alias(type_name)
+            if canonical and canonical != type_name:
+                expanded_names.append(canonical)
+
+            aliases = self.cache_manager.get_aliases_for_canonical(type_name)
+            for alias in aliases or []:
+                if alias not in expanded_names:
+                    expanded_names.append(alias)
+
+            if canonical:
+                aliases_of_canonical = self.cache_manager.get_aliases_for_canonical(canonical)
+                for alias in aliases_of_canonical or []:
+                    if alias not in expanded_names:
+                        expanded_names.append(alias)
+
+        except Exception as e:
+            from . import diagnostics
+
+            diagnostics.debug(f"Failed to expand type name '{type_name}': {e}")
+
+        return expanded_names
+
     def expand_type_name(self, type_name: str) -> List[str]:
         """
         Expand a type name to include all equivalent type names (aliases and canonical).
@@ -398,39 +425,9 @@ class SearchEngine:
             returns ["std::function<void(const Error&)>", "ErrorCallback"]
         """
         if not self.cache_manager:
-            # No cache manager available, return original name only
             return [type_name]
 
-        expanded_names = [type_name]
-
-        try:
-            # Check if this is an alias (has a canonical type)
-            canonical = self.cache_manager.get_canonical_for_alias(type_name)
-            if canonical and canonical != type_name:
-                expanded_names.append(canonical)
-
-            # Check if this is a canonical type (has aliases)
-            aliases = self.cache_manager.get_aliases_for_canonical(type_name)
-            if aliases:
-                for alias in aliases:
-                    if alias not in expanded_names:
-                        expanded_names.append(alias)
-
-            # Also check if the canonical type itself has aliases
-            if canonical:
-                aliases_of_canonical = self.cache_manager.get_aliases_for_canonical(canonical)
-                if aliases_of_canonical:
-                    for alias in aliases_of_canonical:
-                        if alias not in expanded_names:
-                            expanded_names.append(alias)
-
-        except Exception as e:
-            # Alias lookup failures are not critical, just log and continue
-            from . import diagnostics
-
-            diagnostics.debug(f"Failed to expand type name '{type_name}': {e}")
-
-        return expanded_names
+        return self._collect_alias_expansions(type_name)
 
     @staticmethod
     def _matches_namespace(symbol_namespace: str, filter_namespace: str) -> bool:
