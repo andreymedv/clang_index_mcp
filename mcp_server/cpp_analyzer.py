@@ -2999,67 +2999,65 @@ class CppAnalyzer:
             REQ-10.2.2: Skip headers already processed
             REQ-10.5.4: Save tracker after analysis
         """
-        processed_files = set()
-        skipped_headers = set()
-        headers_to_extract = set()
+        processed_files: Set[str] = set()
+        skipped_headers: Set[str] = set()
+        headers_to_extract: Set[str] = set()
 
         def should_extract_from_file(file_path: str) -> bool:
-            """
-            Decide if we should extract symbols from this file.
+            return self._should_extract_from_file(
+                file_path, source_file, processed_files, skipped_headers, headers_to_extract
+            )
 
-            Returns True if:
-            - file_path is the source file (always extract)
-            - file_path is a project header and we won the claim (first-win)
+        self._init_thread_local_buffers()
+        self._process_cursor(tu.cursor, should_extract_from_file)
+        self._bulk_write_symbols()
+        self._mark_headers_completed(headers_to_extract)
+        self._update_dependencies(tu, source_file)
 
-            Returns False if:
-            - file_path is not a project file (system header, external dep)
-            - file_path is a header already processed by another source
-            """
-            # Always extract from source file
-            if file_path == source_file:
+        return {
+            "source_file": source_file,
+            "processed": list(processed_files),
+            "skipped": list(skipped_headers),
+        }
+
+    def _should_extract_from_file(
+        self,
+        file_path: str,
+        source_file: str,
+        processed_files: Set[str],
+        skipped_headers: Set[str],
+        headers_to_extract: Set[str],
+    ) -> bool:
+        """Decide if we should extract symbols from this file."""
+        if file_path == source_file:
+            processed_files.add(file_path)
+            return True
+
+        if file_path in headers_to_extract:
+            return True
+        if file_path in skipped_headers:
+            return False
+
+        if not self._is_project_file(file_path):
+            skipped_headers.add(file_path)
+            return False
+
+        try:
+            file_hash = self._get_file_hash(file_path)
+            if self.header_tracker.try_claim_header(file_path, file_hash):
+                headers_to_extract.add(file_path)
                 processed_files.add(file_path)
                 return True
-
-            # Check if already decided in this TU
-            if file_path in headers_to_extract:
-                return True
-            if file_path in skipped_headers:
-                return False
-
-            # Check if it's a project file
-            if not self._is_project_file(file_path):
-                # Not a project file (system header or external dependency)
+            else:
                 skipped_headers.add(file_path)
                 return False
+        except Exception as e:
+            diagnostics.warning(f"Error checking header {file_path}: {e}")
+            skipped_headers.add(file_path)
+            return False
 
-            # It's a project header - try to claim it (first-win)
-            try:
-                file_hash = self._get_file_hash(file_path)
-                if self.header_tracker.try_claim_header(file_path, file_hash):
-                    # We won! Extract from this header
-                    headers_to_extract.add(file_path)
-                    processed_files.add(file_path)
-                    return True
-                else:
-                    # Another source already processed/processing this header
-                    skipped_headers.add(file_path)
-                    return False
-            except Exception as e:
-                # On error, skip this header
-                diagnostics.warning(f"Error checking header {file_path}: {e}")
-                skipped_headers.add(file_path)
-                return False
-
-        # Initialize thread-local buffers for collecting symbols
-        self._init_thread_local_buffers()
-
-        # Traverse entire TU AST with our extraction filter
-        self._process_cursor(tu.cursor, should_extract_from_file)
-
-        # Bulk write all collected symbols to shared indexes (single lock acquisition)
-        self._bulk_write_symbols()
-
-        # Mark newly processed headers as completed
+    def _mark_headers_completed(self, headers_to_extract: Set[str]) -> None:
+        """Mark newly processed headers as completed in the tracker."""
         for header in headers_to_extract:
             try:
                 file_hash = self._get_file_hash(header)
@@ -3067,22 +3065,16 @@ class CppAnalyzer:
             except Exception as e:
                 diagnostics.warning(f"Error marking header {header} as completed: {e}")
 
-        # Note: Header tracking is saved once at the end of indexing to avoid
-        # race conditions in multi-process mode. See index_project() and refresh_if_needed()
+    def _update_dependencies(self, tu, source_file: str) -> None:
+        """Extract and store include dependencies for incremental analysis."""
+        if self.dependency_graph is None:
+            return
 
-        # Extract and store include dependencies for incremental analysis
-        if self.dependency_graph is not None:
-            try:
-                includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
-                self.dependency_graph.update_dependencies(source_file, includes)
-            except Exception as e:
-                diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
-
-        return {
-            "source_file": source_file,
-            "processed": list(processed_files),
-            "skipped": list(skipped_headers),
-        }
+        try:
+            includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
+            self.dependency_graph.update_dependencies(source_file, includes)
+        except Exception as e:
+            diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
 
     def _get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
         """Get compilation arguments for a file, handling worker and fallback modes."""
