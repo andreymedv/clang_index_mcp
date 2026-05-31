@@ -708,6 +708,26 @@ class CompileCommandsManager:
 
         return None
 
+    def _find_std_insert_position(self, arguments: List[str]) -> int:
+        """Find insertion position after -std= flag if present."""
+        for i, arg in enumerate(arguments):
+            if arg.startswith("-std="):
+                return i + 1
+        return 0
+
+    def _is_path_in_args(self, path: str, arguments: List[str]) -> bool:
+        """Check if a path is already present in arguments."""
+        for arg in arguments:
+            if path in arg:
+                return True
+        return False
+
+    def _insert_system_include(self, arguments: List[str], insert_pos: int, path: str) -> int:
+        """Insert -isystem path at insert_pos and return updated position."""
+        arguments.insert(insert_pos, "-isystem")
+        arguments.insert(insert_pos + 1, path)
+        return insert_pos + 2
+
     def _add_builtin_includes(self, arguments: List[str]) -> List[str]:
         """
         Add clang builtin include directory and C++ stdlib to arguments if not already present.
@@ -736,50 +756,16 @@ class CompileCommandsManager:
             Arguments with builtin include directory added if needed
         """
         result = arguments.copy()
+        insert_pos = self._find_std_insert_position(result)
 
-        # Find insertion position (after -std= flag if present)
-        insert_pos = 0
-        for i, arg in enumerate(result):
-            if arg.startswith("-std="):
-                insert_pos = i + 1
-                break
-
-        # Step 1: Add C++ standard library include path FIRST
-        # This must come BEFORE the clang resource directory to ensure proper header resolution
         cxx_stdlib_path = self._detect_cxx_stdlib_path(arguments)
-        if cxx_stdlib_path:
-            # Check if already present
-            already_has_stdlib = False
-            for arg in result:
-                if cxx_stdlib_path in arg:
-                    already_has_stdlib = True
-                    break
+        if cxx_stdlib_path and not self._is_path_in_args(cxx_stdlib_path, result):
+            insert_pos = self._insert_system_include(result, insert_pos, cxx_stdlib_path)
+            diagnostics.debug(f"Added C++ stdlib path: {cxx_stdlib_path}")
 
-            if not already_has_stdlib:
-                # Add C++ stdlib path as first system include
-                # This ensures it has priority for C++ headers
-                result.insert(insert_pos, "-isystem")
-                result.insert(insert_pos + 1, cxx_stdlib_path)
-                diagnostics.debug(f"Added C++ stdlib path: {cxx_stdlib_path}")
-                # Update insert position for next includes
-                insert_pos += 2
-
-        # Step 2: Add clang resource directory for builtin headers AFTER C++ stdlib
-        if self.clang_resource_dir:
-            # Check if the resource directory is already in the include paths
-            already_has_resource = False
-            for arg in result:
-                if self.clang_resource_dir in arg:
-                    already_has_resource = True
-                    break
-
-            if not already_has_resource:
-                # Add the resource directory as a system include (-isystem)
-                # Use -isystem instead of -I to avoid warnings from system headers
-                # Insert after C++ stdlib
-                result.insert(insert_pos, "-isystem")
-                result.insert(insert_pos + 1, self.clang_resource_dir)
-                diagnostics.debug(f"Added clang resource dir: {self.clang_resource_dir}")
+        if self.clang_resource_dir and not self._is_path_in_args(self.clang_resource_dir, result):
+            self._insert_system_include(result, insert_pos, self.clang_resource_dir)
+            diagnostics.debug(f"Added clang resource dir: {self.clang_resource_dir}")
 
         return result
 
