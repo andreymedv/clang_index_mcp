@@ -1860,6 +1860,30 @@ class CppAnalyzer:
 
         return None
 
+    def _add_class_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
+        """Add class template and specialization symbols to results."""
+        if base_name not in self.class_index:
+            return
+        for symbol in self.class_index[base_name]:
+            if symbol.kind in ("class_template", "partial_specialization"):
+                results.append(symbol)
+            elif symbol.kind in ("class", "struct"):
+                if symbol.usr and ">#" in symbol.usr:
+                    results.append(symbol)
+
+    def _add_function_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
+        """Add function template and specialization symbols to results."""
+        if base_name not in self.function_index:
+            return
+        for symbol in self.function_index[base_name]:
+            if symbol.kind == "function_template":
+                results.append(symbol)
+            elif symbol.kind in ("function", "method"):
+                if symbol.is_template_specialization or (
+                    symbol.usr and ("<#" in symbol.usr or ">#" in symbol.usr)
+                ):
+                    results.append(symbol)
+
     def _find_template_specializations(self, base_name: str) -> List[SymbolInfo]:
         """
         Find all specializations of a template by base name.
@@ -1877,43 +1901,11 @@ class CppAnalyzer:
 
         Task: Issue #99 Phase 3 - Template→Specialization linkage
         """
-        results = []
+        results: List[SymbolInfo] = []
 
         with self.index_lock:
-            # Check class_index for class templates and specializations
-            if base_name in self.class_index:
-                for symbol in self.class_index[base_name]:
-                    # Include if it's a template or a specialization
-                    if symbol.kind in (
-                        "class_template",
-                        "partial_specialization",
-                        "class",
-                        "struct",
-                    ):
-                        # For regular classes, verify they're template specializations by USR
-                        if symbol.kind in ("class", "struct"):
-                            # Check if USR indicates it's a template specialization
-                            # Template specializations have >#... in their USR
-                            if symbol.usr and ">#" in symbol.usr:
-                                results.append(symbol)
-                        else:
-                            # Templates and partial specializations always included
-                            results.append(symbol)
-
-            # Check function_index for function templates and specializations
-            if base_name in self.function_index:
-                for symbol in self.function_index[base_name]:
-                    if symbol.kind in ("function_template", "function", "method"):
-                        # For regular functions, verify template specialization by USR or flag
-                        if symbol.kind in ("function", "method"):
-                            # Check is_template_specialization flag or USR pattern
-                            if symbol.is_template_specialization or (
-                                symbol.usr and ("<#" in symbol.usr or ">#" in symbol.usr)
-                            ):
-                                results.append(symbol)
-                        else:
-                            # Function templates always included
-                            results.append(symbol)
+            self._add_class_template_symbols(base_name, results)
+            self._add_function_template_symbols(base_name, results)
 
         return results
 
