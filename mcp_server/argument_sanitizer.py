@@ -127,7 +127,10 @@ class ArgumentSanitizer:
         }
 
         for rule in self.rules:
-            handler = dispatch.get(rule.get("type"))
+            rule_type = rule.get("type")
+            if not isinstance(rule_type, str):
+                continue
+            handler = dispatch.get(rule_type)
             if handler is None:
                 continue
             skip = handler(rule)

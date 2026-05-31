@@ -1580,7 +1580,7 @@ class CppAnalyzer:
         elif base_name_qualified.startswith("struct "):
             base_name_qualified = base_name_qualified[7:]
 
-        return base_name_qualified
+        return str(base_name_qualified)
 
     def _get_base_classes(self, cursor) -> List[str]:
         """
@@ -1701,7 +1701,8 @@ class CppAnalyzer:
         try:
             import json
 
-            return json.loads(primary_info.template_parameters)
+            result: List[Dict[str, Any]] = json.loads(primary_info.template_parameters)
+            return result
         except (json.JSONDecodeError, TypeError):
             return []
 
@@ -2013,7 +2014,7 @@ class CppAnalyzer:
         brief_comment = cursor.brief_comment
         if not brief_comment:
             return None
-        brief = brief_comment.strip()
+        brief = str(brief_comment).strip()
         if len(brief) > 200:
             brief = brief[:200]
         return brief
@@ -2024,7 +2025,7 @@ class CppAnalyzer:
         raw_comment = cursor.raw_comment
         if not raw_comment:
             return None
-        doc_comment = raw_comment.strip()
+        doc_comment = str(raw_comment).strip()
         if len(doc_comment) > 4000:
             doc_comment = doc_comment[:3997] + "..."
         return doc_comment
@@ -2054,7 +2055,7 @@ class CppAnalyzer:
                 - brief: Brief description (first line, max 200 chars)
                 - doc_comment: Full documentation comment (max 4000 chars)
         """
-        result = {"brief": None, "doc_comment": None}
+        result: Dict[str, Optional[str]] = {"brief": None, "doc_comment": None}
 
         try:
             result["brief"] = self._extract_brief_comment(cursor)
@@ -2123,7 +2124,7 @@ class CppAnalyzer:
         """Safely get cursor.result_type.spelling."""
         try:
             if cursor.result_type and cursor.result_type.spelling:
-                return cursor.result_type.spelling
+                return str(cursor.result_type.spelling)
         except Exception:
             pass
         return ""
@@ -3293,7 +3294,7 @@ class CppAnalyzer:
 
         cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
         if cache_data is not None and not cache_data["success"]:
-            return cache_data["retry_count"] + 1
+            return int(cache_data["retry_count"]) + 1
         return 0
 
     def _finalize_index_success(
@@ -5969,7 +5970,7 @@ class CppAnalyzer:
                 - total_references: Approximate count of references
         """
         # Note: Indexing should be complete before calling this method
-        files = set()
+        files: Set[str] = set()
         total_refs = 0
         kind = None
 

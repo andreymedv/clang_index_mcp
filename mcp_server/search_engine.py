@@ -1134,11 +1134,12 @@ class SearchEngine:
     @staticmethod
     def _build_scoped_signature(info, scope: str) -> str:
         """Inject class scope into a human-readable signature."""
+        sig: str = info.signature
         target = f"{info.name}("
-        idx = info.signature.find(target)
+        idx = sig.find(target)
         if idx >= 0:
-            return info.signature[:idx] + f"{scope}::" + info.signature[idx:]
-        return f"{scope}::{info.signature}"
+            return sig[:idx] + f"{scope}::" + sig[idx:]
+        return f"{scope}::{sig}"
 
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
@@ -1179,6 +1180,7 @@ class SearchEngine:
 
                 if class_name is not None or info.parent_class:
                     scope = info.parent_class or class_name
+                    assert scope is not None
                     signatures.append(self._build_scoped_signature(info, scope))
                 else:
                     signatures.append(info.signature)
