@@ -3265,6 +3265,106 @@ class CppAnalyzer:
         """Clear existing index entries for a file (atomicity should be handled by caller)."""
         self._remove_file_from_indexes(file_path)
 
+    def _try_load_cached_index(
+        self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
+    ) -> Optional[tuple[bool, bool]]:
+        """Try to load index from per-file cache. Returns result tuple or None if not cached."""
+        if force:
+            return None
+
+        cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
+        if cache_data is None:
+            return None
+
+        if not cache_data["success"]:
+            retry_count = cache_data["retry_count"]
+            if retry_count >= self.max_parse_retries:
+                diagnostics.debug(
+                    f"Skipping {file_path} - failed {retry_count} times "
+                    f"(last error: {cache_data['error_message']})"
+                )
+                return (False, True)
+            return None
+
+        self._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
+        return (True, True)
+
+    def _compute_retry_count(
+        self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
+    ) -> int:
+        """Compute retry count based on previous failed cache entries."""
+        if force:
+            return 0
+
+        cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
+        if cache_data is not None and not cache_data["success"]:
+            return cache_data["retry_count"] + 1
+        return 0
+
+    def _finalize_index_success(
+        self,
+        file_path: str,
+        tu,
+        current_hash: str,
+        compile_args_hash: str,
+        cache_error_msg: Optional[str],
+    ) -> tuple[bool, bool]:
+        """Clear old entries, process TU, collect symbols, and save to cache."""
+        with self._get_lock():
+            self._clear_file_index_entries(file_path)
+
+        extraction_result = self._index_translation_unit(tu, file_path)
+        processed_count = len(extraction_result["processed"])
+        if processed_count > 1:
+            diagnostics.debug(
+                f"{file_path}: processed {processed_count} files "
+                f"({processed_count - 1} headers extracted, {len(extraction_result['skipped'])} skipped)"
+            )
+
+        with self._get_lock():
+            collected_symbols = self.file_index.get(file_path, []).copy()
+            del tu
+            import gc
+
+            gc.collect()
+            self.file_hashes[file_path] = current_hash
+
+        self._save_file_cache(
+            file_path,
+            collected_symbols,
+            current_hash,
+            compile_args_hash,
+            success=True,
+            error_message=cache_error_msg,
+            retry_count=0,
+        )
+        return (True, False)
+
+    def _finalize_index_failure(
+        self,
+        file_path: str,
+        error: Exception,
+        current_hash: str,
+        compile_args_hash: str,
+        retry_count: int,
+    ) -> tuple[bool, bool]:
+        """Log parse error and save failure state to cache."""
+        self.cache_manager.log_parse_error(
+            file_path, error, current_hash, compile_args_hash, retry_count
+        )
+        error_msg = str(error)[:200]
+        self._save_file_cache(
+            file_path,
+            [],
+            current_hash,
+            compile_args_hash,
+            success=False,
+            error_message=error_msg,
+            retry_count=retry_count,
+        )
+        diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
+        return (False, False)
+
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file
 
@@ -3274,40 +3374,21 @@ class CppAnalyzer:
         """
         file_path = os.path.abspath(file_path)
 
-        # Check if source file exists before attempting to parse
         if not Path(file_path).exists():
             error_msg = f"Source file does not exist: {file_path}"
             diagnostics.error(error_msg)
-            file_not_found_error = FileNotFoundError(error_msg)
-            self.cache_manager.log_parse_error(file_path, file_not_found_error, "", None, 0)
+            self.cache_manager.log_parse_error(file_path, FileNotFoundError(error_msg), "", None, 0)
             return (False, False)
 
         current_hash = self._get_file_hash(file_path)
         args = self._get_compile_args_for_file(Path(file_path))
         compile_args_hash = self._compute_compile_args_hash(args)
 
-        # Try to load from per-file cache first
-        if not force:
-            cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
-            if cache_data is not None:
-                if not cache_data["success"]:
-                    retry_count = cache_data["retry_count"]
-                    if retry_count >= self.max_parse_retries:
-                        diagnostics.debug(
-                            f"Skipping {file_path} - failed {retry_count} times "
-                            f"(last error: {cache_data['error_message']})"
-                        )
-                        return (False, True)
-                else:
-                    self._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
-                    return (True, True)
+        cached = self._try_load_cached_index(file_path, current_hash, compile_args_hash, force)
+        if cached is not None:
+            return cached
 
-        # Determine retry count
-        retry_count = 0
-        if not force:
-            cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
-            if cache_data is not None and not cache_data["success"]:
-                retry_count = cache_data["retry_count"] + 1
+        retry_count = self._compute_retry_count(file_path, current_hash, compile_args_hash, force)
 
         try:
             tu, error_msg_opt = self._try_parse_with_fallback(file_path, args)
@@ -3322,54 +3403,14 @@ class CppAnalyzer:
                 file_path, tu, current_hash, compile_args_hash, retry_count
             )
 
-            # Clear old entries and process TU
-            with self._get_lock():
-                self._clear_file_index_entries(file_path)
-
-            extraction_result = self._index_translation_unit(tu, file_path)
-            processed_count = len(extraction_result["processed"])
-            if processed_count > 1:
-                diagnostics.debug(
-                    f"{file_path}: processed {processed_count} files "
-                    f"({processed_count - 1} headers extracted, {len(extraction_result['skipped'])} skipped)"
-                )
-
-            # Get symbols just added and save to cache
-            with self._get_lock():
-                collected_symbols = self.file_index.get(file_path, []).copy()
-                del tu
-                import gc
-
-                gc.collect()
-                self.file_hashes[file_path] = current_hash
-
-            self._save_file_cache(
-                file_path,
-                collected_symbols,
-                current_hash,
-                compile_args_hash,
-                success=True,
-                error_message=cache_error_msg,
-                retry_count=0,
+            return self._finalize_index_success(
+                file_path, tu, current_hash, compile_args_hash, cache_error_msg
             )
-            return (True, False)
 
         except Exception as e:
-            self.cache_manager.log_parse_error(
+            return self._finalize_index_failure(
                 file_path, e, current_hash, compile_args_hash, retry_count
             )
-            error_msg = str(e)[:200]
-            self._save_file_cache(
-                file_path,
-                [],
-                current_hash,
-                compile_args_hash,
-                success=False,
-                error_message=error_msg,
-                retry_count=retry_count,
-            )
-            diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
-            return (False, False)
 
     def _is_terminal(self) -> bool:
         """Check if stderr is a terminal for progress reporting."""
