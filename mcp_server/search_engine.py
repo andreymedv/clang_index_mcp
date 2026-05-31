@@ -1109,6 +1109,39 @@ class SearchEngine:
             }
         )
 
+    def _lookup_function_infos(self, simple_name: str) -> List[Any]:
+        """Look up function infos by simple name with case-insensitive fallback."""
+        infos = self.function_index.get(simple_name, [])
+        if infos:
+            return infos
+
+        simple_name_lower = simple_name.lower()
+        for key in self.function_index:
+            if key.lower() == simple_name_lower:
+                return self.function_index[key]
+        return []
+
+    @staticmethod
+    def _info_matches_class_filter(info, class_name: str) -> bool:
+        """Check if a function info matches the requested class filter."""
+        if info.parent_class == class_name:
+            return True
+        if info.qualified_name and (
+            info.qualified_name.startswith(class_name + "::")
+            or ("::" + class_name + "::") in info.qualified_name
+        ):
+            return True
+        return False
+
+    @staticmethod
+    def _build_scoped_signature(info, scope: str) -> str:
+        """Inject class scope into a human-readable signature."""
+        target = f"{info.name}("
+        idx = info.signature.find(target)
+        if idx >= 0:
+            return info.signature[:idx] + f"{scope}::" + info.signature[idx:]
+        return f"{scope}::{info.signature}"
+
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
     ) -> List[str]:
@@ -1124,65 +1157,31 @@ class SearchEngine:
         """
         signatures = []
 
-        # Strip template arguments for lookup: function_index uses names without template args
-        # e.g., "max<int*>" → lookup "max", "ns::Class::foo<T>" → "foo"
         has_template_args = "<" in function_name
         lookup_name = (
             self._strip_template_args(function_name) if has_template_args else function_name
         )
 
-        # function_index is keyed by simple name, so extract it from qualified input
         is_qualified = "::" in lookup_name
         simple_name = self._extract_simple_name(lookup_name)
 
-        # Normalize class_name: extract simple name from qualified name
-        # parent_class is stored as simple name
         if class_name:
             class_name = self._extract_simple_name(class_name)
 
         with self.index_lock:
-            # Try direct lookup first (fast path)
-            infos = self.function_index.get(simple_name, [])
-            if not infos:
-                # Case-insensitive fallback: search for matching key
-                simple_name_lower = simple_name.lower()
-                for key in self.function_index:
-                    if key.lower() == simple_name_lower:
-                        infos = self.function_index[key]
-                        break
+            infos = self._lookup_function_infos(simple_name)
             for info in infos:
-                # If qualified name was provided, filter using qualified pattern matching
-                # This supports partially qualified names (e.g., "MyClass::foo"
-                # matches "ns::MyClass::foo").
-                # Use lookup_name (without template args) since stored qualified_names
-                # also don't include template args.
                 if is_qualified:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
                     if not self.matches_qualified_pattern(info_qualified, lookup_name):
                         continue
-                # Match by parent_class or qualified_name prefix for class filtering
-                if class_name is not None:
-                    if info.parent_class != class_name:
-                        # Fallback: check qualified_name for out-of-line methods
-                        if not (
-                            info.qualified_name
-                            and (
-                                info.qualified_name.startswith(class_name + "::")
-                                or ("::" + class_name + "::") in info.qualified_name
-                            )
-                        ):
-                            continue
+
+                if class_name is not None and not self._info_matches_class_filter(info, class_name):
+                    continue
+
                 if class_name is not None or info.parent_class:
-                    # Inject class scope into human-readable signature
-                    # e.g., "void foo(int x)" -> "void MyClass::foo(int x)"
                     scope = info.parent_class or class_name
-                    target = f"{info.name}("
-                    idx = info.signature.find(target)
-                    if idx >= 0:
-                        sig = info.signature[:idx] + f"{scope}::" + info.signature[idx:]
-                    else:
-                        sig = f"{scope}::{info.signature}"
-                    signatures.append(sig)
+                    signatures.append(self._build_scoped_signature(info, scope))
                 else:
                     signatures.append(info.signature)
 
