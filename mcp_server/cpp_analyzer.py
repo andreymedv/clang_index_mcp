@@ -5456,38 +5456,20 @@ class CppAnalyzer:
             "_target_qualified_name": target_qualified_name,
         }
 
-    def get_call_path(
-        self, from_function: str, to_function: str, max_depth: int = 10
-    ) -> List[List[str]]:
-        """Find call paths from one function to another using BFS"""
-        # Find source and target USRs
-        # Pass names directly (see find_incoming_calls comment for rationale).
-        from_funcs = self.search_functions(from_function, project_only=False)
-        to_funcs = self.search_functions(to_function, project_only=False)
-
-        if not from_funcs or not to_funcs:
-            return []
-
-        # Get USRs
-        from_usrs = set()
-        for func in from_funcs:
+    def _get_usrs_for_functions(self, funcs: List[Dict[str, Any]]) -> set:
+        """Resolve a list of function search results to a set of USRs."""
+        usrs = set()
+        for func in funcs:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
             for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    from_usrs.add(symbol.usr)
+                    usrs.add(symbol.usr)
+        return usrs
 
-        to_usrs = set()
-        for func in to_funcs:
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    to_usrs.add(symbol.usr)
-
-        # BFS to find paths
+    def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> List[List[str]]:
+        """Perform BFS to find paths between sets of USRs."""
         paths = []
         for from_usr in from_usrs:
             # Queue contains (current_usr, path)
@@ -5523,6 +5505,25 @@ class CppAnalyzer:
                 depth += 1
 
         return paths
+
+    def get_call_path(
+        self, from_function: str, to_function: str, max_depth: int = 10
+    ) -> List[List[str]]:
+        """Find call paths from one function to another using BFS"""
+        # Find source and target USRs
+        # Pass names directly (see find_incoming_calls comment for rationale).
+        from_funcs = self.search_functions(from_function, project_only=False)
+        to_funcs = self.search_functions(to_function, project_only=False)
+
+        if not from_funcs or not to_funcs:
+            return []
+
+        # Get USRs
+        from_usrs = self._get_usrs_for_functions(from_funcs)
+        to_usrs = self._get_usrs_for_functions(to_funcs)
+
+        # BFS to find paths
+        return self._find_paths_bfs(from_usrs, to_usrs, max_depth)
 
     def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
         """Search for symbols within a specific file or files matching a glob pattern.
