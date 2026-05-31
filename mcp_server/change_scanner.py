@@ -24,7 +24,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Set
+from typing import Optional, Set
 
 # Handle both package and script imports
 try:
@@ -240,6 +240,31 @@ class ChangeScanner:
         else:
             diagnostics.debug("No changes detected")
 
+    def _get_cached_hash(self, file_path: str) -> Optional[str]:
+        """Get cached hash from database or in-memory cache. Returns None if not found."""
+        try:
+            metadata = self.analyzer.cache_manager.backend.get_file_metadata(file_path)
+            if metadata:
+                return metadata.get("file_hash", "")
+        except Exception as e:
+            diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
+
+        if file_path in self.analyzer.file_hashes:
+            return self.analyzer.file_hashes[file_path]
+
+        return None
+
+    def _compare_with_cached_hash(self, file_path: str, cached_hash: str) -> ChangeType:
+        """Compare current file hash with cached hash."""
+        try:
+            current_hash = self.analyzer._get_file_hash(file_path)
+            if current_hash != cached_hash:
+                return ChangeType.MODIFIED
+            return ChangeType.UNCHANGED
+        except Exception as e:
+            diagnostics.warning(f"Error checking hash for {file_path}: {e}")
+            return ChangeType.MODIFIED
+
     def _check_file_change(self, file_path: str) -> ChangeType:
         """
         Check if a file is new, modified, or unchanged.
@@ -258,46 +283,10 @@ class ChangeScanner:
             5. Hash mismatch → MODIFIED
             6. Hash match → UNCHANGED
         """
-        # Try to get file metadata from database first
-        try:
-            metadata = self.analyzer.cache_manager.backend.get_file_metadata(file_path)
-        except Exception as e:
-            diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
-            metadata = None
-
-        # CRITICAL FIX: Fallback to in-memory file_hashes if not in database
-        # This happens after cache load when database is empty but file_hashes is populated
-        if not metadata:
-            if file_path in self.analyzer.file_hashes:
-                # File is in memory cache, check if content changed
-                cached_hash = self.analyzer.file_hashes[file_path]
-                try:
-                    current_hash = self.analyzer._get_file_hash(file_path)
-                    if current_hash != cached_hash:
-                        return ChangeType.MODIFIED
-                    else:
-                        return ChangeType.UNCHANGED
-                except Exception as e:
-                    diagnostics.warning(f"Error checking hash for {file_path}: {e}")
-                    return ChangeType.MODIFIED
-            else:
-                # Not in database OR in-memory cache = new file
-                return ChangeType.ADDED
-
-        # File in database cache, check if content changed
-        try:
-            current_hash = self.analyzer._get_file_hash(file_path)
-            cached_hash = metadata.get("file_hash", "")
-
-            if current_hash != cached_hash:
-                return ChangeType.MODIFIED
-            else:
-                return ChangeType.UNCHANGED
-
-        except Exception as e:
-            diagnostics.warning(f"Error checking hash for {file_path}: {e}")
-            # Conservative: assume modified if can't verify
-            return ChangeType.MODIFIED
+        cached_hash = self._get_cached_hash(file_path)
+        if cached_hash is None:
+            return ChangeType.ADDED
+        return self._compare_with_cached_hash(file_path, cached_hash)
 
     def _check_compile_commands_changed(self) -> bool:
         """
