@@ -1916,6 +1916,60 @@ class CppAnalyzer:
 
         return results
 
+    @staticmethod
+    def _get_primary_file(cursor) -> str:
+        """Determine the primary file path for a cursor using extent or location."""
+        if cursor.extent and cursor.extent.start.file:
+            return str(cursor.extent.start.file.name)
+        if cursor.location.file:
+            return str(cursor.location.file.name)
+        return ""
+
+    @staticmethod
+    def _extract_cursor_extent(cursor, location) -> Tuple[int, int]:
+        """Extract start and end lines from a cursor's extent, falling back to location line."""
+        try:
+            extent = cursor.extent
+            if extent and extent.start.file and extent.end.file:
+                return extent.start.line, extent.end.line
+        except Exception as e:
+            diagnostics.debug(f"Could not extract extent for {cursor.spelling}: {e}")
+        return location.line, location.line
+
+    def _extract_definition_location(self, cursor, result: dict) -> None:
+        """Populate header_* fields when declaration and definition are in different files."""
+        try:
+            definition_cursor = cursor.get_definition()
+            if not definition_cursor or definition_cursor == cursor:
+                return
+
+            decl_location = cursor.location
+            def_location = definition_cursor.location
+
+            if not decl_location.file or not def_location.file:
+                return
+
+            decl_file = str(decl_location.file.name)
+            def_file = str(def_location.file.name)
+
+            if decl_file == def_file:
+                return
+
+            result["header_file"] = def_file
+            result["header_line"] = def_location.line
+
+            try:
+                def_extent = definition_cursor.extent
+                if def_extent and def_extent.start.file:
+                    result["header_start_line"] = def_extent.start.line
+                    result["header_end_line"] = def_extent.end.line
+            except Exception:
+                result["header_start_line"] = def_location.line
+                result["header_end_line"] = def_location.line
+
+        except Exception as e:
+            diagnostics.debug(f"Could not track declaration/definition for {cursor.spelling}: {e}")
+
     def _extract_line_range_info(self, cursor) -> dict:
         """
         Extract line range and location information from a cursor.
@@ -1941,82 +1995,22 @@ class CppAnalyzer:
                 - header_end_line: Definition end line
         """
         location = cursor.location
-
-        # CRITICAL FIX FOR ISSUE #8 (ThreadPoolExecutor mode):
-        # Use cursor.extent.start.file instead of cursor.location.file
-        # Reason: For function declarations in headers, cursor.location points to the
-        # DEFINITION location (in .cpp), not the DECLARATION location (in .h).
-        # cursor.extent.start.file gives us where the cursor actually appears in the AST.
-        # This ensures header symbols are correctly attributed to header files.
-        primary_file = ""
-
-        # IMPORTANT: cursor.location.file can be different from cursor.extent.start.file
-        # For declarations in headers, we want extent (where cursor appears in source)
-        # For definitions, both should be the same
-        if cursor.extent and cursor.extent.start.file:
-            primary_file = str(cursor.extent.start.file.name)
-        elif location.file:
-            # Fallback to location.file if extent not available
-            primary_file = str(location.file.name)
+        primary_file = self._get_primary_file(cursor)
+        start_line, end_line = self._extract_cursor_extent(cursor, location)
 
         result = {
             "file": primary_file,
             "line": location.line,
             "column": location.column,
-            "start_line": None,
-            "end_line": None,
+            "start_line": start_line,
+            "end_line": end_line,
             "header_file": None,
             "header_line": None,
             "header_start_line": None,
             "header_end_line": None,
         }
 
-        # Extract line range from extent
-        try:
-            extent = cursor.extent
-            if extent and extent.start.file and extent.end.file:
-                result["start_line"] = extent.start.line
-                result["end_line"] = extent.end.line
-        except Exception as e:
-            # If extent extraction fails, fall back to single line
-            diagnostics.debug(f"Could not extract extent for {cursor.spelling}: {e}")
-            result["start_line"] = location.line
-            result["end_line"] = location.line
-
-        # Check for declaration/definition split
-        try:
-            # cursor.is_definition() tells us if this cursor IS a definition
-            # cursor.get_definition() gets the definition cursor if this is a declaration
-            definition_cursor = cursor.get_definition()
-
-            if definition_cursor and definition_cursor != cursor:
-                # This cursor is a declaration, definition exists elsewhere
-                decl_location = cursor.location
-                def_location = definition_cursor.location
-
-                if decl_location.file and def_location.file:
-                    decl_file = str(decl_location.file.name)
-                    def_file = str(def_location.file.name)
-
-                    if decl_file != def_file:
-                        # Declaration and definition are in different files.
-                        # Store definition location in header_* fields (despite the name).
-                        # Do NOT overwrite result["file"] — keep the declaration location
-                        # so declarations stay in file_index under their actual file.
-                        result["header_file"] = def_file
-                        result["header_line"] = def_location.line
-                        try:
-                            def_extent = definition_cursor.extent
-                            if def_extent and def_extent.start.file:
-                                result["header_start_line"] = def_extent.start.line
-                                result["header_end_line"] = def_extent.end.line
-                        except Exception:
-                            result["header_start_line"] = def_location.line
-                            result["header_end_line"] = def_location.line
-
-        except Exception as e:
-            # Declaration/definition tracking is best-effort
-            diagnostics.debug(f"Could not track declaration/definition for {cursor.spelling}: {e}")
+        self._extract_definition_location(cursor, result)
 
         return result
 
