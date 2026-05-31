@@ -4758,6 +4758,73 @@ class CppAnalyzer:
 
         return args
 
+    def _get_template_patterns(self, simple_name: str) -> List[str]:
+        """Get template patterns for matching derived classes."""
+        template_patterns = []
+        with self.index_lock:
+            # Check if class_name exists in class_index (use simple_name for lookup)
+            if simple_name in self.class_index:
+                for symbol in self.class_index[simple_name]:
+                    # If any symbol is a template, get all specializations
+                    if symbol.kind in ("class_template", "partial_specialization"):
+                        # Build patterns to match in base_classes
+                        # Matches: "Container", "Container<int>", "Container<double>", etc.
+                        # Use simple_name since base_classes matching uses suffix matching
+                        template_patterns.append(simple_name)  # Exact match
+                        template_patterns.append(
+                            f"{simple_name}<"
+                        )  # Prefix match for specializations
+                        break  # Only need to detect template once
+
+            # If not a template, just use exact match (use simple_name for matching)
+            if not template_patterns:
+                template_patterns = [simple_name]
+        return template_patterns
+
+    @staticmethod
+    def _check_pattern_match(base_class: str, template_patterns: List[str]) -> bool:
+        """Check if base_class matches any of the template patterns."""
+        for pattern in template_patterns:
+            # Exact match or template specialization prefix match
+            if base_class == pattern or base_class.startswith(pattern):
+                return True
+            # Handle qualified names: "ns::BaseClass" should match "BaseClass"
+            # Check if base_class ends with "::pattern" or "::pattern<"
+            if "::" in base_class:
+                if base_class.endswith("::" + pattern):
+                    return True
+                if base_class.split("::")[-1].startswith(pattern):
+                    return True
+        return False
+
+    def _is_derived_from(
+        self, info: SymbolInfo, template_patterns: List[str], simple_name: str
+    ) -> bool:
+        """Check if a symbol inherits from the target class or any specialization."""
+        tparam_names: set = set()
+        if info.template_parameters:
+            try:
+                tparams = json.loads(info.template_parameters)
+                tparam_names = {p.get("name", "") for p in tparams if p.get("name")}
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        for base_class in info.base_classes:
+            # Skip base classes that are template parameters
+            if base_class in tparam_names:
+                continue
+
+            match_found = self._check_pattern_match(base_class, template_patterns)
+
+            # Issue cplusplus_mcp-hnj: Check for indirect inheritance
+            # through template parameters
+            if not match_found:
+                match_found = self._check_template_param_inheritance(base_class, simple_name)
+
+            if match_found:
+                return True
+        return False
+
     def get_derived_classes(
         self, class_name: str, project_only: bool = True
     ) -> List[Dict[str, Any]]:
@@ -4784,83 +4851,24 @@ class CppAnalyzer:
         simple_name = SearchEngine._extract_simple_name(class_name)
 
         # Issue #99 Phase 3: Check if this is a template and get all specializations
-        template_patterns = []
-        with self.index_lock:
-            # Check if class_name exists in class_index (use simple_name for lookup)
-            if simple_name in self.class_index:
-                for symbol in self.class_index[simple_name]:
-                    # If any symbol is a template, get all specializations
-                    if symbol.kind in ("class_template", "partial_specialization"):
-                        # Build patterns to match in base_classes
-                        # Matches: "Container", "Container<int>", "Container<double>", etc.
-                        # Use simple_name since base_classes matching uses suffix matching
-                        template_patterns.append(simple_name)  # Exact match
-                        template_patterns.append(
-                            f"{simple_name}<"
-                        )  # Prefix match for specializations
-                        break  # Only need to detect template once
-
-            # If not a template, just use exact match (use simple_name for matching)
-            if not template_patterns:
-                template_patterns = [simple_name]
+        template_patterns = self._get_template_patterns(simple_name)
 
         with self.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
                     if not project_only or info.is_project:
-                        # Build set of template parameter names to filter false positives
-                        # (cplusplus_mcp-hff): template<typename Base> class Foo : Base
-                        # should NOT count as derived from a concrete struct "Base"
-                        tparam_names: set = set()
-                        if info.template_parameters:
-                            try:
-                                tparams = json.loads(info.template_parameters)
-                                tparam_names = {p.get("name", "") for p in tparams if p.get("name")}
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-
-                        # Check if this class inherits from the target class or any specialization
-                        for base_class in info.base_classes:
-                            # Skip base classes that are template parameters
-                            if base_class in tparam_names:
-                                continue
-
-                            match_found = False
-                            for pattern in template_patterns:
-                                # Exact match or template specialization prefix match
-                                if base_class == pattern or base_class.startswith(pattern):
-                                    match_found = True
-                                    break
-                                # Handle qualified names: "ns::BaseClass" should match "BaseClass"
-                                # Check if base_class ends with "::pattern" or "::pattern<"
-                                if "::" in base_class:
-                                    if base_class.endswith("::" + pattern):
-                                        match_found = True
-                                        break
-                                    if base_class.split("::")[-1].startswith(pattern):
-                                        match_found = True
-                                        break
-
-                            # Issue cplusplus_mcp-hnj: Check for indirect inheritance
-                            # through template parameters
-                            if not match_found:
-                                match_found = self._check_template_param_inheritance(
-                                    base_class, simple_name
+                        if self._is_derived_from(info, template_patterns, simple_name):
+                            derived_classes.append(
+                                omit_empty(
+                                    {
+                                        "qualified_name": info.qualified_name or info.name,
+                                        "kind": info.kind,
+                                        "is_project": info.is_project,
+                                        "base_classes": info.base_classes,
+                                        **build_location_objects(info),
+                                    }
                                 )
-
-                            if match_found:
-                                derived_classes.append(
-                                    omit_empty(
-                                        {
-                                            "qualified_name": info.qualified_name or info.name,
-                                            "kind": info.kind,
-                                            "is_project": info.is_project,
-                                            "base_classes": info.base_classes,
-                                            **build_location_objects(info),
-                                        }
-                                    )
-                                )
-                                break  # Found a match, no need to check other base classes
+                            )
 
         return derived_classes
 
