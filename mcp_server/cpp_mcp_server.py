@@ -130,6 +130,50 @@ async def list_tools() -> List[Tool]:
     return list_tools_b()
 
 
+def _parse_query_policy(policy_str: str) -> QueryBehaviorPolicy:
+    """Parse a query behavior policy string with fallback to ALLOW_PARTIAL."""
+    try:
+        return QueryBehaviorPolicy(policy_str)
+    except ValueError:
+        diagnostics.warning(
+            f"Invalid query_behavior_policy: {policy_str}, defaulting to allow_partial"
+        )
+        return QueryBehaviorPolicy.ALLOW_PARTIAL
+
+
+def _build_block_message(progress) -> str:
+    """Build a message explaining that queries are blocked due to indexing."""
+    if progress:
+        return (
+            f"Query blocked: Indexing in progress ({progress.completion_percentage:.1f}% complete, "
+            f"{progress.indexed_files:,}/{progress.total_files:,} files). Waiting for indexing to complete...\n\n"
+            f"Use 'sync_project' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial "
+            f"to allow queries during indexing."
+        )
+    return (
+        "Query blocked: Indexing in progress. Waiting for completion...\n\n"
+        "Use 'sync_project' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial."
+    )
+
+
+def _build_reject_message(progress) -> str:
+    """Build a message explaining that queries are rejected due to indexing."""
+    if progress:
+        return (
+            f"ERROR: Query rejected - indexing in progress ({progress.completion_percentage:.1f}% complete, "
+            f"{progress.indexed_files:,}/{progress.total_files:,} files).\n\n"
+            f"Queries are not allowed until indexing completes. Options:\n"
+            f"1. Use 'sync_project' tool to wait for completion\n"
+            f"2. Check progress with 'sync_project'\n"
+            f"3. Set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial to allow partial results\n"
+            f"4. Set CPP_ANALYZER_QUERY_BEHAVIOR=block to auto-wait for completion"
+        )
+    return (
+        "ERROR: Query rejected - indexing in progress.\n\n"
+        "Use 'sync_project' or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial/block."
+    )
+
+
 def check_query_policy(tool_name: str) -> tuple[bool, str]:
     """
     Check if query is allowed based on current indexing state and policy.
@@ -142,90 +186,34 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
         - If allowed=True, query can proceed (message will be empty)
         - If allowed=False, query should be blocked/rejected (message contains error/wait info)
     """
-    # If fully indexed, always allow
     if state_manager.is_fully_indexed():
         return (True, "")
 
-    # If not indexing, allow
     if not state_manager.is_ready_for_queries():
-        return (True, "")  # Let the normal flow handle uninitialized state
-
-    # Get policy from analyzer config
-    if analyzer is None:
-        return (True, "")  # No analyzer yet, allow
-    policy_str = analyzer.config.get_query_behavior_policy()
-
-    try:
-        policy = QueryBehaviorPolicy(policy_str)
-    except ValueError:
-        # Invalid policy, default to allow_partial
-        diagnostics.warning(
-            f"Invalid query_behavior_policy: {policy_str}, defaulting to allow_partial"
-        )
-        policy = QueryBehaviorPolicy.ALLOW_PARTIAL
-
-    # Check policy
-    if policy == QueryBehaviorPolicy.ALLOW_PARTIAL:
-        # Allow query, results will include metadata warning
         return (True, "")
 
-    elif policy == QueryBehaviorPolicy.BLOCK:
-        # Wait for indexing to complete
-        progress = state_manager.get_progress()
-        if progress:
-            completion = progress.completion_percentage
-            indexed = progress.indexed_files
-            total = progress.total_files
-            message = (
-                f"Query blocked: Indexing in progress ({completion:.1f}% complete, "
-                f"{indexed:,}/{total:,} files). Waiting for indexing to complete...\n\n"
-                f"Use 'sync_project' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial "
-                f"to allow queries during indexing."
-            )
-        else:
-            message = (
-                "Query blocked: Indexing in progress. Waiting for completion...\n\n"
-                "Use 'sync_project' tool or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial."
-            )
+    if analyzer is None:
+        return (True, "")
 
-        # Wait for indexing with a reasonable timeout (30 seconds)
+    policy = _parse_query_policy(analyzer.config.get_query_behavior_policy())
+
+    if policy == QueryBehaviorPolicy.ALLOW_PARTIAL:
+        return (True, "")
+
+    if policy == QueryBehaviorPolicy.BLOCK:
+        message = _build_block_message(state_manager.get_progress())
         completed = state_manager.wait_for_indexed(timeout=30.0)
-
         if completed:
-            # Indexing completed while waiting
             return (True, "")
-        else:
-            # Timeout - still return block message
-            return (
-                False,
-                message
-                + "\n\nTimeout waiting for indexing (30s). Try again later or use 'sync_project'.",
-            )
+        return (
+            False,
+            message
+            + "\n\nTimeout waiting for indexing (30s). Try again later or use 'sync_project'.",
+        )
 
-    elif policy == QueryBehaviorPolicy.REJECT:
-        # Reject query with error
-        progress = state_manager.get_progress()
-        if progress:
-            completion = progress.completion_percentage
-            indexed = progress.indexed_files
-            total = progress.total_files
-            message = (
-                f"ERROR: Query rejected - indexing in progress ({completion:.1f}% complete, "
-                f"{indexed:,}/{total:,} files).\n\n"
-                f"Queries are not allowed until indexing completes. Options:\n"
-                f"1. Use 'sync_project' tool to wait for completion\n"
-                f"2. Check progress with 'sync_project'\n"
-                f"3. Set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial to allow partial results\n"
-                f"4. Set CPP_ANALYZER_QUERY_BEHAVIOR=block to auto-wait for completion"
-            )
-        else:
-            message = (
-                "ERROR: Query rejected - indexing in progress.\n\n"
-                "Use 'sync_project' or set CPP_ANALYZER_QUERY_BEHAVIOR=allow_partial/block."
-            )
-        return (False, message)
+    if policy == QueryBehaviorPolicy.REJECT:
+        return (False, _build_reject_message(state_manager.get_progress()))
 
-    # Default: allow
     return (True, "")
 
 
