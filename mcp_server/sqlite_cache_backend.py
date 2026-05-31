@@ -1713,6 +1713,105 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to save cache: {e}")
             return False
 
+    def _check_config_changes(
+        self, config_file_path: Optional[Path], config_file_mtime: Optional[float]
+    ) -> bool:
+        """Check if config file has changed since caching."""
+        cached_config = self.get_cache_metadata("config_file_path")
+        if config_file_path:
+            if cached_config != str(config_file_path):
+                diagnostics.info("Configuration file path changed")
+                return False
+            cached_mtime = self.get_cache_metadata("config_file_mtime")
+            if cached_mtime and cached_mtime != str(config_file_mtime):
+                diagnostics.info("Configuration file modified")
+                return False
+        elif cached_config:
+            # Config was cached but not provided on load - invalidate
+            diagnostics.info("Configuration file was cached but not provided")
+            return False
+        return True
+
+    def _check_compile_commands_changes(
+        self, compile_commands_path: Optional[Path], compile_commands_mtime: Optional[float]
+    ) -> bool:
+        """Check if compile_commands.json has changed since caching."""
+        cached_cc = self.get_cache_metadata("compile_commands_path")
+        if compile_commands_path:
+            if cached_cc != str(compile_commands_path):
+                diagnostics.info("compile_commands.json path changed")
+                return False
+            cached_cc_mtime = self.get_cache_metadata("compile_commands_mtime")
+            if cached_cc_mtime and cached_cc_mtime != str(compile_commands_mtime):
+                diagnostics.info("compile_commands.json modified")
+                return False
+        elif cached_cc:
+            # Compile commands was cached but not provided on load - invalidate
+            diagnostics.info("compile_commands.json was cached but not provided")
+            return False
+        return True
+
+    def _validate_cache_metadata(
+        self,
+        include_dependencies: bool,
+        config_file_path: Optional[Path],
+        config_file_mtime: Optional[float],
+        compile_commands_path: Optional[Path],
+        compile_commands_mtime: Optional[float],
+    ) -> bool:
+        """Validate if the cache metadata matches the current configuration."""
+        # Check if cache has been initialized (has metadata)
+        cached_deps = self.get_cache_metadata("include_dependencies")
+        if cached_deps is None:
+            # No cache metadata - cache is empty/uninitialized
+            return False
+
+        # Check cache metadata for compatibility
+        if cached_deps != str(include_dependencies):
+            diagnostics.info(
+                f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}"
+            )
+            return False
+
+        if not self._check_config_changes(config_file_path, config_file_mtime):
+            return False
+
+        if not self._check_compile_commands_changes(compile_commands_path, compile_commands_mtime):
+            return False
+
+        return True
+
+    def _load_symbols_from_db(self) -> Tuple[Dict[str, List[Any]], Dict[str, List[Any]]]:
+        """Load symbols from database and build class and function indexes."""
+        cursor = self._conn.execute("SELECT * FROM symbols")
+
+        from collections import defaultdict
+
+        class_index = defaultdict(list)
+        function_index = defaultdict(list)
+
+        for row in cursor:
+            symbol = self._row_to_symbol(row)
+            if symbol.kind in (
+                "class",
+                "struct",
+                "union",
+                "enum",
+                "class_template",
+                "partial_specialization",
+            ):
+                class_index[symbol.name].append(symbol)
+            elif symbol.kind in (
+                "function",
+                "method",
+                "constructor",
+                "destructor",
+                "function_template",
+            ):
+                function_index[symbol.name].append(symbol)
+
+        return dict(class_index), dict(function_index)
+
     def load_cache(
         self,
         include_dependencies: bool = False,
@@ -1739,79 +1838,17 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            # Check if cache has been initialized (has metadata)
-            cached_deps = self.get_cache_metadata("include_dependencies")
-            if cached_deps is None:
-                # No cache metadata - cache is empty/uninitialized
+            is_valid = self._validate_cache_metadata(
+                include_dependencies,
+                config_file_path,
+                config_file_mtime,
+                compile_commands_path,
+                compile_commands_mtime,
+            )
+            if not is_valid:
                 return None
 
-            # Check cache metadata for compatibility
-            if cached_deps != str(include_dependencies):
-                diagnostics.info(
-                    f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}"
-                )
-                return None
-
-            # Check config file changes
-            cached_config = self.get_cache_metadata("config_file_path")
-            if config_file_path:
-                if cached_config != str(config_file_path):
-                    diagnostics.info("Configuration file path changed")
-                    return None
-                cached_mtime = self.get_cache_metadata("config_file_mtime")
-                if cached_mtime and cached_mtime != str(config_file_mtime):
-                    diagnostics.info("Configuration file modified")
-                    return None
-            elif cached_config:
-                # Config was cached but not provided on load - invalidate
-                diagnostics.info("Configuration file was cached but not provided")
-                return None
-
-            # Check compile_commands.json changes
-            cached_cc = self.get_cache_metadata("compile_commands_path")
-            if compile_commands_path:
-                if cached_cc != str(compile_commands_path):
-                    diagnostics.info("compile_commands.json path changed")
-                    return None
-                cached_cc_mtime = self.get_cache_metadata("compile_commands_mtime")
-                if cached_cc_mtime and cached_cc_mtime != str(compile_commands_mtime):
-                    diagnostics.info("compile_commands.json modified")
-                    return None
-            elif cached_cc:
-                # Compile commands was cached but not provided on load - invalidate
-                diagnostics.info("compile_commands.json was cached but not provided")
-                return None
-
-            # Load all symbols - Memory optimization: return SymbolInfo directly
-            # instead of converting to dict and back (saves ~500 MB peak for large projects)
-            cursor = self._conn.execute("SELECT * FROM symbols")
-
-            # Build indexes by name - stream rows to avoid loading all into memory at once
-            from collections import defaultdict
-
-            class_index = defaultdict(list)
-            function_index = defaultdict(list)
-
-            for row in cursor:
-                symbol = self._row_to_symbol(row)
-                # Issue #99: Include template kinds in class_index
-                if symbol.kind in (
-                    "class",
-                    "struct",
-                    "union",
-                    "enum",
-                    "class_template",
-                    "partial_specialization",
-                ):
-                    class_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
-                elif symbol.kind in (
-                    "function",
-                    "method",
-                    "constructor",
-                    "destructor",
-                    "function_template",
-                ):
-                    function_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
+            class_index, function_index = self._load_symbols_from_db()
 
             # Load file hashes
             file_hashes = self.load_all_file_hashes()
@@ -1828,8 +1865,8 @@ class SqliteCacheBackend:
                     str(compile_commands_path) if compile_commands_path else None
                 ),
                 "compile_commands_mtime": compile_commands_mtime,
-                "class_index": dict(class_index),
-                "function_index": dict(function_index),
+                "class_index": class_index,
+                "function_index": function_index,
                 "file_hashes": file_hashes,
                 "indexed_file_count": int(indexed_count) if indexed_count else 0,
                 "timestamp": time.time(),
