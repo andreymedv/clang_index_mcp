@@ -7,6 +7,7 @@ Provides HTTP and Server-Sent Events transport support for the MCP server.
 import asyncio
 import json
 import logging
+from typing import Optional
 from uuid import uuid4
 
 import uvicorn
@@ -171,6 +172,133 @@ class MCPHTTPServer:
             }
         )
 
+    async def _validate_json_body(
+        self, request: Request, session_id: str
+    ) -> tuple[bytes, Optional[Response]]:
+        """Read and validate JSON body, returning the body and an optional error response."""
+        body = await request.body()
+        try:
+            if body:
+                json.loads(body.decode())
+            return body, None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.warning(f"JSON decode error: {e}")
+            response = JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Parse error"},
+                    "id": None,
+                },
+                status_code=400,
+                headers={"mcp-session-id": session_id},
+            )
+            return body, response
+
+    def _inject_session_header(self, request: Request, session_id: str) -> dict:
+        """Inject session ID into request headers for transport validation."""
+        scope_headers = list(request.scope.get("headers", []))
+        has_session_header = any(name.lower() == b"mcp-session-id" for name, _ in scope_headers)
+        if not has_session_header:
+            scope_headers.append((b"mcp-session-id", session_id.encode()))
+            modified_scope = dict(request.scope)
+            modified_scope["headers"] = scope_headers
+            return modified_scope
+        return dict(request.scope)
+
+    async def _ensure_session_exists(self, session_id: str) -> None:
+        """Create a new session and transport if it doesn't exist."""
+        import time
+
+        if session_id not in self.sessions:
+            transport = StreamableHTTPServerTransport(
+                mcp_session_id=session_id, is_json_response_enabled=True
+            )
+
+            # Start MCP server with this transport in background
+            async def run_session():
+                async with transport.connect() as (read_stream, write_stream):
+                    try:
+                        await self.mcp_server.run(
+                            read_stream,
+                            write_stream,
+                            self.mcp_server.create_initialization_options(),
+                            raise_exceptions=False,
+                        )
+                    except Exception as e:
+                        logger.exception(f"Error in session {session_id}: {e}")
+                    finally:
+                        # Clean up session
+                        if session_id in self.sessions:
+                            del self.sessions[session_id]
+
+            task = asyncio.create_task(run_session())
+            current_time = time.time()
+            self.sessions[session_id] = (transport, task, current_time)
+            logger.info(f"Started MCP server session {session_id}")
+
+            # Give the session a moment to initialize
+            await asyncio.sleep(0.1)
+
+        else:
+            transport, task, _ = self.sessions[session_id]
+            # Update last activity time
+            current_time = time.time()
+            self.sessions[session_id] = (transport, task, current_time)
+
+    async def _execute_transport_request(
+        self, session_id: str, modified_scope: dict, receive_with_body
+    ) -> Response:
+        """Execute the request through the transport and return the response."""
+        transport, _, _ = self.sessions[session_id]
+
+        response_status = 200
+        response_headers = []
+        response_body = b""
+
+        async def send(message):
+            nonlocal response_status, response_headers, response_body
+            if message["type"] == "http.response.start":
+                response_status = message.get("status", 200)
+                response_headers = message.get("headers", [])
+            elif message["type"] == "http.response.body":
+                response_body += message.get("body", b"")
+
+        # Use transport's handle_request method with our custom receive and modified scope
+        try:
+            await transport.handle_request(modified_scope, receive_with_body, send)
+        except json.JSONDecodeError as e:
+            # Invalid JSON
+            logger.warning(f"JSON decode error: {e}")
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Parse error"},
+                    "id": None,
+                },
+                status_code=400,
+                headers={"mcp-session-id": session_id},
+            )
+        except Exception as e:
+            logger.exception(f"Error handling request: {e}")
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                    "id": None,
+                },
+                status_code=500,
+                headers={"mcp-session-id": session_id},
+            )
+
+        # Build response
+        headers_dict = {
+            k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
+            for k, v in response_headers
+        }
+        headers_dict["mcp-session-id"] = session_id
+
+        return Response(content=response_body, status_code=response_status, headers=headers_dict)
+
     async def handle_http_message(self, request: Request) -> Response:
         """
         Handle HTTP POST messages for Streamable HTTP transport.
@@ -184,25 +312,10 @@ class MCPHTTPServer:
             logger.info(f"Created new HTTP session: {session_id}")
 
         try:
-            import time
-
             # Validate JSON early to return proper error codes
-            # Read and validate the body
-            body = await request.body()
-            try:
-                if body:
-                    json.loads(body.decode())
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                logger.warning(f"JSON decode error: {e}")
-                return JSONResponse(
-                    {
-                        "jsonrpc": "2.0",
-                        "error": {"code": -32700, "message": "Parse error"},
-                        "id": None,
-                    },
-                    status_code=400,
-                    headers={"mcp-session-id": session_id},
-                )
+            body, error_response = await self._validate_json_body(request, session_id)
+            if error_response:
+                return error_response
 
             # Create a custom receive function that replays the body we already read
             body_sent = False
@@ -216,106 +329,11 @@ class MCPHTTPServer:
                     # Body already sent
                     return {"type": "http.disconnect"}
 
-            # Inject session ID into request headers for transport validation
-            # ASGI scope headers are tuples of (name_bytes, value_bytes)
-            scope_headers = list(request.scope.get("headers", []))
-            # Check if mcp-session-id already in headers
-            has_session_header = any(name.lower() == b"mcp-session-id" for name, _ in scope_headers)
-            if not has_session_header:
-                scope_headers.append((b"mcp-session-id", session_id.encode()))
-                # Create modified scope with updated headers
-                modified_scope = dict(request.scope)
-                modified_scope["headers"] = scope_headers
-            else:
-                modified_scope = dict(request.scope)
+            modified_scope = self._inject_session_header(request, session_id)
 
-            # Get or create transport for this session
-            if session_id not in self.sessions:
-                transport = StreamableHTTPServerTransport(
-                    mcp_session_id=session_id, is_json_response_enabled=True
-                )
-
-                # Start MCP server with this transport in background
-                async def run_session():
-                    async with transport.connect() as (read_stream, write_stream):
-                        try:
-                            await self.mcp_server.run(
-                                read_stream,
-                                write_stream,
-                                self.mcp_server.create_initialization_options(),
-                                raise_exceptions=False,
-                            )
-                        except Exception as e:
-                            logger.exception(f"Error in session {session_id}: {e}")
-                        finally:
-                            # Clean up session
-                            if session_id in self.sessions:
-                                del self.sessions[session_id]
-
-                task = asyncio.create_task(run_session())
-                current_time = time.time()
-                self.sessions[session_id] = (transport, task, current_time)
-                logger.info(f"Started MCP server session {session_id}")
-
-                # Give the session a moment to initialize
-                await asyncio.sleep(0.1)
-
-            else:
-                transport, task, _ = self.sessions[session_id]
-                # Update last activity time
-                current_time = time.time()
-                self.sessions[session_id] = (transport, task, current_time)
-
-            # Handle the request through the transport
-            # Create a custom send that captures the response
-            response_status = 200
-            response_headers = []
-            response_body = b""
-
-            async def send(message):
-                nonlocal response_status, response_headers, response_body
-                if message["type"] == "http.response.start":
-                    response_status = message.get("status", 200)
-                    response_headers = message.get("headers", [])
-                elif message["type"] == "http.response.body":
-                    response_body += message.get("body", b"")
-
-            # Use transport's handle_request method with our custom receive and modified scope
-            try:
-                await transport.handle_request(modified_scope, receive_with_body, send)
-            except json.JSONDecodeError as e:
-                # Invalid JSON
-                logger.warning(f"JSON decode error: {e}")
-                return JSONResponse(
-                    {
-                        "jsonrpc": "2.0",
-                        "error": {"code": -32700, "message": "Parse error"},
-                        "id": None,
-                    },
-                    status_code=400,
-                    headers={"mcp-session-id": session_id},
-                )
-            except Exception as e:
-                logger.exception(f"Error handling request: {e}")
-                return JSONResponse(
-                    {
-                        "jsonrpc": "2.0",
-                        "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
-                        "id": None,
-                    },
-                    status_code=500,
-                    headers={"mcp-session-id": session_id},
-                )
-
-            # Build response
-            headers_dict = {
-                k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
-                for k, v in response_headers
-            }
-            headers_dict["mcp-session-id"] = session_id
-
-            return Response(
-                content=response_body, status_code=response_status, headers=headers_dict
+            await self._ensure_session_exists(session_id)
+            return await self._execute_transport_request(
+                session_id, modified_scope, receive_with_body
             )
 
         except Exception as e:
