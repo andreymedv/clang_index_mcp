@@ -5362,6 +5362,44 @@ class CppAnalyzer:
 
         return result
 
+    def _build_call_site_entry(self, call_site: Any) -> Dict[str, Any]:
+        """Build a call site entry for a callee that exists in the project index."""
+        target_info = self.usr_index[call_site.callee_usr]
+        entry: Dict[str, Any] = {
+            "target": target_info.name,
+            "target_signature": target_info.signature,
+            "target_file": target_info.file,
+            "target_kind": target_info.kind,
+            "file": call_site.file,
+            "line": call_site.line,
+            "column": call_site.column,
+        }
+        if call_site.display_name:
+            entry["target"] = call_site.display_name
+        return entry
+
+    def _add_external_call_site(
+        self, call_site: Any, call_sites_list: List[Dict[str, Any]]
+    ) -> None:
+        """Add an external call site if it is template-mediated."""
+        if not (call_site.display_name and call_site.template_project_types):
+            return
+        try:
+            tmpl_types = json.loads(call_site.template_project_types)
+        except (json.JSONDecodeError, TypeError):
+            tmpl_types = []
+        call_sites_list.append(
+            {
+                "target": call_site.display_name,
+                "target_kind": "function",
+                "file": call_site.file,
+                "line": call_site.line,
+                "column": call_site.column,
+                "is_template_mediated": True,
+                "template_types": tmpl_types,
+            }
+        )
+
     def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
         """
         Get all call sites FROM a specific function with line-level precision (Phase 3).
@@ -5373,66 +5411,22 @@ class CppAnalyzer:
         Returns:
             List of call site dictionaries with exact file:line:column locations
         """
-        call_sites_list = []
+        call_sites_list: List[Dict[str, Any]] = []
 
-        # Find the source function(s)
-        # Pass function_name directly (see find_incoming_calls comment for rationale).
         source_functions = self.search_functions(
             function_name, project_only=False, class_name=class_name
         )
 
-        # Collect USRs of source functions
-        source_usrs = set()
-        for func in source_functions:
-            # Find the full symbol info with USR
-            # Extract file/line from nested location object (definition or declaration)
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    source_usrs.add(symbol.usr)
+        source_usrs = self._collect_target_usrs(source_functions)
 
-        # Get call sites for each source function
         for usr in source_usrs:
             call_sites = self.call_graph_analyzer.get_call_sites_for_caller(usr)
             for call_site in call_sites:
-                # Get target function info
                 if call_site.callee_usr in self.usr_index:
-                    target_info = self.usr_index[call_site.callee_usr]
-                    entry = {
-                        "target": target_info.name,
-                        "target_signature": target_info.signature,
-                        "target_file": target_info.file,
-                        "target_kind": target_info.kind,
-                        "file": call_site.file,
-                        "line": call_site.line,
-                        "column": call_site.column,
-                    }
-                    # Use display_name if available (template-specialized name)
-                    if call_site.display_name:
-                        entry["target"] = call_site.display_name
-                    call_sites_list.append(entry)
+                    call_sites_list.append(self._build_call_site_entry(call_site))
                 else:
-                    # External callee — surface if template-mediated
-                    if call_site.display_name and call_site.template_project_types:
-                        try:
-                            tmpl_types = json.loads(call_site.template_project_types)
-                        except (json.JSONDecodeError, TypeError):
-                            tmpl_types = []
-                        call_sites_list.append(
-                            {
-                                "target": call_site.display_name,
-                                "target_kind": "function",
-                                "file": call_site.file,
-                                "line": call_site.line,
-                                "column": call_site.column,
-                                "is_template_mediated": True,
-                                "template_types": tmpl_types,
-                            }
-                        )
+                    self._add_external_call_site(call_site, call_sites_list)
 
-        # Sort by file, then line
         call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
 
         return call_sites_list
