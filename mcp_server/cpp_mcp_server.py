@@ -277,32 +277,32 @@ def _create_search_result(
     return EnhancedQueryResult.create_normal(data)
 
 
+def _count_results_from_text(result_text: str) -> int:
+    """Extract result count from JSON text for telemetry."""
+    try:
+        parsed = json.loads(result_text)
+        if isinstance(parsed, list):
+            return len(parsed)
+        if isinstance(parsed, dict):
+            results_list = parsed.get("results")
+            if isinstance(results_list, list):
+                return len(results_list)
+            for key in ("callers", "callees"):
+                sub = parsed.get(key)
+                if isinstance(sub, list):
+                    return len(sub)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return 0
+
+
 def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextContent]) -> None:
     """Log a tool call for telemetry. Never raises."""
     try:
         if tool_call_logger is None or not tool_call_logger.enabled:
             return
         result_text = result[0].text if result else ""
-        # Extract result count from JSON
-        result_count = 0
-        try:
-            parsed = json.loads(result_text)
-            if isinstance(parsed, list):
-                result_count = len(parsed)
-            elif isinstance(parsed, dict):
-                # EnhancedQueryResult wrapper: count results list
-                results_list = parsed.get("results")
-                if isinstance(results_list, list):
-                    result_count = len(results_list)
-                else:
-                    # find_incoming_calls/get_outgoing_calls: count callers/callees list
-                    for key in ("callers", "callees"):
-                        sub = parsed.get(key)
-                        if isinstance(sub, list):
-                            result_count = len(sub)
-                            break
-        except (json.JSONDecodeError, TypeError):
-            pass
+        result_count = _count_results_from_text(result_text)
         tool_call_logger.log_tool_call(
             name, arguments, result_count, result_text, analyzer=analyzer
         )
