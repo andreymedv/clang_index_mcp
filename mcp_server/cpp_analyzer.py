@@ -2510,9 +2510,6 @@ class CppAnalyzer:
         """
         Process a cursor and its children, extracting symbols based on file filter.
         """
-        # Get thread-local buffers for lock-free collection
-        symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
-
         # Determine if we should extract from this cursor's file
         should_extract = True
         if cursor.location.file and should_extract_from_file is not None:
@@ -2535,43 +2532,15 @@ class CppAnalyzer:
             return
 
         # Process cursor based on kind
-        if kind in (CursorKind.CLASS_TEMPLATE, CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION):
-            self._handle_class_template_cursor(
-                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
-            )
-            return
-
-        if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
-            self._handle_class_cursor(
-                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
-            )
-            return
-
-        if kind == CursorKind.FUNCTION_TEMPLATE:
-            self._handle_function_template_cursor(
-                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
-            )
-            return
-
-        if kind in (
-            CursorKind.FUNCTION_DECL,
-            CursorKind.CXX_METHOD,
-            CursorKind.CONSTRUCTOR,
-            CursorKind.DESTRUCTOR,
-            CursorKind.CONVERSION_FUNCTION,
-        ):
-            self._handle_function_cursor(
-                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
-            )
-            return
-
-        if kind in (
-            CursorKind.TYPEDEF_DECL,
-            CursorKind.TYPE_ALIAS_DECL,
-            CursorKind.TYPE_ALIAS_TEMPLATE_DECL,
-        ):
-            self._handle_type_alias_cursor(
-                cursor, should_extract, should_extract_from_file, parent_class, parent_function_usr
+        handler = self._get_cursor_handler(kind)
+        if handler is not None:
+            handler(
+                self,
+                cursor,
+                should_extract,
+                should_extract_from_file,
+                parent_class,
+                parent_function_usr,
             )
             return
 
@@ -2581,6 +2550,31 @@ class CppAnalyzer:
         # Recurse into children (always, to traverse entire AST)
         for child in cursor.get_children():
             self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
+
+    @staticmethod
+    def _get_cursor_handler(kind):
+        """Return the handler method for a given cursor kind, or None."""
+        if kind in (CursorKind.CLASS_TEMPLATE, CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION):
+            return CppAnalyzer._handle_class_template_cursor
+        if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
+            return CppAnalyzer._handle_class_cursor
+        if kind == CursorKind.FUNCTION_TEMPLATE:
+            return CppAnalyzer._handle_function_template_cursor
+        if kind in (
+            CursorKind.FUNCTION_DECL,
+            CursorKind.CXX_METHOD,
+            CursorKind.CONSTRUCTOR,
+            CursorKind.DESTRUCTOR,
+            CursorKind.CONVERSION_FUNCTION,
+        ):
+            return CppAnalyzer._handle_function_cursor
+        if kind in (
+            CursorKind.TYPEDEF_DECL,
+            CursorKind.TYPE_ALIAS_DECL,
+            CursorKind.TYPE_ALIAS_TEMPLATE_DECL,
+        ):
+            return CppAnalyzer._handle_type_alias_cursor
+        return None
 
     def _handle_class_template_cursor(
         self,
