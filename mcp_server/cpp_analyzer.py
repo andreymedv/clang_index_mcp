@@ -1647,6 +1647,42 @@ class CppAnalyzer:
 
         return template_args
 
+    @staticmethod
+    def _build_param_to_arg_mapping(
+        template_params: List[Dict[str, Any]], template_args: List[str]
+    ) -> Dict[str, str]:
+        """Build mapping from template parameter names to template arguments."""
+        param_to_arg = {}
+        for i, param in enumerate(template_params):
+            if i < len(template_args):
+                param_name = param.get("name", "")
+                if param_name:
+                    param_to_arg[param_name] = template_args[i]
+        return param_to_arg
+
+    @staticmethod
+    def _substitute_template_args_in_bases(
+        base_classes: List[str],
+        param_to_arg: Dict[str, str],
+        template_args: List[str],
+    ) -> List[str]:
+        """Resolve base classes by substituting parameter names with actual arguments."""
+        import re
+
+        resolved = []
+        for base in base_classes:
+            if base in param_to_arg:
+                resolved.append(param_to_arg[base])
+            else:
+                match = re.match(r"type-parameter-(\d+)-(\d+)", base)
+                if match:
+                    param_index = int(match.group(2))
+                    if param_index < len(template_args):
+                        resolved.append(template_args[param_index])
+                else:
+                    resolved.append(base)
+        return resolved
+
     def _resolve_instantiation_base_classes(
         self, cursor, primary_template_usr: Optional[str]
     ) -> List[str]:
@@ -1675,7 +1711,6 @@ class CppAnalyzer:
         Issue: Template base class resolution for LLM readability
         """
         import json
-        import re
 
         if not primary_template_usr:
             return []
@@ -1710,32 +1745,58 @@ class CppAnalyzer:
             return []
 
         # Build parameter name to argument mapping
-        param_to_arg = {}
-        for i, param in enumerate(template_params):
-            if i < len(template_args):
-                param_name = param.get("name", "")
-                if param_name:
-                    param_to_arg[param_name] = template_args[i]
+        param_to_arg = self._build_param_to_arg_mapping(template_params, template_args)
 
         # Resolve base classes by substituting parameter names
-        resolved = []
-        for base in primary_info.base_classes:
-            # Check if this base class is a template parameter name
-            if base in param_to_arg:
-                resolved.append(param_to_arg[base])
-            else:
-                # Check for type-parameter-X-Y pattern (shouldn't happen with fixed _get_base_classes,
-                # but handle for robustness)
-                match = re.match(r"type-parameter-(\d+)-(\d+)", base)
-                if match:
-                    param_index = int(match.group(2))
-                    if param_index < len(template_args):
-                        resolved.append(template_args[param_index])
-                else:
-                    # Non-template-parameter base class (e.g., fixed base)
-                    resolved.append(base)
+        return self._substitute_template_args_in_bases(
+            primary_info.base_classes, param_to_arg, template_args
+        )
 
-        return resolved
+    @staticmethod
+    def _parse_json_field(field_value: Optional[str]) -> Any:
+        """Safely parse a JSON field, returning None on failure."""
+        if not field_value:
+            return None
+        try:
+            return json.loads(field_value)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def _process_deferred_instantiation(self, info: SymbolInfo) -> bool:
+        """Process a single deferred instantiation and return True if resolved."""
+        # Only process specializations that have deferred template args
+        if not info.template_arguments or not info.primary_template_usr or info.base_classes:
+            return False
+
+        # Parse stored template arguments
+        template_args = self._parse_json_field(info.template_arguments)
+        if not template_args:
+            return False
+
+        # Look up the primary template in usr_index (fast O(1) lookup)
+        primary_info = self.usr_index.get(info.primary_template_usr)
+        if not primary_info:
+            return False
+
+        # Get template parameters from primary template
+        template_params = self._parse_json_field(primary_info.template_parameters)
+        if not template_params:
+            return False
+
+        # Build parameter name to argument mapping
+        param_to_arg = self._build_param_to_arg_mapping(template_params, template_args)
+
+        # Resolve base classes by substituting parameter names
+        resolved = self._substitute_template_args_in_bases(
+            primary_info.base_classes, param_to_arg, template_args
+        )
+
+        if resolved:
+            info.base_classes = resolved
+            info.template_arguments = None  # Clear transient field
+            diagnostics.debug(f"Deferred resolution: {info.qualified_name} -> bases={resolved}")
+            return True
+        return False
 
     def _resolve_deferred_instantiation_bases(self) -> int:
         """Resolve base_classes for template instantiations that couldn't be resolved during parsing.
@@ -1747,73 +1808,11 @@ class CppAnalyzer:
         Returns:
             Number of symbols whose base_classes were resolved.
         """
-        import re
-
         resolved_count = 0
         for name, infos in self.class_index.items():
             for info in infos:
-                # Only process specializations that have deferred template args
-                if (
-                    not info.template_arguments
-                    or not info.primary_template_usr
-                    or info.base_classes
-                ):
-                    continue
-
-                # Parse stored template arguments
-                try:
-                    template_args = json.loads(info.template_arguments)
-                except (json.JSONDecodeError, TypeError):
-                    continue
-
-                if not template_args:
-                    continue
-
-                # Look up the primary template in usr_index (fast O(1) lookup)
-                primary_info = self.usr_index.get(info.primary_template_usr)
-                if not primary_info:
-                    continue
-
-                # Get template parameters from primary template
-                template_params = []
-                if primary_info.template_parameters:
-                    try:
-                        template_params = json.loads(primary_info.template_parameters)
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-
-                if not template_params:
-                    continue
-
-                # Build parameter name to argument mapping
-                param_to_arg = {}
-                for i, param in enumerate(template_params):
-                    if i < len(template_args):
-                        param_name = param.get("name", "")
-                        if param_name:
-                            param_to_arg[param_name] = template_args[i]
-
-                # Resolve base classes by substituting parameter names
-                resolved = []
-                for base in primary_info.base_classes:
-                    if base in param_to_arg:
-                        resolved.append(param_to_arg[base])
-                    else:
-                        match = re.match(r"type-parameter-(\d+)-(\d+)", base)
-                        if match:
-                            param_index = int(match.group(2))
-                            if param_index < len(template_args):
-                                resolved.append(template_args[param_index])
-                        else:
-                            resolved.append(base)
-
-                if resolved:
-                    info.base_classes = resolved
-                    info.template_arguments = None  # Clear transient field
+                if self._process_deferred_instantiation(info):
                     resolved_count += 1
-                    diagnostics.debug(
-                        f"Deferred resolution: {info.qualified_name} -> bases={resolved}"
-                    )
 
         if resolved_count > 0:
             diagnostics.info(
