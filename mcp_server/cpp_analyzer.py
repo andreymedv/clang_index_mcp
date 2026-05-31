@@ -2007,6 +2007,39 @@ class CppAnalyzer:
 
         return result
 
+    @staticmethod
+    def _extract_brief_comment(cursor) -> Optional[str]:
+        """Extract and truncate brief comment from cursor."""
+        brief_comment = cursor.brief_comment
+        if not brief_comment:
+            return None
+        brief = brief_comment.strip()
+        if len(brief) > 200:
+            brief = brief[:200]
+        return brief
+
+    @staticmethod
+    def _extract_raw_doc_comment(cursor) -> Optional[str]:
+        """Extract and truncate full documentation comment from cursor."""
+        raw_comment = cursor.raw_comment
+        if not raw_comment:
+            return None
+        doc_comment = raw_comment.strip()
+        if len(doc_comment) > 4000:
+            doc_comment = doc_comment[:3997] + "..."
+        return doc_comment
+
+    @staticmethod
+    def _extract_brief_from_doc(doc_comment: str) -> Optional[str]:
+        """Extract first meaningful line from a documentation comment."""
+        for line in doc_comment.split("\n"):
+            cleaned = line.strip().lstrip("/*!/").lstrip("*").strip()
+            if cleaned and not cleaned.startswith("@"):
+                if len(cleaned) > 200:
+                    cleaned = cleaned[:200]
+                return cleaned
+        return None
+
     def _extract_documentation(self, cursor) -> dict:
         """
         Extract documentation from cursor comments.
@@ -2024,39 +2057,15 @@ class CppAnalyzer:
         result = {"brief": None, "doc_comment": None}
 
         try:
-            # Extract brief comment (first line/sentence)
-            brief_comment = cursor.brief_comment
-            if brief_comment:
-                brief = brief_comment.strip()
-                # Truncate if too long
-                if len(brief) > 200:
-                    brief = brief[:200]
-                result["brief"] = brief
+            result["brief"] = self._extract_brief_comment(cursor)
 
-            # Extract full documentation comment
-            raw_comment = cursor.raw_comment
-            if raw_comment:
-                doc_comment = raw_comment.strip()
-                # Truncate if too long (max 4000 chars including "..." suffix)
-                if len(doc_comment) > 4000:
-                    doc_comment = doc_comment[:3997] + "..."
+            doc_comment = self._extract_raw_doc_comment(cursor)
+            if doc_comment:
                 result["doc_comment"] = doc_comment
-
-                # If no brief but have raw comment, extract first meaningful line
-                if not result["brief"] and doc_comment:
-                    lines = doc_comment.split("\n")
-                    for line in lines:
-                        # Skip comment markers and empty lines
-                        cleaned = line.strip().lstrip("/*!/").lstrip("*").strip()
-                        if cleaned and not cleaned.startswith("@"):
-                            # Found first meaningful line
-                            if len(cleaned) > 200:
-                                cleaned = cleaned[:200]
-                            result["brief"] = cleaned
-                            break
+                if not result["brief"]:
+                    result["brief"] = self._extract_brief_from_doc(doc_comment)
 
         except Exception as e:
-            # Documentation extraction is best-effort, failures are not critical
             diagnostics.debug(f"Could not extract documentation for {cursor.spelling}: {e}")
 
         return result
