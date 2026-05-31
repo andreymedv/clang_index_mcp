@@ -226,6 +226,44 @@ _USR_TYPE_CODES: Dict[str, str] = {
 _TPARAM_LETTERS = "TUVWXYZABCDE"
 
 
+def _decode_template_param(s: str, pos: int) -> tuple:
+    """Decode a template parameter reference (tN.M) from USR encoding."""
+    m = re.match(r"t(\d+)\.(\d+)", s[pos:])
+    if m:
+        depth = int(m.group(1))
+        idx = int(m.group(2))
+        total_idx = depth * 4 + idx
+        letter = _TPARAM_LETTERS[total_idx] if total_idx < len(_TPARAM_LETTERS) else f"T{total_idx}"
+        return (letter, pos + m.end())
+    return ("unsigned short", pos + 1)
+
+
+def _decode_pointer_or_reference(s: str, pos: int, ch: str) -> tuple:
+    """Decode a pointer, l-value reference, or r-value reference type."""
+    suffix = " &&" if ch == "O" else f" {ch}"
+    inner, npos = _decode_usr_type(s, pos)
+    return (f"{inner}{suffix}", npos)
+
+
+def _decode_cv_qualified(s: str, pos: int, ch: str) -> tuple:
+    """Decode a const or volatile qualified type."""
+    prefix = "volatile " if ch in ("V", "2") else "const "
+    inner, npos = _decode_usr_type(s, pos)
+    return (f"{prefix}{inner}", npos)
+
+
+def _try_decode_substitution(s: str, pos: int) -> Optional[tuple]:
+    """Try to decode a substitution reference at *pos*; return None if not a substitution."""
+    if s[pos] != "S" or pos + 1 >= len(s):
+        return None
+    if not (s[pos + 1].isdigit() or s[pos + 1] == "_"):
+        return None
+    end = pos + 1
+    while end < len(s) and (s[end].isdigit() or s[end] == "_"):
+        end += 1
+    return ("type", end)
+
+
 def _decode_usr_type(s: str, pos: int) -> tuple:
     """Decode a single type from USR encoding starting at *pos*.
 
@@ -236,55 +274,24 @@ def _decode_usr_type(s: str, pos: int) -> tuple:
 
     ch = s[pos]
 
-    # --- Template parameter reference (tN.M) --------------------------------
-    # Must be checked before primitives because 't' is also a primitive code
-    # ("unsigned short") but tN.M is a template param ref.
     if ch == "t":
-        m = re.match(r"t(\d+)\.(\d+)", s[pos:])
-        if m:
-            depth = int(m.group(1))
-            idx = int(m.group(2))
-            total_idx = depth * 4 + idx  # rough linearisation
-            letter = (
-                _TPARAM_LETTERS[total_idx] if total_idx < len(_TPARAM_LETTERS) else f"T{total_idx}"
-            )
-            return (letter, pos + m.end())
-        # Bare 't' without digit.digit is the primitive "unsigned short"
-        return ("unsigned short", pos + 1)
+        return _decode_template_param(s, pos)
 
-    # --- Primitives ---------------------------------------------------------
     if ch in _USR_TYPE_CODES:
         return (_USR_TYPE_CODES[ch], pos + 1)
 
-    # --- Pointer / reference qualifiers ------------------------------------
-    if ch == "*":
-        inner, npos = _decode_usr_type(s, pos + 1)
-        return (f"{inner} *", npos)
-    if ch == "&":
-        inner, npos = _decode_usr_type(s, pos + 1)
-        return (f"{inner} &", npos)
-    if ch == "O":  # r-value reference
-        inner, npos = _decode_usr_type(s, pos + 1)
-        return (f"{inner} &&", npos)
+    if ch in ("*", "&", "O"):
+        return _decode_pointer_or_reference(s, pos + 1, ch)
 
-    # --- CV qualifiers -----------------------------------------------------
-    if ch in ("K", "1"):  # const
-        inner, npos = _decode_usr_type(s, pos + 1)
-        return (f"const {inner}", npos)
-    if ch in ("V", "2"):  # volatile
-        inner, npos = _decode_usr_type(s, pos + 1)
-        return (f"volatile {inner}", npos)
+    if ch in ("K", "1", "V", "2"):
+        return _decode_cv_qualified(s, pos + 1, ch)
 
-    # --- Named type reference ($@...) ---------------------------------------
     if ch == "$":
         return _decode_class_ref(s, pos + 1)
 
-    # --- Substitution (S followed by digit or _) ---------------------------
-    if ch == "S" and pos + 1 < len(s) and (s[pos + 1].isdigit() or s[pos + 1] == "_"):
-        end = pos + 1
-        while end < len(s) and (s[end].isdigit() or s[end] == "_"):
-            end += 1
-        return ("type", end)
+    sub = _try_decode_substitution(s, pos)
+    if sub is not None:
+        return sub
 
     return ("?", pos + 1)
 
