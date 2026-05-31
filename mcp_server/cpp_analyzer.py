@@ -708,23 +708,8 @@ class CppAnalyzer:
         with self._interrupt_lock:
             return self._interrupted
 
-    def _shutdown_executor(self, executor, name="Indexing"):
-        """
-        Cleanly shut down a ProcessPoolExecutor or ThreadPoolExecutor.
-        Provides informative logging and handles stuck workers with timeouts.
-        """
-        if executor is None:
-            return
-
-        # 1. Identify worker processes (if using ProcessPoolExecutor)
-        # MUST do this before shutdown() as shutdown clears _processes
-        is_process_pool = hasattr(executor, "_processes")
-        workers = []
-        if is_process_pool:
-            # Internal access to worker processes
-            workers = list(executor._processes.values()) if executor._processes else []
-
-        # 2. Cancel all pending futures (if possible)
+    def _cancel_executor_futures(self, executor) -> None:
+        """Cancel pending futures in the executor if possible."""
         try:
             # shutdown(cancel_futures=True) is Python 3.9+
             if sys.version_info >= (3, 9):
@@ -734,31 +719,11 @@ class CppAnalyzer:
         except Exception:
             executor.shutdown(wait=False)
 
-        if not workers:
-            # ThreadPool or no active processes, just do a normal wait
-            diagnostics.info(f"{name} shutdown: waiting for workers to finish...")
-            try:
-                executor.shutdown(wait=True)
-                diagnostics.info(f"{name} workers stopped cleanly")
-            except Exception as e:
-                diagnostics.debug(f"Error during {name} executor shutdown: {e}")
-            return
-
-        # 3. Informative logging for ProcessPool
+    def _wait_for_workers(self, workers: List[Any], name: str, timeout: float = 5.0) -> None:
+        """Wait for worker processes to finish cleanly with progress updates."""
         num_workers = len(workers)
-        alive_workers = [w for w in workers if w.is_alive()]
-        num_alive = len(alive_workers)
-
-        if num_alive == 0:
-            diagnostics.info(f"{name} workers already finished")
-            return
-
-        diagnostics.info(f"There are {num_alive} active {name} subprocesses. Terminating...")
-
-        # 4. Graceful wait with progress updates
         start_wait = time.time()
-        timeout = 5.0
-        last_alive_count = num_alive
+        last_alive_count = len([w for w in workers if w.is_alive()])
 
         while time.time() - start_wait < timeout:
             alive_workers = [w for w in workers if w.is_alive()]
@@ -777,37 +742,91 @@ class CppAnalyzer:
 
             time.sleep(0.5)
 
-        # 5. Forceful termination if timeout reached
+    def _send_sigterm_to_workers(self, alive_workers: List[Any]) -> None:
+        """Send SIGTERM to all alive workers."""
+        for w in alive_workers:
+            try:
+                if w.is_alive():
+                    # Try terminate (SIGTERM)
+                    w.terminate()
+            except Exception:
+                pass
+
+    def _send_sigkill_to_workers(self, still_alive: List[Any]) -> None:
+        """Send SIGKILL to all still alive workers."""
+        for w in still_alive:
+            try:
+                if hasattr(w, "kill"):  # kill() is Python 3.7+
+                    w.kill()
+            except Exception:
+                pass
+
+    def _terminate_hanging_workers(self, workers: List[Any], name: str) -> None:
+        """Forcefully terminate worker processes that didn't finish cleanly."""
         alive_workers = [w for w in workers if w.is_alive()]
-        if alive_workers:
-            diagnostics.warning(
-                f"Timeout reached: {len(alive_workers)} subprocesses still running. Killing them..."
-            )
-            for w in alive_workers:
-                try:
-                    if w.is_alive():
-                        # Try terminate (SIGTERM)
-                        w.terminate()
-                except Exception:
-                    pass
+        if not alive_workers:
+            return
 
-            # Give a moment for SIGTERM to work
-            time.sleep(0.5)
+        diagnostics.warning(
+            f"Timeout reached: {len(alive_workers)} subprocesses still running. Killing them..."
+        )
+        self._send_sigterm_to_workers(alive_workers)
 
-            # Check if any still alive and use SIGKILL
-            still_alive = [w for w in alive_workers if w.is_alive()]
-            if still_alive:
-                diagnostics.warning(
-                    f"Killing {len(still_alive)} remaining subprocesses with SIGKILL"
-                )
-                for w in still_alive:
-                    try:
-                        if hasattr(w, "kill"):  # kill() is Python 3.7+
-                            w.kill()
-                    except Exception:
-                        pass
+        # Give a moment for SIGTERM to work
+        time.sleep(0.5)
 
-            diagnostics.info(f"{name} subprocesses forcefully terminated")
+        # Check if any still alive and use SIGKILL
+        still_alive = [w for w in alive_workers if w.is_alive()]
+        if still_alive:
+            diagnostics.warning(f"Killing {len(still_alive)} remaining subprocesses with SIGKILL")
+            self._send_sigkill_to_workers(still_alive)
+
+        diagnostics.info(f"{name} subprocesses forcefully terminated")
+
+    def _shutdown_executor(self, executor, name="Indexing"):
+        """
+        Cleanly shut down a ProcessPoolExecutor or ThreadPoolExecutor.
+        Provides informative logging and handles stuck workers with timeouts.
+        """
+        if executor is None:
+            return
+
+        # 1. Identify worker processes (if using ProcessPoolExecutor)
+        # MUST do this before shutdown() as shutdown clears _processes
+        is_process_pool = hasattr(executor, "_processes")
+        workers = []
+        if is_process_pool:
+            # Internal access to worker processes
+            workers = list(executor._processes.values()) if executor._processes else []
+
+        # 2. Cancel all pending futures (if possible)
+        self._cancel_executor_futures(executor)
+
+        if not workers:
+            # ThreadPool or no active processes, just do a normal wait
+            diagnostics.info(f"{name} shutdown: waiting for workers to finish...")
+            try:
+                executor.shutdown(wait=True)
+                diagnostics.info(f"{name} workers stopped cleanly")
+            except Exception as e:
+                diagnostics.debug(f"Error during {name} executor shutdown: {e}")
+            return
+
+        # 3. Informative logging for ProcessPool
+        alive_workers = [w for w in workers if w.is_alive()]
+        num_alive = len(alive_workers)
+
+        if num_alive == 0:
+            diagnostics.info(f"{name} workers already finished")
+            return
+
+        diagnostics.info(f"There are {num_alive} active {name} subprocesses. Terminating...")
+
+        # 4. Graceful wait with progress updates
+        self._wait_for_workers(workers, name)
+
+        # 5. Forceful termination if timeout reached
+        self._terminate_hanging_workers(workers, name)
 
     def close(self):
         """
