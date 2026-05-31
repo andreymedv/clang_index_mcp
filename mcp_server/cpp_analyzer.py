@@ -2095,66 +2095,80 @@ class CppAnalyzer:
             Human-readable signature string, or "" if cursor.type is unavailable.
         """
         try:
-            if not cursor.type:
-                return ""
-
-            type_spelling = cursor.type.spelling
-            if not type_spelling:
-                return ""
-
-            name = cursor.spelling or ""
-
-            # Get return type
-            return_type = ""
-            try:
-                if cursor.result_type and cursor.result_type.spelling:
-                    return_type = cursor.result_type.spelling
-            except Exception:
-                pass
-
-            # Try to get parameters with names via get_arguments()
-            params_str = ""
-            try:
-                args = list(cursor.get_arguments())
-                if args:
-                    param_parts = []
-                    for arg in args:
-                        arg_type = arg.type.spelling if arg.type else ""
-                        arg_name = arg.spelling or ""
-                        if arg_name:
-                            param_parts.append(f"{arg_type} {arg_name}")
-                        else:
-                            param_parts.append(arg_type)
-                    params_str = ", ".join(param_parts)
-                else:
-                    # get_arguments() returned empty - could be zero-arg function
-                    # or template where args aren't available.
-                    # Extract param types from type.spelling as fallback.
-                    params_str = self._extract_params_from_type_spelling(type_spelling)
-            except Exception:
-                # Fallback: extract from type spelling
-                params_str = self._extract_params_from_type_spelling(type_spelling)
-
-            # Extract qualifiers (const, noexcept, etc.) after the last ')'
-            qualifiers = self._extract_trailing_qualifiers(type_spelling)
-
-            # Assemble the signature
-            if return_type:
-                sig = f"{return_type} {name}({params_str}){qualifiers}"
-            else:
-                sig = f"{name}({params_str}){qualifiers}"
-
-            return sig
-
+            return self._try_build_human_readable_signature(cursor)
         except Exception as e:
             diagnostics.debug(
                 f"Could not build human-readable signature for " f"{cursor.spelling}: {e}"
             )
-            # Fallback to old behavior
-            try:
-                return cursor.type.spelling if cursor.type else ""
-            except Exception:
-                return ""
+            return self._fallback_signature(cursor)
+
+    def _try_build_human_readable_signature(self, cursor) -> str:
+        """Attempt to build signature without exception handling."""
+        type_spelling = self._get_type_spelling(cursor)
+        if type_spelling is None:
+            return ""
+
+        name = cursor.spelling or ""
+        return_type = self._get_return_type(cursor)
+        params_str = self._get_params_str(cursor, type_spelling)
+        qualifiers = self._extract_trailing_qualifiers(type_spelling)
+
+        return self._assemble_signature(return_type, name, params_str, qualifiers)
+
+    @staticmethod
+    def _get_type_spelling(cursor):
+        """Safely get cursor.type.spelling, returning None if unavailable."""
+        if not cursor.type:
+            return None
+        return cursor.type.spelling or None
+
+    @staticmethod
+    def _get_return_type(cursor) -> str:
+        """Safely get cursor.result_type.spelling."""
+        try:
+            if cursor.result_type and cursor.result_type.spelling:
+                return cursor.result_type.spelling
+        except Exception:
+            pass
+        return ""
+
+    def _get_params_str(self, cursor, type_spelling: str) -> str:
+        """Get parameter string from cursor arguments or type spelling fallback."""
+        try:
+            args = list(cursor.get_arguments())
+            if args:
+                return self._format_args(args)
+            return self._extract_params_from_type_spelling(type_spelling)
+        except Exception:
+            return self._extract_params_from_type_spelling(type_spelling)
+
+    @staticmethod
+    def _format_args(args) -> str:
+        """Format a list of cursor arguments into a parameter string."""
+        param_parts = []
+        for arg in args:
+            arg_type = arg.type.spelling if arg.type else ""
+            arg_name = arg.spelling or ""
+            if arg_name:
+                param_parts.append(f"{arg_type} {arg_name}")
+            else:
+                param_parts.append(arg_type)
+        return ", ".join(param_parts)
+
+    @staticmethod
+    def _assemble_signature(return_type: str, name: str, params_str: str, qualifiers: str) -> str:
+        """Assemble the final human-readable signature string."""
+        if return_type:
+            return f"{return_type} {name}({params_str}){qualifiers}"
+        return f"{name}({params_str}){qualifiers}"
+
+    @staticmethod
+    def _fallback_signature(cursor) -> str:
+        """Return cursor.type.spelling as a fallback, or empty string on failure."""
+        try:
+            return cursor.type.spelling if cursor.type else ""
+        except Exception:
+            return ""
 
     @staticmethod
     def _extract_params_from_type_spelling(type_spelling: str) -> str:
