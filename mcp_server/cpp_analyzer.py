@@ -1122,6 +1122,110 @@ class CppAnalyzer:
                     del self.usr_index[symbol.usr]
             self.call_graph_analyzer.remove_symbol(symbol.usr)
 
+    def _handle_symbol_definition_wins(
+        self, info: SymbolInfo, existing_symbol: SymbolInfo
+    ) -> Optional[SymbolInfo]:
+        """Apply definition-wins logic when a symbol already exists in the USR index.
+
+        Returns the info object to use, or None if the symbol should be skipped.
+        """
+        # Definition-wins: If new symbol is a definition and existing is not, replace
+        if info.is_definition and not existing_symbol.is_definition:
+            # Preserve parent_class from declaration if definition lost it
+            if not info.parent_class and existing_symbol.parent_class:
+                info = dataclasses.replace(info, parent_class=existing_symbol.parent_class)
+
+            diagnostics.debug(
+                f"Definition-wins: Replacing declaration of {info.name} with definition "
+                f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
+            )
+
+            # Remove from class/function/usr indexes but KEEP in file_index
+            self._remove_symbol_from_indexes(existing_symbol)
+            return info
+
+        elif info.is_definition and existing_symbol.is_definition:
+            # Both are definitions. Pick the richer one.
+            if is_richer_definition(info, existing_symbol):
+                diagnostics.debug(
+                    f"Richer-definition: Replacing {info.name} "
+                    f"(from {existing_symbol.file}:{existing_symbol.line} "
+                    f"to {info.file}:{info.line})"
+                )
+                self._remove_symbol_from_indexes(existing_symbol)
+                return info
+            else:
+                return None  # Keep existing (it's richer or equal)
+        else:
+            # Keep existing symbol (existing is definition, new is declaration)
+            return None
+
+    def _add_symbol_to_file_index(self, info: SymbolInfo) -> None:
+        """Add symbol to file_index with deduplication check."""
+        if not info.file:
+            return
+
+        if info.file not in self.file_index:
+            self.file_index[info.file] = []
+
+        already_in_file_index = False
+        if info.usr:
+            for idx_pos, existing in enumerate(self.file_index[info.file]):
+                if existing.usr == info.usr:
+                    if (info.is_definition and not existing.is_definition) or (
+                        info.is_definition
+                        and existing.is_definition
+                        and is_richer_definition(info, existing)
+                    ):
+                        self.file_index[info.file][idx_pos] = info
+                    already_in_file_index = True
+                    break
+
+        if not already_in_file_index:
+            self.file_index[info.file].append(info)
+
+    def _process_call_buffer(self, calls_buffer: List[Any]) -> None:
+        """Process the call buffer and add relationships to the call graph analyzer."""
+        if not calls_buffer:
+            return
+
+        diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
+        diagnostics.debug(f"First call format: {calls_buffer[0]}")
+
+        for call_info in calls_buffer:
+            if len(call_info) == 7:
+                # v17.0 format
+                (
+                    caller_usr,
+                    called_usr,
+                    call_file,
+                    call_line,
+                    call_column,
+                    disp_name,
+                    tmpl_types,
+                ) = call_info
+                self.call_graph_analyzer.add_call(
+                    caller_usr,
+                    called_usr,
+                    call_file,
+                    call_line,
+                    call_column,
+                    display_name=disp_name,
+                    template_project_types=tmpl_types,
+                )
+            elif len(call_info) == 5:
+                # Phase 3 format
+                caller_usr, called_usr, call_file, call_line, call_column = call_info
+                self.call_graph_analyzer.add_call(
+                    caller_usr, called_usr, call_file, call_line, call_column
+                )
+            elif len(call_info) == 2:
+                # Legacy format
+                caller_usr, called_usr = call_info
+                self.call_graph_analyzer.add_call(caller_usr, called_usr)
+            else:
+                diagnostics.warning(f"Unexpected call_info format: {call_info}")
+
     def _bulk_write_symbols(self):
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
@@ -1147,44 +1251,10 @@ class CppAnalyzer:
                 # USR-based deduplication with definition-wins logic (Phase 1)
                 if info.usr and info.usr in self.usr_index:
                     existing_symbol = self.usr_index[info.usr]
-
-                    # Definition-wins: If new symbol is a definition and existing is not, replace
-                    if info.is_definition and not existing_symbol.is_definition:
-                        # Preserve parent_class from declaration if definition lost it
-                        # (out-of-line definitions are AST children of namespace, not class)
-                        if not info.parent_class and existing_symbol.parent_class:
-                            info = dataclasses.replace(
-                                info, parent_class=existing_symbol.parent_class
-                            )
-
-                        diagnostics.debug(
-                            f"Definition-wins: Replacing declaration of {info.name} with definition "
-                            f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
-                        )
-
-                        # CRITICAL FIX FOR ISSUE #8:
-                        # Remove from class/function/usr indexes but KEEP in file_index
-                        # so that headers remain indexed with their symbols.
-                        self._remove_symbol_from_indexes(existing_symbol)
-
-                        # Add new definition to all indexes (fall through to add logic below)
-                        # Note: Don't increment added_count as we're replacing, not adding
-                    elif info.is_definition and existing_symbol.is_definition:
-                        # Both are definitions (e.g., macro-generated empty struct + real struct)
-                        # Pick the richer one (more base classes, larger line span)
-                        if is_richer_definition(info, existing_symbol):
-                            diagnostics.debug(
-                                f"Richer-definition: Replacing {info.name} "
-                                f"(from {existing_symbol.file}:{existing_symbol.line} "
-                                f"to {info.file}:{info.line})"
-                            )
-                            self._remove_symbol_from_indexes(existing_symbol)
-                            # Fall through to add new symbol
-                        else:
-                            continue  # Keep existing (it's richer or equal)
-                    else:
-                        # Keep existing symbol (existing is definition, new is declaration)
+                    resolved_info = self._handle_symbol_definition_wins(info, existing_symbol)
+                    if resolved_info is None:
                         continue
+                    info = resolved_info
 
                 # New symbol or replacement - add to all indexes
                 if info.kind in CLASS_KINDS:
@@ -1195,78 +1265,11 @@ class CppAnalyzer:
                 if info.usr:
                     self.usr_index[info.usr] = info
 
-                # Add to file_index (with deduplication check for Issue #8)
-                # We keep both declarations and definitions in file_index, but avoid exact duplicates
-                if info.file:
-                    if info.file not in self.file_index:
-                        self.file_index[info.file] = []
-
-                    # Check if this exact symbol (same USR, same file) is already in file_index
-                    # This can happen when the same header is processed multiple times,
-                    # or when a forward declaration and definition coexist in the same TU.
-                    already_in_file_index = False
-                    if info.usr:
-                        for idx_pos, existing in enumerate(self.file_index[info.file]):
-                            if existing.usr == info.usr:
-                                # Replace if new symbol is a definition and existing is not,
-                                # or if both are definitions but new is richer.
-                                # This ensures forward declarations in file_index get
-                                # replaced by their definitions (cplusplus_mcp-nhj).
-                                if (info.is_definition and not existing.is_definition) or (
-                                    info.is_definition
-                                    and existing.is_definition
-                                    and is_richer_definition(info, existing)
-                                ):
-                                    self.file_index[info.file][idx_pos] = info
-                                already_in_file_index = True
-                                break
-
-                    if not already_in_file_index:
-                        self.file_index[info.file].append(info)
-
+                self._add_symbol_to_file_index(info)
                 added_count += 1
 
             # Add all collected call relationships (Phase 3: now includes location)
-            if calls_buffer:
-                diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
-                if calls_buffer:
-                    diagnostics.debug(
-                        f"First call format: {calls_buffer[0] if calls_buffer else 'empty'}"
-                    )
-            for call_info in calls_buffer:
-                if len(call_info) == 7:
-                    # v17.0 format: (caller_usr, callee_usr, file, line, column,
-                    #                display_name, template_project_types)
-                    (
-                        caller_usr,
-                        called_usr,
-                        call_file,
-                        call_line,
-                        call_column,
-                        disp_name,
-                        tmpl_types,
-                    ) = call_info
-                    self.call_graph_analyzer.add_call(
-                        caller_usr,
-                        called_usr,
-                        call_file,
-                        call_line,
-                        call_column,
-                        display_name=disp_name,
-                        template_project_types=tmpl_types,
-                    )
-                elif len(call_info) == 5:
-                    # Phase 3 format: (caller_usr, callee_usr, file, line, column)
-                    caller_usr, called_usr, call_file, call_line, call_column = call_info
-                    self.call_graph_analyzer.add_call(
-                        caller_usr, called_usr, call_file, call_line, call_column
-                    )
-                elif len(call_info) == 2:
-                    # Legacy format for compatibility: (caller_usr, callee_usr)
-                    caller_usr, called_usr = call_info
-                    self.call_graph_analyzer.add_call(caller_usr, called_usr)
-                else:
-                    diagnostics.warning(f"Unexpected call_info format: {call_info}")
+            self._process_call_buffer(calls_buffer)
 
             # Add all collected type aliases (Phase 1.3: Type Alias Tracking)
             if aliases_buffer:
