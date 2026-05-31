@@ -532,6 +532,39 @@ class CompileCommandsManager:
         # Convert to absolute path and normalize
         return str(Path(file_path).resolve())
 
+    def _normalize_single_argument(
+        self, arg: str, next_arg: Optional[str], directory: str
+    ) -> Tuple[List[str], int]:
+        """Normalize a single argument and its optional successor. Returns (new_args, consumed_count)."""
+        import os
+
+        if arg == "-I" and next_arg is not None:
+            include_path = next_arg
+            if not os.path.isabs(include_path):
+                include_path = os.path.abspath(os.path.join(directory, include_path))
+            return [arg, include_path], 2
+
+        if arg.startswith("-I"):
+            include_path = arg[2:]
+            if include_path and not os.path.isabs(include_path):
+                arg = f"-I{os.path.abspath(os.path.join(directory, include_path))}"
+            return [arg], 1
+
+        if arg == "-isystem" and next_arg is not None:
+            include_path = next_arg
+            if not os.path.isabs(include_path):
+                include_path = os.path.abspath(os.path.join(directory, include_path))
+            return [arg, include_path], 2
+
+        if arg.startswith("-isystem"):
+            if len(arg) > 8:
+                include_path = arg[8:]
+                if not os.path.isabs(include_path):
+                    arg = f"-isystem{os.path.abspath(os.path.join(directory, include_path))}"
+            return [arg], 1
+
+        return [arg], 1
+
     def _normalize_arguments(self, arguments: List[str], directory: str) -> List[str]:
         """
         Normalize relative include paths in arguments to absolute paths.
@@ -543,61 +576,14 @@ class CompileCommandsManager:
         Returns:
             List of arguments with normalized include paths
         """
-        import os
-
-        normalized = []
+        normalized: List[str] = []
         i = 0
 
         while i < len(arguments):
-            arg = arguments[i]
-
-            # Handle -I with separate argument
-            if arg == "-I" and i + 1 < len(arguments):
-                include_path = arguments[i + 1]
-                # Make relative paths absolute based on directory
-                if not os.path.isabs(include_path):
-                    include_path = os.path.abspath(os.path.join(directory, include_path))
-                normalized.append(arg)
-                normalized.append(include_path)
-                i += 2
-                continue
-
-            # Handle -I<path> (combined form)
-            if arg.startswith("-I"):
-                include_path = arg[2:]  # Remove -I prefix
-                if include_path and not os.path.isabs(include_path):
-                    include_path = os.path.abspath(os.path.join(directory, include_path))
-                    arg = f"-I{include_path}"
-                normalized.append(arg)
-                i += 1
-                continue
-
-            # Handle -isystem with separate argument
-            if arg == "-isystem" and i + 1 < len(arguments):
-                include_path = arguments[i + 1]
-                # Make relative paths absolute based on directory
-                if not os.path.isabs(include_path):
-                    include_path = os.path.abspath(os.path.join(directory, include_path))
-                normalized.append(arg)
-                normalized.append(include_path)
-                i += 2
-                continue
-
-            # Handle -isystem<path> (combined form, rare but possible)
-            if arg.startswith("-isystem"):
-                # Check if there's a path after -isystem
-                if len(arg) > 8:  # More than just "-isystem"
-                    include_path = arg[8:]  # Remove -isystem prefix
-                    if not os.path.isabs(include_path):
-                        include_path = os.path.abspath(os.path.join(directory, include_path))
-                        arg = f"-isystem{include_path}"
-                normalized.append(arg)
-                i += 1
-                continue
-
-            # Keep other arguments as-is
-            normalized.append(arg)
-            i += 1
+            next_arg = arguments[i + 1] if i + 1 < len(arguments) else None
+            new_args, consumed = self._normalize_single_argument(arguments[i], next_arg, directory)
+            normalized.extend(new_args)
+            i += consumed
 
         return normalized
 
