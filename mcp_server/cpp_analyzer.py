@@ -350,6 +350,120 @@ def _decode_template_args(s: str, pos: int) -> tuple:
     return (f"<{', '.join(args)}>", i)
 
 
+def _parse_template_definition(s: str, i: int, parts: List[str]) -> int:
+    """Parse template definition or partial specialization segment."""
+    mt = re.match(r"@(ST|SP)>", s[i:])
+    if not mt:
+        return -1
+
+    kind = mt.group(1)
+    j = i + mt.end()
+    # Skip template parameter descriptors until @<name>
+    inner_m = re.search(r"@([^@#>]+)", s[j:])
+    if inner_m:
+        # Extract just the C++ identifier from the matched segment.
+        raw_name = inner_m.group(1)
+        name_only = re.match(r"([A-Za-z_]\w*?)(?=\d+t\d|\d*$)", raw_name)
+        parts.append(name_only.group(1) if name_only else raw_name)
+        new_i = j + inner_m.end()
+        # SP may have template args after >
+        if kind == "SP" and new_i < len(s) and s[new_i] == ">":
+            if new_i + 1 < len(s) and s[new_i + 1] == "#":
+                targs, new_i = _decode_template_args(s, new_i + 2)
+                parts[-1] += targs
+            else:
+                new_i += 1
+        return new_i
+    return j
+
+
+def _skip_template_parameters(s: str, k: int, param_count: int) -> int:
+    """Skip template parameter descriptors."""
+    for _ in range(param_count):
+        if k < len(s) and s[k] == "#":
+            k += 1
+            # Parse one descriptor based on its specific format
+            if k < len(s) and s[k] == "p":
+                k += 1  # skip 'p' (pack prefix)
+            if k < len(s) and s[k] in ("T", "t"):
+                k += 1  # skip T (type) or t (template)
+            elif k < len(s) and s[k] == "N":
+                k += 1  # skip 'N' (non-type)
+                # Skip the following type code
+                _, k = _decode_usr_type(s, k)
+    return k
+
+
+def _parse_function_template(s: str, i: int, parts: List[str]) -> int:
+    """Parse function template segment."""
+    if not s[i:].startswith("@FT@"):
+        return -1
+
+    j = i + 4
+    if j < len(s) and s[j] == ">":
+        j += 1
+
+    bare_name = None
+    count_m = re.match(r"(\d+)", s[j:])
+    if count_m:
+        param_count = int(count_m.group(1))
+        k = j + count_m.end()
+        # Skip param_count #-prefixed descriptors
+        k = _skip_template_parameters(s, k, param_count)
+        # Now k should point to the start of the function name
+        name_m = re.match(r"([A-Za-z_]\w*)", s[k:])
+        if name_m:
+            bare_name = name_m.group(1)
+
+    if bare_name is not None:
+        parts.append(bare_name)
+        # Skip the rest of the USR.
+        return len(s)
+    else:
+        # Fallback: look for @<kind>@<name> inside the FT block
+        inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
+        if inner_m:
+            return j + inner_m.start()
+        return j
+
+
+def _parse_regular_segment(s: str, i: int, parts: List[str]) -> int:
+    """Parse a regular segment like @C@ClassName."""
+    m = re.match(r"@([A-Za-z])@", s[i:])
+    if not m:
+        return i + 1
+
+    kind = m.group(1)
+    name_start = i + m.end()
+
+    # Extract name: runs until @, #, or >
+    name_end = name_start
+    while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
+        name_end += 1
+
+    if name_end == name_start:
+        return name_start
+
+    name = s[name_start:name_end]
+    parts.append(name)
+    new_i = name_end
+
+    # Class/struct segments may have template args: >#arg1#arg2...
+    if kind in ("S", "C") and new_i < len(s) and s[new_i] == ">":
+        if new_i + 1 < len(s) and s[new_i + 1] == "#":
+            targs, new_i = _decode_template_args(s, new_i + 2)
+            parts[-1] += targs
+        else:
+            new_i += 1
+
+    # Function segments: skip parameter type encoding after #
+    if kind in ("F", "f") and new_i < len(s) and s[new_i] == "#":
+        while new_i < len(s) and s[new_i] != "@":
+            new_i += 1
+
+    return new_i
+
+
 def _usr_to_display_name(usr: str) -> str:
     """Convert a libclang USR to an approximate qualified name for display.
 
@@ -371,123 +485,19 @@ def _usr_to_display_name(usr: str) -> str:
 
     while i < len(s):
         # --- Template definition / partial specialization --------------------
-        # @ST>...@name  or  @SP>...@name  (note: > not @ after kind)
-        mt = re.match(r"@(ST|SP)>", s[i:])
-        if mt:
-            kind = mt.group(1)
-            j = i + mt.end()
-            # Skip template parameter descriptors until @<name>
-            inner_m = re.search(r"@([^@#>]+)", s[j:])
-            if inner_m:
-                # Extract just the C++ identifier from the matched segment.
-                # The raw match may include trailing arity + type-ref encoding
-                # (e.g. "unique_ptr2t0.0t0.1" where name is "unique_ptr",
-                #  "2" is arity, and "t0.0t0.1" are type parameter refs).
-                raw_name = inner_m.group(1)
-                name_only = re.match(r"([A-Za-z_]\w*?)(?=\d+t\d|\d*$)", raw_name)
-                parts.append(name_only.group(1) if name_only else raw_name)
-                i = j + inner_m.end()
-                # SP may have template args after >
-                if kind == "SP" and i < len(s) and s[i] == ">":
-                    if i + 1 < len(s) and s[i + 1] == "#":
-                        targs, i = _decode_template_args(s, i + 2)
-                        parts[-1] += targs
-                    else:
-                        i += 1
-            else:
-                i = j
+        next_i = _parse_template_definition(s, i, parts)
+        if next_i != -1:
+            i = next_i
             continue
 
         # --- Function template: @FT@>N#desc1#desc2...descN name#params ----
-        # The count N tells how many #-prefixed param descriptors follow.
-        # After skipping N descriptors, the function name runs until the
-        # next # (which starts parameter type encoding).
-        #
-        # Descriptor formats (after #):
-        #   T    = type parameter
-        #   pT   = parameter pack of type
-        #   t    = template template parameter
-        #   pt   = parameter pack of template template
-        #   N<type> = non-type parameter (N followed by a type code)
-        if s[i:].startswith("@FT@"):
-            j = i + 4
-            if j < len(s) and s[j] == ">":
-                j += 1
-            # Parse the template parameter count and skip that many
-            # #-prefixed descriptors to find the function name.
-            bare_name = None
-            count_m = re.match(r"(\d+)", s[j:])
-            if count_m:
-                param_count = int(count_m.group(1))
-                k = j + count_m.end()
-                # Skip param_count #-prefixed descriptors
-                for _ in range(param_count):
-                    if k < len(s) and s[k] == "#":
-                        k += 1
-                        # Parse one descriptor based on its specific format
-                        if k < len(s) and s[k] == "p":
-                            k += 1  # skip 'p' (pack prefix)
-                        if k < len(s) and s[k] in ("T", "t"):
-                            k += 1  # skip T (type) or t (template)
-                        elif k < len(s) and s[k] == "N":
-                            k += 1  # skip 'N' (non-type)
-                            # Skip the following type code
-                            _, k = _decode_usr_type(s, k)
-                # Now k should point to the start of the function name
-                name_m = re.match(r"([A-Za-z_]\w*)", s[k:])
-                if name_m:
-                    bare_name = name_m.group(1)
-
-            if bare_name is not None:
-                parts.append(bare_name)
-                # Skip the rest of the USR.  Everything after the FT's
-                # parameter types is a "canonical context" suffix that
-                # re-encodes the parent scope (already captured by earlier
-                # segments).  Parsing it would produce duplicate parts.
-                i = len(s)
-            else:
-                # Fallback: look for @<kind>@<name> inside the FT block
-                inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
-                if inner_m:
-                    i = j + inner_m.start()
-                else:
-                    i = j
+        next_i = _parse_function_template(s, i, parts)
+        if next_i != -1:
+            i = next_i
             continue
 
         # --- Regular segments: @<kind>@<name> --------------------------------
-        m = re.match(r"@([A-Za-z])@", s[i:])
-        if not m:
-            i += 1
-            continue
-
-        kind = m.group(1)
-        name_start = i + m.end()
-
-        # Extract name: runs until @, #, or >
-        name_end = name_start
-        while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
-            name_end += 1
-
-        if name_end == name_start:
-            i = name_start
-            continue
-
-        name = s[name_start:name_end]
-        parts.append(name)
-        i = name_end
-
-        # Class/struct segments may have template args: >#arg1#arg2...
-        if kind in ("S", "C") and i < len(s) and s[i] == ">":
-            if i + 1 < len(s) and s[i + 1] == "#":
-                targs, i = _decode_template_args(s, i + 2)
-                parts[-1] += targs
-            else:
-                i += 1
-
-        # Function segments: skip parameter type encoding after #
-        if kind in ("F", "f") and i < len(s) and s[i] == "#":
-            while i < len(s) and s[i] != "@":
-                i += 1
+        i = _parse_regular_segment(s, i, parts)
 
     return "::".join(parts) if parts else usr
 
