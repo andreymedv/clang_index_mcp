@@ -1540,6 +1540,48 @@ class CppAnalyzer:
         parts = qualified_name.split("::")
         return "::".join(parts[:-1])
 
+    def _build_type_param_map(self, cursor) -> Dict[str, str]:
+        """Build a map from 'type-parameter-D-I' to actual template parameter names."""
+        type_param_map: Dict[str, str] = {}
+        param_index = 0
+        for child in cursor.get_children():
+            if child.kind in (
+                CursorKind.TEMPLATE_TYPE_PARAMETER,
+                CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+                CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
+            ):
+                if child.spelling:
+                    type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
+                param_index += 1
+        return type_param_map
+
+    def _resolve_base_name(self, base_type, type_param_map: Dict[str, str]) -> str:
+        """Resolve the qualified name of a base type, substituting template parameters."""
+        import re
+
+        canonical_type = base_type.get_canonical()
+        base_name_qualified = canonical_type.spelling
+
+        if "type-parameter-" in base_name_qualified and type_param_map:
+
+            def _replace_type_param(m: re.Match[str]) -> str:
+                key: str = m.group(0)
+                return type_param_map.get(key, key)
+
+            base_name_qualified = re.sub(
+                r"type-parameter-\d+-\d+", _replace_type_param, base_name_qualified
+            )
+
+        if re.search(r"type-parameter-\d+-\d+", base_name_qualified):
+            base_name_qualified = base_type.spelling
+
+        if base_name_qualified.startswith("class "):
+            base_name_qualified = base_name_qualified[6:]
+        elif base_name_qualified.startswith("struct "):
+            base_name_qualified = base_name_qualified[7:]
+
+        return base_name_qualified
+
     def _get_base_classes(self, cursor) -> List[str]:
         """
         Extract base class names from a class cursor.
@@ -1557,61 +1599,13 @@ class CppAnalyzer:
         - Example: "typename ChainResolver<type-parameter-0-0, Mixin>::Type"
           becomes: "typename ChainResolver<BaseParam, Mixin>::Type"
         """
-        import re
-
-        # Build a map from "type-parameter-D-I" to actual template parameter names.
-        # For the cursor's own template parameters, depth is 0.
-        # Template template parameters have inner parameters at depth+1.
-        type_param_map: Dict[str, str] = {}
-        param_index = 0
-        for child in cursor.get_children():
-            if child.kind in (
-                CursorKind.TEMPLATE_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
-            ):
-                if child.spelling:
-                    type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
-                param_index += 1
+        type_param_map = self._build_type_param_map(cursor)
 
         base_classes = []
         for child in cursor.get_children():
             if child.kind == CursorKind.CXX_BASE_SPECIFIER:
-                # Get the referenced class type
-                base_type = child.type
+                base_classes.append(self._resolve_base_name(child.type, type_param_map))
 
-                # Use canonical type for template args expansion + qualification
-                # This ensures template arguments have fully qualified names
-                # Example: Container<FooPtr> → Container<std::unique_ptr<ns1::Foo>>
-                canonical_type = base_type.get_canonical()
-                base_name_qualified = canonical_type.spelling
-
-                # Replace type-parameter-D-I patterns with actual parameter names.
-                # Handles both standalone (entire base is a parameter) and embedded
-                # occurrences (parameter inside a complex dependent type expression).
-                if "type-parameter-" in base_name_qualified and type_param_map:
-
-                    def _replace_type_param(m: re.Match[str]) -> str:
-                        key: str = m.group(0)
-                        return type_param_map.get(key, key)
-
-                    base_name_qualified = re.sub(
-                        r"type-parameter-\d+-\d+", _replace_type_param, base_name_qualified
-                    )
-
-                # If after substitution there are still unresolved type-parameter-D-I
-                # patterns (e.g., from outer template depths we don't have names for),
-                # fall back to the non-canonical spelling for the entire string
-                if re.search(r"type-parameter-\d+-\d+", base_name_qualified):
-                    base_name_qualified = base_type.spelling
-
-                # Clean up the type name (remove "class " or "struct " prefix if present)
-                if base_name_qualified.startswith("class "):
-                    base_name_qualified = base_name_qualified[6:]
-                elif base_name_qualified.startswith("struct "):
-                    base_name_qualified = base_name_qualified[7:]
-
-                base_classes.append(base_name_qualified)
         return base_classes
 
     @staticmethod
