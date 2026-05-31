@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import diagnostics early
 try:
@@ -331,168 +331,714 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     return result
 
 
-async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    try:
-        if name == "set_project_directory":
-            config_file = arguments.get("config_file")
-            auto_refresh = arguments.get("auto_refresh", True)
+def _validate_config_file(config_file: Any) -> Tuple[Optional[str], Optional[List[TextContent]]]:
+    if not config_file or not isinstance(config_file, str) or not config_file.strip():
+        return None, [
+            TextContent(type="text", text="Error: 'config_file' must be a non-empty string")
+        ]
 
-            if not config_file or not isinstance(config_file, str) or not config_file.strip():
-                return [
-                    TextContent(type="text", text="Error: 'config_file' must be a non-empty string")
-                ]
+    config_file = config_file.strip()
 
-            config_file = config_file.strip()
+    if not os.path.isabs(config_file):
+        return None, [
+            TextContent(type="text", text=f"Error: '{config_file}' is not an absolute path")
+        ]
 
-            if not os.path.isabs(config_file):
-                return [
-                    TextContent(type="text", text=f"Error: '{config_file}' is not an absolute path")
-                ]
+    if not os.path.isfile(config_file):
+        return None, [
+            TextContent(type="text", text=f"Error: Config file '{config_file}' does not exist")
+        ]
 
-            if not os.path.isfile(config_file):
-                return [
-                    TextContent(
-                        type="text", text=f"Error: Config file '{config_file}' does not exist"
-                    )
-                ]
-
-            if not config_file.endswith(".json"):
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Error: Config file '{config_file}' must have .json extension",
-                    )
-                ]
-
-            try:
-                with open(config_file, "r") as f:
-                    config_data = json.load(f)
-
-                config_root = config_data.get("project_root")
-                if not config_root:
-                    return [
-                        TextContent(
-                            type="text",
-                            text=f"Error: Config file '{config_file}' is missing 'project_root' field",
-                        )
-                    ]
-
-                # Resolve project_root relative to config file directory
-                config_dir = os.path.dirname(config_file)
-                project_path = os.path.abspath(os.path.join(config_dir, config_root))
-
-                if not os.path.isdir(project_path):
-                    return [
-                        TextContent(
-                            type="text",
-                            text=f"Error: 'project_root' in config '{project_path}' is not a directory or does not exist",
-                        )
-                    ]
-
-                diagnostics.info(f"Using config {config_file} for root {project_path}")
-
-            except Exception as e:
-                return [TextContent(type="text", text=f"Error reading config file: {str(e)}")]
-
-            # Re-initialize analyzer with new path and config
-            global analyzer, background_indexer, tool_call_logger
-
-            # Transition to INDEXING state (allows immediate queries with partial results)
-            # This prevents race condition where get_indexing_status fails if called immediately
-            state_manager.transition_to(AnalyzerState.INDEXING)
-            analyzer = CppAnalyzer(project_path, config_file=config_file)
-            background_indexer = BackgroundIndexer(analyzer, state_manager)
-
-            # Initialize tool call telemetry logger
-            import uuid as _uuid
-
-            tool_call_logger = ToolCallLogger(analyzer.cache_dir, str(_uuid.uuid4()))
-
-            # Start indexing in background (truly asynchronous, non-blocking)
-            # The task will run independently while the MCP server continues to handle requests
-            async def run_background_indexing():
-                global analyzer_initialized
-                try:
-                    # FAST PATH: Check if cache exists and is valid
-                    # If so, load directly without calling index_project
-                    loop = asyncio.get_event_loop()
-                    cache_valid = await loop.run_in_executor(None, analyzer._load_cache)
-
-                    if cache_valid:
-                        # Cache loaded successfully - skip indexing
-                        diagnostics.info(
-                            f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
-                            f"{len(analyzer.function_index)} functions indexed"
-                        )
-
-                        # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
-                        # Without this, get_indexing_status returns 0 files even though cache is loaded
-                        from datetime import datetime
-
-                        from .state_manager import IndexingProgress
-
-                        # Create progress object from cached data
-                        total_files = len(analyzer.file_index)
-                        progress = IndexingProgress(
-                            total_files=total_files,
-                            indexed_files=total_files,  # All files loaded from cache
-                            failed_files=0,  # No failures when loading from cache
-                            cache_hits=total_files,  # Everything came from cache
-                            current_file=None,  # No active file
-                            start_time=datetime.now(),
-                            estimated_completion=None,  # Already complete
-                        )
-                        state_manager.update_progress(progress)
-
-                        state_manager.transition_to(AnalyzerState.INDEXED)
-
-                        # Mark as initialized immediately
-                        global analyzer_initialized
-                        analyzer_initialized = True
-
-                        diagnostics.info(
-                            "Server ready (loaded from cache) - use sync_project with refresh_mode to detect file changes"
-                        )
-                        return
-
-                    # SLOW PATH: Cache not valid, need to index from scratch
-                    diagnostics.info("No valid cache found, starting full indexing...")
-                    await background_indexer.start_indexing(force=False, include_dependencies=True)
-
-                    # Indexing complete - mark as initialized
-                    analyzer_initialized = True
-
-                except Exception as e:
-                    diagnostics.error(f"Background indexing failed: {e}")
-                    state_manager.transition_to(AnalyzerState.ERROR)
-                    pass
-
-            # Create background task (non-blocking)
-            asyncio.create_task(run_background_indexing())
-
-            # Save session for auto-resume on restart
-            session_manager.save_session(config_file=config_file)
-
-            # Build response message
-            auto_refresh_msg = (
-                " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
+    if not config_file.endswith(".json"):
+        return None, [
+            TextContent(
+                type="text",
+                text=f"Error: Config file '{config_file}' must have .json extension",
             )
+        ]
 
-            # Return immediately - indexing continues in background
+    return config_file, None
+
+
+async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextContent]:
+    config_file_raw = arguments.get("config_file")
+    auto_refresh = arguments.get("auto_refresh", True)
+
+    config_file, error_response = _validate_config_file(config_file_raw)
+    if error_response:
+        return error_response
+
+    try:
+        with open(config_file, "r") as f:  # type: ignore[arg-type]
+            config_data = json.load(f)
+
+        config_root = config_data.get("project_root")
+        if not config_root:
             return [
                 TextContent(
                     type="text",
-                    text=f"Set project via config: {config_file}\n"
-                    f"Resolved project root: {project_path}\n"
-                    f"Indexing started in background.{auto_refresh_msg}\n"
-                    f"Use 'sync_project' to check progress.\n"
-                    f"Tools are available but will return partial results until indexing completes.",
+                    text=f"Error: Config file '{config_file}' is missing 'project_root' field",
                 )
             ]
 
-        # Check if analyzer is initialized for all other commands
-        # Phase 3: Allow queries during indexing (partial results)
-        # Tools can execute in INDEXING, INDEXED, or REFRESHING states
+        # Resolve project_root relative to config file directory
+        config_dir = os.path.dirname(config_file)  # type: ignore[arg-type]
+        project_path = os.path.abspath(os.path.join(config_dir, config_root))
+
+        if not os.path.isdir(project_path):
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error: 'project_root' in config '{project_path}' is not a directory or does not exist",
+                )
+            ]
+
+        diagnostics.info(f"Using config {config_file} for root {project_path}")
+
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error reading config file: {str(e)}")]
+
+    # Re-initialize analyzer with new path and config
+    global analyzer, background_indexer, tool_call_logger
+
+    # Transition to INDEXING state (allows immediate queries with partial results)
+    # This prevents race condition where get_indexing_status fails if called immediately
+    state_manager.transition_to(AnalyzerState.INDEXING)
+    analyzer = CppAnalyzer(project_path, config_file=config_file)
+    background_indexer = BackgroundIndexer(analyzer, state_manager)
+
+    # Initialize tool call telemetry logger
+    import uuid as _uuid
+
+    tool_call_logger = ToolCallLogger(analyzer.cache_dir, str(_uuid.uuid4()))
+
+    # Start indexing in background (truly asynchronous, non-blocking)
+    # The task will run independently while the MCP server continues to handle requests
+    async def run_background_indexing():
+        global analyzer_initialized
+        try:
+            # FAST PATH: Check if cache exists and is valid
+            # If so, load directly without calling index_project
+            loop = asyncio.get_event_loop()
+            cache_valid = await loop.run_in_executor(None, analyzer._load_cache)
+
+            if cache_valid:
+                # Cache loaded successfully - skip indexing
+                diagnostics.info(
+                    f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
+                    f"{len(analyzer.function_index)} functions indexed"
+                )
+
+                # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
+                # Without this, get_indexing_status returns 0 files even though cache is loaded
+                from datetime import datetime
+
+                from .state_manager import IndexingProgress
+
+                # Create progress object from cached data
+                total_files = len(analyzer.file_index)
+                progress = IndexingProgress(
+                    total_files=total_files,
+                    indexed_files=total_files,  # All files loaded from cache
+                    failed_files=0,  # No failures when loading from cache
+                    cache_hits=total_files,  # Everything came from cache
+                    current_file=None,  # No active file
+                    start_time=datetime.now(),
+                    estimated_completion=None,  # Already complete
+                )
+                state_manager.update_progress(progress)
+
+                state_manager.transition_to(AnalyzerState.INDEXED)
+
+                # Mark as initialized immediately
+                global analyzer_initialized
+                analyzer_initialized = True
+
+                diagnostics.info(
+                    "Server ready (loaded from cache) - use sync_project with refresh_mode to detect file changes"
+                )
+                return
+
+            # SLOW PATH: Cache not valid, need to index from scratch
+            diagnostics.info("No valid cache found, starting full indexing...")
+            await background_indexer.start_indexing(force=False, include_dependencies=True)
+
+            # Indexing complete - mark as initialized
+            analyzer_initialized = True
+
+        except Exception as e:
+            diagnostics.error(f"Background indexing failed: {e}")
+            state_manager.transition_to(AnalyzerState.ERROR)
+            pass
+
+    # Create background task (non-blocking)
+    asyncio.create_task(run_background_indexing())
+
+    # Save session for auto-resume on restart
+    session_manager.save_session(config_file=config_file)
+
+    # Build response message
+    auto_refresh_msg = " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
+
+    # Return immediately - indexing continues in background
+    return [
+        TextContent(
+            type="text",
+            text=f"Set project via config: {config_file}\n"
+            f"Resolved project root: {project_path}\n"
+            f"Indexing started in background.{auto_refresh_msg}\n"
+            f"Use 'sync_project' to check progress.\n"
+            f"Tools are available but will return partial results until indexing completes.",
+        )
+    ]
+
+
+async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    project_only = _parse_search_scope(arguments)
+    pattern = arguments["symbol_name"]
+    file_name = arguments.get("file_name", None)
+    namespace = arguments.get("namespace", None)
+    max_results = arguments.get("max_results", None)
+    include_base_classes = arguments.get("include_base_classes", True)
+
+    # Run synchronous method in executor to avoid blocking event loop
+    with state_manager.tool_execution():
+        raw_results = await loop.run_in_executor(
+            None,
+            lambda: analyzer.search_classes(
+                pattern,
+                project_only,
+                file_name,
+                namespace,
+                max_results,
+                include_base_classes,
+            ),
+        )
+
+    fallback = analyzer.pop_last_fallback()
+    # Handle tuple return (results, total_count) when max_results is specified
+    if isinstance(raw_results, tuple):
+        results, total_count = raw_results
+    else:
+        results, total_count = raw_results, None
+
+    # Wrap with appropriate metadata based on special conditions
+    enhanced_result = _create_search_result(
+        results, state_manager, "search_classes", max_results, total_count, fallback
+    )
+    if results:
+        enhanced_result.next_steps = suggestions.for_search_classes(
+            results,
+            pattern=pattern,
+            file_name=file_name,
+            namespace=namespace,
+        )
+    return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+
+
+async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    project_only = _parse_search_scope(arguments)
+    class_name = arguments.get("class_name", None)
+    file_name = arguments.get("file_name", None)
+    namespace = arguments.get("namespace", None)
+    pattern = arguments["symbol_name"]
+    max_results = arguments.get("max_results", None)
+    signature_pattern = arguments.get("signature_pattern", None)
+    include_attributes = arguments.get("include_attributes", False)
+
+    # Run synchronous method in executor to avoid blocking event loop
+    with state_manager.tool_execution():
+        raw_results = await loop.run_in_executor(
+            None,
+            lambda: analyzer.search_functions(
+                pattern,
+                project_only,
+                class_name,
+                file_name,
+                namespace,
+                max_results,
+                signature_pattern,
+                include_attributes,
+            ),
+        )
+
+    fallback = analyzer.pop_last_fallback()
+    # Handle tuple return (results, total_count) when max_results is specified
+    if isinstance(raw_results, tuple):
+        results, total_count = raw_results
+    else:
+        results, total_count = raw_results, None
+
+    # Wrap with appropriate metadata based on special conditions
+    enhanced_result = _create_search_result(
+        results, state_manager, "search_functions", max_results, total_count, fallback
+    )
+    if results:
+        enhanced_result.next_steps = suggestions.for_search_functions(results)
+    return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+
+
+async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    class_name = str(arguments["class_name"])
+    # Run synchronous method in executor to avoid blocking event loop
+    result = await loop.run_in_executor(
+        None, lambda: analyzer.get_class_info(class_name)  # type: ignore[arg-type]
+    )
+    # Wrap with metadata (even if not found)
+    enhanced_result = EnhancedQueryResult.create_from_state(result, state_manager, "get_class_info")
+    if result and "error" not in (result or {}):
+        enhanced_result.next_steps = suggestions.for_get_class_info(result)
+    return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+
+
+async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    type_name = arguments["type_name"]
+    # Run synchronous method in executor to avoid blocking event loop
+    result = await loop.run_in_executor(None, lambda: analyzer.get_type_alias_info(type_name))
+    # Wrap with metadata
+    enhanced_result = EnhancedQueryResult.create_from_state(
+        result, state_manager, "get_type_alias_info"
+    )
+    return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+
+
+async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    pattern = arguments["symbol_name"]
+    project_only = _parse_search_scope(arguments)
+    symbol_types = arguments.get("symbol_types", None)
+    namespace = arguments.get("namespace", None)
+    max_results = arguments.get("max_results", None)
+    signature_pattern = arguments.get("signature_pattern", None)
+    # Run synchronous method in executor to avoid blocking event loop
+    raw_results = await loop.run_in_executor(
+        None,
+        lambda: analyzer.search_symbols(
+            pattern,
+            project_only,
+            symbol_types,
+            namespace,
+            max_results,
+            signature_pattern,
+        ),
+    )
+    fallback = analyzer.pop_last_fallback()
+    # Handle tuple return (results, total_count) when max_results is specified
+    if isinstance(raw_results, tuple):
+        results, total_count = raw_results
+    else:
+        results, total_count = raw_results, None
+    # Wrap with appropriate metadata based on special conditions
+    enhanced_result = _create_search_result(
+        results, state_manager, "search_symbols", max_results, total_count, fallback
+    )
+    return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+
+
+async def _handle_find_in_file(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    file_path = arguments["file_path"]
+    pattern = arguments["pattern"]
+    # Run synchronous method in executor to avoid blocking event loop
+    with state_manager.tool_execution():
+        results = await loop.run_in_executor(
+            None, lambda: analyzer.find_in_file(file_path, pattern)
+        )
+    # find_in_file returns {"results": [...], "matched_files": [...], ...}
+    # Count the actual symbol results for metadata logic
+    result_list = results.get("results", []) if isinstance(results, dict) else []
+    # Wrap with appropriate metadata based on special conditions
+    # Use _create_search_result with the result list for counting
+    enhanced_result = _create_search_result(result_list, state_manager, "find_in_file", None, None)
+    # But return the full results dict (with matched_files, suggestions, etc.)
+    # Merge the metadata into the results dict
+    output = results.copy() if isinstance(results, dict) else {"results": results}
+    enhanced_dict = enhanced_result.to_dict()
+    if "metadata" in enhanced_dict:
+        output["metadata"] = enhanced_dict["metadata"]
+    return [TextContent(type="text", text=json.dumps(output, indent=2))]
+
+
+async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent]:
+    refresh_mode = arguments.get("refresh_mode", "incremental")
+
+    # Issue #7: Warn if full mode is used (should be rare)
+    if refresh_mode == "full":
+        diagnostics.warning(
+            "refresh_mode='full' was requested - this will re-analyze ALL files and may "
+            "take 5-10 minutes on large projects. Incremental mode is 30-300x faster "
+            "and sufficient for 99% of cases."
+        )
+
+    # Transition to REFRESHING state synchronously
+    state_manager.transition_to(AnalyzerState.REFRESHING)
+
+    # Start refresh in background (non-blocking, similar to set_project_directory)
+    async def run_background_refresh():
+        try:
+            loop = asyncio.get_event_loop()
+
+            # Create progress callback that updates state_manager (same as BackgroundIndexer)
+            def progress_callback(progress: IndexingProgress):
+                """Callback to update progress in state manager during refresh"""
+                state_manager.update_progress(progress)
+
+            if refresh_mode == "incremental":
+                try:
+                    from mcp_server.incremental_analyzer import IncrementalAnalyzer
+
+                    diagnostics.info("Starting incremental refresh...")
+                    incremental_analyzer = IncrementalAnalyzer(analyzer)
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: incremental_analyzer.perform_incremental_analysis(
+                            progress_callback, state_manager.wait_for_tools_to_finish
+                        ),
+                    )
+
+                    if result.changes.is_empty():
+                        diagnostics.info("Incremental refresh complete: no changes detected")
+                    else:
+                        diagnostics.info(
+                            f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
+                            f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
+                        )
+
+                    state_manager.transition_to(AnalyzerState.INDEXED)
+                    return
+
+                except Exception as e:
+                    diagnostics.error(f"Incremental analysis failed: {e}")
+                    diagnostics.info("Falling back to full refresh...")
+                    # Fallback to full refresh
+                    modified_count = await loop.run_in_executor(
+                        None,
+                        lambda: analyzer.refresh_if_needed(
+                            progress_callback, state_manager.wait_for_tools_to_finish
+                        ),
+                    )
+                    diagnostics.info(
+                        f"Fallback full refresh complete: re-analyzed {modified_count} files"
+                    )
+                    state_manager.transition_to(AnalyzerState.INDEXED)
+                    return
+
+            else:
+                # Full refresh
+                diagnostics.info("Starting full refresh...")
+                modified_count = await loop.run_in_executor(
+                    None, lambda: analyzer.refresh_if_needed(progress_callback)
+                )
+                diagnostics.info(f"Full refresh complete: re-analyzed {modified_count} files")
+                state_manager.transition_to(AnalyzerState.INDEXED)
+                return
+
+        except Exception as e:
+            diagnostics.error(f"Background refresh failed: {e}")
+            state_manager.transition_to(AnalyzerState.ERROR)
+            pass
+
+    # Create background task (non-blocking)
+    asyncio.create_task(run_background_refresh())
+
+    # Return immediately - refresh continues in background
+    return [
+        TextContent(
+            type="text",
+            text=f"Refresh started in background (mode: {refresh_mode}).\n"
+            f"Use 'sync_project' to check progress.\n"
+            f"Tools will continue to work and return results based on current cache state.",
+        )
+    ]
+
+
+async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextContent]:
+    # Combined server diagnostics and indexing status
+    status_dict = state_manager.get_status_dict()
+
+    ccm = analyzer.compile_commands_manager
+    total_classes = sum(len(infos) for infos in analyzer.class_index.values())
+    total_functions = sum(len(infos) for infos in analyzer.function_index.values())
+
+    status_dict.update(
+        {
+            "analyzer_type": "python_enhanced",
+            "call_graph_enabled": True,
+            "compile_commands_enabled": ccm.enabled if ccm else False,
+            "compile_commands_path": ccm.compile_commands_path if ccm else None,
+            "parsed_files": len(analyzer.file_index),
+            "indexed_classes": total_classes,
+            "indexed_functions": total_functions,
+        }
+    )
+    return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
+
+
+async def _handle_wait_for_indexing(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    # Internal handler - used by sync_project and tests
+    timeout = arguments.get("timeout", 60.0)
+
+    if state_manager.is_fully_indexed():
+        return [TextContent(type="text", text="Indexing already complete.")]
+
+    completed = await loop.run_in_executor(None, lambda: state_manager.wait_for_indexed(timeout))
+
+    if completed:
+        progress = state_manager.get_progress()
+        indexed_count = progress.indexed_files if progress else 0
+        failed_count = progress.failed_files if progress else 0
+        return [
+            TextContent(
+                type="text",
+                text=f"Indexing complete! Indexed {indexed_count} files successfully ({failed_count} failed).",
+            )
+        ]
+    else:
+        return [
+            TextContent(
+                type="text",
+                text=f"Timeout waiting for indexing (waited {timeout}s). Use 'sync_project' to check progress.",
+            )
+        ]
+
+
+async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    class_name = str(arguments["class_name"])
+    max_nodes = arguments.get("max_nodes", 200)
+    max_depth = arguments.get("max_depth", None)
+    direction = arguments.get("direction", "both")
+    output_format = arguments.get("output_format", "json")
+    # Run synchronous method in executor to avoid blocking event loop
+    hierarchy = await loop.run_in_executor(
+        None,
+        lambda: analyzer.get_class_hierarchy(  # type: ignore[arg-type]
+            class_name, max_nodes=max_nodes, max_depth=max_depth, direction=direction  # type: ignore[arg-type]
+        ),
+    )
+    if hierarchy:
+        # Check for error in hierarchy result
+        if "error" in hierarchy:
+            from .hierarchy_format import format_hierarchy_error
+
+            error_text = format_hierarchy_error(hierarchy["error"], output_format)
+            return [TextContent(type="text", text=error_text)]
+        # Convert to requested output format
+        from .hierarchy_format import convert_hierarchy_format
+
+        formatted = convert_hierarchy_format(hierarchy, output_format)
+        return [TextContent(type="text", text=formatted)]
+    else:
+        from .hierarchy_format import format_hierarchy_error
+
+        error_text = format_hierarchy_error(f"Class '{class_name}' not found", output_format)
+        return [TextContent(type="text", text=error_text)]
+
+
+async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    function_name = str(arguments["function_name"])
+    class_name = str(arguments.get("class_name", ""))
+    max_results = arguments.get("max_results", None)
+    project_only = _parse_search_scope(arguments)
+    # Run synchronous method in executor to avoid blocking event loop
+    results = await loop.run_in_executor(
+        None,
+        lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
+    )
+    # Results is dict with "callers" list - use that for metadata logic
+    callers_list = results.get("callers", []) if isinstance(results, dict) else []
+    # 3-case empty-result logic (internal flags stripped before sending to LLM):
+    #   not found            → default "check spelling" suggestions  (None)
+    #   found, no callers    → no hints at all                        ([])
+    #   found, ext. callers  → auto-expand to include external results
+    function_found = results.pop("_function_found", False) if isinstance(results, dict) else False
+    has_any_in_graph = (
+        results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+    )
+    target_qualified_name = (
+        results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
+    )
+    # Auto-expand: when project_only=True yields 0 results but external callers
+    # exist, re-fetch with project_only=False so the LLM gets useful data without
+    # needing to interpret a suggestion and issue a second tool call.
+    search_note = None
+    if project_only and not callers_list and function_found and has_any_in_graph:
+        expanded = await loop.run_in_executor(
+            None,
+            lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=False),  # type: ignore[arg-type]
+        )
+        # Strip internal flags from expanded results
+        expanded.pop("_function_found", None)
+        expanded.pop("_has_any_in_graph", None)
+        expanded.pop("_target_qualified_name", None)
+        results = expanded
+        callers_list = results.get("callers", [])
+        ext_count = len(callers_list)
+        search_note = (
+            f"Project-only search yielded 0 results. "
+            f"Auto-expanded to include external libraries "
+            f"({ext_count} external caller{'s' if ext_count != 1 else ''} found)."
+        )
+    total_count = len(callers_list)
+    # Apply truncation if max_results specified
+    if max_results is not None and len(callers_list) > max_results:
+        results["callers"] = callers_list[:max_results]
+    empty_suggestions: Optional[List[str]] = None
+    if not function_found:
+        pass  # None → default "check spelling / broaden pattern"
+    elif has_any_in_graph:
+        empty_suggestions = []  # auto-expanded above; no hint needed
+    else:
+        empty_suggestions = []  # genuinely no callers → no hints
+    # Wrap with appropriate metadata
+    enhanced_result = _create_search_result(
+        results.get("callers", []),
+        state_manager,
+        "find_incoming_calls",
+        max_results,
+        total_count,
+        empty_suggestions=empty_suggestions,
+    )
+    enhanced_result.next_steps = suggestions.for_find_incoming_calls(
+        function_name, results, qualified_name=target_qualified_name
+    )
+    # Merge metadata into results dict
+    output = results.copy() if isinstance(results, dict) else {"callers": results}
+    enhanced_dict = enhanced_result.to_dict()
+    if "metadata" in enhanced_dict:
+        output["metadata"] = enhanced_dict["metadata"]
+    if search_note:
+        output["search_note"] = search_note
+    return [TextContent(type="text", text=json.dumps(output, indent=2))]
+
+
+async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    function_name = str(arguments["function_name"])
+    class_name = str(arguments.get("class_name", ""))
+    max_results = arguments.get("max_results", None)
+    project_only = _parse_search_scope(arguments)
+    # Run synchronous method in executor to avoid blocking event loop
+    results = await loop.run_in_executor(
+        None,
+        lambda: analyzer.find_callees(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
+    )
+    # Results is dict with "callees" list - use that for metadata logic
+    callees_list = results.get("callees", []) if isinstance(results, dict) else []
+    # 3-case empty-result logic (internal flags stripped before sending to LLM):
+    #   not found               → default "check spelling" suggestions  (None)
+    #   found, no callees       → no hints at all                        ([])
+    #   found, ext. callees     → auto-expand to include external results
+    function_found = results.pop("_function_found", False) if isinstance(results, dict) else False
+    has_any_in_graph = (
+        results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
+    )
+    target_qualified_name = (
+        results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
+    )
+    # Auto-expand: when project_only=True yields 0 results but external callees
+    # exist, re-fetch with project_only=False so the LLM gets useful data without
+    # needing to interpret a suggestion and issue a second tool call.
+    search_note = None
+    if project_only and not callees_list and function_found and has_any_in_graph:
+        expanded = await loop.run_in_executor(
+            None,
+            lambda: analyzer.find_callees(function_name, class_name, project_only=False),  # type: ignore[arg-type]
+        )
+        # Strip internal flags from expanded results
+        expanded.pop("_function_found", None)
+        expanded.pop("_has_any_in_graph", None)
+        expanded.pop("_target_qualified_name", None)
+        results = expanded
+        callees_list = results.get("callees", [])
+        ext_count = len(callees_list)
+        search_note = (
+            f"Project-only search yielded 0 results. "
+            f"Auto-expanded to include external libraries "
+            f"({ext_count} external callee{'s' if ext_count != 1 else ''} found)."
+        )
+    total_count = len(callees_list)
+    # Apply truncation if max_results specified
+    if max_results is not None and len(callees_list) > max_results:
+        results["callees"] = callees_list[:max_results]
+    empty_suggestions = None
+    if not function_found:
+        pass  # None → default "check spelling / broaden pattern"
+    elif has_any_in_graph:
+        empty_suggestions = []  # auto-expanded above; no hint needed
+    else:
+        empty_suggestions = []  # genuinely calls nothing → no hints
+    # Wrap with appropriate metadata
+    enhanced_result = _create_search_result(
+        results.get("callees", []),
+        state_manager,
+        "get_outgoing_calls",
+        max_results,
+        total_count,
+        empty_suggestions=empty_suggestions,
+    )
+    enhanced_result.next_steps = suggestions.for_get_outgoing_calls(
+        function_name, results, qualified_name=target_qualified_name
+    )
+    # Merge metadata into results dict
+    output = results.copy() if isinstance(results, dict) else {"callees": results}
+    enhanced_dict = enhanced_result.to_dict()
+    if "metadata" in enhanced_dict:
+        output["metadata"] = enhanced_dict["metadata"]
+    if search_note:
+        output["search_note"] = search_note
+    return [TextContent(type="text", text=json.dumps(output, indent=2))]
+
+
+async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    function_name = arguments["function_name"]
+    class_name = arguments.get("class_name", "")
+    # Run synchronous method in executor to avoid blocking event loop
+    call_sites = await loop.run_in_executor(
+        None, lambda: analyzer.get_call_sites(function_name, class_name)
+    )
+    output_sites: Dict[str, Any] = {"call_sites": call_sites}
+    if not call_sites:
+        output_sites["metadata"] = {
+            "suggestions": suggestions.for_get_call_sites_empty(function_name, class_name),
+        }
+    return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
+
+
+async def _handle_get_call_path(arguments: Dict[str, Any]) -> List[TextContent]:
+    loop = asyncio.get_event_loop()
+    from_function = arguments["from_function"]
+    to_function = arguments["to_function"]
+    max_depth = arguments.get("max_depth", 10)
+    # Run synchronous method in executor to avoid blocking event loop
+    with state_manager.tool_execution():
+        paths = await loop.run_in_executor(
+            None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
+        )
+    output_paths: Dict[str, Any] = {"paths": paths}
+    if not paths:
+        output_paths["metadata"] = {
+            "suggestions": suggestions.for_get_call_path_empty(
+                from_function, to_function, max_depth
+            ),
+        }
+    return [TextContent(type="text", text=json.dumps(output_paths, indent=2))]
+
+
+async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    try:
+        # 1. Management tools (no analyzer needed)
+        if name == "set_project_directory":
+            return await _handle_set_project_directory(arguments)
+
+        # 2. Check if analyzer is initialized
         if analyzer is None or not state_manager.is_ready_for_queries():
             return [
                 TextContent(
@@ -501,7 +1047,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 )
             ]
 
-        # Define tools that are subject to query behavior policy
+        # 3. Policy check for query tools
         query_tools = {
             "search_classes",
             "search_functions",
@@ -515,542 +1061,33 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             "get_call_path",
         }
 
-        # Check query behavior policy for query tools (but not management tools)
         if name in query_tools:
             allowed, policy_message = check_query_policy(name)
             if not allowed:
                 return [TextContent(type="text", text=policy_message)]
 
-        # Get event loop for running synchronous operations in executor
-        loop = asyncio.get_event_loop()
+        # 4. Route to specific handler
+        handlers = {
+            "search_classes": _handle_search_classes,
+            "search_functions": _handle_search_functions,
+            "get_class_info": _handle_get_class_info,
+            "get_type_alias_info": _handle_get_type_alias_info,
+            "search_symbols": _handle_search_symbols,
+            "find_in_file": _handle_find_in_file,
+            "refresh_project": _handle_refresh_project,
+            "check_system_status": _handle_check_system_status,
+            "wait_for_indexing": _handle_wait_for_indexing,
+            "get_class_hierarchy": _handle_get_class_hierarchy,
+            "find_incoming_calls": _handle_find_incoming_calls,
+            "get_outgoing_calls": _handle_get_outgoing_calls,
+            "get_call_sites": _handle_get_call_sites,
+            "get_call_path": _handle_get_call_path,
+        }
 
-        if name == "search_classes":
-            project_only = _parse_search_scope(arguments)
-            pattern = arguments["symbol_name"]
-            file_name = arguments.get("file_name", None)
-            namespace = arguments.get("namespace", None)
-            max_results = arguments.get("max_results", None)
-            include_base_classes = arguments.get("include_base_classes", True)
-            # Run synchronous method in executor to avoid blocking event loop
-            with state_manager.tool_execution():
-                raw_results = await loop.run_in_executor(
-                    None,
-                    lambda: analyzer.search_classes(
-                        pattern,
-                        project_only,
-                        file_name,
-                        namespace,
-                        max_results,
-                        include_base_classes,
-                    ),
-                )
-            fallback = analyzer.pop_last_fallback()
-            # Handle tuple return (results, total_count) when max_results is specified
-            if isinstance(raw_results, tuple):
-                results, total_count = raw_results
-            else:
-                results, total_count = raw_results, None
-            # Wrap with appropriate metadata based on special conditions
-            enhanced_result = _create_search_result(
-                results, state_manager, "search_classes", max_results, total_count, fallback
-            )
-            if results:
-                enhanced_result.next_steps = suggestions.for_search_classes(
-                    results,
-                    pattern=pattern,
-                    file_name=file_name,
-                    namespace=namespace,
-                )
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+        if name in handlers:
+            return await handlers[name](arguments)
 
-        elif name == "search_functions":
-            project_only = _parse_search_scope(arguments)
-            class_name = arguments.get("class_name", None)
-            file_name = arguments.get("file_name", None)
-            namespace = arguments.get("namespace", None)
-            pattern = arguments["symbol_name"]
-            max_results = arguments.get("max_results", None)
-            signature_pattern = arguments.get("signature_pattern", None)
-            include_attributes = arguments.get("include_attributes", False)
-            # Run synchronous method in executor to avoid blocking event loop
-            with state_manager.tool_execution():
-                raw_results = await loop.run_in_executor(
-                    None,
-                    lambda: analyzer.search_functions(
-                        pattern,
-                        project_only,
-                        class_name,
-                        file_name,
-                        namespace,
-                        max_results,
-                        signature_pattern,
-                        include_attributes,
-                    ),
-                )
-            fallback = analyzer.pop_last_fallback()
-            # Handle tuple return (results, total_count) when max_results is specified
-            if isinstance(raw_results, tuple):
-                results, total_count = raw_results
-            else:
-                results, total_count = raw_results, None
-            # Wrap with appropriate metadata based on special conditions
-            enhanced_result = _create_search_result(
-                results, state_manager, "search_functions", max_results, total_count, fallback
-            )
-            if results:
-                enhanced_result.next_steps = suggestions.for_search_functions(results)
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-
-        elif name == "get_class_info":
-            class_name = str(arguments["class_name"])
-            # Run synchronous method in executor to avoid blocking event loop
-            result = await loop.run_in_executor(
-                None, lambda: analyzer.get_class_info(class_name)  # type: ignore[arg-type]
-            )
-            # Wrap with metadata (even if not found)
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                result, state_manager, "get_class_info"
-            )
-            if result and "error" not in (result or {}):
-                enhanced_result.next_steps = suggestions.for_get_class_info(result)
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-
-        elif name == "get_type_alias_info":
-            type_name = arguments["type_name"]
-            # Run synchronous method in executor to avoid blocking event loop
-            result = await loop.run_in_executor(
-                None, lambda: analyzer.get_type_alias_info(type_name)
-            )
-            # Wrap with metadata
-            enhanced_result = EnhancedQueryResult.create_from_state(
-                result, state_manager, "get_type_alias_info"
-            )
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-
-        elif name == "search_symbols":
-            pattern = arguments["symbol_name"]
-            project_only = _parse_search_scope(arguments)
-            symbol_types = arguments.get("symbol_types", None)
-            namespace = arguments.get("namespace", None)
-            max_results = arguments.get("max_results", None)
-            signature_pattern = arguments.get("signature_pattern", None)
-            # Run synchronous method in executor to avoid blocking event loop
-            raw_results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.search_symbols(
-                    pattern,
-                    project_only,
-                    symbol_types,
-                    namespace,
-                    max_results,
-                    signature_pattern,
-                ),
-            )
-            fallback = analyzer.pop_last_fallback()
-            # Handle tuple return (results, total_count) when max_results is specified
-            if isinstance(raw_results, tuple):
-                results, total_count = raw_results
-            else:
-                results, total_count = raw_results, None
-            # Wrap with appropriate metadata based on special conditions
-            enhanced_result = _create_search_result(
-                results, state_manager, "search_symbols", max_results, total_count, fallback
-            )
-            return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
-
-        elif name == "find_in_file":
-            file_path = arguments["file_path"]
-            pattern = arguments["pattern"]
-            # Run synchronous method in executor to avoid blocking event loop
-            with state_manager.tool_execution():
-                results = await loop.run_in_executor(
-                    None, lambda: analyzer.find_in_file(file_path, pattern)
-                )
-            # find_in_file returns {"results": [...], "matched_files": [...], ...}
-            # Count the actual symbol results for metadata logic
-            result_list = results.get("results", []) if isinstance(results, dict) else []
-            # Wrap with appropriate metadata based on special conditions
-            # Use _create_search_result with the result list for counting
-            enhanced_result = _create_search_result(
-                result_list, state_manager, "find_in_file", None, None
-            )
-            # But return the full results dict (with matched_files, suggestions, etc.)
-            # Merge the metadata into the results dict
-            output = results.copy() if isinstance(results, dict) else {"results": results}
-            enhanced_dict = enhanced_result.to_dict()
-            if "metadata" in enhanced_dict:
-                output["metadata"] = enhanced_dict["metadata"]
-            return [TextContent(type="text", text=json.dumps(output, indent=2))]
-
-        elif name == "refresh_project":
-            refresh_mode = arguments.get("refresh_mode", "incremental")
-
-            # Issue #7: Warn if full mode is used (should be rare)
-            if refresh_mode == "full":
-                diagnostics.warning(
-                    "refresh_mode='full' was requested - this will re-analyze ALL files and may "
-                    "take 5-10 minutes on large projects. Incremental mode is 30-300x faster "
-                    "and sufficient for 99% of cases."
-                )
-
-            # Transition to REFRESHING state synchronously
-            state_manager.transition_to(AnalyzerState.REFRESHING)
-
-            # Start refresh in background (non-blocking, similar to set_project_directory)
-            async def run_background_refresh():
-                try:
-                    loop = asyncio.get_event_loop()
-
-                    # Create progress callback that updates state_manager (same as BackgroundIndexer)
-                    def progress_callback(progress: IndexingProgress):
-                        """Callback to update progress in state manager during refresh"""
-                        state_manager.update_progress(progress)
-
-                    if refresh_mode == "incremental":
-                        try:
-                            from mcp_server.incremental_analyzer import IncrementalAnalyzer
-
-                            diagnostics.info("Starting incremental refresh...")
-                            incremental_analyzer = IncrementalAnalyzer(analyzer)
-                            result = await loop.run_in_executor(
-                                None,
-                                lambda: incremental_analyzer.perform_incremental_analysis(
-                                    progress_callback, state_manager.wait_for_tools_to_finish
-                                ),
-                            )
-
-                            if result.changes.is_empty():
-                                diagnostics.info(
-                                    "Incremental refresh complete: no changes detected"
-                                )
-                            else:
-                                diagnostics.info(
-                                    f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
-                                    f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
-                                )
-
-                            state_manager.transition_to(AnalyzerState.INDEXED)
-                            return
-
-                        except Exception as e:
-                            diagnostics.error(f"Incremental analysis failed: {e}")
-                            diagnostics.info("Falling back to full refresh...")
-                            # Fallback to full refresh
-                            modified_count = await loop.run_in_executor(
-                                None,
-                                lambda: analyzer.refresh_if_needed(
-                                    progress_callback, state_manager.wait_for_tools_to_finish
-                                ),
-                            )
-                            diagnostics.info(
-                                f"Fallback full refresh complete: re-analyzed {modified_count} files"
-                            )
-                            state_manager.transition_to(AnalyzerState.INDEXED)
-                            return
-
-                    else:
-                        # Full refresh
-                        diagnostics.info("Starting full refresh...")
-                        modified_count = await loop.run_in_executor(
-                            None, lambda: analyzer.refresh_if_needed(progress_callback)
-                        )
-                        diagnostics.info(
-                            f"Full refresh complete: re-analyzed {modified_count} files"
-                        )
-                        state_manager.transition_to(AnalyzerState.INDEXED)
-                        return
-
-                except Exception as e:
-                    diagnostics.error(f"Background refresh failed: {e}")
-                    state_manager.transition_to(AnalyzerState.ERROR)
-                    pass
-
-            # Create background task (non-blocking)
-            asyncio.create_task(run_background_refresh())
-
-            # Return immediately - refresh continues in background
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Refresh started in background (mode: {refresh_mode}).\n"
-                    f"Use 'sync_project' to check progress.\n"
-                    f"Tools will continue to work and return results based on current cache state.",
-                )
-            ]
-
-        elif name == "check_system_status":
-            # Combined server diagnostics and indexing status
-            status_dict = state_manager.get_status_dict()
-
-            ccm = analyzer.compile_commands_manager
-            total_classes = sum(len(infos) for infos in analyzer.class_index.values())
-            total_functions = sum(len(infos) for infos in analyzer.function_index.values())
-
-            status_dict.update(
-                {
-                    "analyzer_type": "python_enhanced",
-                    "call_graph_enabled": True,
-                    "compile_commands_enabled": ccm.enabled if ccm else False,
-                    "compile_commands_path": ccm.compile_commands_path if ccm else None,
-                    "parsed_files": len(analyzer.file_index),
-                    "indexed_classes": total_classes,
-                    "indexed_functions": total_functions,
-                }
-            )
-            return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
-
-        elif name == "wait_for_indexing":
-            # Internal handler - used by sync_project and tests
-            timeout = arguments.get("timeout", 60.0)
-
-            if state_manager.is_fully_indexed():
-                return [TextContent(type="text", text="Indexing already complete.")]
-
-            completed = await loop.run_in_executor(
-                None, lambda: state_manager.wait_for_indexed(timeout)
-            )
-
-            if completed:
-                progress = state_manager.get_progress()
-                indexed_count = progress.indexed_files if progress else 0
-                failed_count = progress.failed_files if progress else 0
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Indexing complete! Indexed {indexed_count} files successfully ({failed_count} failed).",
-                    )
-                ]
-            else:
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Timeout waiting for indexing (waited {timeout}s). Use 'sync_project' to check progress.",
-                    )
-                ]
-
-        elif name == "get_class_hierarchy":
-            class_name = str(arguments["class_name"])
-            max_nodes = arguments.get("max_nodes", 200)
-            max_depth = arguments.get("max_depth", None)
-            direction = arguments.get("direction", "both")
-            output_format = arguments.get("output_format", "json")
-            # Run synchronous method in executor to avoid blocking event loop
-            hierarchy = await loop.run_in_executor(
-                None,
-                lambda: analyzer.get_class_hierarchy(  # type: ignore[arg-type]
-                    class_name, max_nodes=max_nodes, max_depth=max_depth, direction=direction  # type: ignore[arg-type]
-                ),
-            )
-            if hierarchy:
-                # Check for error in hierarchy result
-                if "error" in hierarchy:
-                    from .hierarchy_format import format_hierarchy_error
-
-                    error_text = format_hierarchy_error(hierarchy["error"], output_format)
-                    return [TextContent(type="text", text=error_text)]
-                # Convert to requested output format
-                from .hierarchy_format import convert_hierarchy_format
-
-                formatted = convert_hierarchy_format(hierarchy, output_format)
-                return [TextContent(type="text", text=formatted)]
-            else:
-                from .hierarchy_format import format_hierarchy_error
-
-                error_text = format_hierarchy_error(
-                    f"Class '{class_name}' not found", output_format
-                )
-                return [TextContent(type="text", text=error_text)]
-
-        elif name == "find_incoming_calls":
-            function_name = str(arguments["function_name"])
-            class_name = str(arguments.get("class_name", ""))
-            max_results = arguments.get("max_results", None)
-            project_only = _parse_search_scope(arguments)
-            # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
-            )
-            # Results is dict with "callers" list - use that for metadata logic
-            callers_list = results.get("callers", []) if isinstance(results, dict) else []
-            # 3-case empty-result logic (internal flags stripped before sending to LLM):
-            #   not found            → default "check spelling" suggestions  (None)
-            #   found, no callers    → no hints at all                        ([])
-            #   found, ext. callers  → auto-expand to include external results
-            function_found = (
-                results.pop("_function_found", False) if isinstance(results, dict) else False
-            )
-            has_any_in_graph = (
-                results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
-            )
-            target_qualified_name = (
-                results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
-            )
-            # Auto-expand: when project_only=True yields 0 results but external callers
-            # exist, re-fetch with project_only=False so the LLM gets useful data without
-            # needing to interpret a suggestion and issue a second tool call.
-            search_note = None
-            if project_only and not callers_list and function_found and has_any_in_graph:
-                expanded = await loop.run_in_executor(
-                    None,
-                    lambda: analyzer.find_incoming_calls(function_name, class_name, project_only=False),  # type: ignore[arg-type]
-                )
-                # Strip internal flags from expanded results
-                expanded.pop("_function_found", None)
-                expanded.pop("_has_any_in_graph", None)
-                expanded.pop("_target_qualified_name", None)
-                results = expanded
-                callers_list = results.get("callers", [])
-                ext_count = len(callers_list)
-                search_note = (
-                    f"Project-only search yielded 0 results. "
-                    f"Auto-expanded to include external libraries "
-                    f"({ext_count} external caller{'s' if ext_count != 1 else ''} found)."
-                )
-            total_count = len(callers_list)
-            # Apply truncation if max_results specified
-            if max_results is not None and len(callers_list) > max_results:
-                results["callers"] = callers_list[:max_results]
-            empty_suggestions: Optional[List[str]] = None
-            if not function_found:
-                pass  # None → default "check spelling / broaden pattern"
-            elif has_any_in_graph:
-                empty_suggestions = []  # auto-expanded above; no hint needed
-            else:
-                empty_suggestions = []  # genuinely no callers → no hints
-            # Wrap with appropriate metadata
-            enhanced_result = _create_search_result(
-                results.get("callers", []),
-                state_manager,
-                "find_incoming_calls",
-                max_results,
-                total_count,
-                empty_suggestions=empty_suggestions,
-            )
-            enhanced_result.next_steps = suggestions.for_find_incoming_calls(
-                function_name, results, qualified_name=target_qualified_name
-            )
-            # Merge metadata into results dict
-            output = results.copy() if isinstance(results, dict) else {"callers": results}
-            enhanced_dict = enhanced_result.to_dict()
-            if "metadata" in enhanced_dict:
-                output["metadata"] = enhanced_dict["metadata"]
-            if search_note:
-                output["search_note"] = search_note
-            return [TextContent(type="text", text=json.dumps(output, indent=2))]
-
-        elif name == "get_outgoing_calls":
-            function_name = str(arguments["function_name"])
-            class_name = str(arguments.get("class_name", ""))
-            max_results = arguments.get("max_results", None)
-            project_only = _parse_search_scope(arguments)
-            # Run synchronous method in executor to avoid blocking event loop
-            results = await loop.run_in_executor(
-                None,
-                lambda: analyzer.find_callees(function_name, class_name, project_only=project_only),  # type: ignore[arg-type]
-            )
-            # Results is dict with "callees" list - use that for metadata logic
-            callees_list = results.get("callees", []) if isinstance(results, dict) else []
-            # 3-case empty-result logic (internal flags stripped before sending to LLM):
-            #   not found               → default "check spelling" suggestions  (None)
-            #   found, no callees       → no hints at all                        ([])
-            #   found, ext. callees     → auto-expand to include external results
-            function_found = (
-                results.pop("_function_found", False) if isinstance(results, dict) else False
-            )
-            has_any_in_graph = (
-                results.pop("_has_any_in_graph", False) if isinstance(results, dict) else False
-            )
-            target_qualified_name = (
-                results.pop("_target_qualified_name", None) if isinstance(results, dict) else None
-            )
-            # Auto-expand: when project_only=True yields 0 results but external callees
-            # exist, re-fetch with project_only=False so the LLM gets useful data without
-            # needing to interpret a suggestion and issue a second tool call.
-            search_note = None
-            if project_only and not callees_list and function_found and has_any_in_graph:
-                expanded = await loop.run_in_executor(
-                    None,
-                    lambda: analyzer.find_callees(function_name, class_name, project_only=False),  # type: ignore[arg-type]
-                )
-                # Strip internal flags from expanded results
-                expanded.pop("_function_found", None)
-                expanded.pop("_has_any_in_graph", None)
-                expanded.pop("_target_qualified_name", None)
-                results = expanded
-                callees_list = results.get("callees", [])
-                ext_count = len(callees_list)
-                search_note = (
-                    f"Project-only search yielded 0 results. "
-                    f"Auto-expanded to include external libraries "
-                    f"({ext_count} external callee{'s' if ext_count != 1 else ''} found)."
-                )
-            total_count = len(callees_list)
-            # Apply truncation if max_results specified
-            if max_results is not None and len(callees_list) > max_results:
-                results["callees"] = callees_list[:max_results]
-            empty_suggestions = None
-            if not function_found:
-                pass  # None → default "check spelling / broaden pattern"
-            elif has_any_in_graph:
-                empty_suggestions = []  # auto-expanded above; no hint needed
-            else:
-                empty_suggestions = []  # genuinely calls nothing → no hints
-            # Wrap with appropriate metadata
-            enhanced_result = _create_search_result(
-                results.get("callees", []),
-                state_manager,
-                "get_outgoing_calls",
-                max_results,
-                total_count,
-                empty_suggestions=empty_suggestions,
-            )
-            enhanced_result.next_steps = suggestions.for_get_outgoing_calls(
-                function_name, results, qualified_name=target_qualified_name
-            )
-            # Merge metadata into results dict
-            output = results.copy() if isinstance(results, dict) else {"callees": results}
-            enhanced_dict = enhanced_result.to_dict()
-            if "metadata" in enhanced_dict:
-                output["metadata"] = enhanced_dict["metadata"]
-            if search_note:
-                output["search_note"] = search_note
-            return [TextContent(type="text", text=json.dumps(output, indent=2))]
-
-        elif name == "get_call_sites":
-            function_name = arguments["function_name"]
-            class_name = arguments.get("class_name", "")
-            # Run synchronous method in executor to avoid blocking event loop
-            call_sites = await loop.run_in_executor(
-                None, lambda: analyzer.get_call_sites(function_name, class_name)
-            )
-            output_sites: Dict[str, Any] = {"call_sites": call_sites}
-            if not call_sites:
-                output_sites["metadata"] = {
-                    "suggestions": suggestions.for_get_call_sites_empty(function_name, class_name),
-                }
-            return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
-
-        elif name == "get_call_path":
-            from_function = arguments["from_function"]
-            to_function = arguments["to_function"]
-            max_depth = arguments.get("max_depth", 10)
-            # Run synchronous method in executor to avoid blocking event loop
-            with state_manager.tool_execution():
-                paths = await loop.run_in_executor(
-                    None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
-                )
-            output_paths: Dict[str, Any] = {"paths": paths}
-            if not paths:
-                output_paths["metadata"] = {
-                    "suggestions": suggestions.for_get_call_path_empty(
-                        from_function, to_function, max_depth
-                    ),
-                }
-            return [TextContent(type="text", text=json.dumps(output_paths, indent=2))]
-
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except Exception as e:
         return [
