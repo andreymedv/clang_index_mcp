@@ -620,6 +620,92 @@ class SearchEngine:
 
         return True
 
+    def _create_function_result(self, info: SymbolInfo, include_attributes: bool) -> Dict[str, Any]:
+        """Build a result dictionary for a function search hit."""
+        d: Dict[str, Any] = {
+            "prototype": _build_function_prototype(info),
+            "qualified_name": info.qualified_name or info.name,
+            "namespace": info.namespace,
+            "kind": info.kind,
+            "is_project": info.is_project,
+            "parent_class": info.parent_class or None,
+            "template_kind": info.template_kind,
+            "template_parameters": info.template_parameters,
+            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+            **build_location_objects(info),
+            "brief": info.brief,
+            "doc_comment": info.doc_comment,
+        }
+        if include_attributes:
+            d["attributes"] = _build_attributes(info)
+        return omit_empty(d)
+
+    def _search_functions_in_file_index(
+        self,
+        pattern: str,
+        pattern_type: str,
+        project_only: bool,
+        class_name: Optional[str],
+        namespace: Optional[str],
+        signature_pattern: Optional[str],
+        file_name: str,
+        include_attributes: bool,
+    ) -> List[Dict[str, Any]]:
+        """Search for functions in file_index when a file_name filter is provided."""
+        results: List[Dict[str, Any]] = []
+        with self.index_lock:
+            for file_path, infos in self.file_index.items():
+                if file_name not in file_path:
+                    continue
+                for info in infos:
+                    if self._matches_function_criteria(
+                        info,
+                        pattern,
+                        pattern_type,
+                        project_only,
+                        class_name,
+                        namespace,
+                        signature_pattern,
+                    ):
+                        results.append(self._create_function_result(info, include_attributes))
+        return results
+
+    def _search_functions_in_function_index(
+        self,
+        pattern: str,
+        pattern_type: str,
+        project_only: bool,
+        class_name: Optional[str],
+        namespace: Optional[str],
+        signature_pattern: Optional[str],
+        include_attributes: bool,
+    ) -> List[Dict[str, Any]]:
+        """Search for functions in function_index."""
+        results: List[Dict[str, Any]] = []
+        with self.index_lock:
+            for name, infos in self.function_index.items():
+                for info in infos:
+                    if self._matches_function_criteria(
+                        info,
+                        pattern,
+                        pattern_type,
+                        project_only,
+                        class_name,
+                        namespace,
+                        signature_pattern,
+                    ):
+                        results.append(self._create_function_result(info, include_attributes))
+        return results
+
+    @staticmethod
+    def _apply_max_results(
+        results: List[Dict[str, Any]], max_results: Optional[int]
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+        """Truncate results if max_results is specified."""
+        if max_results is not None:
+            return (results[:max_results], len(results))
+        return results
+
     def search_functions(
         self,
         pattern: str,
@@ -667,85 +753,36 @@ class SearchEngine:
 
         Task: T2.2.2 (Qualified Names Phase 2)
         """
-        # Validate regex patterns for ReDoS prevention
         pattern_type = self._detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
-        # Normalize class_name: extract simple name from qualified name
-        # parent_class is stored as simple name (e.g., "Widget"), but users may pass
-        # qualified name (e.g., "myapp::builders::Widget")
         if class_name:
             class_name = self._extract_simple_name(class_name)
 
-        results = []
-
-        # Helper to create result dict
-        def _create_result(info: SymbolInfo) -> Dict[str, Any]:
-            d: Dict[str, Any] = {
-                "prototype": _build_function_prototype(info),
-                "qualified_name": info.qualified_name or info.name,
-                "namespace": info.namespace,
-                "kind": info.kind,
-                "is_project": info.is_project,
-                "parent_class": info.parent_class or None,
-                "template_kind": info.template_kind,
-                "template_parameters": info.template_parameters,
-                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-                **build_location_objects(info),
-                "brief": info.brief,
-                "doc_comment": info.doc_comment,
-            }
-            if include_attributes:
-                d["attributes"] = _build_attributes(info)
-            return omit_empty(d)
-
-        # CRITICAL FIX FOR ISSUE #8:
-        # When file_name is specified, search file_index instead of function_index
-        # This ensures we find declarations in headers even when definition-wins
-        # removed them from function_index
         if file_name:
-            # Search file_index for file-specific queries
-            with self.index_lock:
-                for file_path, infos in self.file_index.items():
-                    # Match if the file path contains the specified file_name
-                    if file_name not in file_path:
-                        continue
-
-                    for info in infos:
-                        if self._matches_function_criteria(
-                            info,
-                            pattern,
-                            pattern_type,
-                            project_only,
-                            class_name,
-                            namespace,
-                            signature_pattern,
-                        ):
-                            results.append(_create_result(info))
+            results = self._search_functions_in_file_index(
+                pattern,
+                pattern_type,
+                project_only,
+                class_name,
+                namespace,
+                signature_pattern,
+                file_name,
+                include_attributes,
+            )
         else:
-            # Original logic: search function_index
-            with self.index_lock:
-                for name, infos in self.function_index.items():
-                    for info in infos:
-                        if self._matches_function_criteria(
-                            info,
-                            pattern,
-                            pattern_type,
-                            project_only,
-                            class_name,
-                            namespace,
-                            signature_pattern,
-                        ):
-                            results.append(_create_result(info))
+            results = self._search_functions_in_function_index(
+                pattern,
+                pattern_type,
+                project_only,
+                class_name,
+                namespace,
+                signature_pattern,
+                include_attributes,
+            )
 
-        # Handle max_results truncation
-        if max_results is not None:
-            total_count = len(results)
-            truncated_results = results[:max_results]
-            return (truncated_results, total_count)
-
-        return results
+        return self._apply_max_results(results, max_results)
 
     def search_symbols(
         self,
