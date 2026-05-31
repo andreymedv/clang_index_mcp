@@ -11,21 +11,8 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 
-def configure_libclang() -> bool:
-    """Find and configure libclang library using hybrid discovery approach."""
-    # If already loaded, keep current configuration.
-    if Config.loaded:
-        diagnostics.info("libclang already loaded; keeping existing configuration")
-        return True
-
-    import glob
-    import platform
-    import shutil
-    import subprocess
-
-    system = platform.system()
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
+def _configure_from_env() -> bool:
+    """Try to configure libclang from environment variables."""
 
     env_path = os.environ.get("LIBCLANG_PATH")
     if env_path and os.path.exists(env_path):
@@ -47,27 +34,35 @@ def configure_libclang() -> bool:
     elif lib_path:
         diagnostics.warning(f"CLANG_LIBRARY_PATH set but directory not found: {lib_path}")
 
-    if system == "Darwin":
-        try:
-            result = subprocess.run(
-                ["xcrun", "--find", "clang"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                clang_path = result.stdout.strip()
-                clang_dir = os.path.dirname(os.path.dirname(clang_path))
-                libclang_path = os.path.join(clang_dir, "lib", "libclang.dylib")
-                if os.path.exists(libclang_path):
-                    diagnostics.info(f"Found libclang via xcrun: {libclang_path}")
-                    Config.set_library_file(libclang_path)
-                    return True
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+    return False
 
-    diagnostics.info("Searching for system-installed libclang...")
 
+def _configure_from_xcrun() -> bool:
+    """Try to configure libclang using xcrun on macOS."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["xcrun", "--find", "clang"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            clang_path = result.stdout.strip()
+            clang_dir = os.path.dirname(os.path.dirname(clang_path))
+            libclang_path = os.path.join(clang_dir, "lib", "libclang.dylib")
+            if os.path.exists(libclang_path):
+                diagnostics.info(f"Found libclang via xcrun: {libclang_path}")
+                Config.set_library_file(libclang_path)
+                return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return False
+
+
+def _get_platform_config(system: str) -> dict:
+    """Return platform-specific configuration for libclang discovery."""
     platform_config = {
         "Windows": {
             "lib_names": ["libclang.dll", "clang.dll"],
@@ -105,16 +100,19 @@ def configure_libclang() -> bool:
             "llvm_config_query": "--libdir",
         },
     }
+    return platform_config.get(system, platform_config["Linux"])
 
-    config = platform_config.get(system, platform_config["Linux"])
-    lib_names = config["lib_names"]
-    system_base_paths = list(config["system_paths"])
+
+def _get_llvm_config_libdir(llvm_config_query: str) -> str | None:
+    """Get the library directory from llvm-config."""
+    import shutil
+    import subprocess
 
     llvm_config = shutil.which("llvm-config")
     if llvm_config:
         try:
             result = subprocess.run(
-                [llvm_config, str(config["llvm_config_query"])],
+                [llvm_config, str(llvm_config_query)],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -122,9 +120,23 @@ def configure_libclang() -> bool:
             if result.returncode == 0:
                 lib_dir = result.stdout.strip()
                 if os.path.exists(lib_dir):
-                    system_base_paths.insert(0, lib_dir)
+                    return lib_dir
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
+    return None
+
+
+def _configure_from_system(system: str) -> bool:
+    """Try to configure libclang from system-installed paths."""
+    import glob
+
+    config = _get_platform_config(system)
+    lib_names = config["lib_names"]
+    system_base_paths = list(config["system_paths"])
+
+    lib_dir = _get_llvm_config_libdir(config["llvm_config_query"])
+    if lib_dir:
+        system_base_paths.insert(0, lib_dir)
 
     for base_path in system_base_paths:
         for lib_name in lib_names:
@@ -140,7 +152,15 @@ def configure_libclang() -> bool:
                     Config.set_library_file(path)
                     return True
 
-    diagnostics.info("No system libclang found, trying bundled libraries...")
+    return False
+
+
+def _configure_from_bundled(system: str, parent_dir: str) -> bool:
+    """Try to configure libclang from bundled libraries."""
+
+    config = _get_platform_config(system)
+    lib_names = config["lib_names"]
+
     bundled_subdirs = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
     platform_subdir = bundled_subdirs.get(system, "linux")
 
@@ -152,6 +172,34 @@ def configure_libclang() -> bool:
             return True
 
     return False
+
+
+def configure_libclang() -> bool:
+    """Find and configure libclang library using hybrid discovery approach."""
+    # If already loaded, keep current configuration.
+    if Config.loaded:
+        diagnostics.info("libclang already loaded; keeping existing configuration")
+        return True
+
+    import platform
+
+    if _configure_from_env():
+        return True
+
+    system = platform.system()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+
+    if system == "Darwin" and _configure_from_xcrun():
+        return True
+
+    diagnostics.info("Searching for system-installed libclang...")
+
+    if _configure_from_system(system):
+        return True
+
+    diagnostics.info("No system libclang found, trying bundled libraries...")
+    return _configure_from_bundled(system, parent_dir)
 
 
 def get_libclang_runtime_info() -> dict:
