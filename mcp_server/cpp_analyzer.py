@@ -5166,6 +5166,74 @@ class CppAnalyzer:
             "template_types": project_types,
         }
 
+    def _collect_target_usrs(self, target_functions: List[Dict[str, Any]]) -> Set[str]:
+        """Collect USRs for target functions by matching file/line metadata."""
+        target_usrs = set()
+        for func in target_functions:
+            _loc = func.get("definition") or func.get("declaration") or {}
+            _func_file = _loc.get("file")
+            _func_line = _loc.get("line")
+            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
+                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
+                    target_usrs.add(symbol.usr)
+        return target_usrs
+
+    def _add_caller(
+        self, caller_usr: str, callers_list: List[Dict[str, Any]], project_only: bool
+    ) -> None:
+        """Add a single caller to the callers list, respecting project_only filter."""
+        if caller_usr in self.usr_index:
+            caller_info = self.usr_index[caller_usr]
+            callers_list.append(
+                omit_empty(
+                    {
+                        "qualified_name": caller_info.qualified_name or caller_info.name,
+                        "kind": caller_info.kind,
+                        "signature": caller_info.signature,
+                        "parent_class": caller_info.parent_class or None,
+                        "is_project": caller_info.is_project,
+                        **build_location_objects(caller_info),
+                    }
+                )
+            )
+        elif not project_only:
+            rich = self._lookup_symbol_info(caller_usr)
+            if rich is not None:
+                callers_list.append(rich)
+            else:
+                callers_list.append(
+                    {
+                        "qualified_name": _usr_to_display_name(caller_usr),
+                        "is_project": False,
+                    }
+                )
+
+    def _add_call_site(
+        self, call_site, call_sites_list: List[Dict[str, Any]], project_only: bool
+    ) -> None:
+        """Add a single call site to the call sites list, respecting project_only filter."""
+        if call_site.caller_usr in self.usr_index:
+            caller_info = self.usr_index[call_site.caller_usr]
+            call_sites_list.append(
+                {
+                    "file": call_site.file,
+                    "line": call_site.line,
+                    "column": call_site.column,
+                    "caller": caller_info.name,
+                    "caller_file": caller_info.file,
+                    "caller_signature": caller_info.signature,
+                }
+            )
+        elif not project_only:
+            call_sites_list.append(
+                {
+                    "file": call_site.file,
+                    "line": call_site.line,
+                    "column": call_site.column,
+                    "caller": _usr_to_display_name(call_site.caller_usr),
+                }
+            )
+
     def find_incoming_calls(
         self,
         function_name: str,
@@ -5189,95 +5257,27 @@ class CppAnalyzer:
                 - callers: List of caller function info (backward compatible)
                 - call_sites: List of call site locations (Phase 3, if include_call_sites=True)
         """
-        callers_list = []
-        call_sites_list = []
+        callers_list: List[Dict[str, Any]] = []
+        call_sites_list: List[Dict[str, Any]] = []
 
-        # Find the target function(s)
-        # Pass function_name directly so matches_qualified_pattern uses suffix matching for
-        # partially qualified names (e.g. "ClassName::method") and unqualified matching for
-        # simple names (e.g. "method"). Wrapping in ^re.escape()$ would force regex mode,
-        # breaking partial qualification.
         target_functions = self.search_functions(
             function_name, project_only=False, class_name=class_name
         )
 
-        # Collect USRs of target functions
-        target_usrs = set()
-        for func in target_functions:
-            # Find the full symbol info with USR
-            # Extract file/line from nested location object (definition or declaration)
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    target_usrs.add(symbol.usr)
+        target_usrs = self._collect_target_usrs(target_functions)
 
-        # Find all callers; also count raw graph entries to distinguish
-        # "genuinely no callers" from "callers exist but all are external".
         total_raw_callers = 0
         for usr in target_usrs:
             callers = self.call_graph_analyzer.find_incoming_calls(usr)
             total_raw_callers += len(callers)
             for caller_usr in callers:
-                if caller_usr in self.usr_index:
-                    caller_info = self.usr_index[caller_usr]
-                    callers_list.append(
-                        omit_empty(
-                            {
-                                "qualified_name": caller_info.qualified_name or caller_info.name,
-                                "kind": caller_info.kind,
-                                "signature": caller_info.signature,
-                                "parent_class": caller_info.parent_class or None,
-                                "is_project": caller_info.is_project,
-                                **build_location_objects(caller_info),
-                            }
-                        )
-                    )
-                elif not project_only:
-                    rich = self._lookup_symbol_info(caller_usr)
-                    if rich is not None:
-                        callers_list.append(rich)
-                    else:
-                        callers_list.append(
-                            {
-                                "qualified_name": _usr_to_display_name(caller_usr),
-                                "is_project": False,
-                            }
-                        )
+                self._add_caller(caller_usr, callers_list, project_only)
 
-            # Phase 3: Get call sites with line-level precision
             if include_call_sites:
                 call_sites = self.call_graph_analyzer.get_call_sites_for_callee(usr)
                 for call_site in call_sites:
-                    # Get caller info for each call site
-                    if call_site.caller_usr in self.usr_index:
-                        caller_info = self.usr_index[call_site.caller_usr]
-                        call_sites_list.append(
-                            {
-                                "file": call_site.file,
-                                "line": call_site.line,
-                                "column": call_site.column,
-                                "caller": caller_info.name,
-                                "caller_file": caller_info.file,
-                                "caller_signature": caller_info.signature,
-                            }
-                        )
-                    elif not project_only:
-                        call_sites_list.append(
-                            {
-                                "file": call_site.file,
-                                "line": call_site.line,
-                                "column": call_site.column,
-                                "caller": _usr_to_display_name(call_site.caller_usr),
-                            }
-                        )
+                    self._add_call_site(call_site, call_sites_list, project_only)
 
-        # Return dictionary with both callers and call_sites
-        # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
-        #   _function_found          — True if the function name resolved to at least one USR
-        #   _has_any_in_graph        — True if the call graph has any entries (including external)
-        #   _target_qualified_name   — Qualified name of the first matched function (for hints)
         target_qualified_name = (
             target_functions[0]["qualified_name"] if target_functions else function_name
         )
@@ -5290,7 +5290,6 @@ class CppAnalyzer:
         }
 
         if include_call_sites:
-            # Sort call sites by file, then line
             call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
             result["call_sites"] = call_sites_list
             result["total_call_sites"] = len(call_sites_list)
