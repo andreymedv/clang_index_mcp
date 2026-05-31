@@ -256,6 +256,46 @@ class CompileCommandsManager:
 
         return args
 
+    @staticmethod
+    def _validate_resource_dir(include_dir: str) -> bool:
+        """Check if a directory contains the required builtin headers."""
+        return os.path.isdir(include_dir) and os.path.isfile(os.path.join(include_dir, "stddef.h"))
+
+    def _get_resource_dir_from_clang(self) -> Optional[str]:
+        """Try to get the clang resource directory by invoking clang directly."""
+        try:
+            result = subprocess.run(
+                ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                include_dir = os.path.join(result.stdout.strip(), "include")
+                if self._validate_resource_dir(include_dir):
+                    diagnostics.debug(f"Found clang resource directory: {include_dir}")
+                    return include_dir
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            diagnostics.debug(f"Clang execution failed, trying fallback locations: {e}")
+        return None
+
+    def _find_resource_dir_in_common_locations(self) -> Optional[str]:
+        """Search for the clang resource directory in common system locations."""
+        clang_lib_dir = "/usr/lib/clang"
+        if not os.path.isdir(clang_lib_dir):
+            return None
+
+        versions = []
+        for entry in os.listdir(clang_lib_dir):
+            include_dir = os.path.join(clang_lib_dir, entry, "include")
+            if self._validate_resource_dir(include_dir):
+                versions.append((entry, include_dir))
+
+        if versions:
+            versions.sort(reverse=True)
+            include_dir = versions[0][1]
+            diagnostics.debug(f"Found clang resource directory (fallback): {include_dir}")
+            return include_dir
+
+        return None
+
     def _detect_clang_resource_dir(self) -> Optional[str]:
         """
         Detect the clang resource directory containing builtin headers.
@@ -273,45 +313,13 @@ class CompileCommandsManager:
             Path to the resource directory's include folder, or None if not found
         """
         try:
-            # Try to get resource directory from clang itself
-            try:
-                result = subprocess.run(
-                    ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
-                )
+            include_dir = self._get_resource_dir_from_clang()
+            if include_dir is not None:
+                return include_dir
 
-                if result.returncode == 0:
-                    resource_dir = result.stdout.strip()
-                    include_dir = os.path.join(resource_dir, "include")
-
-                    # Verify the directory exists and contains stddef.h
-                    if os.path.isdir(include_dir):
-                        stddef_path = os.path.join(include_dir, "stddef.h")
-                        if os.path.isfile(stddef_path):
-                            diagnostics.debug(f"Found clang resource directory: {include_dir}")
-                            return include_dir
-            except (subprocess.SubprocessError, FileNotFoundError) as e:
-                diagnostics.debug(f"Clang execution failed, trying fallback locations: {e}")
-
-            # Fallback: try common locations
-            # Format: /usr/lib/clang/<version>/include
-            clang_lib_dir = "/usr/lib/clang"
-            if os.path.isdir(clang_lib_dir):
-                # Find the highest version directory
-                versions = []
-                for entry in os.listdir(clang_lib_dir):
-                    version_dir = os.path.join(clang_lib_dir, entry)
-                    include_dir = os.path.join(version_dir, "include")
-                    stddef_path = os.path.join(include_dir, "stddef.h")
-
-                    if os.path.isfile(stddef_path):
-                        versions.append((entry, include_dir))
-
-                if versions:
-                    # Sort by version (simple string sort works for most cases)
-                    versions.sort(reverse=True)
-                    include_dir = versions[0][1]
-                    diagnostics.debug(f"Found clang resource directory (fallback): {include_dir}")
-                    return include_dir
+            include_dir = self._find_resource_dir_in_common_locations()
+            if include_dir is not None:
+                return include_dir
 
             diagnostics.warning(
                 "Could not detect clang resource directory - builtin headers may not be found"
