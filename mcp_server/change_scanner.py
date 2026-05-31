@@ -245,12 +245,12 @@ class ChangeScanner:
         try:
             metadata = self.analyzer.cache_manager.backend.get_file_metadata(file_path)
             if metadata:
-                return metadata.get("file_hash", "")
+                return str(metadata.get("file_hash", ""))
         except Exception as e:
             diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
 
         if file_path in self.analyzer.file_hashes:
-            return self.analyzer.file_hashes[file_path]
+            return str(self.analyzer.file_hashes[file_path])
 
         return None
 
