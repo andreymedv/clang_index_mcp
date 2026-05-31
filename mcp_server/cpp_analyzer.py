@@ -5437,6 +5437,47 @@ class CppAnalyzer:
 
         return call_sites_list
 
+    def _add_callee(
+        self,
+        callee_usr: str,
+        callees_list: List[Dict[str, Any]],
+        project_only: bool,
+        target_usrs: Set[str],
+    ) -> None:
+        """Add a single callee to the callees list, respecting project_only filter."""
+        if callee_usr in self.usr_index:
+            callee_info = self.usr_index[callee_usr]
+            callees_list.append(
+                omit_empty(
+                    {
+                        "qualified_name": callee_info.qualified_name or callee_info.name,
+                        "kind": callee_info.kind,
+                        "signature": callee_info.signature,
+                        "parent_class": callee_info.parent_class or None,
+                        "is_project": callee_info.is_project,
+                        **build_location_objects(callee_info),
+                    }
+                )
+            )
+            return
+
+        tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
+        if tmpl_info:
+            callees_list.append(tmpl_info)
+            return
+
+        if not project_only:
+            rich = self._lookup_symbol_info(callee_usr)
+            if rich is not None:
+                callees_list.append(rich)
+            else:
+                callees_list.append(
+                    {
+                        "qualified_name": _usr_to_display_name(callee_usr),
+                        "is_project": False,
+                    }
+                )
+
     def find_callees(
         self, function_name: str, class_name: str = "", project_only: bool = True
     ) -> Dict[str, Any]:
@@ -5456,73 +5497,21 @@ class CppAnalyzer:
                 - callees: List of callee function info (name, kind, file, line, signature,
                           parent_class, is_project, start_line, end_line, header info)
         """
-        callees_list = []
+        callees_list: List[Dict[str, Any]] = []
 
-        # Find the target function(s)
-        # Pass function_name directly (see find_incoming_calls comment for rationale).
         target_functions = self.search_functions(
             function_name, project_only=False, class_name=class_name
         )
 
-        # Collect USRs of target functions
-        target_usrs = set()
-        for func in target_functions:
-            # Find the full symbol info with USR
-            # Extract file/line from nested location object (definition or declaration)
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    target_usrs.add(symbol.usr)
+        target_usrs = self._collect_target_usrs(target_functions)
 
-        # Find all callees; also count raw graph entries to distinguish
-        # "genuinely no callees" from "callees exist but all are external".
         total_raw_callees = 0
         for usr in target_usrs:
             callees = self.call_graph_analyzer.find_callees(usr)
             total_raw_callees += len(callees)
             for callee_usr in callees:
-                if callee_usr in self.usr_index:
-                    callee_info = self.usr_index[callee_usr]
-                    callees_list.append(
-                        omit_empty(
-                            {
-                                "qualified_name": callee_info.qualified_name or callee_info.name,
-                                "kind": callee_info.kind,
-                                "signature": callee_info.signature,
-                                "parent_class": callee_info.parent_class or None,
-                                "is_project": callee_info.is_project,
-                                **build_location_objects(callee_info),
-                            }
-                        )
-                    )
-                elif project_only:
-                    # Check for template-mediated project relevance
-                    tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
-                    if tmpl_info:
-                        callees_list.append(tmpl_info)
-                else:
-                    # project_only=False: prefer display_name for template calls
-                    tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
-                    if tmpl_info:
-                        callees_list.append(tmpl_info)
-                    else:
-                        rich = self._lookup_symbol_info(callee_usr)
-                        if rich is not None:
-                            callees_list.append(rich)
-                        else:
-                            callees_list.append(
-                                {
-                                    "qualified_name": _usr_to_display_name(callee_usr),
-                                    "is_project": False,
-                                }
-                            )
+                self._add_callee(callee_usr, callees_list, project_only, target_usrs)
 
-        # Internal diagnostic flags consumed by the MCP handler; stripped before sending to LLM:
-        #   _function_found          — True if the function name resolved to at least one USR
-        #   _has_any_in_graph        — True if the call graph has any entries (including external)
-        #   _target_qualified_name   — Qualified name of the first matched function (for hints)
         target_qualified_name = (
             target_functions[0]["qualified_name"] if target_functions else function_name
         )
