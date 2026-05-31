@@ -168,76 +168,77 @@ class ChangeScanner:
             diagnostics.info("compile_commands.json has changed")
 
         # 2. Scan source files (excluding headers)
-        # Headers are tracked separately via header_tracker (see step 3 below)
-        # We only want actual source files (.cpp, .cc, .cxx, .c++) in this scan
-        # because headers don't have entries in compile_commands.json and would
-        # be re-analyzed with fallback args if treated as source files.
+        self._scan_source_files(changeset)
+
+        # 3. Scan tracked headers for modifications
+        self._scan_tracked_headers(changeset)
+
+        # 4. Check for deleted source files
+        self._scan_deleted_files(changeset)
+
+        # Log summary
+        self._log_scan_result(changeset)
+
+        return changeset
+
+    def _scan_source_files(self, changeset: ChangeSet) -> None:
+        """Detect added and modified source files, excluding headers."""
         all_cpp_files = self.analyzer.file_scanner.find_cpp_files()
         current_source_files = set()
         for file_path in all_cpp_files:
-            # Skip headers - they'll be detected via header_tracker in step 3
             if file_path.endswith((".h", ".hpp", ".hxx", ".h++")):
                 continue
             current_source_files.add(file_path)
 
         for source_file in current_source_files:
-            # Normalize path to resolve symlinks (e.g., /var -> /private/var on macOS)
-            # Do this BEFORE checking the cache to ensure consistent path matching
             normalized_path = os.path.realpath(source_file)
-
-            # Check if file changed using normalized path
             change_type = self._check_file_change(normalized_path)
 
             if change_type == ChangeType.ADDED:
                 changeset.added_files.add(normalized_path)
                 diagnostics.debug(f"Detected new file: {normalized_path}")
-
             elif change_type == ChangeType.MODIFIED:
                 changeset.modified_files.add(normalized_path)
                 diagnostics.debug(f"Detected modified file: {normalized_path}")
 
-        # 3. Scan tracked headers for modifications
-        if self.analyzer.header_tracker:
-            tracked_headers = self.analyzer.header_tracker.get_processed_headers()
+    def _scan_tracked_headers(self, changeset: ChangeSet) -> None:
+        """Detect modified or deleted tracked headers."""
+        if not self.analyzer.header_tracker:
+            return
 
-            for header_path, tracked_hash in tracked_headers.items():
-                # Normalize path even if file doesn't exist (resolves parent dir symlinks)
-                normalized_header = os.path.realpath(header_path)
+        tracked_headers = self.analyzer.header_tracker.get_processed_headers()
+        for header_path, tracked_hash in tracked_headers.items():
+            normalized_header = os.path.realpath(header_path)
 
-                # Check if header still exists (use normalized path)
-                if not Path(normalized_header).exists():
-                    changeset.removed_files.add(normalized_header)
-                    diagnostics.debug(f"Detected deleted header: {normalized_header}")
-                    continue
+            if not Path(normalized_header).exists():
+                changeset.removed_files.add(normalized_header)
+                diagnostics.debug(f"Detected deleted header: {normalized_header}")
+                continue
 
-                # Check if header content changed (use normalized path)
-                try:
-                    current_hash = self.analyzer._get_file_hash(normalized_header)
-                    if current_hash != tracked_hash:
-                        changeset.modified_headers.add(normalized_header)
-                        diagnostics.debug(f"Detected modified header: {normalized_header}")
-                except Exception as e:
-                    diagnostics.warning(f"Error checking header {normalized_header}: {e}")
+            try:
+                current_hash = self.analyzer._get_file_hash(normalized_header)
+                if current_hash != tracked_hash:
+                    changeset.modified_headers.add(normalized_header)
+                    diagnostics.debug(f"Detected modified header: {normalized_header}")
+            except Exception as e:
+                diagnostics.warning(f"Error checking header {normalized_header}: {e}")
 
-        # 4. Check for deleted source files
-        # Files in cache but not in current scan
+    def _scan_deleted_files(self, changeset: ChangeSet) -> None:
+        """Detect source files that are in cache but no longer on disk."""
         cached_files = self._get_cached_source_files()
-
         for cached_file in cached_files:
-            # Normalize path even if file doesn't exist (resolves parent dir symlinks)
             normalized_cached = os.path.realpath(cached_file)
-
             if not Path(normalized_cached).exists():
                 changeset.removed_files.add(normalized_cached)
                 diagnostics.debug(f"Detected deleted file: {normalized_cached}")
 
-        # Log summary
+    @staticmethod
+    def _log_scan_result(changeset: ChangeSet) -> None:
+        """Log a summary of detected changes."""
         if not changeset.is_empty():
             diagnostics.info(f"Change scan complete: {changeset}")
         else:
             diagnostics.debug("No changes detected")
-
-        return changeset
 
     def _check_file_change(self, file_path: str) -> ChangeType:
         """
