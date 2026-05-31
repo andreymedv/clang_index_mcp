@@ -3797,6 +3797,54 @@ class CppAnalyzer:
             if saved_count != len(call_sites):
                 diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
 
+    def _populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
+        """Populate main and file indexes from cache data."""
+        # Load indexes - Memory optimization: SymbolInfo objects come directly
+        # from SQLite backend (no dict conversion needed, saves ~500 MB peak)
+        self.class_index.clear()
+        for name, infos in cache_data.get("class_index", {}).items():
+            self.class_index[name] = infos
+
+        self.function_index.clear()
+        for name, infos in cache_data.get("function_index", {}).items():
+            self.function_index[name] = infos
+
+        # Rebuild file index mapping from loaded symbols
+        self.file_index.clear()
+        for infos in self.class_index.values():
+            for symbol in infos:
+                if symbol.file:
+                    self.file_index[symbol.file].append(symbol)
+        for infos in self.function_index.values():
+            for symbol in infos:
+                if symbol.file:
+                    self.file_index[symbol.file].append(symbol)
+
+        self.file_hashes = cache_data.get("file_hashes", {})
+        self.indexed_file_count = cache_data.get("indexed_file_count", 0)
+
+    def _rebuild_auxiliary_structures(self) -> None:
+        """Rebuild USR index and call graph from loaded symbols."""
+        self.usr_index.clear()
+        self.call_graph_analyzer.clear()
+
+        # Rebuild from all loaded symbols
+        all_symbols = []
+        for class_list in self.class_index.values():
+            for symbol in class_list:
+                if symbol.usr:
+                    self.usr_index[symbol.usr] = symbol
+                    all_symbols.append(symbol)
+
+        for func_list in self.function_index.values():
+            for symbol in func_list:
+                if symbol.usr:
+                    self.usr_index[symbol.usr] = symbol
+                    all_symbols.append(symbol)
+
+        # Rebuild call graph from all symbols
+        self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+
     def _load_cache(self) -> bool:
         """Load index from cache file"""
         # Get current config file info
@@ -3824,52 +3872,8 @@ class CppAnalyzer:
             return False
 
         try:
-            # Load indexes - Memory optimization: SymbolInfo objects come directly
-            # from SQLite backend (no dict conversion needed, saves ~500 MB peak)
-            self.class_index.clear()
-            for name, infos in cache_data.get("class_index", {}).items():
-                # infos are already SymbolInfo objects from SQLite backend
-                self.class_index[name] = infos
-
-            self.function_index.clear()
-            for name, infos in cache_data.get("function_index", {}).items():
-                # infos are already SymbolInfo objects from SQLite backend
-                self.function_index[name] = infos
-
-            # Rebuild file index mapping from loaded symbols
-            self.file_index.clear()
-            for infos in self.class_index.values():
-                for symbol in infos:
-                    if symbol.file:
-                        self.file_index[symbol.file].append(symbol)
-            for infos in self.function_index.values():
-                for symbol in infos:
-                    if symbol.file:
-                        self.file_index[symbol.file].append(symbol)
-
-            self.file_hashes = cache_data.get("file_hashes", {})
-            self.indexed_file_count = cache_data.get("indexed_file_count", 0)
-
-            # Rebuild USR index and call graphs from loaded data
-            self.usr_index.clear()
-            self.call_graph_analyzer.clear()
-
-            # Rebuild from all loaded symbols
-            all_symbols = []
-            for class_list in self.class_index.values():
-                for symbol in class_list:
-                    if symbol.usr:
-                        self.usr_index[symbol.usr] = symbol
-                        all_symbols.append(symbol)
-
-            for func_list in self.function_index.values():
-                for symbol in func_list:
-                    if symbol.usr:
-                        self.usr_index[symbol.usr] = symbol
-                        all_symbols.append(symbol)
-
-            # Rebuild call graph from all symbols
-            self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+            self._populate_indexes_from_cache(cache_data)
+            self._rebuild_auxiliary_structures()
 
             # Memory optimization: call sites are now loaded LAZILY on-demand
             # instead of loading all at startup (saves ~150-200 MB for large projects)
