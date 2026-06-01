@@ -1663,7 +1663,7 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-10.11.4**: The system SHALL prevent tools from executing on partially-indexed data unless explicitly designed to do so (with warnings).
 
-**REQ-10.11.5**: **Critical**: Fix for the current race condition in `cpp_mcp_server.py:433` where `analyzer_initialized = True` is set before indexing completes.
+**REQ-10.11.5**: **Critical**: Fix for the current race condition in `cpp_mcp_server.py:444` where `analyzer_initialized = True` is set before indexing completes.
 
 ### 10.12 Performance Requirements
 

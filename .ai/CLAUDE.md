@@ -206,15 +206,15 @@ make ie                         # install-editable
 - Detects compile_commands.json changes and re-analyzes affected files
 - Provides 30-300x speedup for partial refreshes
 - See mcp_server/incremental_analyzer.py, mcp_server/change_scanner.py
-
-**4. Resource Management and File Descriptor Handling**
+- **Resource Management and File Descriptor Handling**
 - **CRITICAL:** TranslationUnit objects are deleted immediately after symbol extraction
 - `del tu` + `gc.collect()` forces cleanup of libclang C++ resources (file descriptors)
 - Worker processes clean up indexes after each file to prevent memory accumulation
 - Singleton analyzer per worker process (not per file) reduces SQLite connections
 - File descriptors remain stable at ~10-15 during indexing (tested with 5700+ files)
 - **Historical Issue:** self.translation_units dict was removed (write-only, caused 516+ FD leak)
-- See mcp_server/cpp_analyzer.py:1648 (explicit TU deletion), :131-159 (worker cleanup)
+- See mcp_server/cpp_analyzer.py:3322 (explicit TU deletion), :161-191 (worker cleanup)
+- See mcp_server/header_tracker.py
 
 **5. SQLite Cache with FTS5**
 - Symbol storage in SQLite with full-text search (2-5ms for 100K symbols)
@@ -256,7 +256,7 @@ make ie                         # install-editable
 - Provides 5-7x speedup on large projects (3.5 hours → ~30-60 minutes for 5700 files)
 - Safe because: symbol extraction already filtered, dependency discovery uses tu.get_includes() API
 - Only traverses AST nodes from project files and files with active call tracking
-- See cpp_analyzer.py:_process_cursor() early exit optimization (line ~946-954)
+- See cpp_analyzer.py:_process_cursor() early exit optimization (line ~2551-2553)
 
 **11. SQLite PRAGMAs:** Applied per-connection in `_set_connection_pragmas()` (WAL, 64MB cache, 256MB mmap). CRITICAL: must be applied to every connection — workers with `skip_schema_recreation=True` bypassed schema init and missed PRAGMAs (>8x perf regression). See `sqlite_cache_backend.py:_set_connection_pragmas()`.
 
@@ -267,13 +267,13 @@ make ie                         # install-editable
 
 ### Critical Code Locations
 
-- **MCP Tools Definition:** mcp_server/cpp_mcp_server.py:176-461 (`list_tools()`)
-- **Core Analyzer:** mcp_server/cpp_analyzer.py (CppAnalyzer class)
-- **Symbol Extraction:** mcp_server/cpp_analyzer.py:_process_cursor() (recursive AST traversal)
-- **Type Alias Extraction:** mcp_server/cpp_analyzer.py:_extract_alias_info() (handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
-- **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:_extract_documentation() (brief and doc_comment extraction)
-- **Virtual Method Extraction (Phase 5):** mcp_server/cpp_analyzer.py:_process_cursor() (cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
-- **Parallel Worker:** mcp_server/cpp_analyzer.py:72-131 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
+- **MCP Tools Definition:** mcp_server/cpp_mcp_server.py:127-312 (`list_tools()`)
+- **Core Analyzer:** mcp_server/cpp_analyzer.py:512 (CppAnalyzer class)
+- **Symbol Extraction:** mcp_server/cpp_analyzer.py:2536 (`_process_cursor()` recursive AST traversal)
+- **Type Alias Extraction:** mcp_server/cpp_analyzer.py:2393 (`_extract_alias_info()` handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
+- **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:2044 (`_extract_documentation()` brief and doc_comment extraction)
+- **Virtual Method Extraction (Phase 5):** mcp_server/cpp_analyzer.py:2536 (`_process_cursor()` internals: cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
+- **Parallel Worker:** mcp_server/cpp_analyzer.py:86-193 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
 - **Call Graph Analysis (Phase 4):** mcp_server/call_graph.py (SQLite-only queries, no in-memory dicts)
 - **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v17.0 — see schema.sql for current column list)
 - **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)

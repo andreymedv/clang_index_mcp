@@ -57,9 +57,9 @@ make dev
 
 ## Git Hooks and Code Quality
 
-**This repository uses Makefile-based git hooks only.** The pre-commit framework (`.pre-commit-config.yaml`) should NOT be used as it has different check versions and rules than GitHub CI.
+This repository supports both Makefile-based git hooks and the `pre-commit` framework. The `.pre-commit-config.yaml` is synchronized with the Makefile's `check` and `lint` targets (including a blocking complexity limit of 10 for `mcp_server/`).
 
-### Current Setup (Makefile-based)
+### Current Setup
 
 ```bash
 # Hooks are configured to use .githooks/ directory
@@ -70,6 +70,7 @@ git config core.hooksPath .githooks
 - `make format-check` (blocking)
 - `make lint` (blocking)
 - `make type-check` (informational)
+- Alternatively, `pre-commit run` (supported)
 
 **Pre-push hook** (full validation, runs before push):
 - `make test` (blocking)
@@ -84,19 +85,21 @@ Always use these commands to check code before committing:
 ```bash
 # Full check (runs all code quality checks)
 make check
+# OR
+pre-commit run --all-files
 
 # Individual checks
 make format-check  # Check black formatting
 make format        # Apply black formatting
-make lint          # Run flake8
+make lint          # Run flake8/ruff
 make type-check    # Run mypy (informational)
 make test          # Run pytest suite
 ```
 
-### Important: Do NOT Use
+### Important: Best Practices
 
-- `pre-commit run` - Uses different black version and extra checks not in CI
-- Direct tool invocation with different flags than Makefile
+- Use `make check` or `pre-commit run --all-files` before pushing.
+- Direct tool invocation with different flags than Makefile is discouraged.
 - `--no-verify` flag on git push **NEVER**
 
 #### Why `--no-verify` is forbidden

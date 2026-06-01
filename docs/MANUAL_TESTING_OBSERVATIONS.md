@@ -42,7 +42,7 @@ search_classes({"pattern": "View"})
 ✅ **Qualified names ARE SUPPORTED** - Feature was implemented in Phase 2
 
 **Evidence:**
-- Implementation: `mcp_server/search_engine.py:107-182` (`matches_qualified_pattern()`)
+- Implementation: `mcp_server/search_engine.py:287+` (`matches_qualified_pattern()`)
 - Supports 4 matching modes:
   1. Leading `::` → exact match in global namespace
   2. No `::` → match unqualified name only
@@ -86,7 +86,7 @@ search_classes({"pattern": "app::.*::View"})  # Regex match
 
 **Evidence:**
 - Parameter: `search_classes(..., namespace="ns2")` filters by exact namespace
-- Implementation: `mcp_server/search_engine.py:240-244`
+- Implementation: `mcp_server/search_engine.py:445+` (`_matches_namespace()`)
 - Tested and working in validation test case TC2
 
 **Function Signature:**
@@ -491,6 +491,10 @@ curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
     "params": {
       "name": "get_class_info",
       "arguments": {"class_name": "WithParaBaseProps"}
+    }
+  }' | jq '.'
+```
+
     }
   }' | jq '.'
 ```
