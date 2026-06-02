@@ -656,7 +656,101 @@ async def _handle_find_in_file(arguments: Dict[str, Any]) -> List[TextContent]:
     return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
 
+async def _ensure_analyzer_resumed() -> bool:
+    """Ensure analyzer is initialized, attempting auto-resume if needed."""
+    global analyzer, background_indexer, analyzer_initialized
+    if analyzer is not None:
+        return True
+
+    diagnostics.info("Attempting auto-resume of last used session...")
+    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
+    saved_session = None if disable_auto_resume else session_manager.load_session()
+    if saved_session:
+        analyzer, background_indexer, analyzer_initialized = _try_resume_session(saved_session)
+
+    return analyzer is not None
+
+
+async def _run_background_refresh(refresh_mode: str):
+    """Background task to perform project refresh (incremental or full)."""
+    assert analyzer is not None
+    try:
+        loop = asyncio.get_event_loop()
+
+        # Create progress callback that updates state_manager (same as BackgroundIndexer)
+        def progress_callback(progress: IndexingProgress):
+            """Callback to update progress in state manager during refresh"""
+            state_manager.update_progress(progress)
+
+        def wait_for_tools():
+            """Wrapper to match Callable[[], None] expected by analyzers"""
+            state_manager.wait_for_tools_to_finish()
+
+        if refresh_mode == "incremental":
+            try:
+                from mcp_server.incremental_analyzer import IncrementalAnalyzer
+
+                diagnostics.info("Starting incremental refresh...")
+                incremental_analyzer = IncrementalAnalyzer(analyzer)
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: incremental_analyzer.perform_incremental_analysis(
+                        progress_callback, wait_for_tools
+                    ),
+                )
+
+                if result and result.changes and result.changes.is_empty():
+                    diagnostics.info("Incremental refresh complete: no changes detected")
+                elif result:
+                    diagnostics.info(
+                        f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
+                        f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
+                    )
+
+                state_manager.transition_to(AnalyzerState.INDEXED)
+                return
+
+            except Exception as e:
+                diagnostics.error(f"Incremental analysis failed: {e}")
+                diagnostics.info("Falling back to full refresh...")
+                # Fallback to full refresh
+                modified_count = await loop.run_in_executor(
+                    None,
+                    lambda: analyzer.refresh_if_needed(progress_callback, wait_for_tools),
+                )
+                diagnostics.info(
+                    f"Fallback full refresh complete: re-analyzed {modified_count} files"
+                )
+                state_manager.transition_to(AnalyzerState.INDEXED)
+                return
+
+        else:
+            # Full refresh
+            diagnostics.info("Starting full refresh...")
+            modified_count = await loop.run_in_executor(
+                None, lambda: analyzer.refresh_if_needed(progress_callback)
+            )
+            diagnostics.info(f"Full refresh complete: re-analyzed {modified_count} files")
+            state_manager.transition_to(AnalyzerState.INDEXED)
+            return
+
+    except Exception as e:
+        diagnostics.error(f"Background refresh failed: {e}")
+        state_manager.transition_to(AnalyzerState.ERROR)
+        pass
+
+
 async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent]:
+    """Handle refresh_project: trigger incremental or full re-indexing."""
+    # 1. If analyzer is None, try to resume session from last used config
+    if not await _ensure_analyzer_resumed():
+        return [
+            TextContent(
+                type="text",
+                text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.",
+            )
+        ]
+
     refresh_mode = arguments.get("refresh_mode", "incremental")
 
     # Issue #7: Warn if full mode is used (should be rare)
@@ -670,73 +764,8 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
     # Transition to REFRESHING state synchronously
     state_manager.transition_to(AnalyzerState.REFRESHING)
 
-    # Start refresh in background (non-blocking, similar to set_project_directory)
-    async def run_background_refresh():
-        try:
-            loop = asyncio.get_event_loop()
-
-            # Create progress callback that updates state_manager (same as BackgroundIndexer)
-            def progress_callback(progress: IndexingProgress):
-                """Callback to update progress in state manager during refresh"""
-                state_manager.update_progress(progress)
-
-            if refresh_mode == "incremental":
-                try:
-                    from mcp_server.incremental_analyzer import IncrementalAnalyzer
-
-                    diagnostics.info("Starting incremental refresh...")
-                    incremental_analyzer = IncrementalAnalyzer(analyzer)
-                    result = await loop.run_in_executor(
-                        None,
-                        lambda: incremental_analyzer.perform_incremental_analysis(
-                            progress_callback, state_manager.wait_for_tools_to_finish
-                        ),
-                    )
-
-                    if result.changes.is_empty():
-                        diagnostics.info("Incremental refresh complete: no changes detected")
-                    else:
-                        diagnostics.info(
-                            f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
-                            f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
-                        )
-
-                    state_manager.transition_to(AnalyzerState.INDEXED)
-                    return
-
-                except Exception as e:
-                    diagnostics.error(f"Incremental analysis failed: {e}")
-                    diagnostics.info("Falling back to full refresh...")
-                    # Fallback to full refresh
-                    modified_count = await loop.run_in_executor(
-                        None,
-                        lambda: analyzer.refresh_if_needed(
-                            progress_callback, state_manager.wait_for_tools_to_finish
-                        ),
-                    )
-                    diagnostics.info(
-                        f"Fallback full refresh complete: re-analyzed {modified_count} files"
-                    )
-                    state_manager.transition_to(AnalyzerState.INDEXED)
-                    return
-
-            else:
-                # Full refresh
-                diagnostics.info("Starting full refresh...")
-                modified_count = await loop.run_in_executor(
-                    None, lambda: analyzer.refresh_if_needed(progress_callback)
-                )
-                diagnostics.info(f"Full refresh complete: re-analyzed {modified_count} files")
-                state_manager.transition_to(AnalyzerState.INDEXED)
-                return
-
-        except Exception as e:
-            diagnostics.error(f"Background refresh failed: {e}")
-            state_manager.transition_to(AnalyzerState.ERROR)
-            pass
-
     # Create background task (non-blocking)
-    asyncio.create_task(run_background_refresh())
+    asyncio.create_task(_run_background_refresh(refresh_mode))
 
     # Return immediately - refresh continues in background
     return [
@@ -750,9 +779,12 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
 
 
 async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextContent]:
-    assert analyzer is not None
     # Combined server diagnostics and indexing status
     status_dict = state_manager.get_status_dict()
+    status_dict["analyzer_type"] = "python_enhanced"
+
+    if analyzer is None:
+        return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
     ccm = analyzer.compile_commands_manager
     total_classes = sum(len(infos) for infos in analyzer.class_index.values())
@@ -760,7 +792,6 @@ async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextCon
 
     status_dict.update(
         {
-            "analyzer_type": "python_enhanced",
             "call_graph_enabled": True,
             "compile_commands_enabled": ccm.enabled if ccm else False,
             "compile_commands_path": ccm.compile_commands_path if ccm else None,
@@ -1031,41 +1062,74 @@ async def _handle_get_call_path(arguments: Dict[str, Any]) -> List[TextContent]:
     return [TextContent(type="text", text=json.dumps(output_paths, indent=2))]
 
 
-async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    try:
-        # 1. Management tools (no analyzer needed)
-        if name == "set_project_directory":
-            return await _handle_set_project_directory(arguments)
+def _check_tool_readiness(name: str) -> Optional[List[TextContent]]:
+    """
+    Check if a tool is ready to be executed based on current analyzer state.
+    Returns None if ready, or a List[TextContent] with an error message if not.
+    """
+    # Policy check and readiness for query tools
+    query_tools = {
+        "search_classes",
+        "search_functions",
+        "get_class_info",
+        "get_type_alias_info",
+        "search_symbols",
+        "find_in_file",
+        "get_class_hierarchy",
+        "find_incoming_calls",
+        "get_outgoing_calls",
+        "get_call_path",
+        "get_call_sites",
+    }
 
-        # 2. Check if analyzer is initialized
-        if analyzer is None or not state_manager.is_ready_for_queries():
+    if name in query_tools:
+        if analyzer is None:
             return [
                 TextContent(
                     type="text",
                     text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.",
                 )
             ]
+        if not state_manager.is_ready_for_queries():
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: Project is not ready for queries yet. Use 'sync_project' to start indexing or check status.",
+                )
+            ]
 
-        # 3. Policy check for query tools
-        query_tools = {
-            "search_classes",
-            "search_functions",
-            "get_class_info",
-            "get_type_alias_info",
-            "search_symbols",
-            "find_in_file",
-            "get_class_hierarchy",
-            "find_incoming_calls",
-            "get_outgoing_calls",
-            "get_call_path",
-        }
+        allowed, policy_message = check_query_policy(name)
+        if not allowed:
+            return [TextContent(type="text", text=policy_message)]
 
-        if name in query_tools:
-            allowed, policy_message = check_query_policy(name)
-            if not allowed:
-                return [TextContent(type="text", text=policy_message)]
+    # Check for other tools (refresh_project, wait_for_indexing)
+    if name in ("refresh_project", "wait_for_indexing") and analyzer is None:
+        # For refresh_project, we'll try to resume inside the handler
+        if name == "wait_for_indexing":
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: Project directory not set. Please use 'set_project_directory' first.",
+                )
+            ]
 
-        # 4. Route to specific handler
+    return None
+
+
+async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    try:
+        # 1. Management tools (handle their own state checks)
+        if name == "set_project_directory":
+            return await _handle_set_project_directory(arguments)
+        if name == "check_system_status":
+            return await _handle_check_system_status(arguments)
+
+        # 2. Check tool readiness
+        error_response = _check_tool_readiness(name)
+        if error_response:
+            return error_response
+
+        # 3. Route to specific handler
         handlers = {
             "search_classes": _handle_search_classes,
             "search_functions": _handle_search_functions,
