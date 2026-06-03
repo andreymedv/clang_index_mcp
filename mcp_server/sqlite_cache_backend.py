@@ -224,76 +224,82 @@ class SqliteCacheBackend:
 
         return lock_context()
 
+    def _check_schema_version(self) -> Tuple[bool, bool]:
+        """Check if schema needs recreation. Returns (needs_recreate, schema_ok)."""
+        if not self.db_path.exists():
+            return False, False
+
+        try:
+            cursor = self._conn.execute("SELECT value FROM cache_metadata WHERE key = 'version'")
+            result = cursor.fetchone()
+            if result:
+                current_version = json.loads(result[0])
+                if current_version != self.CURRENT_SCHEMA_VERSION:
+                    if self._skip_schema_recreation:
+                        # Worker process: don't recreate, just use existing DB
+                        diagnostics.debug(
+                            f"Worker: Schema mismatch ({current_version} vs {self.CURRENT_SCHEMA_VERSION}), "
+                            "skipping recreation (main process handles this)"
+                        )
+                        return False, True  # Assume main handled it
+                    else:
+                        diagnostics.info(
+                            f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
+                        )
+                        diagnostics.info("Recreating database with current schema")
+                        return True, False
+                else:
+                    return False, True
+            else:
+                if self._skip_schema_recreation:
+                    diagnostics.debug("Worker: No version metadata, skipping recreation")
+                    return False, True
+                else:
+                    diagnostics.info("No version metadata found, recreating database")
+                    return True, False
+        except (sqlite3.OperationalError, Exception) as e:
+            if self._skip_schema_recreation:
+                # Worker: database might be being recreated by main
+                diagnostics.debug(f"Worker: DB access error ({e}), will retry")
+                raise  # Will trigger retry logic
+            else:
+                # Table doesn't exist or other error - recreate
+                diagnostics.info("Invalid or corrupted database, recreating")
+                return True, False
+
+    def _recreate_database(self) -> None:
+        """Close connection, delete old database files, and reconnect."""
+        self._close()
+        if self.db_path.exists():
+            try:
+                self.db_path.unlink()
+                diagnostics.info(f"Deleted old database: {self.db_path}")
+            except FileNotFoundError:
+                # Race condition: another thread already deleted it
+                pass
+
+        # Also delete WAL and SHM files if they exist
+        for ext in ["-wal", "-shm"]:
+            wal_file = Path(str(self.db_path) + ext)
+            if wal_file.exists():
+                try:
+                    wal_file.unlink()
+                except FileNotFoundError:
+                    # Race condition: another thread already deleted it
+                    pass
+
+        # Reconnect to create fresh database
+        self._connect()
+
     def _init_database(self):
-        """Initialize database schema and configuration with retry logic.
-
-        During development, we simply recreate the database if the schema version
-        doesn't match. This avoids the complexity of maintaining migrations.
-
-        If skip_schema_recreation is True (worker processes), we skip recreation
-        to avoid race conditions. Workers rely on main process to ensure schema
-        is current before spawning workers.
-
-        IMPORTANT: Caller must hold the init lock (via _acquire_init_lock).
-        The lock must cover both _connect() and _init_database() to prevent
-        SIGBUS crashes from concurrent SHM file deletion. SQLite WAL mode
-        internally mmaps the -shm file, and deleting it while another
-        connection has it mapped causes SIGBUS. See cplusplus_mcp-j19.
-        """
+        """Initialize database schema and configuration with retry logic."""
         max_retries = 10
         base_delay = 0.1  # 100ms initial delay
 
         for attempt in range(max_retries):
             try:
                 # Check if database exists and has the correct version
-                needs_recreate = False
-                schema_ok = False
-
-                if self.db_path.exists():
-                    try:
-                        # Try to get the current version
-                        cursor = self._conn.execute(
-                            "SELECT value FROM cache_metadata WHERE key = 'version'"
-                        )
-                        result = cursor.fetchone()
-                        if result:
-                            current_version = json.loads(result[0])
-                            if current_version != self.CURRENT_SCHEMA_VERSION:
-                                if self._skip_schema_recreation:
-                                    # Worker process: don't recreate, just use existing DB
-                                    # Main process should have ensured schema is current
-                                    diagnostics.debug(
-                                        f"Worker: Schema mismatch ({current_version} vs {self.CURRENT_SCHEMA_VERSION}), "
-                                        "skipping recreation (main process handles this)"
-                                    )
-                                    schema_ok = True  # Assume main handled it
-                                else:
-                                    diagnostics.info(
-                                        f"Schema version mismatch: current={current_version}, expected={self.CURRENT_SCHEMA_VERSION}"
-                                    )
-                                    diagnostics.info("Recreating database with current schema")
-                                    needs_recreate = True
-                            else:
-                                schema_ok = True
-                        else:
-                            if self._skip_schema_recreation:
-                                diagnostics.debug(
-                                    "Worker: No version metadata, skipping recreation"
-                                )
-                                schema_ok = True
-                            else:
-                                diagnostics.info("No version metadata found, recreating database")
-                                needs_recreate = True
-                    except (sqlite3.OperationalError, Exception) as e:
-                        if self._skip_schema_recreation:
-                            # Worker: database might be being recreated by main
-                            # Wait and retry
-                            diagnostics.debug(f"Worker: DB access error ({e}), will retry")
-                            raise  # Will trigger retry logic below
-                        else:
-                            # Table doesn't exist or other error - recreate
-                            diagnostics.info("Invalid or corrupted database, recreating")
-                            needs_recreate = True
+                needs_recreate, schema_ok = self._check_schema_version()
 
                 # If schema is already OK, just ensure tables exist
                 if schema_ok:
@@ -303,28 +309,7 @@ class SqliteCacheBackend:
                     return
 
                 if needs_recreate:
-                    # Close connection and delete old database
-                    self._close()
-                    if self.db_path.exists():
-                        try:
-                            self.db_path.unlink()
-                            diagnostics.info(f"Deleted old database: {self.db_path}")
-                        except FileNotFoundError:
-                            # Race condition: another thread already deleted it
-                            pass
-
-                    # Also delete WAL and SHM files if they exist
-                    for ext in ["-wal", "-shm"]:
-                        wal_file = Path(str(self.db_path) + ext)
-                        if wal_file.exists():
-                            try:
-                                wal_file.unlink()
-                            except FileNotFoundError:
-                                # Race condition: another thread already deleted it
-                                pass
-
-                    # Reconnect to create fresh database
-                    self._connect()
+                    self._recreate_database()
 
                 # Execute schema file
                 schema_path = Path(__file__).parent / "schema.sql"
@@ -1385,6 +1370,59 @@ class SqliteCacheBackend:
             diagnostics.error(message)
             return False, message
 
+    def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
+        """Check FTS5 index health and update health dict."""
+        try:
+            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
+            fts_count = cursor.fetchone()[0]
+            symbol_count = stats.get("total_symbols", 0)
+
+            fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
+
+            if fts_count != symbol_count:
+                warning = (
+                    f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
+                    "Consider running optimize()."
+                )
+                health["warnings"].append(warning)
+                fts_health["status"] = "warning"
+
+            health["checks"]["fts_index"] = fts_health
+
+        except Exception as e:
+            health["errors"].append(f"FTS5 check failed: {e}")
+            health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
+
+    def _check_wal_mode(self, health: Dict[str, Any]) -> None:
+        """Check WAL journal mode and update health dict."""
+        try:
+            cursor = self._conn.execute("PRAGMA journal_mode")
+            journal_mode = cursor.fetchone()[0].lower()
+
+            wal_health = {
+                "journal_mode": journal_mode,
+                "status": "ok" if journal_mode == "wal" else "warning",
+            }
+
+            if journal_mode != "wal":
+                warning = f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
+                health["warnings"].append(warning)
+
+            health["checks"]["wal_mode"] = wal_health
+
+        except Exception as e:
+            health["errors"].append(f"WAL check failed: {e}")
+
+    @staticmethod
+    def _determine_overall_status(health: Dict[str, Any]) -> None:
+        """Set overall health status based on errors and warnings."""
+        if health["errors"]:
+            health["status"] = "error"
+        elif health["warnings"]:
+            health["status"] = "warning"
+        else:
+            health["status"] = "healthy"
+
     def get_health_status(self) -> Dict[str, Any]:
         """
         Get comprehensive database health status.
@@ -1413,66 +1451,21 @@ class SqliteCacheBackend:
             db_size_mb = stats.get("db_size_mb", 0)
             health["checks"]["size"] = {"db_size_mb": db_size_mb, "status": "ok"}
 
-            # Warn if database is very large (> 500 MB)
             if db_size_mb > 500:
                 warning = f"Database is very large ({db_size_mb:.2f} MB)"
                 health["warnings"].append(warning)
                 health["checks"]["size"]["status"] = "warning"
 
             # 3. FTS5 index health
-            try:
-                cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
-                fts_count = cursor.fetchone()[0]
-                symbol_count = stats.get("total_symbols", 0)
-
-                fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
-
-                # FTS count should match symbol count
-                if fts_count != symbol_count:
-                    warning = (
-                        f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
-                        "Consider running optimize()."
-                    )
-                    health["warnings"].append(warning)
-                    fts_health["status"] = "warning"
-
-                health["checks"]["fts_index"] = fts_health
-
-            except Exception as e:
-                health["errors"].append(f"FTS5 check failed: {e}")
-                health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
+            self._check_fts5_health(health, stats)
 
             # 4. WAL mode check
-            try:
-                cursor = self._conn.execute("PRAGMA journal_mode")
-                journal_mode = cursor.fetchone()[0].lower()
-
-                wal_health = {
-                    "journal_mode": journal_mode,
-                    "status": "ok" if journal_mode == "wal" else "warning",
-                }
-
-                if journal_mode != "wal":
-                    warning = (
-                        f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
-                    )
-                    health["warnings"].append(warning)
-
-                health["checks"]["wal_mode"] = wal_health
-
-            except Exception as e:
-                health["errors"].append(f"WAL check failed: {e}")
+            self._check_wal_mode(health)
 
             # 5. Table statistics
             health["checks"]["tables"] = self._get_table_sizes()
 
-            # Determine overall status
-            if health["errors"]:
-                health["status"] = "error"
-            elif health["warnings"]:
-                health["status"] = "warning"
-            else:
-                health["status"] = "healthy"
+            self._determine_overall_status(health)
 
             return health
 
@@ -1728,6 +1721,105 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to save cache: {e}")
             return False
 
+    def _check_config_changes(
+        self, config_file_path: Optional[Path], config_file_mtime: Optional[float]
+    ) -> bool:
+        """Check if config file has changed since caching."""
+        cached_config = self.get_cache_metadata("config_file_path")
+        if config_file_path:
+            if cached_config != str(config_file_path):
+                diagnostics.info("Configuration file path changed")
+                return False
+            cached_mtime = self.get_cache_metadata("config_file_mtime")
+            if cached_mtime and cached_mtime != str(config_file_mtime):
+                diagnostics.info("Configuration file modified")
+                return False
+        elif cached_config:
+            # Config was cached but not provided on load - invalidate
+            diagnostics.info("Configuration file was cached but not provided")
+            return False
+        return True
+
+    def _check_compile_commands_changes(
+        self, compile_commands_path: Optional[Path], compile_commands_mtime: Optional[float]
+    ) -> bool:
+        """Check if compile_commands.json has changed since caching."""
+        cached_cc = self.get_cache_metadata("compile_commands_path")
+        if compile_commands_path:
+            if cached_cc != str(compile_commands_path):
+                diagnostics.info("compile_commands.json path changed")
+                return False
+            cached_cc_mtime = self.get_cache_metadata("compile_commands_mtime")
+            if cached_cc_mtime and cached_cc_mtime != str(compile_commands_mtime):
+                diagnostics.info("compile_commands.json modified")
+                return False
+        elif cached_cc:
+            # Compile commands was cached but not provided on load - invalidate
+            diagnostics.info("compile_commands.json was cached but not provided")
+            return False
+        return True
+
+    def _validate_cache_metadata(
+        self,
+        include_dependencies: bool,
+        config_file_path: Optional[Path],
+        config_file_mtime: Optional[float],
+        compile_commands_path: Optional[Path],
+        compile_commands_mtime: Optional[float],
+    ) -> bool:
+        """Validate if the cache metadata matches the current configuration."""
+        # Check if cache has been initialized (has metadata)
+        cached_deps = self.get_cache_metadata("include_dependencies")
+        if cached_deps is None:
+            # No cache metadata - cache is empty/uninitialized
+            return False
+
+        # Check cache metadata for compatibility
+        if cached_deps != str(include_dependencies):
+            diagnostics.info(
+                f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}"
+            )
+            return False
+
+        if not self._check_config_changes(config_file_path, config_file_mtime):
+            return False
+
+        if not self._check_compile_commands_changes(compile_commands_path, compile_commands_mtime):
+            return False
+
+        return True
+
+    def _load_symbols_from_db(self) -> Tuple[Dict[str, List[Any]], Dict[str, List[Any]]]:
+        """Load symbols from database and build class and function indexes."""
+        cursor = self._conn.execute("SELECT * FROM symbols")
+
+        from collections import defaultdict
+
+        class_index = defaultdict(list)
+        function_index = defaultdict(list)
+
+        for row in cursor:
+            symbol = self._row_to_symbol(row)
+            if symbol.kind in (
+                "class",
+                "struct",
+                "union",
+                "enum",
+                "class_template",
+                "partial_specialization",
+            ):
+                class_index[symbol.name].append(symbol)
+            elif symbol.kind in (
+                "function",
+                "method",
+                "constructor",
+                "destructor",
+                "function_template",
+            ):
+                function_index[symbol.name].append(symbol)
+
+        return dict(class_index), dict(function_index)
+
     def load_cache(
         self,
         include_dependencies: bool = False,
@@ -1754,79 +1846,17 @@ class SqliteCacheBackend:
         try:
             self._ensure_connected()
 
-            # Check if cache has been initialized (has metadata)
-            cached_deps = self.get_cache_metadata("include_dependencies")
-            if cached_deps is None:
-                # No cache metadata - cache is empty/uninitialized
+            is_valid = self._validate_cache_metadata(
+                include_dependencies,
+                config_file_path,
+                config_file_mtime,
+                compile_commands_path,
+                compile_commands_mtime,
+            )
+            if not is_valid:
                 return None
 
-            # Check cache metadata for compatibility
-            if cached_deps != str(include_dependencies):
-                diagnostics.info(
-                    f"Cache dependencies mismatch: {cached_deps} != {include_dependencies}"
-                )
-                return None
-
-            # Check config file changes
-            cached_config = self.get_cache_metadata("config_file_path")
-            if config_file_path:
-                if cached_config != str(config_file_path):
-                    diagnostics.info("Configuration file path changed")
-                    return None
-                cached_mtime = self.get_cache_metadata("config_file_mtime")
-                if cached_mtime and cached_mtime != str(config_file_mtime):
-                    diagnostics.info("Configuration file modified")
-                    return None
-            elif cached_config:
-                # Config was cached but not provided on load - invalidate
-                diagnostics.info("Configuration file was cached but not provided")
-                return None
-
-            # Check compile_commands.json changes
-            cached_cc = self.get_cache_metadata("compile_commands_path")
-            if compile_commands_path:
-                if cached_cc != str(compile_commands_path):
-                    diagnostics.info("compile_commands.json path changed")
-                    return None
-                cached_cc_mtime = self.get_cache_metadata("compile_commands_mtime")
-                if cached_cc_mtime and cached_cc_mtime != str(compile_commands_mtime):
-                    diagnostics.info("compile_commands.json modified")
-                    return None
-            elif cached_cc:
-                # Compile commands was cached but not provided on load - invalidate
-                diagnostics.info("compile_commands.json was cached but not provided")
-                return None
-
-            # Load all symbols - Memory optimization: return SymbolInfo directly
-            # instead of converting to dict and back (saves ~500 MB peak for large projects)
-            cursor = self._conn.execute("SELECT * FROM symbols")
-
-            # Build indexes by name - stream rows to avoid loading all into memory at once
-            from collections import defaultdict
-
-            class_index = defaultdict(list)
-            function_index = defaultdict(list)
-
-            for row in cursor:
-                symbol = self._row_to_symbol(row)
-                # Issue #99: Include template kinds in class_index
-                if symbol.kind in (
-                    "class",
-                    "struct",
-                    "union",
-                    "enum",
-                    "class_template",
-                    "partial_specialization",
-                ):
-                    class_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
-                elif symbol.kind in (
-                    "function",
-                    "method",
-                    "constructor",
-                    "destructor",
-                    "function_template",
-                ):
-                    function_index[symbol.name].append(symbol)  # Direct SymbolInfo, no dict
+            class_index, function_index = self._load_symbols_from_db()
 
             # Load file hashes
             file_hashes = self.load_all_file_hashes()
@@ -1843,8 +1873,8 @@ class SqliteCacheBackend:
                     str(compile_commands_path) if compile_commands_path else None
                 ),
                 "compile_commands_mtime": compile_commands_mtime,
-                "class_index": dict(class_index),
-                "function_index": dict(function_index),
+                "class_index": class_index,
+                "function_index": function_index,
                 "file_hashes": file_hashes,
                 "indexed_file_count": int(indexed_count) if indexed_count else 0,
                 "timestamp": time.time(),

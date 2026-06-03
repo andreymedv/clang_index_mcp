@@ -106,7 +106,7 @@ This indicates a bug in interrupt handling. Please report with:
 
 ### Code Locations
 
-- **Main interrupt handling:** `mcp_server/cpp_analyzer.py:1449-1464`
+- **Main interrupt handling:** `mcp_server/cpp_analyzer.py:3812-3842`
   - KeyboardInterrupt exception handler
   - Executor shutdown with `wait=True`
 

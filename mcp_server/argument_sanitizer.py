@@ -111,38 +111,31 @@ class ArgumentSanitizer:
         """
         arg = args[index]
 
+        dispatch = {
+            "exact_match": lambda rule: self._apply_exact_match(arg, rule),
+            "prefix_match": lambda rule: self._apply_prefix_match(arg, rule),
+            "flag_with_optional_value": lambda rule: self._apply_flag_with_optional_value(
+                args, index, rule
+            ),
+            "xclang_sequence": lambda rule: self._apply_xclang_sequence(args, index, rule),
+            "xclang_conditional_sequence": lambda rule: self._apply_xclang_conditional_sequence(
+                args, index, rule
+            ),
+            "xclang_option_with_value": lambda rule: self._apply_xclang_option_with_value(
+                args, index, rule
+            ),
+        }
+
         for rule in self.rules:
             rule_type = rule.get("type")
-
-            if rule_type == "exact_match":
-                skip = self._apply_exact_match(arg, rule)
-                if skip > 0:
-                    return skip
-
-            elif rule_type == "prefix_match":
-                skip = self._apply_prefix_match(arg, rule)
-                if skip > 0:
-                    return skip
-
-            elif rule_type == "flag_with_optional_value":
-                skip = self._apply_flag_with_optional_value(args, index, rule)
-                if skip > 0:
-                    return skip
-
-            elif rule_type == "xclang_sequence":
-                skip = self._apply_xclang_sequence(args, index, rule)
-                if skip > 0:
-                    return skip
-
-            elif rule_type == "xclang_conditional_sequence":
-                skip = self._apply_xclang_conditional_sequence(args, index, rule)
-                if skip > 0:
-                    return skip
-
-            elif rule_type == "xclang_option_with_value":
-                skip = self._apply_xclang_option_with_value(args, index, rule)
-                if skip > 0:
-                    return skip
+            if not isinstance(rule_type, str):
+                continue
+            handler = dispatch.get(rule_type)
+            if handler is None:
+                continue
+            skip = handler(rule)
+            if skip > 0:
+                return skip
 
         return 0  # No rule matched
 
