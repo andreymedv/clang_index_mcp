@@ -677,8 +677,8 @@ Worker Process:
 - Phase 3 analysis and profiling scripts removed during documentation cleanup
 
 ### Key Files for Phase 3 Implementation
-- `mcp_server/cpp_analyzer.py:73-170` - Worker function (`_process_file_worker`)
-- `mcp_server/cpp_analyzer.py:1820-1850` - Work submission to ProcessPoolExecutor
+- `mcp_server/cpp_analyzer.py:86-135` - Worker function (`_process_file_worker`)
+- `mcp_server/cpp_analyzer.py:3805-3810` - Work submission to ProcessPoolExecutor
 - `mcp_server/compile_commands_manager.py` - CompileCommandsManager class
 
 ---

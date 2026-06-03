@@ -342,93 +342,127 @@ class SmartFallback:
         self, pattern: str, primary_index: Dict[str, List[Any]]
     ) -> Optional[FallbackResult]:
         """Detect regex anchoring issues, double escapes, etc."""
-        # Only applies to patterns classified as regex
         regex_chars = set(".*+?[]{}()|\\^$")
         if not any(c in pattern for c in regex_chars):
             return None
 
-        # Check for double escapes first (e.g., \\. when user means \.)
-        if _has_double_escapes(pattern):
-            # Try with single escapes
-            fixed = pattern.replace("\\\\", "\\")
-            alternatives = _sample_regex_matches(primary_index, fixed)
-            if alternatives:
-                return FallbackResult(
-                    reason="regex_hint",
-                    searched_for=pattern,
-                    hint=(
-                        "Pattern appears to have double-escaped characters. "
-                        "Regex patterns are passed directly — no extra escaping needed."
-                    ),
-                    suggested_pattern=fixed,
-                    alternatives=alternatives,
-                )
+        result = self._check_double_escapes(pattern, primary_index)
+        if result:
+            return result
 
-        # Check for unnecessary anchors (^ and $)
-        if _has_unnecessary_anchors(pattern):
-            stripped = _strip_anchors(pattern)
-            # When user writes "Reporter$" they want suffix match → ".*Reporter"
-            # When user writes "^Console" they want prefix match → "Console.*"
-            suggested = stripped
-            if pattern.endswith("$") and not stripped.startswith(".*"):
-                suggested = ".*" + stripped
-            if pattern.startswith("^") and not stripped.endswith(".*"):
-                suggested = suggested + ".*"
-            alternatives = _sample_regex_matches(primary_index, suggested)
-            if not alternatives:
-                # Also try exact stripped version
-                alternatives = _sample_regex_matches(primary_index, stripped)
-                if alternatives:
-                    suggested = stripped
-            if alternatives:
-                return FallbackResult(
-                    reason="regex_hint",
-                    searched_for=pattern,
-                    hint=(
-                        "Patterns use fullmatch (anchored at both ends), "
-                        "so ^ and $ anchors are redundant. "
-                        f"Try '{suggested}' instead."
-                    ),
-                    suggested_pattern=suggested,
-                    alternatives=alternatives,
-                )
+        result = self._check_unnecessary_anchors(pattern, primary_index)
+        if result:
+            return result
 
-        # Check for short regex that needs .* suffix
-        if _looks_like_short_regex(pattern):
-            broadened = pattern + ".*"
-            alternatives = _sample_regex_matches(primary_index, broadened)
-            if alternatives:
-                return FallbackResult(
-                    reason="regex_hint",
-                    searched_for=pattern,
-                    hint=(
-                        f"Patterns use fullmatch (anchored at both ends). "
-                        f"'{pattern}' only matches very short names. "
-                        f"Try '{broadened}' to match names starting with this pattern."
-                    ),
-                    suggested_pattern=broadened,
-                    alternatives=alternatives,
-                )
+        result = self._check_short_regex(pattern, primary_index)
+        if result:
+            return result
 
-        # Generic: try broadening with .* prefix/suffix
-        if not pattern.startswith(".*"):
-            broadened = ".*" + pattern
-            if not broadened.endswith(".*"):
-                broadened = broadened + ".*"
-            alternatives = _sample_regex_matches(primary_index, broadened)
-            if alternatives:
-                return FallbackResult(
-                    reason="regex_hint",
-                    searched_for=pattern,
-                    hint=(
-                        "Patterns use fullmatch (anchored at both ends). "
-                        f"'{pattern}' requires an exact full match. "
-                        f"Try '{broadened}' for partial matching."
-                    ),
-                    suggested_pattern=broadened,
-                    alternatives=alternatives,
-                )
+        return self._check_generic_broadening(pattern, primary_index)
 
+    def _check_double_escapes(
+        self, pattern: str, primary_index: Dict[str, List[Any]]
+    ) -> Optional[FallbackResult]:
+        """Check for double-escaped regex characters."""
+        if not _has_double_escapes(pattern):
+            return None
+
+        fixed = pattern.replace("\\\\", "\\")
+        alternatives = _sample_regex_matches(primary_index, fixed)
+        if alternatives:
+            return FallbackResult(
+                reason="regex_hint",
+                searched_for=pattern,
+                hint=(
+                    "Pattern appears to have double-escaped characters. "
+                    "Regex patterns are passed directly — no extra escaping needed."
+                ),
+                suggested_pattern=fixed,
+                alternatives=alternatives,
+            )
+        return None
+
+    def _check_unnecessary_anchors(
+        self, pattern: str, primary_index: Dict[str, List[Any]]
+    ) -> Optional[FallbackResult]:
+        """Check for unnecessary ^ and $ anchors in regex patterns."""
+        if not _has_unnecessary_anchors(pattern):
+            return None
+
+        stripped = _strip_anchors(pattern)
+        suggested = stripped
+        if pattern.endswith("$") and not stripped.startswith(".*"):
+            suggested = ".*" + stripped
+        if pattern.startswith("^") and not stripped.endswith(".*"):
+            suggested = suggested + ".*"
+
+        alternatives = _sample_regex_matches(primary_index, suggested)
+        if not alternatives:
+            alternatives = _sample_regex_matches(primary_index, stripped)
+            if alternatives:
+                suggested = stripped
+
+        if alternatives:
+            return FallbackResult(
+                reason="regex_hint",
+                searched_for=pattern,
+                hint=(
+                    "Patterns use fullmatch (anchored at both ends), "
+                    "so ^ and $ anchors are redundant. "
+                    f"Try '{suggested}' instead."
+                ),
+                suggested_pattern=suggested,
+                alternatives=alternatives,
+            )
+        return None
+
+    def _check_short_regex(
+        self, pattern: str, primary_index: Dict[str, List[Any]]
+    ) -> Optional[FallbackResult]:
+        """Check for short regex patterns that may need broadening."""
+        if not _looks_like_short_regex(pattern):
+            return None
+
+        broadened = pattern + ".*"
+        alternatives = _sample_regex_matches(primary_index, broadened)
+        if alternatives:
+            return FallbackResult(
+                reason="regex_hint",
+                searched_for=pattern,
+                hint=(
+                    f"Patterns use fullmatch (anchored at both ends). "
+                    f"'{pattern}' only matches very short names. "
+                    f"Try '{broadened}' to match names starting with this pattern."
+                ),
+                suggested_pattern=broadened,
+                alternatives=alternatives,
+            )
+        return None
+
+    def _check_generic_broadening(
+        self, pattern: str, primary_index: Dict[str, List[Any]]
+    ) -> Optional[FallbackResult]:
+        """Generic fallback: try broadening with .* prefix/suffix."""
+        if pattern.startswith(".*"):
+            return None
+
+        broadened = ".*" + pattern
+        if not broadened.endswith(".*"):
+            broadened = broadened + ".*"
+
+        alternatives = _sample_regex_matches(primary_index, broadened)
+        if alternatives:
+            return FallbackResult(
+                reason="regex_hint",
+                searched_for=pattern,
+                hint=(
+                    "Patterns use fullmatch (anchored at both ends). "
+                    f"'{pattern}' requires an exact full match. "
+                    f"Try '{broadened}' for partial matching."
+                ),
+                suggested_pattern=broadened,
+                alternatives=alternatives,
+            )
         return None
 
     def _detect_qualified_fallback(

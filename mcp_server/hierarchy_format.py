@@ -77,24 +77,10 @@ def _format_compact_json(hierarchy: Dict[str, Any]) -> str:
     return json.dumps(compact, indent=None, separators=(",", ":"))
 
 
-def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False) -> str:
-    """Format hierarchy as C++ pseudocode.
-
-    Outputs classes in topological order (bases before derived) with
-    inheritance relationships shown via C++ syntax.
-    """
-    classes = hierarchy.get("classes", {})
-    queried_class = hierarchy.get("queried_class", "Unknown")
-    truncated = hierarchy.get("truncated", False)
-
-    if not classes:
-        result = f"// No hierarchy data for: {queried_class}"
-        if truncated:
-            result += "\n// Note: Hierarchy was truncated (max_nodes/max_depth limit)"
-        return result
-
-    # Build dependency graph for topological sort
-    # We want: bases appear before derived classes
+def _build_topological_graph(
+    classes: Dict[str, Any],
+) -> tuple[Dict[str, int], Dict[str, List[str]]]:
+    """Build a dependency graph for topological sorting."""
     in_degree: Dict[str, int] = dict.fromkeys(classes, 0)
     dependents: Dict[str, List[str]] = {name: [] for name in classes}
 
@@ -104,11 +90,17 @@ def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False
             if base in classes:
                 dependents[base].append(name)
                 in_degree[name] += 1
+    return in_degree, dependents
 
-    # Topological sort using Kahn's algorithm
+
+def _topological_sort(
+    classes: Dict[str, Any],
+    in_degree: Dict[str, int],
+    dependents: Dict[str, List[str]],
+) -> List[str]:
+    """Perform topological sort on the class dependency graph."""
     queue = [name for name, deg in in_degree.items() if deg == 0]
     sorted_names: List[str] = []
-    unresolved_bases: Set[str] = set()
 
     while queue:
         # Sort for deterministic output
@@ -125,14 +117,28 @@ def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False
     remaining = [name for name in classes if name not in sorted_names]
     remaining.sort()
     sorted_names.extend(remaining)
+    return sorted_names
 
-    # Find bases that are not in the classes dict (external/unresolved)
+
+def _find_unresolved_bases(classes: Dict[str, Any]) -> Set[str]:
+    """Find bases that are not in the classes dict (external/unresolved)."""
+    unresolved_bases: Set[str] = set()
     for _name, info in classes.items():
         for base in info.get("base_classes", []):
             if base not in classes:
                 unresolved_bases.add(base)
+    return unresolved_bases
 
-    # Generate C++ code lines
+
+def _generate_cpp_lines(
+    classes: Dict[str, Any],
+    sorted_names: List[str],
+    unresolved_bases: Set[str],
+    queried_class: str,
+    truncated: bool,
+    include_meta: bool,
+) -> List[str]:
+    """Generate C++ pseudocode lines for the given classes."""
     lines: List[str] = []
     lines.append(f"// Class hierarchy for: {queried_class}")
     if truncated:
@@ -167,6 +173,39 @@ def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False
     if truncated:
         lines.append("")
         lines.append("// [Truncated - increase max_nodes/max_depth for full hierarchy]")
+    return lines
+
+
+def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False) -> str:
+    """Format hierarchy as C++ pseudocode.
+
+    Outputs classes in topological order (bases before derived) with
+    inheritance relationships shown via C++ syntax.
+    """
+    classes = hierarchy.get("classes", {})
+    queried_class = hierarchy.get("queried_class", "Unknown")
+    truncated = hierarchy.get("truncated", False)
+
+    if not classes:
+        result = f"// No hierarchy data for: {queried_class}"
+        if truncated:
+            result += "\n// Note: Hierarchy was truncated (max_nodes/max_depth limit)"
+        return result
+
+    # Build dependency graph for topological sort
+    # We want: bases appear before derived classes
+    in_degree, dependents = _build_topological_graph(classes)
+
+    # Topological sort using Kahn's algorithm
+    sorted_names = _topological_sort(classes, in_degree, dependents)
+
+    # Find bases that are not in the classes dict (external/unresolved)
+    unresolved_bases = _find_unresolved_bases(classes)
+
+    # Generate C++ code lines
+    lines = _generate_cpp_lines(
+        classes, sorted_names, unresolved_bases, queried_class, truncated, include_meta
+    )
 
     return "\n".join(lines)
 

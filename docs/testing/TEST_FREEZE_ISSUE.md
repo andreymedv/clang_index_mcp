@@ -129,8 +129,8 @@ ValueError: I/O operation on closed file.
 - Test spawns multiple threads calling `analyzer.index_project()` concurrently
 
 **Production Code:**
-- `cpp_analyzer.py:1846` - ProcessPoolExecutor future.result() call
-- `cpp_analyzer.py:1960` - Error handling in index_project
+- `cpp_analyzer.py:3819` - ProcessPoolExecutor future.result() call
+- `cpp_analyzer.py:3839` - Error handling in index_project
 - `diagnostics.py:187` - Error logging with closed file handle
 
 ### Platform Details

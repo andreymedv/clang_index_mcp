@@ -320,6 +320,57 @@ class RecoveryManager:
             return False
 
     @staticmethod
+    @staticmethod
+    def _check_db_integrity(conn) -> bool:
+        """Run PRAGMA integrity_check and return True if database is OK."""
+        cursor = conn.execute("PRAGMA integrity_check")
+        results = [row[0] for row in cursor.fetchall()]
+        if results == ["ok"]:
+            diagnostics.info("Database integrity OK after repair attempt")
+            return True
+        diagnostics.warning(f"Database corruption detected: {results[:3]}")
+        return False
+
+    @staticmethod
+    def _dump_schema(conn, dump_conn) -> None:
+        """Copy schema (tables and indexes) from conn to dump_conn."""
+        for line in conn.iterdump():
+            if line.startswith("CREATE TABLE") or line.startswith("CREATE INDEX"):
+                dump_conn.execute(line)
+
+    @staticmethod
+    def _copy_table_data(conn, dump_conn, table: str) -> None:
+        """Attempt to copy all rows from one table into the repair database."""
+        try:
+            cursor = conn.execute(f"SELECT * FROM {table}")
+            rows = cursor.fetchall()
+            if rows:
+                placeholders = ",".join(["?"] * len(rows[0]))
+                dump_conn.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
+        except Exception as e:
+            diagnostics.warning(f"Failed to copy table {table}: {e}")
+
+    @staticmethod
+    def _finalize_repair(conn, dump_conn, db_path, temp_backup) -> bool:
+        """Commit, close connections, and replace original database with repaired copy."""
+        dump_conn.commit()
+        diagnostics.info("Partial data recovery successful")
+        conn.close()
+        dump_conn.close()
+        db_path.unlink()
+        temp_backup.rename(db_path)
+        diagnostics.info("Database repair complete")
+        return True
+
+    @staticmethod
+    def _cleanup_failed_repair(dump_conn, temp_backup) -> bool:
+        """Close connections and remove temp file after a failed repair attempt."""
+        dump_conn.close()
+        if temp_backup.exists():
+            temp_backup.unlink()
+        return False
+
+    @staticmethod
     def attempt_repair(db_path) -> bool:
         """
         Attempt to repair corrupted database.
@@ -346,70 +397,29 @@ class RecoveryManager:
 
             diagnostics.info(f"Attempting to repair database: {db_path}")
 
-            # Try to open database
             conn = sqlite3.connect(str(db_path))
 
-            # Run integrity check
-            cursor = conn.execute("PRAGMA integrity_check")
-            results = [row[0] for row in cursor.fetchall()]
-
-            if results == ["ok"]:
-                diagnostics.info("Database integrity OK after repair attempt")
+            if RecoveryManager._check_db_integrity(conn):
                 conn.close()
                 return True
 
-            # Try to recover by dumping and recreating
-            diagnostics.warning(f"Database corruption detected: {results[:3]}")
-
-            # Create temporary backup
             temp_backup = db_path.parent / f"{db_path.stem}_repair_temp.db"
-
-            # Try to dump recoverable data
             dump_conn = sqlite3.connect(str(temp_backup))
 
             try:
-                # Copy schema
-                for line in conn.iterdump():
-                    if line.startswith("CREATE TABLE") or line.startswith("CREATE INDEX"):
-                        dump_conn.execute(line)
+                RecoveryManager._dump_schema(conn, dump_conn)
 
-                # Try to copy data (may fail on corrupted rows)
                 cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = [row[0] for row in cursor.fetchall()]
 
                 for table in tables:
-                    try:
-                        cursor = conn.execute(f"SELECT * FROM {table}")
-                        # This may fail on corrupted rows
-                        rows = cursor.fetchall()
-                        if rows:
-                            placeholders = ",".join(["?"] * len(rows[0]))
-                            dump_conn.executemany(
-                                f"INSERT INTO {table} VALUES ({placeholders})", rows
-                            )
-                    except Exception as e:
-                        diagnostics.warning(f"Failed to copy table {table}: {e}")
+                    RecoveryManager._copy_table_data(conn, dump_conn, table)
 
-                dump_conn.commit()
-                diagnostics.info("Partial data recovery successful")
-
-                # Close connections
-                conn.close()
-                dump_conn.close()
-
-                # Replace original with repaired
-                db_path.unlink()
-                temp_backup.rename(db_path)
-
-                diagnostics.info("Database repair complete")
-                return True
+                return RecoveryManager._finalize_repair(conn, dump_conn, db_path, temp_backup)
 
             except Exception as e:
                 diagnostics.error(f"Repair failed: {e}")
-                dump_conn.close()
-                if temp_backup.exists():
-                    temp_backup.unlink()
-                return False
+                return RecoveryManager._cleanup_failed_repair(dump_conn, temp_backup)
 
         except Exception as e:
             diagnostics.error(f"Failed to repair database: {e}")

@@ -114,6 +114,13 @@ def _filter_detail_level(result: List[TextContent], detail_level: str) -> List[T
     return [TextContent(type="text", text=json.dumps(data, indent=2))]
 
 
+def _strip_fields_from_item(item: Any, fields: set[str]) -> None:
+    """Strip fields from a single dict item."""
+    if isinstance(item, dict):
+        for f in fields:
+            item.pop(f, None)
+
+
 def _strip_from_data(data: Any, fields: set[str]) -> None:
     """Strip fields from result lists inside a data dict or list."""
     if isinstance(data, dict):
@@ -121,14 +128,10 @@ def _strip_from_data(data: Any, fields: set[str]) -> None:
             items = data.get(key)
             if isinstance(items, list):
                 for item in items:
-                    if isinstance(item, dict):
-                        for f in fields:
-                            item.pop(f, None)
+                    _strip_fields_from_item(item, fields)
     elif isinstance(data, list):
         for item in data:
-            if isinstance(item, dict):
-                for f in fields:
-                    item.pop(f, None)
+            _strip_fields_from_item(item, fields)
 
 
 def _add_system_state(result: List[TextContent]) -> List[TextContent]:

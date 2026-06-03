@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from clang.cindex import CompilationDatabase
 
@@ -256,6 +256,46 @@ class CompileCommandsManager:
 
         return args
 
+    @staticmethod
+    def _validate_resource_dir(include_dir: str) -> bool:
+        """Check if a directory contains the required builtin headers."""
+        return os.path.isdir(include_dir) and os.path.isfile(os.path.join(include_dir, "stddef.h"))
+
+    def _get_resource_dir_from_clang(self) -> Optional[str]:
+        """Try to get the clang resource directory by invoking clang directly."""
+        try:
+            result = subprocess.run(
+                ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                include_dir = os.path.join(result.stdout.strip(), "include")
+                if self._validate_resource_dir(include_dir):
+                    diagnostics.debug(f"Found clang resource directory: {include_dir}")
+                    return include_dir
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            diagnostics.debug(f"Clang execution failed, trying fallback locations: {e}")
+        return None
+
+    def _find_resource_dir_in_common_locations(self) -> Optional[str]:
+        """Search for the clang resource directory in common system locations."""
+        clang_lib_dir = "/usr/lib/clang"
+        if not os.path.isdir(clang_lib_dir):
+            return None
+
+        versions = []
+        for entry in os.listdir(clang_lib_dir):
+            include_dir = os.path.join(clang_lib_dir, entry, "include")
+            if self._validate_resource_dir(include_dir):
+                versions.append((entry, include_dir))
+
+        if versions:
+            versions.sort(reverse=True)
+            include_dir = versions[0][1]
+            diagnostics.debug(f"Found clang resource directory (fallback): {include_dir}")
+            return include_dir
+
+        return None
+
     def _detect_clang_resource_dir(self) -> Optional[str]:
         """
         Detect the clang resource directory containing builtin headers.
@@ -273,45 +313,13 @@ class CompileCommandsManager:
             Path to the resource directory's include folder, or None if not found
         """
         try:
-            # Try to get resource directory from clang itself
-            try:
-                result = subprocess.run(
-                    ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
-                )
+            include_dir = self._get_resource_dir_from_clang()
+            if include_dir is not None:
+                return include_dir
 
-                if result.returncode == 0:
-                    resource_dir = result.stdout.strip()
-                    include_dir = os.path.join(resource_dir, "include")
-
-                    # Verify the directory exists and contains stddef.h
-                    if os.path.isdir(include_dir):
-                        stddef_path = os.path.join(include_dir, "stddef.h")
-                        if os.path.isfile(stddef_path):
-                            diagnostics.debug(f"Found clang resource directory: {include_dir}")
-                            return include_dir
-            except (subprocess.SubprocessError, FileNotFoundError) as e:
-                diagnostics.debug(f"Clang execution failed, trying fallback locations: {e}")
-
-            # Fallback: try common locations
-            # Format: /usr/lib/clang/<version>/include
-            clang_lib_dir = "/usr/lib/clang"
-            if os.path.isdir(clang_lib_dir):
-                # Find the highest version directory
-                versions = []
-                for entry in os.listdir(clang_lib_dir):
-                    version_dir = os.path.join(clang_lib_dir, entry)
-                    include_dir = os.path.join(version_dir, "include")
-                    stddef_path = os.path.join(include_dir, "stddef.h")
-
-                    if os.path.isfile(stddef_path):
-                        versions.append((entry, include_dir))
-
-                if versions:
-                    # Sort by version (simple string sort works for most cases)
-                    versions.sort(reverse=True)
-                    include_dir = versions[0][1]
-                    diagnostics.debug(f"Found clang resource directory (fallback): {include_dir}")
-                    return include_dir
+            include_dir = self._find_resource_dir_in_common_locations()
+            if include_dir is not None:
+                return include_dir
 
             diagnostics.warning(
                 "Could not detect clang resource directory - builtin headers may not be found"
@@ -387,6 +395,44 @@ class CompileCommandsManager:
             diagnostics.error(f"Error loading from {compile_commands_file}: {e}")
             return False
 
+    def _process_compile_command_entry(
+        self, entry: dict, index: int, compdb: CompilationDatabase
+    ) -> Optional[Tuple[str, dict]]:
+        """Process a single compile command entry. Returns (normalized_path, command_dict) or None."""
+        if not isinstance(entry, dict):
+            diagnostics.warning(f"Skipping invalid command at index {index}")
+            return None
+
+        if "file" not in entry:
+            diagnostics.warning(f"Skipping command without 'file' field at index {index}")
+            return None
+
+        file_path = entry["file"]
+        directory = entry.get("directory", str(self.project_root))
+        normalized_path = self._normalize_path(file_path, directory)
+
+        compile_cmds = compdb.getCompileCommands(normalized_path)
+        if compile_cmds is None or len(list(compile_cmds)) == 0:
+            compile_cmds = compdb.getCompileCommands(file_path)
+
+        if compile_cmds is None:
+            return None
+
+        for cmd in compile_cmds:
+            raw_arguments = list(cmd.arguments)
+            filtered_args = self._filter_arguments(raw_arguments)
+            arguments = self._sanitize_args_for_libclang(filtered_args)
+
+            command = {
+                "arguments": arguments,
+                "directory": cmd.directory,
+                "command": "",
+                "index": index,
+            }
+            return normalized_path, command
+
+        return None
+
     def _parse_compile_commands_from_db(self, compdb: CompilationDatabase) -> None:
         """Parse compile commands from CompilationDatabase and build file-to-command mapping.
 
@@ -396,12 +442,9 @@ class CompileCommandsManager:
         self.compile_commands.clear()
         self.file_to_command_map.clear()
 
-        # We still need to read the JSON to know which files are in the database
-        # since CompilationDatabase doesn't provide a method to list all files
         compile_commands_file = self.project_root / self.compile_commands_path
 
         try:
-            # Read JSON to get file list (minimal parsing, just to get filenames)
             with open(compile_commands_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
@@ -409,61 +452,15 @@ class CompileCommandsManager:
                 diagnostics.error("compile_commands.json must contain a list of commands")
                 return
 
-            # Process each entry using CompilationDatabase API
             for i, entry in enumerate(data):
-                if not isinstance(entry, dict):
-                    diagnostics.warning(f"Skipping invalid command at index {i}")
+                result = self._process_compile_command_entry(entry, i, compdb)
+                if result is None:
                     continue
-
-                # Extract required fields
-                if "file" not in entry:
-                    diagnostics.warning(f"Skipping command without 'file' field at index {i}")
-                    continue
-
-                file_path = entry["file"]
-                directory = entry.get("directory", str(self.project_root))
-
-                # Normalize file path
-                normalized_path = self._normalize_path(file_path, directory)
-
-                # Get compile commands from the database for this file
-                # This returns a CompileCommands object (iterator of CompileCommand)
-                compile_cmds = compdb.getCompileCommands(normalized_path)
-
-                if compile_cmds is None or len(list(compile_cmds)) == 0:
-                    # Try with the original (non-normalized) path
-                    compile_cmds = compdb.getCompileCommands(file_path)
-
-                if compile_cmds is not None:
-                    # Get the first (usually only) compile command for this file
-                    for cmd in compile_cmds:
-                        # Get arguments from CompileCommand - this is already parsed!
-                        # The arguments property returns a list of strings
-                        raw_arguments = list(cmd.arguments)
-
-                        # Filter out compiler executable, -o, -c, and source files
-                        filtered_args = self._filter_arguments(raw_arguments)
-
-                        # Sanitize for libclang
-                        arguments = self._sanitize_args_for_libclang(filtered_args)
-
-                        # Store the command
-                        self.compile_commands[normalized_path] = {
-                            "arguments": arguments,
-                            "directory": cmd.directory,
-                            "command": "",  # Not needed since we have arguments
-                            "index": i,
-                        }
-
-                        # Build mapping from file to command
-                        if normalized_path not in self.file_to_command_map:
-                            self.file_to_command_map[normalized_path] = []
-                        self.file_to_command_map[normalized_path].append(
-                            self.compile_commands[normalized_path]
-                        )
-
-                        # Usually only one command per file, use the first
-                        break
+                normalized_path, command = result
+                self.compile_commands[normalized_path] = command
+                if normalized_path not in self.file_to_command_map:
+                    self.file_to_command_map[normalized_path] = []
+                self.file_to_command_map[normalized_path].append(command)
 
         except Exception as e:
             diagnostics.error(f"Error parsing compile commands from database: {e}")
@@ -535,6 +532,39 @@ class CompileCommandsManager:
         # Convert to absolute path and normalize
         return str(Path(file_path).resolve())
 
+    def _normalize_single_argument(
+        self, arg: str, next_arg: Optional[str], directory: str
+    ) -> Tuple[List[str], int]:
+        """Normalize a single argument and its optional successor. Returns (new_args, consumed_count)."""
+        import os
+
+        if arg == "-I" and next_arg is not None:
+            include_path = next_arg
+            if not os.path.isabs(include_path):
+                include_path = os.path.abspath(os.path.join(directory, include_path))
+            return [arg, include_path], 2
+
+        if arg.startswith("-I"):
+            include_path = arg[2:]
+            if include_path and not os.path.isabs(include_path):
+                arg = f"-I{os.path.abspath(os.path.join(directory, include_path))}"
+            return [arg], 1
+
+        if arg == "-isystem" and next_arg is not None:
+            include_path = next_arg
+            if not os.path.isabs(include_path):
+                include_path = os.path.abspath(os.path.join(directory, include_path))
+            return [arg, include_path], 2
+
+        if arg.startswith("-isystem"):
+            if len(arg) > 8:
+                include_path = arg[8:]
+                if not os.path.isabs(include_path):
+                    arg = f"-isystem{os.path.abspath(os.path.join(directory, include_path))}"
+            return [arg], 1
+
+        return [arg], 1
+
     def _normalize_arguments(self, arguments: List[str], directory: str) -> List[str]:
         """
         Normalize relative include paths in arguments to absolute paths.
@@ -546,61 +576,14 @@ class CompileCommandsManager:
         Returns:
             List of arguments with normalized include paths
         """
-        import os
-
-        normalized = []
+        normalized: List[str] = []
         i = 0
 
         while i < len(arguments):
-            arg = arguments[i]
-
-            # Handle -I with separate argument
-            if arg == "-I" and i + 1 < len(arguments):
-                include_path = arguments[i + 1]
-                # Make relative paths absolute based on directory
-                if not os.path.isabs(include_path):
-                    include_path = os.path.abspath(os.path.join(directory, include_path))
-                normalized.append(arg)
-                normalized.append(include_path)
-                i += 2
-                continue
-
-            # Handle -I<path> (combined form)
-            if arg.startswith("-I"):
-                include_path = arg[2:]  # Remove -I prefix
-                if include_path and not os.path.isabs(include_path):
-                    include_path = os.path.abspath(os.path.join(directory, include_path))
-                    arg = f"-I{include_path}"
-                normalized.append(arg)
-                i += 1
-                continue
-
-            # Handle -isystem with separate argument
-            if arg == "-isystem" and i + 1 < len(arguments):
-                include_path = arguments[i + 1]
-                # Make relative paths absolute based on directory
-                if not os.path.isabs(include_path):
-                    include_path = os.path.abspath(os.path.join(directory, include_path))
-                normalized.append(arg)
-                normalized.append(include_path)
-                i += 2
-                continue
-
-            # Handle -isystem<path> (combined form, rare but possible)
-            if arg.startswith("-isystem"):
-                # Check if there's a path after -isystem
-                if len(arg) > 8:  # More than just "-isystem"
-                    include_path = arg[8:]  # Remove -isystem prefix
-                    if not os.path.isabs(include_path):
-                        include_path = os.path.abspath(os.path.join(directory, include_path))
-                        arg = f"-isystem{include_path}"
-                normalized.append(arg)
-                i += 1
-                continue
-
-            # Keep other arguments as-is
-            normalized.append(arg)
-            i += 1
+            next_arg = arguments[i + 1] if i + 1 < len(arguments) else None
+            new_args, consumed = self._normalize_single_argument(arguments[i], next_arg, directory)
+            normalized.extend(new_args)
+            i += consumed
 
         return normalized
 
@@ -632,20 +615,10 @@ class CompileCommandsManager:
         """
         return self.argument_sanitizer.sanitize(args)
 
-    def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
-        """
-        Detect the C++ standard library include path based on compile arguments.
-
-        When using libclang programmatically, the C++ standard library headers
-        are not automatically found even when -stdlib and -isysroot are specified.
-        We need to explicitly add the C++ stdlib include path.
-
-        Args:
-            arguments: List of compilation arguments
-
-        Returns:
-            Path to C++ standard library includes, or None if not found
-        """
+    def _extract_stdlib_and_sysroot(
+        self, arguments: List[str]
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Extract -stdlib and -isysroot flags from arguments."""
         stdlib = None
         sysroot = None
 
@@ -663,6 +636,59 @@ class CompileCommandsManager:
             elif arg.startswith("-isysroot="):
                 sysroot = arg[10:]  # Remove '-isysroot=' prefix
 
+        return stdlib, sysroot
+
+    def _get_libcxx_path(self, sysroot: Optional[str]) -> Optional[str]:
+        """Get the path for libc++ headers."""
+        if sysroot:
+            cxx_path = os.path.join(sysroot, "usr", "include", "c++", "v1")
+            # Return the path even if directory doesn't exist on current system
+            # (e.g., when analyzing macOS code on Linux)
+            # libclang will handle missing directories gracefully
+            return cxx_path
+
+        # Try system paths
+        system_paths = ["/usr/include/c++/v1", "/usr/local/include/c++/v1"]
+        for path in system_paths:
+            if os.path.isdir(path):
+                return path
+        return None
+
+    def _get_libstdcxx_path(self, sysroot: Optional[str]) -> Optional[str]:
+        """Get the path for libstdc++ headers."""
+        if sysroot:
+            cxx_base = os.path.join(sysroot, "usr", "include", "c++")
+            if os.path.isdir(cxx_base):
+                # Find the highest version directory
+                try:
+                    versions = [
+                        d
+                        for d in os.listdir(cxx_base)
+                        if os.path.isdir(os.path.join(cxx_base, d)) and d[0].isdigit()
+                    ]
+                    if versions:
+                        versions.sort(reverse=True)
+                        return os.path.join(cxx_base, versions[0])
+                except Exception:
+                    pass
+        return None
+
+    def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
+        """
+        Detect the C++ standard library include path based on compile arguments.
+
+        When using libclang programmatically, the C++ standard library headers
+        are not automatically found even when -stdlib and -isysroot are specified.
+        We need to explicitly add the C++ stdlib include path.
+
+        Args:
+            arguments: List of compilation arguments
+
+        Returns:
+            Path to C++ standard library includes, or None if not found
+        """
+        stdlib, sysroot = self._extract_stdlib_and_sysroot(arguments)
+
         # If no stdlib specified, assume system default
         # For macOS, this is typically libc++
         if not stdlib and sysroot:
@@ -676,39 +702,31 @@ class CompileCommandsManager:
 
         # Build the C++ stdlib include path
         if stdlib == "libc++":
-            # For libc++, headers are in /usr/include/c++/v1
-            if sysroot:
-                cxx_path = os.path.join(sysroot, "usr", "include", "c++", "v1")
-                # Return the path even if directory doesn't exist on current system
-                # (e.g., when analyzing macOS code on Linux)
-                # libclang will handle missing directories gracefully
-                return cxx_path
-
-            # Try system paths
-            system_paths = ["/usr/include/c++/v1", "/usr/local/include/c++/v1"]
-            for path in system_paths:
-                if os.path.isdir(path):
-                    return path
-
+            return self._get_libcxx_path(sysroot)
         elif stdlib == "libstdc++":
-            # For libstdc++, headers are in /usr/include/c++/<version>
-            if sysroot:
-                cxx_base = os.path.join(sysroot, "usr", "include", "c++")
-                if os.path.isdir(cxx_base):
-                    # Find the highest version directory
-                    try:
-                        versions = [
-                            d
-                            for d in os.listdir(cxx_base)
-                            if os.path.isdir(os.path.join(cxx_base, d)) and d[0].isdigit()
-                        ]
-                        if versions:
-                            versions.sort(reverse=True)
-                            return os.path.join(cxx_base, versions[0])
-                    except Exception:
-                        pass
+            return self._get_libstdcxx_path(sysroot)
 
         return None
+
+    def _find_std_insert_position(self, arguments: List[str]) -> int:
+        """Find insertion position after -std= flag if present."""
+        for i, arg in enumerate(arguments):
+            if arg.startswith("-std="):
+                return i + 1
+        return 0
+
+    def _is_path_in_args(self, path: str, arguments: List[str]) -> bool:
+        """Check if a path is already present in arguments."""
+        for arg in arguments:
+            if path in arg:
+                return True
+        return False
+
+    def _insert_system_include(self, arguments: List[str], insert_pos: int, path: str) -> int:
+        """Insert -isystem path at insert_pos and return updated position."""
+        arguments.insert(insert_pos, "-isystem")
+        arguments.insert(insert_pos + 1, path)
+        return insert_pos + 2
 
     def _add_builtin_includes(self, arguments: List[str]) -> List[str]:
         """
@@ -738,50 +756,16 @@ class CompileCommandsManager:
             Arguments with builtin include directory added if needed
         """
         result = arguments.copy()
+        insert_pos = self._find_std_insert_position(result)
 
-        # Find insertion position (after -std= flag if present)
-        insert_pos = 0
-        for i, arg in enumerate(result):
-            if arg.startswith("-std="):
-                insert_pos = i + 1
-                break
-
-        # Step 1: Add C++ standard library include path FIRST
-        # This must come BEFORE the clang resource directory to ensure proper header resolution
         cxx_stdlib_path = self._detect_cxx_stdlib_path(arguments)
-        if cxx_stdlib_path:
-            # Check if already present
-            already_has_stdlib = False
-            for arg in result:
-                if cxx_stdlib_path in arg:
-                    already_has_stdlib = True
-                    break
+        if cxx_stdlib_path and not self._is_path_in_args(cxx_stdlib_path, result):
+            insert_pos = self._insert_system_include(result, insert_pos, cxx_stdlib_path)
+            diagnostics.debug(f"Added C++ stdlib path: {cxx_stdlib_path}")
 
-            if not already_has_stdlib:
-                # Add C++ stdlib path as first system include
-                # This ensures it has priority for C++ headers
-                result.insert(insert_pos, "-isystem")
-                result.insert(insert_pos + 1, cxx_stdlib_path)
-                diagnostics.debug(f"Added C++ stdlib path: {cxx_stdlib_path}")
-                # Update insert position for next includes
-                insert_pos += 2
-
-        # Step 2: Add clang resource directory for builtin headers AFTER C++ stdlib
-        if self.clang_resource_dir:
-            # Check if the resource directory is already in the include paths
-            already_has_resource = False
-            for arg in result:
-                if self.clang_resource_dir in arg:
-                    already_has_resource = True
-                    break
-
-            if not already_has_resource:
-                # Add the resource directory as a system include (-isystem)
-                # Use -isystem instead of -I to avoid warnings from system headers
-                # Insert after C++ stdlib
-                result.insert(insert_pos, "-isystem")
-                result.insert(insert_pos + 1, self.clang_resource_dir)
-                diagnostics.debug(f"Added clang resource dir: {self.clang_resource_dir}")
+        if self.clang_resource_dir and not self._is_path_in_args(self.clang_resource_dir, result):
+            self._insert_system_include(result, insert_pos, self.clang_resource_dir)
+            diagnostics.debug(f"Added clang resource dir: {self.clang_resource_dir}")
 
         return result
 

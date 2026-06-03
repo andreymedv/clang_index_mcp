@@ -21,9 +21,15 @@ Usage:
 import multiprocessing
 import os
 import time
+from concurrent.futures import (
+    Executor,
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    as_completed,
+)
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 # Handle both package and script imports
 try:
@@ -325,6 +331,308 @@ class IncrementalAnalyzer:
             except Exception as e:
                 diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
 
+    def _remove_symbol_from_index(self, symbol: Any) -> None:
+        """Remove a symbol from the appropriate index (class or function)."""
+        if symbol.kind in ("class", "struct"):
+            if symbol.name in self.analyzer.class_index:
+                try:
+                    self.analyzer.class_index[symbol.name].remove(symbol)
+                    if not self.analyzer.class_index[symbol.name]:
+                        del self.analyzer.class_index[symbol.name]
+                except ValueError:
+                    pass
+        else:
+            if symbol.name in self.analyzer.function_index:
+                try:
+                    self.analyzer.function_index[symbol.name].remove(symbol)
+                    if not self.analyzer.function_index[symbol.name]:
+                        del self.analyzer.function_index[symbol.name]
+                except ValueError:
+                    pass
+
+    def _handle_definition_wins(self, symbol: Any, existing: Any) -> bool:
+        """Apply 'definition wins' rule for duplicate symbols. Returns True if symbol should be skipped."""
+        if symbol.is_definition and not existing.is_definition:
+            # Remove old declaration from index
+            self._remove_symbol_from_index(existing)
+            return False
+        else:
+            # Keep existing
+            return True
+
+    def _add_symbol_to_indices(self, symbol: Any) -> None:
+        """Add a symbol to the analyzer's indices."""
+        # Add to appropriate index
+        if symbol.kind in ("class", "struct"):
+            self.analyzer.class_index[symbol.name].append(symbol)
+        else:
+            self.analyzer.function_index[symbol.name].append(symbol)
+
+        # Add to USR index
+        if symbol.usr:
+            self.analyzer.usr_index[symbol.usr] = symbol
+
+        # Add to file index (with deduplication)
+        if symbol.file:
+            if symbol.file not in self.analyzer.file_index:
+                self.analyzer.file_index[symbol.file] = []
+
+            # Check for duplicates in file_index
+            already_in_file_index = False
+            if symbol.usr:
+                for existing in self.analyzer.file_index[symbol.file]:
+                    if existing.usr == symbol.usr:
+                        already_in_file_index = True
+                        break
+
+            if not already_in_file_index:
+                self.analyzer.file_index[symbol.file].append(symbol)
+
+    def _merge_symbols(self, symbols: List[Any]) -> None:
+        """Merge symbols from a worker process into the main analyzer index."""
+        with self.analyzer.index_lock:
+            for symbol in symbols:
+                # Apply same deduplication logic as index_project
+                skip_symbol = False
+
+                if symbol.usr and symbol.usr in self.analyzer.usr_index:
+                    existing = self.analyzer.usr_index[symbol.usr]
+                    skip_symbol = self._handle_definition_wins(symbol, existing)
+
+                if not skip_symbol:
+                    self._add_symbol_to_indices(symbol)
+
+    def _get_file_compile_args(self, file_list: List[str]) -> Dict[str, List[str]]:
+        """Precompute compile arguments for a list of files."""
+        file_compile_args = {}
+        from pathlib import Path
+
+        for file_path in file_list:
+            file_path_obj = Path(file_path)
+            args = self.analyzer.compile_commands_manager.get_compile_args_with_fallback(
+                file_path_obj
+            )
+
+            # If compile commands are not available and we're using fallback, add vcpkg includes
+            if not self.analyzer.compile_commands_manager.is_file_supported(file_path_obj):
+                # Add vcpkg includes if available
+                vcpkg_include = (
+                    self.analyzer.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                )
+                if vcpkg_include.exists():
+                    args.append(f"-I{vcpkg_include}")
+
+                # Add common vcpkg paths
+                vcpkg_paths = [
+                    "C:/vcpkg/installed/x64-windows/include",
+                    "C:/dev/vcpkg/installed/x64-windows/include",
+                ]
+                for path in vcpkg_paths:
+                    if Path(path).exists():
+                        args.append(f"-I{path}")
+                        break
+
+            file_compile_args[file_path] = args
+        return file_compile_args
+
+    def _create_executor(
+        self, use_processes: bool, max_workers: int
+    ) -> Tuple[Optional[multiprocessing.context.BaseContext], type, str]:
+        """Create an executor and its context based on configuration."""
+        mp_context = None
+        executor_class: type
+        msg: str
+
+        if use_processes:
+            # Use 'spawn' context to avoid inheriting open file descriptors
+            try:
+                mp_context = multiprocessing.get_context("spawn")
+                executor_class = ProcessPoolExecutor
+                msg = f"Incremental refresh: Using ProcessPoolExecutor (spawn) with {max_workers} workers"
+            except Exception as e:
+                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
+                executor_class = ProcessPoolExecutor
+                mp_context = None
+                msg = f"Incremental refresh: Using ProcessPoolExecutor with {max_workers} workers"
+        else:
+            executor_class = ThreadPoolExecutor
+            mp_context = None
+            msg = f"Incremental refresh: Using ThreadPoolExecutor with {max_workers} workers"
+
+        return mp_context, executor_class, msg
+
+    def _process_future_result(
+        self, result: Any, file_path: str, use_processes: bool
+    ) -> Tuple[bool, bool]:
+        """Process the result from a future and merge it into the analyzer."""
+        if use_processes:
+            # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
+            _, success, was_cached, symbols, call_sites, processed_headers = result
+
+            # Merge symbols into main process (same logic as index_project)
+            if success and symbols:
+                self._merge_symbols(symbols)
+
+            # Restore call sites
+            if call_sites:
+                for cs_dict in call_sites:
+                    self.analyzer.call_graph_analyzer.add_call(
+                        cs_dict["caller_usr"],
+                        cs_dict["callee_usr"],
+                        cs_dict["file"],
+                        cs_dict["line"],
+                        cs_dict.get("column"),
+                    )
+
+            # Merge header tracking
+            if processed_headers:
+                for header_path, header_hash in processed_headers.items():
+                    self.analyzer.header_tracker.mark_completed(header_path, header_hash)
+
+            # Update file hash tracking
+            file_hash = self.analyzer._get_file_hash(file_path)
+            self.analyzer.file_hashes[file_path] = file_hash
+        else:
+            # ThreadPoolExecutor returns (success, was_cached)
+            success, was_cached = result
+
+        return success, was_cached
+
+    def _report_progress(
+        self,
+        progress_callback: Callable,
+        i: int,
+        total: int,
+        analyzed: int,
+        failed: int,
+        start_time: float,
+        file_path: str,
+    ) -> None:
+        """Calculate and report indexing progress via callback."""
+        processed = i + 1
+        # Report every 10 files or at completion
+        if processed % 10 == 0 or processed == total:
+            try:
+                # Import IndexingProgress here to avoid circular dependency
+                from .state_manager import IndexingProgress
+
+                elapsed = time.time() - start_time
+                rate = processed / elapsed if elapsed > 0 else 0
+                eta = (total - processed) / rate if rate > 0 else 0
+
+                estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
+
+                progress = IndexingProgress(
+                    total_files=total,
+                    indexed_files=analyzed,
+                    failed_files=failed,
+                    cache_hits=0,  # Not tracked during refresh
+                    current_file=file_path if processed < total else None,
+                    start_time=datetime.fromtimestamp(start_time),
+                    estimated_completion=estimated_completion,
+                )
+
+                progress_callback(progress)
+            except Exception as e:
+                # Don't fail refresh if progress callback fails
+                diagnostics.debug(f"Progress callback failed: {e}")
+
+    def _submit_tasks(
+        self,
+        executor: Executor,
+        file_list: List[str],
+        use_processes: bool,
+    ) -> Dict[Any, str]:
+        """Submit re-analysis tasks to the executor."""
+        if use_processes:
+            # ProcessPoolExecutor: use worker function (same as index_project)
+            from mcp_server.cpp_analyzer import _process_file_worker
+
+            # Get project configuration for workers
+            project_root = str(self.analyzer.project_root)
+            config_file_str = (
+                str(self.analyzer.project_identity.config_file_path)
+                if self.analyzer.project_identity.config_file_path
+                else None
+            )
+            include_dependencies = self.analyzer.include_dependencies
+
+            # Task 3.2: Prepare compile args for all files in main process
+            # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
+            file_compile_args = self._get_file_compile_args(file_list)
+
+            # Submit all files to worker processes
+            return {
+                executor.submit(
+                    _process_file_worker,
+                    (
+                        project_root,
+                        config_file_str,
+                        os.path.abspath(file_path),
+                        True,  # force=True for refresh
+                        include_dependencies,
+                        file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
+                    ),
+                ): file_path
+                for file_path in file_list
+            }
+        else:
+            # ThreadPoolExecutor: use index_file method directly
+            return {
+                executor.submit(self.analyzer.index_file, file_path, force=True): file_path
+                for file_path in file_list
+            }
+
+    def _process_loop(
+        self,
+        executor: Executor,
+        future_to_file: Dict[Any, str],
+        use_processes: bool,
+        start_time: float,
+        total: int,
+        progress_callback: Optional[Callable],
+        wait_for_tools_callback: Optional[Callable[[], None]],
+    ) -> Tuple[int, int]:
+        """Process results from futures in a loop."""
+        analyzed = 0
+        failed = 0
+
+        for i, future in enumerate(as_completed(future_to_file)):
+            # Check for interruption
+            if getattr(self.analyzer, "_interrupted", False) is True:
+                # Cancel all pending futures
+                for f in future_to_file:
+                    f.cancel()
+                diagnostics.info("Incremental refresh interrupted by request")
+                raise KeyboardInterrupt("Incremental refresh interrupted by request")
+
+            if wait_for_tools_callback:
+                wait_for_tools_callback()
+
+            file_path = future_to_file[future]
+            try:
+                result = future.result()
+                success, was_cached = self._process_future_result(result, file_path, use_processes)
+
+                if success:
+                    analyzed += 1
+                    diagnostics.debug(f"Re-analyzed: {file_path}")
+                else:
+                    failed += 1
+                    diagnostics.warning(f"Failed to re-analyze: {file_path}")
+
+            except Exception as e:
+                failed += 1
+                diagnostics.error(f"Error re-analyzing {file_path}: {e}")
+
+            # Report progress periodically
+            if progress_callback:
+                self._report_progress(
+                    progress_callback, i, total, analyzed, failed, start_time, file_path
+                )
+
+        return analyzed, failed
+
     def _reanalyze_files(
         self,
         files: Set[str],
@@ -357,12 +665,6 @@ class IncrementalAnalyzer:
 
         # Use analyzer's parallel processing infrastructure (same pattern as index_project)
         # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
-        from concurrent.futures import (
-            Executor,
-            ProcessPoolExecutor,
-            ThreadPoolExecutor,
-            as_completed,
-        )
         from unittest.mock import Mock
 
         use_processes = getattr(self.analyzer, "use_processes", True)
@@ -379,271 +681,29 @@ class IncrementalAnalyzer:
             max_workers = os.cpu_count() or 4
 
         # Choose executor based on configuration
-        executor_class: Union[type[ProcessPoolExecutor], type[ThreadPoolExecutor]]
-        if use_processes:
-            # Use 'spawn' context to avoid inheriting open file descriptors
-            try:
-                mp_context = multiprocessing.get_context("spawn")
-                executor_class = ProcessPoolExecutor
-                diagnostics.debug(
-                    f"Incremental refresh: Using ProcessPoolExecutor (spawn) with {max_workers} workers"
-                )
-            except Exception as e:
-                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-                executor_class = ProcessPoolExecutor
-                mp_context = None
-        else:
-            executor_class = ThreadPoolExecutor
-            mp_context = None
-            diagnostics.debug(
-                f"Incremental refresh: Using ThreadPoolExecutor with {max_workers} workers"
-            )
+        mp_context, executor_class, msg = self._create_executor(use_processes, max_workers)
+        diagnostics.debug(msg)
 
         executor: Optional[Executor] = None
         try:
             if use_processes and mp_context:
                 executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_context)
             else:
-                executor = executor_class(max_workers=max_workers)
+                executor = executor_class(max_workers=max_workers)  # type: ignore[operator]
 
-            if use_processes:
-                assert executor is not None
-                # ProcessPoolExecutor: use worker function (same as index_project)
-                from pathlib import Path
-
-                from mcp_server.cpp_analyzer import _process_file_worker
-
-                # Get project configuration for workers
-                project_root = str(self.analyzer.project_root)
-                config_file_str = (
-                    str(self.analyzer.project_identity.config_file_path)
-                    if self.analyzer.project_identity.config_file_path
-                    else None
-                )
-                include_dependencies = self.analyzer.include_dependencies
-
-                # Task 3.2: Prepare compile args for all files in main process
-                # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
-                file_compile_args = {}
-                for file_path in file_list:
-                    file_path_obj = Path(file_path)
-                    args = self.analyzer.compile_commands_manager.get_compile_args_with_fallback(
-                        file_path_obj
-                    )
-
-                    # If compile commands are not available and we're using fallback, add vcpkg includes
-                    if not self.analyzer.compile_commands_manager.is_file_supported(file_path_obj):
-                        # Add vcpkg includes if available
-                        vcpkg_include = (
-                            self.analyzer.project_root
-                            / "vcpkg_installed"
-                            / "x64-windows"
-                            / "include"
-                        )
-                        if vcpkg_include.exists():
-                            args.append(f"-I{vcpkg_include}")
-
-                        # Add common vcpkg paths
-                        vcpkg_paths = [
-                            "C:/vcpkg/installed/x64-windows/include",
-                            "C:/dev/vcpkg/installed/x64-windows/include",
-                        ]
-                        for path in vcpkg_paths:
-                            if Path(path).exists():
-                                args.append(f"-I{path}")
-                                break
-
-                    file_compile_args[file_path] = args
-
-                # Submit all files to worker processes
-                future_to_file = {
-                    executor.submit(
-                        _process_file_worker,
-                        (
-                            project_root,
-                            config_file_str,
-                            os.path.abspath(file_path),
-                            True,  # force=True for refresh
-                            include_dependencies,
-                            file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
-                        ),
-                    ): file_path
-                    for file_path in file_list
-                }
-            else:
-                # ThreadPoolExecutor: use index_file method directly
-                assert executor is not None
-                future_to_file = {
-                    executor.submit(self.analyzer.index_file, file_path, force=True): file_path
-                    for file_path in file_list
-                }
+            assert executor is not None
+            future_to_file = self._submit_tasks(executor, file_list, use_processes)
 
             # Process results as they complete
-            for i, future in enumerate(as_completed(future_to_file)):
-                # Check for interruption
-                if getattr(self.analyzer, "_interrupted", False) is True:
-                    # Cancel all pending futures
-                    for f in future_to_file:
-                        f.cancel()
-                    diagnostics.info("Incremental refresh interrupted by request")
-                    raise KeyboardInterrupt("Incremental refresh interrupted by request")
-
-                if wait_for_tools_callback:
-                    wait_for_tools_callback()
-
-                file_path = future_to_file[future]
-                try:
-                    result = future.result()
-
-                    if use_processes:
-                        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
-                        _, success, was_cached, symbols, call_sites, processed_headers = result
-
-                        # Merge symbols into main process (same logic as index_project)
-                        if success and symbols:
-                            with self.analyzer.index_lock:
-                                for symbol in symbols:
-                                    # Apply same deduplication logic as index_project
-                                    skip_symbol = False
-
-                                    if symbol.usr and symbol.usr in self.analyzer.usr_index:
-                                        existing = self.analyzer.usr_index[symbol.usr]
-
-                                        # Definition-wins
-                                        if symbol.is_definition and not existing.is_definition:
-                                            # Remove old declaration from index
-                                            if existing.kind in ("class", "struct"):
-                                                if existing.name in self.analyzer.class_index:
-                                                    try:
-                                                        self.analyzer.class_index[
-                                                            existing.name
-                                                        ].remove(existing)
-                                                        if not self.analyzer.class_index[
-                                                            existing.name
-                                                        ]:
-                                                            del self.analyzer.class_index[
-                                                                existing.name
-                                                            ]
-                                                    except ValueError:
-                                                        pass
-                                            else:
-                                                if existing.name in self.analyzer.function_index:
-                                                    try:
-                                                        self.analyzer.function_index[
-                                                            existing.name
-                                                        ].remove(existing)
-                                                        if not self.analyzer.function_index[
-                                                            existing.name
-                                                        ]:
-                                                            del self.analyzer.function_index[
-                                                                existing.name
-                                                            ]
-                                                    except ValueError:
-                                                        pass
-                                        else:
-                                            # Keep existing
-                                            skip_symbol = True
-
-                                    if not skip_symbol:
-                                        # Add to appropriate index
-                                        if symbol.kind in ("class", "struct"):
-                                            self.analyzer.class_index[symbol.name].append(symbol)
-                                        else:
-                                            self.analyzer.function_index[symbol.name].append(symbol)
-
-                                        # Add to USR index
-                                        if symbol.usr:
-                                            self.analyzer.usr_index[symbol.usr] = symbol
-
-                                        # Add to file index (with deduplication)
-                                        if symbol.file:
-                                            if symbol.file not in self.analyzer.file_index:
-                                                self.analyzer.file_index[symbol.file] = []
-
-                                            # Check for duplicates in file_index
-                                            already_in_file_index = False
-                                            if symbol.usr:
-                                                for existing in self.analyzer.file_index[
-                                                    symbol.file
-                                                ]:
-                                                    if existing.usr == symbol.usr:
-                                                        already_in_file_index = True
-                                                        break
-
-                                            if not already_in_file_index:
-                                                self.analyzer.file_index[symbol.file].append(symbol)
-
-                                    # v9.0: calls/called_by removed from SymbolInfo
-                                    # Call graph is restored from call_sites below
-
-                                # Restore call sites
-                                if call_sites:
-                                    for cs_dict in call_sites:
-                                        self.analyzer.call_graph_analyzer.add_call(
-                                            cs_dict["caller_usr"],
-                                            cs_dict["callee_usr"],
-                                            cs_dict["file"],
-                                            cs_dict["line"],
-                                            cs_dict.get("column"),
-                                        )
-
-                                # Merge header tracking
-                                if processed_headers:
-                                    for header_path, header_hash in processed_headers.items():
-                                        self.analyzer.header_tracker.mark_completed(
-                                            header_path, header_hash
-                                        )
-
-                                # Update file hash tracking
-                                file_hash = self.analyzer._get_file_hash(file_path)
-                                self.analyzer.file_hashes[file_path] = file_hash
-                    else:
-                        # ThreadPoolExecutor returns (success, was_cached)
-                        success, was_cached = result
-
-                    if success:
-                        analyzed += 1
-                        diagnostics.debug(f"Re-analyzed: {file_path}")
-                    else:
-                        failed += 1
-                        diagnostics.warning(f"Failed to re-analyze: {file_path}")
-
-                except Exception as e:
-                    failed += 1
-                    diagnostics.error(f"Error re-analyzing {file_path}: {e}")
-
-                # Report progress periodically
-                if progress_callback:
-                    processed = i + 1
-                    # Report every 10 files or at completion
-                    if processed % 10 == 0 or processed == total:
-                        try:
-                            # Import IndexingProgress here to avoid circular dependency
-                            from .state_manager import IndexingProgress
-
-                            elapsed = time.time() - start_time
-                            rate = processed / elapsed if elapsed > 0 else 0
-                            eta = (total - processed) / rate if rate > 0 else 0
-
-                            estimated_completion = (
-                                datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-                            )
-
-                            progress = IndexingProgress(
-                                total_files=total,
-                                indexed_files=analyzed,
-                                failed_files=failed,
-                                cache_hits=0,  # Not tracked during refresh
-                                current_file=file_path if processed < total else None,
-                                start_time=datetime.fromtimestamp(start_time),
-                                estimated_completion=estimated_completion,
-                            )
-
-                            progress_callback(progress)
-                        except Exception as e:
-                            # Don't fail refresh if progress callback fails
-                            diagnostics.debug(f"Progress callback failed: {e}")
-
+            analyzed, failed = self._process_loop(
+                executor,
+                future_to_file,
+                use_processes,
+                start_time,
+                total,
+                progress_callback,
+                wait_for_tools_callback,
+            )
         except KeyboardInterrupt:
             # Gracefully handle Ctrl-C or requested interruption
             diagnostics.info("\nIncremental refresh interrupted")

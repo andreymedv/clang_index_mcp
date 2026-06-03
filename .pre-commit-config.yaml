@@ -59,10 +59,24 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
+        name: flake8 (mcp_server)
+        files: ^mcp_server/
         args:
           - '--max-line-length=100'
+          - '--select=C90,E,F,W'
           - '--extend-ignore=E203,E501,W503'
-          - '--max-complexity=15'
+          - '--max-complexity=10'
+        additional_dependencies:
+          - flake8-bugbear
+          - flake8-comprehensions
+          - flake8-simplify
+      - id: flake8
+        name: flake8 (scripts)
+        files: ^scripts/
+        args:
+          - '--max-line-length=100'
+          - '--select=E,F,W'
+          - '--extend-ignore=E203,E501,W503'
         additional_dependencies:
           - flake8-bugbear
           - flake8-comprehensions
@@ -116,6 +130,7 @@ exclude: |
     ^\.claude/.*|
     ^lib/.*|
     ^mcp_env/.*|
+    ^scripts/archived/.*|
     ^\.mcp_cache/.*|
     ^htmlcov/.*|
     ^\.pytest_cache/.*|

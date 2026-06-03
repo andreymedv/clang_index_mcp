@@ -371,6 +371,33 @@ class SearchEngine:
         # Fallback (should never reach here)
         return False
 
+    def _collect_alias_expansions(self, type_name: str) -> List[str]:
+        """Collect all alias and canonical type expansions for a given type name."""
+        expanded_names = [type_name]
+
+        try:
+            canonical = self.cache_manager.get_canonical_for_alias(type_name)
+            if canonical and canonical != type_name:
+                expanded_names.append(canonical)
+
+            aliases = self.cache_manager.get_aliases_for_canonical(type_name)
+            for alias in aliases or []:
+                if alias not in expanded_names:
+                    expanded_names.append(alias)
+
+            if canonical:
+                aliases_of_canonical = self.cache_manager.get_aliases_for_canonical(canonical)
+                for alias in aliases_of_canonical or []:
+                    if alias not in expanded_names:
+                        expanded_names.append(alias)
+
+        except Exception as e:
+            from . import diagnostics
+
+            diagnostics.debug(f"Failed to expand type name '{type_name}': {e}")
+
+        return expanded_names
+
     def expand_type_name(self, type_name: str) -> List[str]:
         """
         Expand a type name to include all equivalent type names (aliases and canonical).
@@ -398,39 +425,9 @@ class SearchEngine:
             returns ["std::function<void(const Error&)>", "ErrorCallback"]
         """
         if not self.cache_manager:
-            # No cache manager available, return original name only
             return [type_name]
 
-        expanded_names = [type_name]
-
-        try:
-            # Check if this is an alias (has a canonical type)
-            canonical = self.cache_manager.get_canonical_for_alias(type_name)
-            if canonical and canonical != type_name:
-                expanded_names.append(canonical)
-
-            # Check if this is a canonical type (has aliases)
-            aliases = self.cache_manager.get_aliases_for_canonical(type_name)
-            if aliases:
-                for alias in aliases:
-                    if alias not in expanded_names:
-                        expanded_names.append(alias)
-
-            # Also check if the canonical type itself has aliases
-            if canonical:
-                aliases_of_canonical = self.cache_manager.get_aliases_for_canonical(canonical)
-                if aliases_of_canonical:
-                    for alias in aliases_of_canonical:
-                        if alias not in expanded_names:
-                            expanded_names.append(alias)
-
-        except Exception as e:
-            # Alias lookup failures are not critical, just log and continue
-            from . import diagnostics
-
-            diagnostics.debug(f"Failed to expand type name '{type_name}': {e}")
-
-        return expanded_names
+        return self._collect_alias_expansions(type_name)
 
     @staticmethod
     def _matches_namespace(symbol_namespace: str, filter_namespace: str) -> bool:
@@ -469,6 +466,49 @@ class SearchEngine:
             return True
 
         return False
+
+    def _matches_class_criteria(
+        self,
+        info: SymbolInfo,
+        pattern: str,
+        project_only: bool,
+        file_name: Optional[str],
+        namespace: Optional[str],
+    ) -> bool:
+        """Check if a class symbol matches the search criteria."""
+        qualified_name = info.qualified_name if info.qualified_name else info.name
+        if not self.matches_qualified_pattern(qualified_name, pattern):
+            return False
+
+        if project_only and not info.is_project:
+            return False
+
+        if file_name and file_name not in info.file:
+            return False
+
+        if namespace is not None and not self._matches_namespace(info.namespace, namespace):
+            return False
+
+        return True
+
+    def _create_class_result(self, info: SymbolInfo, include_base_classes: bool) -> Dict[str, Any]:
+        """Build a result dictionary for a class search hit."""
+        entry = {
+            "prototype": _build_class_prototype(info),
+            "qualified_name": info.qualified_name or info.name,
+            "namespace": info.namespace,
+            "kind": info.kind,
+            "is_project": info.is_project,
+            "template_kind": info.template_kind,
+            "template_parameters": info.template_parameters,
+            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+            **build_location_objects(info),
+            "brief": info.brief,
+            "doc_comment": info.doc_comment,
+        }
+        if include_base_classes:
+            entry["base_classes"] = info.base_classes
+        return omit_empty(entry)
 
     def search_classes(
         self,
@@ -512,63 +552,21 @@ class SearchEngine:
 
         Task: T2.2.1 (Qualified Names Phase 2)
         """
-        # Validate regex patterns for ReDoS prevention
         pattern_type = self._detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
-        results = []
+        results: List[Dict[str, Any]] = []
 
-        # Iterate all classes and use qualified pattern matching
         with self.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
-                    # Use qualified pattern matching (Phase 2)
-                    # Fallback to info.name if qualified_name is empty (backward compatibility)
-                    qualified_name = info.qualified_name if info.qualified_name else info.name
-                    if not self.matches_qualified_pattern(qualified_name, pattern):
-                        continue
+                    if self._matches_class_criteria(
+                        info, pattern, project_only, file_name, namespace
+                    ):
+                        results.append(self._create_class_result(info, include_base_classes))
 
-                    # Apply filters
-                    if not project_only or info.is_project:
-                        # Filter by file name if specified
-                        if file_name:
-                            # Match if the file path contains the specified file_name
-                            # Supports full paths, relative paths, filenames, or prefixes
-                            if file_name not in info.file:
-                                continue
-
-                        # Filter by namespace if specified (supports partial matching)
-                        if namespace is not None:
-                            if not self._matches_namespace(info.namespace, namespace):
-                                continue
-
-                        entry = {
-                            "prototype": _build_class_prototype(info),
-                            "qualified_name": info.qualified_name or info.name,
-                            "namespace": info.namespace,
-                            "kind": info.kind,
-                            "is_project": info.is_project,
-                            "template_kind": info.template_kind,
-                            "template_parameters": info.template_parameters,
-                            "specialization_of": self._resolve_specialization_of(
-                                info.primary_template_usr
-                            ),
-                            **build_location_objects(info),
-                            "brief": info.brief,
-                            "doc_comment": info.doc_comment,
-                        }
-                        if include_base_classes:
-                            entry["base_classes"] = info.base_classes
-                        results.append(omit_empty(entry))
-
-        # Handle max_results truncation
-        if max_results is not None:
-            total_count = len(results)
-            truncated_results = results[:max_results]
-            return (truncated_results, total_count)
-
-        return results
+        return self._apply_max_results(results, max_results)
 
     def _matches_function_criteria(
         self,
@@ -620,6 +618,92 @@ class SearchEngine:
 
         return True
 
+    def _create_function_result(self, info: SymbolInfo, include_attributes: bool) -> Dict[str, Any]:
+        """Build a result dictionary for a function search hit."""
+        d: Dict[str, Any] = {
+            "prototype": _build_function_prototype(info),
+            "qualified_name": info.qualified_name or info.name,
+            "namespace": info.namespace,
+            "kind": info.kind,
+            "is_project": info.is_project,
+            "parent_class": info.parent_class or None,
+            "template_kind": info.template_kind,
+            "template_parameters": info.template_parameters,
+            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+            **build_location_objects(info),
+            "brief": info.brief,
+            "doc_comment": info.doc_comment,
+        }
+        if include_attributes:
+            d["attributes"] = _build_attributes(info)
+        return omit_empty(d)
+
+    def _search_functions_in_file_index(
+        self,
+        pattern: str,
+        pattern_type: str,
+        project_only: bool,
+        class_name: Optional[str],
+        namespace: Optional[str],
+        signature_pattern: Optional[str],
+        file_name: str,
+        include_attributes: bool,
+    ) -> List[Dict[str, Any]]:
+        """Search for functions in file_index when a file_name filter is provided."""
+        results: List[Dict[str, Any]] = []
+        with self.index_lock:
+            for file_path, infos in self.file_index.items():
+                if file_name not in file_path:
+                    continue
+                for info in infos:
+                    if self._matches_function_criteria(
+                        info,
+                        pattern,
+                        pattern_type,
+                        project_only,
+                        class_name,
+                        namespace,
+                        signature_pattern,
+                    ):
+                        results.append(self._create_function_result(info, include_attributes))
+        return results
+
+    def _search_functions_in_function_index(
+        self,
+        pattern: str,
+        pattern_type: str,
+        project_only: bool,
+        class_name: Optional[str],
+        namespace: Optional[str],
+        signature_pattern: Optional[str],
+        include_attributes: bool,
+    ) -> List[Dict[str, Any]]:
+        """Search for functions in function_index."""
+        results: List[Dict[str, Any]] = []
+        with self.index_lock:
+            for name, infos in self.function_index.items():
+                for info in infos:
+                    if self._matches_function_criteria(
+                        info,
+                        pattern,
+                        pattern_type,
+                        project_only,
+                        class_name,
+                        namespace,
+                        signature_pattern,
+                    ):
+                        results.append(self._create_function_result(info, include_attributes))
+        return results
+
+    @staticmethod
+    def _apply_max_results(
+        results: List[Dict[str, Any]], max_results: Optional[int]
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+        """Truncate results if max_results is specified."""
+        if max_results is not None:
+            return (results[:max_results], len(results))
+        return results
+
     def search_functions(
         self,
         pattern: str,
@@ -667,85 +751,36 @@ class SearchEngine:
 
         Task: T2.2.2 (Qualified Names Phase 2)
         """
-        # Validate regex patterns for ReDoS prevention
         pattern_type = self._detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
-        # Normalize class_name: extract simple name from qualified name
-        # parent_class is stored as simple name (e.g., "Widget"), but users may pass
-        # qualified name (e.g., "myapp::builders::Widget")
         if class_name:
             class_name = self._extract_simple_name(class_name)
 
-        results = []
-
-        # Helper to create result dict
-        def _create_result(info: SymbolInfo) -> Dict[str, Any]:
-            d: Dict[str, Any] = {
-                "prototype": _build_function_prototype(info),
-                "qualified_name": info.qualified_name or info.name,
-                "namespace": info.namespace,
-                "kind": info.kind,
-                "is_project": info.is_project,
-                "parent_class": info.parent_class or None,
-                "template_kind": info.template_kind,
-                "template_parameters": info.template_parameters,
-                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-                **build_location_objects(info),
-                "brief": info.brief,
-                "doc_comment": info.doc_comment,
-            }
-            if include_attributes:
-                d["attributes"] = _build_attributes(info)
-            return omit_empty(d)
-
-        # CRITICAL FIX FOR ISSUE #8:
-        # When file_name is specified, search file_index instead of function_index
-        # This ensures we find declarations in headers even when definition-wins
-        # removed them from function_index
         if file_name:
-            # Search file_index for file-specific queries
-            with self.index_lock:
-                for file_path, infos in self.file_index.items():
-                    # Match if the file path contains the specified file_name
-                    if file_name not in file_path:
-                        continue
-
-                    for info in infos:
-                        if self._matches_function_criteria(
-                            info,
-                            pattern,
-                            pattern_type,
-                            project_only,
-                            class_name,
-                            namespace,
-                            signature_pattern,
-                        ):
-                            results.append(_create_result(info))
+            results = self._search_functions_in_file_index(
+                pattern,
+                pattern_type,
+                project_only,
+                class_name,
+                namespace,
+                signature_pattern,
+                file_name,
+                include_attributes,
+            )
         else:
-            # Original logic: search function_index
-            with self.index_lock:
-                for name, infos in self.function_index.items():
-                    for info in infos:
-                        if self._matches_function_criteria(
-                            info,
-                            pattern,
-                            pattern_type,
-                            project_only,
-                            class_name,
-                            namespace,
-                            signature_pattern,
-                        ):
-                            results.append(_create_result(info))
+            results = self._search_functions_in_function_index(
+                pattern,
+                pattern_type,
+                project_only,
+                class_name,
+                namespace,
+                signature_pattern,
+                include_attributes,
+            )
 
-        # Handle max_results truncation
-        if max_results is not None:
-            total_count = len(results)
-            truncated_results = results[:max_results]
-            return (truncated_results, total_count)
-
-        return results
+        return self._apply_max_results(results, max_results)
 
     def search_symbols(
         self,
@@ -876,6 +911,140 @@ class SearchEngine:
             return name
         return name.split("::")[-1]
 
+    def _find_class_candidate(
+        self, class_name: str, lookup_name: str, is_qualified: bool, has_template_args: bool
+    ) -> Union[SymbolInfo, Dict[str, Any], None]:
+        """Find the best matching SymbolInfo for a class name, or an ambiguity error."""
+        simple_name = self._extract_simple_name(lookup_name)
+
+        # Try direct lookup first (fast path)
+        infos = self.class_index.get(simple_name, [])
+        if not infos:
+            # Case-insensitive fallback: search for matching key
+            simple_name_lower = simple_name.lower()
+            for key in self.class_index:
+                if key.lower() == simple_name_lower:
+                    infos = self.class_index[key]
+                    simple_name = key
+                    break
+        if not infos:
+            return None
+
+        if is_qualified:
+            return self._disambiguate_qualified_class(infos, lookup_name)
+        else:
+            return self._disambiguate_simple_class(infos, class_name, has_template_args)
+
+    def _disambiguate_qualified_class(
+        self, infos: List[SymbolInfo], lookup_name: str
+    ) -> Optional[SymbolInfo]:
+        """Find the best match among candidates for a qualified name."""
+        matching_candidates = []
+        for candidate in infos:
+            candidate_qualified = (
+                candidate.qualified_name if candidate.qualified_name else candidate.name
+            )
+            if self.matches_qualified_pattern(candidate_qualified, lookup_name):
+                matching_candidates.append(candidate)
+
+        if not matching_candidates:
+            return None
+
+        # Apply definition-wins logic: prefer richest definition
+        info = None
+        for candidate in matching_candidates:
+            if candidate.is_definition:
+                if info is None or is_richer_definition(candidate, info):
+                    info = candidate
+
+        return info or matching_candidates[0]
+
+    def _disambiguate_simple_class(
+        self, infos: List[SymbolInfo], class_name: str, has_template_args: bool
+    ) -> Union[SymbolInfo, Dict[str, Any]]:
+        """Find the best match or return an ambiguity error for a simple name."""
+        if len(infos) > 1:
+            if has_template_args:
+                specializations = [c for c in infos if c.is_template_specialization]
+                if len(specializations) == 1:
+                    return specializations[0]
+                elif len(specializations) > 1:
+                    return self._create_ambiguity_error(
+                        f"Ambiguous template specialization '{class_name}'", specializations
+                    )
+
+            # Multiple classes with same simple name - ambiguous
+            return self._create_ambiguity_error(f"Ambiguous class name '{class_name}'", infos)
+
+        # Apply definition-wins logic: prefer richest definition
+        info = None
+        for candidate in infos:
+            if candidate.is_definition:
+                if info is None or is_richer_definition(candidate, info):
+                    info = candidate
+
+        return info or infos[0]
+
+    def _create_ambiguity_error(self, message: str, matches: List[SymbolInfo]) -> Dict[str, Any]:
+        """Create a standardized ambiguity error dictionary."""
+        return {
+            "error": message,
+            "is_ambiguous": True,
+            "matches": [
+                {
+                    "name": m.name,
+                    "qualified_name": (m.qualified_name if m.qualified_name else m.name),
+                    "namespace": m.namespace,
+                    "kind": m.kind,
+                    "file": m.file,
+                    "line": m.line,
+                }
+                for m in matches
+            ],
+            "suggestion": "Use qualified name to disambiguate",
+        }
+
+    def _find_class_methods(
+        self, simple_name: str, class_qualified_name: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        """Find all methods belonging to a specific class."""
+        methods = []
+        for name, func_infos in self.function_index.items():
+            for func_info in func_infos:
+                # Match by parent_class (simple name) OR qualified_name prefix
+                if func_info.parent_class == simple_name:
+                    # Direct parent_class match - disambiguate with qualified_name
+                    if class_qualified_name and func_info.qualified_name:
+                        if not func_info.qualified_name.startswith(class_qualified_name + "::"):
+                            continue
+                elif class_qualified_name and func_info.qualified_name:
+                    # Fallback: match by qualified_name prefix
+                    # (for methods with empty parent_class, e.g. out-of-line definitions)
+                    if not func_info.qualified_name.startswith(class_qualified_name + "::"):
+                        continue
+                else:
+                    continue
+
+                methods.append(
+                    omit_empty(
+                        {
+                            "prototype": _build_function_prototype(func_info),
+                            "qualified_name": func_info.qualified_name or func_info.name,
+                            "access": func_info.access,
+                            "template_kind": func_info.template_kind,
+                            "template_parameters": func_info.template_parameters,
+                            "specialization_of": self._resolve_specialization_of(
+                                func_info.primary_template_usr
+                            ),
+                            **build_location_objects(func_info),
+                            "attributes": _build_attributes(func_info),
+                            "brief": func_info.brief,
+                            "doc_comment": func_info.doc_comment,
+                        }
+                    )
+                )
+        return methods
+
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a class.
 
@@ -887,121 +1056,22 @@ class SearchEngine:
             Class info dict or None if not found
         """
         with self.index_lock:
-            # Strip template arguments for lookup: class_index and qualified_names
-            # don't include template args (e.g., "Container<int>" → lookup "Container")
+            # Strip template arguments for lookup
             has_template_args = "<" in class_name
             lookup_name = self._strip_template_args(class_name) if has_template_args else class_name
 
-            # Handle both simple and qualified names
-            # class_index is keyed by simple name, so extract it from qualified input
             is_qualified = "::" in lookup_name
-            simple_name = self._extract_simple_name(lookup_name)
+            candidate = self._find_class_candidate(
+                class_name, lookup_name, is_qualified, has_template_args
+            )
 
-            # Try direct lookup first (fast path)
-            infos = self.class_index.get(simple_name, [])
-            if not infos:
-                # Case-insensitive fallback: search for matching key
-                simple_name_lower = simple_name.lower()
-                for key in self.class_index:
-                    if key.lower() == simple_name_lower:
-                        infos = self.class_index[key]
-                        simple_name = key  # Use the actual key for method lookup
-                        break
-            if not infos:
+            if candidate is None:
                 return None
+            if isinstance(candidate, dict):
+                return candidate  # Ambiguity error
 
-            # If qualified name was provided, find match using qualified pattern matching
-            # This supports partially qualified names (e.g., "builders::Widget"
-            # matches "myapp::builders::Widget").
-            # Use lookup_name (without template args) since stored qualified_names also
-            # don't include template args.
-            info = None
-            if is_qualified:
-                # Collect all matching candidates
-                matching_candidates = []
-                for candidate in infos:
-                    candidate_qualified = (
-                        candidate.qualified_name if candidate.qualified_name else candidate.name
-                    )
-                    if self.matches_qualified_pattern(candidate_qualified, lookup_name):
-                        matching_candidates.append(candidate)
-
-                if not matching_candidates:
-                    return None  # No match for qualified name
-
-                # Apply definition-wins logic: prefer richest definition
-                # (Fix for cplusplus_mcp-2u9, cplusplus_mcp-5tl)
-                info = None
-                for candidate in matching_candidates:
-                    if candidate.is_definition:
-                        if info is None or is_richer_definition(candidate, info):
-                            info = candidate
-
-                # Fall back to first match if no definition found
-                if info is None:
-                    info = matching_candidates[0]
-
-            else:
-                # Check for ambiguity when using simple name
-                if len(infos) > 1:
-                    # When user provides template args (e.g., "Container<int>"),
-                    # prefer explicit specializations over the primary template
-                    if has_template_args:
-                        specializations = [c for c in infos if c.is_template_specialization]
-                        if len(specializations) == 1:
-                            info = specializations[0]
-                        elif len(specializations) > 1:
-                            return {
-                                "error": f"Ambiguous template specialization '{class_name}'",
-                                "is_ambiguous": True,
-                                "matches": [
-                                    {
-                                        "name": m.name,
-                                        "qualified_name": (
-                                            m.qualified_name if m.qualified_name else m.name
-                                        ),
-                                        "namespace": m.namespace,
-                                        "kind": m.kind,
-                                        "file": m.file,
-                                        "line": m.line,
-                                    }
-                                    for m in specializations
-                                ],
-                                "suggestion": "Use qualified name to disambiguate",
-                            }
-
-                    if info is None:
-                        # Multiple classes with same simple name - ambiguous
-                        return {
-                            "error": f"Ambiguous class name '{class_name}'",
-                            "is_ambiguous": True,
-                            "matches": [
-                                {
-                                    "name": m.name,
-                                    "qualified_name": (
-                                        m.qualified_name if m.qualified_name else m.name
-                                    ),
-                                    "namespace": m.namespace,
-                                    "kind": m.kind,
-                                    "file": m.file,
-                                    "line": m.line,
-                                }
-                                for m in infos
-                            ],
-                            "suggestion": "Use qualified name to disambiguate",
-                        }
-
-                if info is None:
-                    # Apply definition-wins logic: prefer richest definition
-                    # (Fix for cplusplus_mcp-2u9, cplusplus_mcp-5tl)
-                    for candidate in infos:
-                        if candidate.is_definition:
-                            if info is None or is_richer_definition(candidate, info):
-                                info = candidate
-
-                    # Fall back to first match if no definition found
-                    if info is None:
-                        info = infos[0]
+            info: SymbolInfo = candidate
+            simple_name = self._extract_simple_name(info.name)
 
             # For method lookup, we need to match parent_class
             # parent_class is stored as simple name (from cursor.spelling)
@@ -1009,41 +1079,7 @@ class SearchEngine:
             class_qualified_name = info.qualified_name
 
             # Find all methods of this class
-            methods = []
-            for name, func_infos in self.function_index.items():
-                for func_info in func_infos:
-                    # Match by parent_class (simple name) OR qualified_name prefix
-                    if func_info.parent_class == simple_name:
-                        # Direct parent_class match - disambiguate with qualified_name
-                        if class_qualified_name and func_info.qualified_name:
-                            if not func_info.qualified_name.startswith(class_qualified_name + "::"):
-                                continue
-                    elif class_qualified_name and func_info.qualified_name:
-                        # Fallback: match by qualified_name prefix
-                        # (for methods with empty parent_class, e.g. out-of-line definitions)
-                        if not func_info.qualified_name.startswith(class_qualified_name + "::"):
-                            continue
-                    else:
-                        continue
-
-                    methods.append(
-                        omit_empty(
-                            {
-                                "prototype": _build_function_prototype(func_info),
-                                "qualified_name": func_info.qualified_name or func_info.name,
-                                "access": func_info.access,
-                                "template_kind": func_info.template_kind,
-                                "template_parameters": func_info.template_parameters,
-                                "specialization_of": self._resolve_specialization_of(
-                                    func_info.primary_template_usr
-                                ),
-                                **build_location_objects(func_info),
-                                "attributes": _build_attributes(func_info),
-                                "brief": func_info.brief,
-                                "doc_comment": func_info.doc_comment,
-                            }
-                        )
-                    )
+            methods = self._find_class_methods(simple_name, class_qualified_name)
 
         def _method_sort_line(m: Dict[str, Any]) -> int:
             """Extract line number for sorting from declaration or definition."""
@@ -1071,6 +1107,40 @@ class SearchEngine:
             }
         )
 
+    def _lookup_function_infos(self, simple_name: str) -> List[Any]:
+        """Look up function infos by simple name with case-insensitive fallback."""
+        infos = self.function_index.get(simple_name, [])
+        if infos:
+            return infos
+
+        simple_name_lower = simple_name.lower()
+        for key in self.function_index:
+            if key.lower() == simple_name_lower:
+                return self.function_index[key]
+        return []
+
+    @staticmethod
+    def _info_matches_class_filter(info, class_name: str) -> bool:
+        """Check if a function info matches the requested class filter."""
+        if info.parent_class == class_name:
+            return True
+        if info.qualified_name and (
+            info.qualified_name.startswith(class_name + "::")
+            or ("::" + class_name + "::") in info.qualified_name
+        ):
+            return True
+        return False
+
+    @staticmethod
+    def _build_scoped_signature(info, scope: str) -> str:
+        """Inject class scope into a human-readable signature."""
+        sig: str = info.signature
+        target = f"{info.name}("
+        idx = sig.find(target)
+        if idx >= 0:
+            return sig[:idx] + f"{scope}::" + sig[idx:]
+        return f"{scope}::{sig}"
+
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
     ) -> List[str]:
@@ -1086,65 +1156,32 @@ class SearchEngine:
         """
         signatures = []
 
-        # Strip template arguments for lookup: function_index uses names without template args
-        # e.g., "max<int*>" → lookup "max", "ns::Class::foo<T>" → "foo"
         has_template_args = "<" in function_name
         lookup_name = (
             self._strip_template_args(function_name) if has_template_args else function_name
         )
 
-        # function_index is keyed by simple name, so extract it from qualified input
         is_qualified = "::" in lookup_name
         simple_name = self._extract_simple_name(lookup_name)
 
-        # Normalize class_name: extract simple name from qualified name
-        # parent_class is stored as simple name
         if class_name:
             class_name = self._extract_simple_name(class_name)
 
         with self.index_lock:
-            # Try direct lookup first (fast path)
-            infos = self.function_index.get(simple_name, [])
-            if not infos:
-                # Case-insensitive fallback: search for matching key
-                simple_name_lower = simple_name.lower()
-                for key in self.function_index:
-                    if key.lower() == simple_name_lower:
-                        infos = self.function_index[key]
-                        break
+            infos = self._lookup_function_infos(simple_name)
             for info in infos:
-                # If qualified name was provided, filter using qualified pattern matching
-                # This supports partially qualified names (e.g., "MyClass::foo"
-                # matches "ns::MyClass::foo").
-                # Use lookup_name (without template args) since stored qualified_names
-                # also don't include template args.
                 if is_qualified:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
                     if not self.matches_qualified_pattern(info_qualified, lookup_name):
                         continue
-                # Match by parent_class or qualified_name prefix for class filtering
-                if class_name is not None:
-                    if info.parent_class != class_name:
-                        # Fallback: check qualified_name for out-of-line methods
-                        if not (
-                            info.qualified_name
-                            and (
-                                info.qualified_name.startswith(class_name + "::")
-                                or ("::" + class_name + "::") in info.qualified_name
-                            )
-                        ):
-                            continue
+
+                if class_name is not None and not self._info_matches_class_filter(info, class_name):
+                    continue
+
                 if class_name is not None or info.parent_class:
-                    # Inject class scope into human-readable signature
-                    # e.g., "void foo(int x)" -> "void MyClass::foo(int x)"
                     scope = info.parent_class or class_name
-                    target = f"{info.name}("
-                    idx = info.signature.find(target)
-                    if idx >= 0:
-                        sig = info.signature[:idx] + f"{scope}::" + info.signature[idx:]
-                    else:
-                        sig = f"{scope}::{info.signature}"
-                    signatures.append(sig)
+                    assert scope is not None
+                    signatures.append(self._build_scoped_signature(info, scope))
                 else:
                     signatures.append(info.signature)
 
