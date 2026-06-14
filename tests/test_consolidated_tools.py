@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from mcp_server.tool_registry import ToolRegistry
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mcp_server"))
 
 from mcp.types import TextContent
@@ -294,10 +296,8 @@ class TestAddSystemState:
 
 @pytest.fixture
 def mock_handle_tool_call():
-    """Mock _handle_tool_call to capture internal calls."""
-    with patch("mcp_server.consolidated_tools._handle_tool_call") as mock:
-        # Since it's used inside the module via lazy import, we need to
-        # patch it at the call site in each handler. Patch at module level.
+    """Mock ToolRegistry.call_tool to capture internal calls."""
+    with patch("mcp_server.tool_registry.ToolRegistry.call_tool") as mock:
         yield mock
 
 
@@ -315,19 +315,19 @@ class TestHandleToolCallBRouting:
         ]
         for tool_name in passthrough:
             with patch(
-                "mcp_server.cpp_mcp_server._handle_tool_call",
+                "mcp_server.tool_registry.ToolRegistry.call_tool",
                 new_callable=AsyncMock,
                 return_value=_tc({"result": "ok"}),
             ) as mock:
                 args = {"test_key": "test_val"}
                 await handle_tool_call_b(tool_name, args)
-                mock.assert_called_once_with(tool_name, args)
+                mock.assert_called_once_with("_handle_tool_call", tool_name, args)
 
     @pytest.mark.asyncio
     async def test_sync_project_status_adds_state(self) -> None:
         """sync_project (no args) returns status with system_state."""
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"state": "indexed", "parsed_files": 42}),
         ):
@@ -349,82 +349,86 @@ class TestSearchCodebaseRouting:
     @pytest.mark.asyncio
     async def test_classes_routes_to_search_classes(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"results": []}),
         ) as mock:
             await handle_tool_call_b(
                 "find_symbols_by_pattern",
                 {
-                    "pattern": "Foo",
+                    "symbol_name": "Foo",
                     "target_type": "classes_and_structs_only",
                 },
             )
             mock.assert_called_once()
             call_args = mock.call_args
-            assert call_args[0][0] == "search_classes"
-            assert call_args[0][1]["pattern"] == "Foo"
-            assert "target_type" not in call_args[0][1]
-            assert "output_detail_level" not in call_args[0][1]
+            assert call_args[0][0] == "_handle_tool_call"
+            assert call_args[0][1] == "search_classes"
+            assert call_args[0][2]["symbol_name"] == "Foo"
+            assert "target_type" not in call_args[0][2]
+            assert "output_detail_level" not in call_args[0][2]
 
     @pytest.mark.asyncio
     async def test_functions_routes_to_search_functions(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"results": []}),
         ) as mock:
             await handle_tool_call_b(
                 "find_symbols_by_pattern",
                 {
-                    "pattern": "bar",
+                    "symbol_name": "bar",
                     "target_type": "functions_and_methods_only",
                 },
             )
-            assert mock.call_args[0][0] == "search_functions"
+            assert mock.call_args[0][0] == "_handle_tool_call"
+            assert mock.call_args[0][1] == "search_functions"
 
     @pytest.mark.asyncio
     async def test_all_routes_to_search_symbols(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"classes": [], "functions": []}),
         ) as mock:
             await handle_tool_call_b(
                 "find_symbols_by_pattern",
-                {"pattern": "X", "target_type": "all_symbol_types"},
+                {"symbol_name": "X", "target_type": "all_symbol_types"},
             )
-            assert mock.call_args[0][0] == "search_symbols"
+            assert mock.call_args[0][0] == "_handle_tool_call"
+            assert mock.call_args[0][1] == "search_symbols"
 
     @pytest.mark.asyncio
     async def test_default_target_type_is_all(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"classes": [], "functions": []}),
         ) as mock:
-            await handle_tool_call_b("find_symbols_by_pattern", {"pattern": "X"})
-            assert mock.call_args[0][0] == "search_symbols"
+            await handle_tool_call_b("find_symbols_by_pattern", {"symbol_name": "X"})
+            assert mock.call_args[0][0] == "_handle_tool_call"
+            assert mock.call_args[0][1] == "search_symbols"
 
     @pytest.mark.asyncio
     async def test_schema_b_params_not_forwarded(self) -> None:
         """target_type and output_detail_level should not be in internal args."""
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"results": []}),
         ) as mock:
             await handle_tool_call_b(
                 "find_symbols_by_pattern",
                 {
-                    "pattern": "X",
+                    "symbol_name": "X",
                     "target_type": "classes_and_structs_only",
                     "output_detail_level": "signatures_only",
                     "search_scope": "project_code_only",
                     "max_results": 5,
                 },
             )
-            forwarded = mock.call_args[0][1]
+            forwarded = mock.call_args[0][2]
             assert "target_type" not in forwarded
             assert "output_detail_level" not in forwarded
             assert forwarded["search_scope"] == "project_code_only"
@@ -444,14 +448,14 @@ class TestSearchCodebaseRouting:
             ]
         }
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc(raw_data),
         ):
             result = await handle_tool_call_b(
                 "find_symbols_by_pattern",
                 {
-                    "pattern": "Foo",
+                    "symbol_name": "Foo",
                     "target_type": "classes_and_structs_only",
                     "output_detail_level": "signatures_only",
                 },
@@ -469,7 +473,7 @@ class TestGetFunctionsCalledByRouting:
     @pytest.mark.asyncio
     async def test_summary_routes_to_outgoing_calls(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"callees": [{"qualified_name": "f", "file": "a.cpp"}]}),
         ) as mock:
@@ -480,13 +484,14 @@ class TestGetFunctionsCalledByRouting:
                     "return_format": "function_definitions_summary",
                 },
             )
-            assert mock.call_args[0][0] == "get_outgoing_calls"
+            assert mock.call_args[0][0] == "_handle_tool_call"
+            assert mock.call_args[0][1] == "get_outgoing_calls"
 
     @pytest.mark.asyncio
     async def test_summary_applies_compact_filter(self) -> None:
         """Summary format should strip location/doc fields."""
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc(
                 {
@@ -516,7 +521,7 @@ class TestGetFunctionsCalledByRouting:
     @pytest.mark.asyncio
     async def test_full_routes_to_outgoing_calls_no_filter(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc(
                 {"callees": [{"qualified_name": "f", "file": "a.cpp", "brief": "doc"}]}
@@ -529,7 +534,8 @@ class TestGetFunctionsCalledByRouting:
                     "return_format": "function_definitions_full",
                 },
             )
-            assert mock.call_args[0][0] == "get_outgoing_calls"
+            assert mock.call_args[0][0] == "_handle_tool_call"
+            assert mock.call_args[0][1] == "get_outgoing_calls"
             parsed = _parse_tc(result)
             assert parsed["callees"][0]["file"] == "a.cpp"
             assert parsed["callees"][0]["brief"] == "doc"
@@ -537,7 +543,7 @@ class TestGetFunctionsCalledByRouting:
     @pytest.mark.asyncio
     async def test_call_sites_routes_to_get_call_sites(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"call_sites": []}),
         ) as mock:
@@ -548,13 +554,14 @@ class TestGetFunctionsCalledByRouting:
                     "return_format": "exact_call_line_locations",
                 },
             )
-            assert mock.call_args[0][0] == "get_call_sites"
+            assert mock.call_args[0][0] == "_handle_tool_call"
+            assert mock.call_args[0][1] == "get_call_sites"
 
     @pytest.mark.asyncio
     async def test_call_sites_strips_extra_args(self) -> None:
         """get_call_sites only takes function_name + class_name."""
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"call_sites": []}),
         ) as mock:
@@ -568,7 +575,7 @@ class TestGetFunctionsCalledByRouting:
                     "search_scope": "include_external_libraries",
                 },
             )
-            forwarded = mock.call_args[0][1]
+            forwarded = mock.call_args[0][2]
             assert forwarded == {
                 "function_name": "process",
                 "class_name": "Handler",
@@ -578,7 +585,7 @@ class TestGetFunctionsCalledByRouting:
     async def test_return_format_not_forwarded(self) -> None:
         """return_format is consolidated only, must not appear in internal args."""
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"callees": []}),
         ) as mock:
@@ -590,7 +597,7 @@ class TestGetFunctionsCalledByRouting:
                     "search_scope": "project_code_only",
                 },
             )
-            forwarded = mock.call_args[0][1]
+            forwarded = mock.call_args[0][2]
             assert "return_format" not in forwarded
             assert forwarded["search_scope"] == "project_code_only"
 
@@ -601,13 +608,13 @@ class TestFindUsageSitesRouting:
     @pytest.mark.asyncio
     async def test_delegates_to_incoming_calls(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"callers": []}),
         ) as mock:
             args = {"function_name": "render", "class_name": "View"}
             await handle_tool_call_b("find_incoming_calls", args)
-            mock.assert_called_once_with("find_incoming_calls", args)
+            mock.assert_called_once_with("_handle_tool_call", "find_incoming_calls", args)
 
 
 class TestTraceExecutionPathRouting:
@@ -616,7 +623,7 @@ class TestTraceExecutionPathRouting:
     @pytest.mark.asyncio
     async def test_translates_param_names(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"paths": []}),
         ) as mock:
@@ -629,6 +636,7 @@ class TestTraceExecutionPathRouting:
                 },
             )
             mock.assert_called_once_with(
+                "_handle_tool_call",
                 "get_call_path",
                 {
                     "from_function": "main",
@@ -640,7 +648,7 @@ class TestTraceExecutionPathRouting:
     @pytest.mark.asyncio
     async def test_max_depth_optional(self) -> None:
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"paths": []}),
         ) as mock:
@@ -648,7 +656,7 @@ class TestTraceExecutionPathRouting:
                 "trace_execution_path",
                 {"source_function": "a", "target_function": "b"},
             )
-            forwarded = mock.call_args[0][1]
+            forwarded = mock.call_args[0][2]
             assert forwarded == {"from_function": "a", "to_function": "b"}
             assert "max_depth" not in forwarded
 
@@ -666,7 +674,8 @@ class TestSetProjectRouting:
         """set_project should call set_project_directory then wait then status."""
         calls: list[tuple[str, Any]] = []
 
-        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+        async def mock_handle(registry_tool: str, name: str, args: Any) -> list[TextContent]:
+            assert registry_tool == "_handle_tool_call"
             calls.append((name, args))
             if name == "check_system_status":
                 return _tc(
@@ -679,7 +688,7 @@ class TestSetProjectRouting:
                 )
             return _tc({"result": "ok"})
 
-        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+        with patch("mcp_server.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             result = await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             parsed = _parse_tc(result)
             assert parsed["status"] == "ready"
@@ -695,14 +704,15 @@ class TestSetProjectRouting:
         """set_project 'config_file' param is forwarded to internal handler."""
         captured_args: dict[str, Any] = {}
 
-        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+        async def mock_handle(registry_tool: str, name: str, args: Any) -> list[TextContent]:
+            assert registry_tool == "_handle_tool_call"
             if name == "set_project_directory":
                 captured_args.update(args)
             if name == "check_system_status":
                 return _tc({"state": "indexed"})
             return _tc({"result": "ok"})
 
-        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+        with patch("mcp_server.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             assert captured_args["config_file"] == "/tmp/c.json"
 
@@ -710,12 +720,13 @@ class TestSetProjectRouting:
     async def test_set_project_indexing_in_progress(self) -> None:
         """set_project returns indexing_in_progress when not ready."""
 
-        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+        async def mock_handle(registry_tool: str, name: str, args: Any) -> list[TextContent]:
+            assert registry_tool == "_handle_tool_call"
             if name == "check_system_status":
                 return _tc({"state": "indexing", "parsed_files": 5})
             return _tc({"result": "ok"})
 
-        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+        with patch("mcp_server.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             result = await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             parsed = _parse_tc(result)
             assert parsed["status"] == "indexing_in_progress"
@@ -728,7 +739,7 @@ class TestSyncProjectRouting:
     async def test_sync_project_no_args_returns_status(self) -> None:
         """sync_project with no args returns current status."""
         with patch(
-            "mcp_server.cpp_mcp_server._handle_tool_call",
+            "mcp_server.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"state": "indexed", "parsed_files": 100}),
         ) as mock:
@@ -736,7 +747,7 @@ class TestSyncProjectRouting:
             parsed = _parse_tc(result)
             assert parsed["system_state"] == "ready"
             # Should only call check_system_status (no refresh)
-            call_names = [c[0][0] for c in mock.call_args_list]
+            call_names = [c[0][1] for c in mock.call_args_list]
             assert "check_system_status" in call_names
             assert "refresh_project" not in call_names
 
@@ -745,13 +756,14 @@ class TestSyncProjectRouting:
         """sync_project with refresh_mode triggers refresh then status."""
         calls: list[str] = []
 
-        async def mock_handle(name: str, args: Any) -> list[TextContent]:
+        async def mock_handle(registry_tool: str, name: str, args: Any) -> list[TextContent]:
+            assert registry_tool == "_handle_tool_call"
             calls.append(name)
             if name == "check_system_status":
                 return _tc({"state": "indexed", "parsed_files": 100})
             return _tc({"result": "ok"})
 
-        with patch("mcp_server.cpp_mcp_server._handle_tool_call", side_effect=mock_handle):
+        with patch("mcp_server.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             result = await handle_tool_call_b("sync_project", {"refresh_mode": "incremental"})
             parsed = _parse_tc(result)
             assert parsed["system_state"] == "ready"

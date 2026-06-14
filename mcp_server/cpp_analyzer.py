@@ -5,12 +5,9 @@ This module provides C++ code analysis functionality using libclang bindings.
 It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
-import atexit
 import dataclasses
-import gc
 import hashlib
 import json
-import multiprocessing
 import os
 import re
 import sys
@@ -20,8 +17,6 @@ from collections import defaultdict, deque
 from concurrent.futures import (
     Executor,
     Future,
-    ProcessPoolExecutor,
-    ThreadPoolExecutor,
     as_completed,
 )
 from datetime import datetime, timedelta
@@ -30,6 +25,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .cache_manager import CacheManager
 from .call_graph import CallGraphAnalyzer
+from .clang_parser import ClangParser
 from .compile_commands_manager import CompileCommandsManager
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .dependency_graph import DependencyGraphBuilder
@@ -39,6 +35,7 @@ from .project_identity import ProjectIdentity
 from .search_engine import SearchEngine
 from .smart_fallback import FallbackResult, SmartFallback
 from .state_manager import IndexingProgress
+from .symbol_extractor import SymbolExtractor, _usr_to_display_name
 from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
@@ -46,6 +43,7 @@ from .symbol_info import (
     is_richer_definition,
     omit_empty,
 )
+from .worker_pool import WorkerPoolManager, _process_file_worker
 
 # Handle both package and script imports
 try:
@@ -54,7 +52,7 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 try:
-    from clang.cindex import CursorKind, Index, TranslationUnit, TranslationUnitLoadError
+    from clang.cindex import Index, TranslationUnit
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
@@ -68,445 +66,6 @@ class _NoOpLock:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         return False
-
-
-# Global analyzer instance for each worker process
-# This is a process-local global, NOT shared between processes
-_worker_analyzer = None
-
-
-def _cleanup_worker_analyzer():
-    """Ensure worker analyzer resources are released on process exit."""
-    global _worker_analyzer
-    if _worker_analyzer is not None:
-        _worker_analyzer.close()
-        _worker_analyzer = None
-
-
-def _process_file_worker(args_tuple):
-    """
-    Worker function for ProcessPoolExecutor-based parallel parsing.
-
-    This is a module-level function (required for pickling) that uses
-    a shared, process-local CppAnalyzer instance to parse a single file.
-    This avoids creating a new analyzer (and new DB connection) for every file.
-
-    Args:
-        args_tuple: (project_root, config_file, file_path, force, include_dependencies, compile_args)
-            where compile_args is a list of compilation arguments for the file (Phase 3 Memory Optimization)
-
-    Returns:
-        (file_path, success, was_cached, symbols, call_sites, processed_headers)
-        where symbols is a list of SymbolInfo objects or empty list on failure,
-        call_sites is a list of call site dicts (Phase 3),
-        and processed_headers is a dict mapping header paths to file hashes
-    """
-    project_root, config_file, file_path, force, include_dependencies, compile_args = args_tuple
-    global _worker_analyzer
-
-    # Create a single analyzer instance per worker process (process-local)
-    # Use skip_schema_recreation=True to avoid race conditions with main process
-    # Main process ensures schema is current before spawning workers
-    # Task 3.2: use_compile_commands_manager=False to skip loading compile_commands.json (~6-10 GB savings)
-    if _worker_analyzer is None:
-        diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
-        _worker_analyzer = CppAnalyzer(
-            project_root,
-            config_file,
-            skip_schema_recreation=True,
-            use_compile_commands_manager=False,
-        )
-        # Ensure cleanup is called when the worker process exits
-        atexit.register(_cleanup_worker_analyzer)
-
-    # Set per-call parameters
-    _worker_analyzer.include_dependencies = include_dependencies
-    # Reset stateful components to prevent data leakage between files
-    _worker_analyzer.call_graph_analyzer = CallGraphAnalyzer()
-
-    # Mark this instance as isolated (no shared memory, locks not needed)
-    # This is a worker process with its own memory space
-    _worker_analyzer._needs_locking = False
-
-    # Task 3.2: Set precomputed compile args (avoids loading CompileCommandsManager in worker)
-    _worker_analyzer._provided_compile_args = compile_args
-
-    # Parse the file
-    success, was_cached = _worker_analyzer.index_file(file_path, force)
-
-    # Extract symbols from this file
-    # No lock needed here since this process has isolated memory
-    symbols = []
-    call_sites = []  # Phase 3
-    processed_headers = {}  # Header tracking for this file
-    if success:
-        # CRITICAL FIX FOR ISSUE #8: Extract symbols from ALL files processed during this
-        # source file's parsing, including headers. The worker processed both the source file
-        # and any headers it includes (via first-win header claiming), so we need to return
-        # ALL symbols, not just the source file's symbols.
-        # Before fix: only returned source file symbols → headers missing from main process
-        # After fix: return all symbols from source + headers → complete symbol extraction
-        for fpath, file_symbols in _worker_analyzer.file_index.items():
-            symbols.extend(file_symbols)
-
-        # Phase 3: Extract call sites collected during this file's parsing
-        call_sites = _worker_analyzer.call_graph_analyzer.get_all_call_sites()
-
-        # Extract header tracking information (need to send back to main process)
-        # This is critical for incremental analysis - without it, header changes won't be detected
-        processed_headers = _worker_analyzer.header_tracker.get_processed_headers()
-
-        # Debug
-        if call_sites:
-            diagnostics.debug(f"Worker extracted {len(call_sites)} call sites from {file_path}")
-        # Phase 4: Task 4.3 - call_graph dict removed, only call_sites tracked in memory
-        diagnostics.debug(
-            f"Worker call_sites count: {len(_worker_analyzer.call_graph_analyzer.call_sites)}"
-        )
-
-    # CRITICAL FIX FOR ISSUE #14: Clean up ALL worker indexes after extracting symbols
-    # Previous bug: Only removed source file, leaving headers in file_index
-    # This caused headers to accumulate and be returned multiple times, leading to 70+ GB memory leak
-    #
-    # Since we extract ALL symbols from file_index (line 124-125), we must clear ALL entries
-    # to prevent accumulation across multiple files processed by the same worker.
-    # Workers don't need to keep this data - it's sent back to parent process.
-
-    # Clear ALL entries from file_index (source + all headers processed with this file)
-    _worker_analyzer.file_index.clear()
-
-    # Clear class and function indexes completely
-    _worker_analyzer.class_index.clear()
-    _worker_analyzer.function_index.clear()
-
-    # Clear USR index completely
-    _worker_analyzer.usr_index.clear()
-
-    # Clear file hashes to prevent stale hash tracking
-    _worker_analyzer.file_hashes.clear()
-
-    # Force garbage collection to free TranslationUnit objects
-    # TU objects hold native C++ resources (file descriptors) that Python's GC
-    # doesn't clean up frequently enough, causing FD leak in long-running workers
-    gc.collect()
-
-    return (file_path, success, was_cached, symbols, call_sites, processed_headers)
-
-
-# ---------------------------------------------------------------------------
-# USR → human-readable qualified name conversion
-# ---------------------------------------------------------------------------
-# libclang USR (Unified Symbol Resolution) strings encode type information
-# using a compact scheme derived from Itanium ABI mangling.  The helpers below
-# decode the most common constructs so that template arguments are preserved
-# in the display name (e.g. ``std::vector<int>`` instead of ``std::vector``).
-
-_USR_TYPE_CODES: Dict[str, str] = {
-    "v": "void",
-    "b": "bool",
-    "c": "char",
-    "a": "signed char",
-    "h": "unsigned char",
-    "w": "wchar_t",
-    "s": "short",
-    # "t" is handled specially in _decode_usr_type (conflicts with tN.M param ref)
-    "i": "int",
-    "I": "unsigned int",
-    "j": "long",
-    "k": "unsigned long",
-    "l": "long long",
-    "m": "unsigned long long",
-    "f": "float",
-    "d": "double",
-    "e": "long double",
-    "D": "auto",
-}
-
-# Letters used as template parameter names: T, U, V, W, X, ...
-_TPARAM_LETTERS = "TUVWXYZABCDE"
-
-
-def _decode_template_param(s: str, pos: int) -> tuple:
-    """Decode a template parameter reference (tN.M) from USR encoding."""
-    m = re.match(r"t(\d+)\.(\d+)", s[pos:])
-    if m:
-        depth = int(m.group(1))
-        idx = int(m.group(2))
-        total_idx = depth * 4 + idx
-        letter = _TPARAM_LETTERS[total_idx] if total_idx < len(_TPARAM_LETTERS) else f"T{total_idx}"
-        return (letter, pos + m.end())
-    return ("unsigned short", pos + 1)
-
-
-def _decode_pointer_or_reference(s: str, pos: int, ch: str) -> tuple:
-    """Decode a pointer, l-value reference, or r-value reference type."""
-    suffix = " &&" if ch == "O" else f" {ch}"
-    inner, npos = _decode_usr_type(s, pos)
-    return (f"{inner}{suffix}", npos)
-
-
-def _decode_cv_qualified(s: str, pos: int, ch: str) -> tuple:
-    """Decode a const or volatile qualified type."""
-    prefix = "volatile " if ch in ("V", "2") else "const "
-    inner, npos = _decode_usr_type(s, pos)
-    return (f"{prefix}{inner}", npos)
-
-
-def _try_decode_substitution(s: str, pos: int) -> Optional[tuple]:
-    """Try to decode a substitution reference at *pos*; return None if not a substitution."""
-    if s[pos] != "S" or pos + 1 >= len(s):
-        return None
-    if not (s[pos + 1].isdigit() or s[pos + 1] == "_"):
-        return None
-    end = pos + 1
-    while end < len(s) and (s[end].isdigit() or s[end] == "_"):
-        end += 1
-    return ("type", end)
-
-
-def _decode_usr_type(s: str, pos: int) -> tuple:
-    """Decode a single type from USR encoding starting at *pos*.
-
-    Returns ``(type_string, new_position)``.
-    """
-    if pos >= len(s):
-        return ("?", pos)
-
-    ch = s[pos]
-
-    if ch == "t":
-        return _decode_template_param(s, pos)
-
-    if ch in _USR_TYPE_CODES:
-        return (_USR_TYPE_CODES[ch], pos + 1)
-
-    if ch in ("*", "&", "O"):
-        return _decode_pointer_or_reference(s, pos + 1, ch)
-
-    if ch in ("K", "1", "V", "2"):
-        return _decode_cv_qualified(s, pos + 1, ch)
-
-    if ch == "$":
-        return _decode_class_ref(s, pos + 1)
-
-    sub = _try_decode_substitution(s, pos)
-    if sub is not None:
-        return sub
-
-    return ("?", pos + 1)
-
-
-def _decode_class_ref(s: str, pos: int) -> tuple:
-    """Decode a class/namespace reference that appears inside template args.
-
-    Starting right after the ``$`` marker, parses ``@N@ns@S@Class`` segments
-    and optional trailing template args (``>#...``).
-    Returns ``(qualified_name, new_position)``.
-    """
-    parts: List[str] = []
-    i = pos
-    while i < len(s):
-        # Expect @<kind>@<name>
-        if s[i] != "@":
-            break
-        if i + 2 >= len(s):
-            break
-        kind = s[i + 1]
-        if s[i + 2] != "@":
-            break
-        # Extract the name until next @, #, >, or end
-        name_start = i + 3
-        name_end = name_start
-        while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
-            name_end += 1
-        if name_end == name_start:
-            break
-        parts.append(s[name_start:name_end])
-        i = name_end
-
-        # Check for template args: >#
-        if kind in ("S", "C") and i < len(s) and s[i] == ">":
-            if i + 1 < len(s) and s[i + 1] == "#":
-                targs, i = _decode_template_args(s, i + 2)
-                parts[-1] += targs
-            else:
-                i += 1  # skip lone >
-    name = "::".join(parts)
-    return (name if name else "?", i)
-
-
-def _decode_template_args(s: str, pos: int) -> tuple:
-    """Decode a ``#arg1#arg2...`` template argument list.
-
-    Returns ``("<T1, T2, ...>", new_position)``.
-    """
-    args: List[str] = []
-    i = pos
-    while i < len(s):
-        ch = s[i]
-        # Stop markers: start of new USR segment or end of arg area
-        if ch == "@":
-            break
-        if ch == "#":
-            i += 1
-            continue
-        arg, i = _decode_usr_type(s, i)
-        args.append(arg)
-    if not args:
-        return ("", i)
-    return (f"<{', '.join(args)}>", i)
-
-
-def _parse_template_definition(s: str, i: int, parts: List[str]) -> int:
-    """Parse template definition or partial specialization segment."""
-    mt = re.match(r"@(ST|SP)>", s[i:])
-    if not mt:
-        return -1
-
-    kind = mt.group(1)
-    j = i + mt.end()
-    # Skip template parameter descriptors until @<name>
-    inner_m = re.search(r"@([^@#>]+)", s[j:])
-    if inner_m:
-        # Extract just the C++ identifier from the matched segment.
-        raw_name = inner_m.group(1)
-        name_only = re.match(r"([A-Za-z_]\w*?)(?=\d+t\d|\d*$)", raw_name)
-        parts.append(name_only.group(1) if name_only else raw_name)
-        new_i = j + inner_m.end()
-        # SP may have template args after >
-        if kind == "SP" and new_i < len(s) and s[new_i] == ">":
-            if new_i + 1 < len(s) and s[new_i + 1] == "#":
-                targs, new_i = _decode_template_args(s, new_i + 2)
-                parts[-1] += targs
-            else:
-                new_i += 1
-        return new_i
-    return j
-
-
-def _skip_template_parameters(s: str, k: int, param_count: int) -> int:
-    """Skip template parameter descriptors."""
-    for _ in range(param_count):
-        if k < len(s) and s[k] == "#":
-            k += 1
-            # Parse one descriptor based on its specific format
-            if k < len(s) and s[k] == "p":
-                k += 1  # skip 'p' (pack prefix)
-            if k < len(s) and s[k] in ("T", "t"):
-                k += 1  # skip T (type) or t (template)
-            elif k < len(s) and s[k] == "N":
-                k += 1  # skip 'N' (non-type)
-                # Skip the following type code
-                _, k = _decode_usr_type(s, k)
-    return k
-
-
-def _parse_function_template(s: str, i: int, parts: List[str]) -> int:
-    """Parse function template segment."""
-    if not s[i:].startswith("@FT@"):
-        return -1
-
-    j = i + 4
-    if j < len(s) and s[j] == ">":
-        j += 1
-
-    bare_name = None
-    count_m = re.match(r"(\d+)", s[j:])
-    if count_m:
-        param_count = int(count_m.group(1))
-        k = j + count_m.end()
-        # Skip param_count #-prefixed descriptors
-        k = _skip_template_parameters(s, k, param_count)
-        # Now k should point to the start of the function name
-        name_m = re.match(r"([A-Za-z_]\w*)", s[k:])
-        if name_m:
-            bare_name = name_m.group(1)
-
-    if bare_name is not None:
-        parts.append(bare_name)
-        # Skip the rest of the USR.
-        return len(s)
-    else:
-        # Fallback: look for @<kind>@<name> inside the FT block
-        inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
-        if inner_m:
-            return j + inner_m.start()
-        return j
-
-
-def _parse_regular_segment(s: str, i: int, parts: List[str]) -> int:
-    """Parse a regular segment like @C@ClassName."""
-    m = re.match(r"@([A-Za-z])@", s[i:])
-    if not m:
-        return i + 1
-
-    kind = m.group(1)
-    name_start = i + m.end()
-
-    # Extract name: runs until @, #, or >
-    name_end = name_start
-    while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
-        name_end += 1
-
-    if name_end == name_start:
-        return name_start
-
-    name = s[name_start:name_end]
-    parts.append(name)
-    new_i = name_end
-
-    # Class/struct segments may have template args: >#arg1#arg2...
-    if kind in ("S", "C") and new_i < len(s) and s[new_i] == ">":
-        if new_i + 1 < len(s) and s[new_i + 1] == "#":
-            targs, new_i = _decode_template_args(s, new_i + 2)
-            parts[-1] += targs
-        else:
-            new_i += 1
-
-    # Function segments: skip parameter type encoding after #
-    if kind in ("F", "f") and new_i < len(s) and s[new_i] == "#":
-        while new_i < len(s) and s[new_i] != "@":
-            new_i += 1
-
-    return new_i
-
-
-def _usr_to_display_name(usr: str) -> str:
-    """Convert a libclang USR to an approximate qualified name for display.
-
-    USRs like ``c:@N@std@S@vector>#I@F@push_back#&1t0.0#`` are opaque
-    internal identifiers.  This function extracts the named components
-    (namespaces, classes, functions) and decodes template arguments so that
-    callers/callees not present in the in-memory index can still be
-    presented with a human-readable name such as
-    ``std::vector<int>::push_back``.
-
-    If the USR cannot be parsed the raw string is returned unchanged.
-    """
-    if not usr:
-        return usr
-
-    s = usr[2:] if usr.startswith("c:") else usr
-    parts: List[str] = []
-    i = 0
-
-    while i < len(s):
-        # --- Template definition / partial specialization --------------------
-        next_i = _parse_template_definition(s, i, parts)
-        if next_i != -1:
-            i = next_i
-            continue
-
-        # --- Function template: @FT@>N#desc1#desc2...descN name#params ----
-        next_i = _parse_function_template(s, i, parts)
-        if next_i != -1:
-            i = next_i
-            continue
-
-        # --- Regular segments: @<kind>@<name> --------------------------------
-        i = _parse_regular_segment(s, i, parts)
-
-    return "::".join(parts) if parts else usr
 
 
 class CppAnalyzer:
@@ -554,6 +113,10 @@ class CppAnalyzer:
         # Load project configuration
         self.config = CppAnalyzerConfig(self.project_root, config_path=config_path)
 
+        # Initialize core components
+        self.clang_parser = ClangParser(self)
+        self.symbol_extractor = SymbolExtractor(self)
+
         # Indexes for fast lookup
         self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
         self.function_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
@@ -592,6 +155,13 @@ class CppAnalyzer:
         # Use ProcessPoolExecutor by default to bypass Python's GIL
         # Can be overridden via environment variable
         self.use_processes = os.environ.get("CPP_ANALYZER_USE_THREADS", "").lower() != "true"
+
+        # Initialize worker pool manager
+        self.worker_pool = WorkerPoolManager(self.max_workers, self.use_processes)
+
+        # Initialize helper components (Phase 2 refactor)
+        self.clang_parser = ClangParser(self)
+        self.symbol_extractor = SymbolExtractor(self)
 
         # Locking strategy:
         # - True (default): Use locks for thread safety (ThreadPoolExecutor or shared instance)
@@ -715,126 +285,6 @@ class CppAnalyzer:
         with self._interrupt_lock:
             return self._interrupted
 
-    def _cancel_executor_futures(self, executor) -> None:
-        """Cancel pending futures in the executor if possible."""
-        try:
-            # shutdown(cancel_futures=True) is Python 3.9+
-            if sys.version_info >= (3, 9):
-                executor.shutdown(wait=False, cancel_futures=True)
-            else:
-                executor.shutdown(wait=False)
-        except Exception:
-            executor.shutdown(wait=False)
-
-    def _wait_for_workers(self, workers: List[Any], name: str, timeout: float = 5.0) -> None:
-        """Wait for worker processes to finish cleanly with progress updates."""
-        num_workers = len(workers)
-        start_wait = time.time()
-        last_alive_count = len([w for w in workers if w.is_alive()])
-
-        while time.time() - start_wait < timeout:
-            alive_workers = [w for w in workers if w.is_alive()]
-            current_alive = len(alive_workers)
-
-            if current_alive == 0:
-                diagnostics.info(f"All {num_workers} {name} subprocesses stopped cleanly")
-                return
-
-            if current_alive != last_alive_count:
-                finished = num_workers - current_alive
-                diagnostics.info(
-                    f"Shutdown progress: {finished}/{num_workers} subprocesses finished"
-                )
-                last_alive_count = current_alive
-
-            time.sleep(0.5)
-
-    def _send_sigterm_to_workers(self, alive_workers: List[Any]) -> None:
-        """Send SIGTERM to all alive workers."""
-        for w in alive_workers:
-            try:
-                if w.is_alive():
-                    # Try terminate (SIGTERM)
-                    w.terminate()
-            except Exception:
-                pass
-
-    def _send_sigkill_to_workers(self, still_alive: List[Any]) -> None:
-        """Send SIGKILL to all still alive workers."""
-        for w in still_alive:
-            try:
-                if hasattr(w, "kill"):  # kill() is Python 3.7+
-                    w.kill()
-            except Exception:
-                pass
-
-    def _terminate_hanging_workers(self, workers: List[Any], name: str) -> None:
-        """Forcefully terminate worker processes that didn't finish cleanly."""
-        alive_workers = [w for w in workers if w.is_alive()]
-        if not alive_workers:
-            return
-
-        diagnostics.warning(
-            f"Timeout reached: {len(alive_workers)} subprocesses still running. Killing them..."
-        )
-        self._send_sigterm_to_workers(alive_workers)
-
-        # Give a moment for SIGTERM to work
-        time.sleep(0.5)
-
-        # Check if any still alive and use SIGKILL
-        still_alive = [w for w in alive_workers if w.is_alive()]
-        if still_alive:
-            diagnostics.warning(f"Killing {len(still_alive)} remaining subprocesses with SIGKILL")
-            self._send_sigkill_to_workers(still_alive)
-
-        diagnostics.info(f"{name} subprocesses forcefully terminated")
-
-    def _shutdown_executor(self, executor, name="Indexing"):
-        """
-        Cleanly shut down a ProcessPoolExecutor or ThreadPoolExecutor.
-        Provides informative logging and handles stuck workers with timeouts.
-        """
-        if executor is None:
-            return
-
-        # 1. Identify worker processes (if using ProcessPoolExecutor)
-        # MUST do this before shutdown() as shutdown clears _processes
-        is_process_pool = hasattr(executor, "_processes")
-        workers = []
-        if is_process_pool:
-            # Internal access to worker processes
-            workers = list(executor._processes.values()) if executor._processes else []
-
-        # 2. Cancel all pending futures (if possible)
-        self._cancel_executor_futures(executor)
-
-        if not workers:
-            # ThreadPool or no active processes, just do a normal wait
-            diagnostics.info(f"{name} shutdown: waiting for workers to finish...")
-            try:
-                executor.shutdown(wait=True)
-                diagnostics.info(f"{name} workers stopped cleanly")
-            except Exception as e:
-                diagnostics.debug(f"Error during {name} executor shutdown: {e}")
-            return
-
-        # 3. Informative logging for ProcessPool
-        alive_workers = [w for w in workers if w.is_alive()]
-        num_alive = len(alive_workers)
-
-        if num_alive == 0:
-            diagnostics.info(f"{name} workers already finished")
-            return
-
-        diagnostics.info(f"There are {num_alive} active {name} subprocesses. Terminating...")
-
-        # 4. Graceful wait with progress updates
-        self._wait_for_workers(workers, name)
-
-        # 5. Forceful termination if timeout reached
-        self._terminate_hanging_workers(workers, name)
-
     def close(self):
         """
         Close the analyzer and release all resources.
@@ -900,50 +350,8 @@ class CppAnalyzer:
         return self.file_scanner.is_project_file(file_path)
 
     def _extract_template_call_info(self, referenced, called_usr: str):
-        """Extract display_name and project-type template args from a template call.
-
-        When code calls e.g. ``std::make_shared<Sensor>(args)``, libclang's
-        ``referenced.get_template_argument_type(i)`` returns the concrete type
-        (``Sensor``).  If any of those types belong to a project file we record
-        them so that query-time filtering can surface the call even under
-        ``project_only=True``.
-
-        Args:
-            referenced: The libclang Cursor for the referenced (callee) function.
-            called_usr: The canonical template USR (after y6j mapping).
-
-        Returns:
-            (display_name, template_project_types_json) where both are str,
-            or (None, None) if no project types found in template args.
-        """
-        try:
-            num_args = referenced.get_num_template_arguments()
-            if num_args <= 0:
-                return (None, None)
-
-            project_types = []
-            all_type_names = []
-            for idx in range(num_args):
-                arg_type = referenced.get_template_argument_type(idx)
-                if arg_type is None or arg_type.spelling == "":
-                    continue
-                type_name = arg_type.spelling
-                all_type_names.append(type_name)
-                # Check if the type's declaration is in a project file
-                decl = arg_type.get_declaration()
-                if decl and decl.location and decl.location.file:
-                    if self._is_project_file(decl.location.file.name):
-                        project_types.append(type_name)
-
-            if not project_types:
-                return (None, None)
-
-            # Build display name: base_name<Type1, Type2>
-            base_name = _usr_to_display_name(called_usr)
-            display_name = f"{base_name}<{', '.join(all_type_names)}>"
-            return (display_name, json.dumps(project_types))
-        except Exception:
-            return (None, None)
+        """Extract display_name and project-type template args from a template call."""
+        return self.symbol_extractor._extract_template_call_info(referenced, called_usr)
 
     def _calculate_compile_commands_hash(self):
         """
@@ -1096,11 +504,7 @@ class CppAnalyzer:
 
     def _get_thread_index(self) -> Index:
         """Return a thread-local libclang Index instance."""
-        index = getattr(self._thread_local, "index", None)
-        if index is None:
-            index = Index.create()
-            self._thread_local.index = index
-        return index
+        return self.clang_parser._get_thread_index()
 
     def _init_thread_local_buffers(self):
         """Initialize thread-local buffers for collecting symbols during parsing."""
@@ -1316,101 +720,6 @@ class CppAnalyzer:
         args_str = " ".join(sorted(args))
         return hashlib.md5(args_str.encode()).hexdigest()
 
-    def _is_system_header_diagnostic(self, diag) -> bool:
-        """Check if a diagnostic originates from a system header.
-
-        System headers include:
-        - Compiler built-in headers (clang/*/include/)
-        - SDK headers (under -isysroot paths)
-        - Standard library headers
-
-        Args:
-            diag: libclang diagnostic object
-
-        Returns:
-            True if the diagnostic is from a system header, False otherwise
-        """
-        if not diag.location.file:
-            return False
-
-        file_path = str(diag.location.file)
-
-        # Check for common system header patterns
-        system_patterns = [
-            "/usr/include/",
-            "/usr/local/include/",
-            "lib/clang/",  # Clang builtin headers (e.g., arm_acle.h, arm_neon.h)
-            "/Library/Developer/CommandLineTools/usr/lib/clang/",  # macOS
-            "/Library/Developer/CommandLineTools/SDKs/",  # macOS SDK
-            "C:\\Program Files",  # Windows system
-            "/opt/homebrew/",  # macOS Homebrew
-        ]
-
-        return any(pattern in file_path for pattern in system_patterns)
-
-    def _extract_diagnostics(self, tu) -> tuple[List, List]:
-        """Extract error and warning diagnostics from translation unit.
-
-        Filters out errors from system headers to avoid false positives from
-        incompatible compiler intrinsics (e.g., ARM built-ins on Mac M1).
-
-        Returns:
-            (error_diagnostics, warning_diagnostics) - Lists of diagnostic objects
-        """
-        error_diagnostics = []
-        warning_diagnostics = []
-
-        if tu and hasattr(tu, "diagnostics"):
-            for diag in tu.diagnostics:
-                severity = diag.severity
-                # Severity levels: Ignored=0, Note=1, Warning=2, Error=3, Fatal=4
-
-                # Filter out errors from system headers
-                # These are often false positives due to compiler version mismatches
-                if severity >= 3:  # Error or Fatal
-                    if not self._is_system_header_diagnostic(diag):
-                        error_diagnostics.append(diag)
-                    else:
-                        # Downgrade system header errors to warnings for logging
-                        warning_diagnostics.append(diag)
-                elif severity == 2:  # Warning
-                    warning_diagnostics.append(diag)
-
-        return error_diagnostics, warning_diagnostics
-
-    def _format_diagnostics(self, diagnostics_list, max_count: int = 5) -> str:
-        """Format libclang diagnostics into a readable string.
-
-        Args:
-            diagnostics_list: List of libclang diagnostic objects
-            max_count: Maximum number of diagnostics to include
-
-        Returns:
-            Formatted string with diagnostic messages
-        """
-        if not diagnostics_list:
-            return ""
-
-        messages = []
-        for diag in diagnostics_list[:max_count]:
-            # Format location
-            if diag.location.file:
-                location = f"{diag.location.file}:{diag.location.line}:{diag.location.column}"
-            else:
-                location = "unknown location"
-
-            # Get severity name
-            severity_names = {0: "ignored", 1: "note", 2: "warning", 3: "error", 4: "fatal"}
-            severity_name = severity_names.get(diag.severity, "unknown")
-
-            messages.append(f"[{severity_name}] {location}: {diag.spelling}")
-
-        total = len(diagnostics_list)
-        if total > max_count:
-            messages.append(f"... and {total - max_count} more")
-
-        return "\n".join(messages)
-
     def _save_file_cache(
         self,
         file_path: str,
@@ -1463,364 +772,103 @@ class CppAnalyzer:
         self.file_scanner.include_dependencies = include_dependencies
         return self.file_scanner.find_cpp_files()
 
-    def _get_qualified_name(self, cursor) -> str:
-        """
-        Build fully qualified name by walking up semantic parent chain.
+    @staticmethod
+    def _get_qualified_name(cursor: Any) -> str:
+        """Build fully qualified name."""
+        return SymbolExtractor._get_qualified_name(cursor)
 
-        Handles:
-        - Nested namespaces: ns1::ns2::ClassName
-        - Nested classes: Outer::Inner::method
-        - Anonymous namespaces: (anonymous namespace)::Internal
-        - Global namespace: just the symbol name
+    @staticmethod
+    def _extract_namespace(qualified_name: str) -> str:
+        """Extract namespace portion from qualified name."""
+        return SymbolExtractor._extract_namespace(qualified_name)
 
-        Args:
-            cursor: libclang cursor
+    def _extract_diagnostics(self, tu: Any) -> Tuple[List[Any], List[Any]]:
+        """Extract diagnostics from translation unit."""
+        return self.clang_parser._extract_diagnostics(tu)
 
-        Returns:
-            Qualified name like "ns1::ns2::ClassName::method"
-            For global namespace: just cursor.spelling
-        """
-        parts = []
-        current = cursor
-        max_depth = 100  # Safety limit to prevent infinite loops
-        depth = 0
-        visited = set()  # Detect circular references
+    def _build_human_readable_signature(self, cursor: Any) -> str:
+        """Build human readable signature."""
+        return self.symbol_extractor._build_human_readable_signature(cursor)
 
-        while current and depth < max_depth:
-            # Check for circular reference (should never happen, but safety first)
-            cursor_id = id(current)
-            if cursor_id in visited:
-                diagnostics.warning(
-                    f"Circular reference detected in semantic parent chain for {cursor.spelling}"
-                )
-                break
-            visited.add(cursor_id)
+    def _get_base_classes(self, cursor: Any) -> List[str]:
+        """Get base classes for a class/struct."""
+        return self.symbol_extractor._get_base_classes(cursor)
 
-            if current.kind == CursorKind.TRANSLATION_UNIT:
-                break
+    def _extract_documentation(self, cursor: Any) -> dict:
+        """Extract documentation."""
+        return self.symbol_extractor._extract_documentation(cursor)
 
-            # Add this cursor's name to the path
-            if current.spelling:
-                parts.append(current.spelling)
-            elif current.kind == CursorKind.NAMESPACE and current.is_anonymous():
-                # Represent anonymous namespaces explicitly
-                parts.append("(anonymous namespace)")
+    def _get_return_type(self, cursor: Any) -> str:
+        """Get return type."""
+        return self.symbol_extractor._get_return_type(cursor)
 
-            current = current.semantic_parent
-            depth += 1
+    def _detect_template_specialization(self, cursor: Any) -> bool:
+        """Detect if cursor is a template specialization."""
+        return self.symbol_extractor._detect_template_specialization(cursor)
 
-        if depth >= max_depth:
-            diagnostics.warning(
-                f"Maximum depth ({max_depth}) exceeded when building qualified name for {cursor.spelling}"
-            )
+    def _extract_alias_info(self, cursor: Any) -> dict:
+        """Extract type alias info."""
+        return self.symbol_extractor._extract_alias_info(cursor)
 
-        parts.reverse()
-        return "::".join(parts) if parts else cursor.spelling
+    def _get_primary_template_usr(self, cursor: Any) -> Optional[str]:
+        """Get primary template USR."""
+        return self.symbol_extractor._get_primary_template_usr(cursor)
 
-    def _extract_namespace(self, qualified_name: str) -> str:
-        """
-        Extract namespace portion from qualified name.
+    def _resolve_instantiation_base_classes(
+        self, cursor: Any, primary_template_usr: str
+    ) -> List[str]:
+        """Resolve base classes for an instantiation."""
+        return self.symbol_extractor._resolve_instantiation_base_classes(
+            cursor, primary_template_usr
+        )
 
-        Includes parent classes in namespace (Q8 decision from design).
+    @staticmethod
+    def _extract_params_from_type_spelling(type_spelling: str) -> str:
+        """Facade for SymbolExtractor._extract_params_from_type_spelling"""
+        return SymbolExtractor._extract_params_from_type_spelling(type_spelling)
 
-        Examples:
-            "ns1::ns2::Class" → "ns1::ns2"
-            "ns1::Outer::Inner" → "ns1::Outer" (includes parent class)
-            "GlobalClass" → ""
+    @staticmethod
+    def _extract_trailing_qualifiers(type_spelling: str) -> str:
+        """Facade for SymbolExtractor._extract_trailing_qualifiers"""
+        return SymbolExtractor._extract_trailing_qualifiers(type_spelling)
 
-        Args:
-            qualified_name: Fully qualified name
+    @staticmethod
+    def _extract_brief_comment(cursor: Any) -> Optional[str]:
+        """Facade for SymbolExtractor._extract_brief_comment"""
+        return SymbolExtractor._extract_brief_comment(cursor)
 
-        Returns:
-            Namespace portion (empty string for global namespace)
-        """
-        if "::" not in qualified_name:
-            return ""
+    @staticmethod
+    def _extract_raw_doc_comment(cursor: Any) -> Optional[str]:
+        """Facade for SymbolExtractor._extract_raw_doc_comment"""
+        return SymbolExtractor._extract_raw_doc_comment(cursor)
 
-        parts = qualified_name.split("::")
-        return "::".join(parts[:-1])
-
-    def _build_type_param_map(self, cursor) -> Dict[str, str]:
-        """Build a map from 'type-parameter-D-I' to actual template parameter names."""
-        type_param_map: Dict[str, str] = {}
-        param_index = 0
-        for child in cursor.get_children():
-            if child.kind in (
-                CursorKind.TEMPLATE_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
-            ):
-                if child.spelling:
-                    type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
-                param_index += 1
-        return type_param_map
-
-    def _resolve_base_name(self, base_type, type_param_map: Dict[str, str]) -> str:
-        """Resolve the qualified name of a base type, substituting template parameters."""
-        import re
-
-        canonical_type = base_type.get_canonical()
-        base_name_qualified = canonical_type.spelling
-
-        if "type-parameter-" in base_name_qualified and type_param_map:
-
-            def _replace_type_param(m: re.Match[str]) -> str:
-                key: str = m.group(0)
-                return type_param_map.get(key, key)
-
-            base_name_qualified = re.sub(
-                r"type-parameter-\d+-\d+", _replace_type_param, base_name_qualified
-            )
-
-        if re.search(r"type-parameter-\d+-\d+", base_name_qualified):
-            base_name_qualified = base_type.spelling
-
-        if base_name_qualified.startswith("class "):
-            base_name_qualified = base_name_qualified[6:]
-        elif base_name_qualified.startswith("struct "):
-            base_name_qualified = base_name_qualified[7:]
-
-        return str(base_name_qualified)
-
-    def _get_base_classes(self, cursor) -> List[str]:
-        """
-        Extract base class names from a class cursor.
-
-        Uses canonical type to ensure template arguments include qualified names.
-        For example: Container<ns1::Foo> instead of Container<Foo>
-
-        Special handling for template parameters:
-        - libclang returns "type-parameter-D-I" for template parameter references
-          (D=depth, I=index) in canonical type spellings
-        - We build a mapping from these positional names to actual parameter names
-          by inspecting the cursor's TEMPLATE_TYPE_PARAMETER etc. children
-        - This replaces both standalone occurrences (entire base is a parameter)
-          and embedded occurrences (parameter inside a complex dependent type)
-        - Example: "typename ChainResolver<type-parameter-0-0, Mixin>::Type"
-          becomes: "typename ChainResolver<BaseParam, Mixin>::Type"
-        """
-        type_param_map = self._build_type_param_map(cursor)
-
-        base_classes = []
-        for child in cursor.get_children():
-            if child.kind == CursorKind.CXX_BASE_SPECIFIER:
-                base_classes.append(self._resolve_base_name(child.type, type_param_map))
-
-        return base_classes
+    @staticmethod
+    def _extract_brief_from_doc(doc_comment: str) -> Optional[str]:
+        """Facade for SymbolExtractor._extract_brief_from_doc"""
+        return SymbolExtractor._extract_brief_from_doc(doc_comment)
 
     @staticmethod
     def _extract_template_args_from_displayname(displayname: str) -> List[str]:
-        """Extract template arguments from a displayname like 'MyTemplate<Arg1, Arg2>'.
-
-        Handles nested template arguments (e.g., 'Foo<Bar<int>, Baz>').
-
-        Returns:
-            List of template argument strings, or empty list if parsing fails.
-        """
-        if "<" not in displayname:
-            return []
-
-        args_start = displayname.find("<")
-        args_end = displayname.rfind(">")
-        if args_start >= args_end:
-            return []
-
-        args_str = displayname[args_start + 1 : args_end]
-
-        # Parse comma-separated args (handle nested templates)
-        template_args: List[str] = []
-        depth = 0
-        current = ""
-        for c in args_str:
-            if c == "<":
-                depth += 1
-                current += c
-            elif c == ">":
-                depth -= 1
-                current += c
-            elif c == "," and depth == 0:
-                template_args.append(current.strip())
-                current = ""
-            else:
-                current += c
-        if current.strip():
-            template_args.append(current.strip())
-
-        return template_args
+        """Facade for SymbolExtractor._extract_template_args_from_displayname"""
+        return SymbolExtractor._extract_template_args_from_displayname(displayname)
 
     @staticmethod
-    def _build_param_to_arg_mapping(
-        template_params: List[Dict[str, Any]], template_args: List[str]
-    ) -> Dict[str, str]:
-        """Build mapping from template parameter names to template arguments."""
-        param_to_arg = {}
-        for i, param in enumerate(template_params):
-            if i < len(template_args):
-                param_name = param.get("name", "")
-                if param_name:
-                    param_to_arg[param_name] = template_args[i]
-        return param_to_arg
+    def _is_system_header_diagnostic(diag: Any) -> bool:
+        """Facade for ClangParser._is_system_header_diagnostic"""
+        return ClangParser._is_system_header_diagnostic(diag)
 
     @staticmethod
-    def _substitute_template_args_in_bases(
-        base_classes: List[str],
-        param_to_arg: Dict[str, str],
-        template_args: List[str],
-    ) -> List[str]:
-        """Resolve base classes by substituting parameter names with actual arguments."""
-        import re
-
-        resolved = []
-        for base in base_classes:
-            if base in param_to_arg:
-                resolved.append(param_to_arg[base])
-            else:
-                match = re.match(r"type-parameter-(\d+)-(\d+)", base)
-                if match:
-                    param_index = int(match.group(2))
-                    if param_index < len(template_args):
-                        resolved.append(template_args[param_index])
-                else:
-                    resolved.append(base)
-        return resolved
-
-    def _find_primary_template_info(self, primary_template_usr: str) -> Optional[Any]:
-        """Look up the primary template in class_index by USR."""
-        with self.index_lock:
-            for name, infos in self.class_index.items():
-                for info in infos:
-                    if info.usr == primary_template_usr:
-                        return info
-        return None
-
-    @staticmethod
-    def _parse_template_params(primary_info) -> List[dict]:
-        """Parse template_parameters JSON from a primary template info."""
-        if not primary_info.template_parameters:
-            return []
-        try:
-            import json
-
-            result: List[Dict[str, Any]] = json.loads(primary_info.template_parameters)
-            return result
-        except (json.JSONDecodeError, TypeError):
-            return []
-
-    def _resolve_instantiation_base_classes(
-        self, cursor, primary_template_usr: Optional[str]
-    ) -> List[str]:
-        """
-        Resolve base classes for explicit template instantiations.
-
-        For explicit instantiations like `extern template class MyTemplate<SomeType>;`,
-        libclang doesn't provide CXX_BASE_SPECIFIER children. This method resolves
-        base classes by:
-        1. Looking up the primary template in the class index
-        2. Extracting template arguments from the instantiation's displayname
-        3. Substituting template parameter names with actual arguments
-
-        Example:
-            Primary template: template<typename T> class MyTemplate : public T { };
-            Instantiation: extern template class MyTemplate<BaseClass>;
-            Result: ['BaseClass']
-
-        Args:
-            cursor: The instantiation cursor (CLASS_DECL/STRUCT_DECL with template args)
-            primary_template_usr: USR of the primary template (from _get_primary_template_usr)
-
-        Returns:
-            List of resolved base class names, or empty list if resolution fails
-
-        Issue: Template base class resolution for LLM readability
-        """
-        if not primary_template_usr:
-            return []
-
-        template_args = self._extract_template_args_from_displayname(cursor.displayname)
-        if not template_args:
-            return []
-
-        primary_info = self._find_primary_template_info(primary_template_usr)
-        if not primary_info:
-            return []
-
-        template_params = self._parse_template_params(primary_info)
-        if not template_params:
-            return []
-
-        param_to_arg = self._build_param_to_arg_mapping(template_params, template_args)
-
-        return self._substitute_template_args_in_bases(
-            primary_info.base_classes, param_to_arg, template_args
-        )
-
-    @staticmethod
-    def _parse_json_field(field_value: Optional[str]) -> Any:
-        """Safely parse a JSON field, returning None on failure."""
-        if not field_value:
-            return None
-        try:
-            return json.loads(field_value)
-        except (json.JSONDecodeError, TypeError):
-            return None
+    def _format_diagnostics(diagnostics_list: List[Any], max_count: int = 5) -> str:
+        """Facade for ClangParser._format_diagnostics"""
+        return ClangParser._format_diagnostics(diagnostics_list, max_count)
 
     def _process_deferred_instantiation(self, info: SymbolInfo) -> bool:
         """Process a single deferred instantiation and return True if resolved."""
-        # Only process specializations that have deferred template args
-        if not info.template_arguments or not info.primary_template_usr or info.base_classes:
-            return False
-
-        # Parse stored template arguments
-        template_args = self._parse_json_field(info.template_arguments)
-        if not template_args:
-            return False
-
-        # Look up the primary template in usr_index (fast O(1) lookup)
-        primary_info = self.usr_index.get(info.primary_template_usr)
-        if not primary_info:
-            return False
-
-        # Get template parameters from primary template
-        template_params = self._parse_json_field(primary_info.template_parameters)
-        if not template_params:
-            return False
-
-        # Build parameter name to argument mapping
-        param_to_arg = self._build_param_to_arg_mapping(template_params, template_args)
-
-        # Resolve base classes by substituting parameter names
-        resolved = self._substitute_template_args_in_bases(
-            primary_info.base_classes, param_to_arg, template_args
-        )
-
-        if resolved:
-            info.base_classes = resolved
-            info.template_arguments = None  # Clear transient field
-            diagnostics.debug(f"Deferred resolution: {info.qualified_name} -> bases={resolved}")
-            return True
-        return False
+        return self.symbol_extractor._process_deferred_instantiation(info)
 
     def _resolve_deferred_instantiation_bases(self) -> int:
-        """Resolve base_classes for template instantiations that couldn't be resolved during parsing.
-
-        In ProcessPoolExecutor mode, workers have isolated class_index and can't look up
-        the primary template. This post-processing pass runs after all symbols are merged
-        into the main process's indexes, resolving any remaining empty base_classes.
-
-        Returns:
-            Number of symbols whose base_classes were resolved.
-        """
-        resolved_count = 0
-        for name, infos in self.class_index.items():
-            for info in infos:
-                if self._process_deferred_instantiation(info):
-                    resolved_count += 1
-
-        if resolved_count > 0:
-            diagnostics.info(
-                f"Resolved base_classes for {resolved_count} template instantiation(s)"
-            )
-        return resolved_count
+        """Resolve base_classes for template instantiations that couldn't be resolved during parsing."""
+        return self.symbol_extractor._resolve_deferred_instantiation_bases()
 
     def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
         """
@@ -1910,629 +958,6 @@ class CppAnalyzer:
 
         return results
 
-    @staticmethod
-    def _get_primary_file(cursor) -> str:
-        """Determine the primary file path for a cursor using extent or location."""
-        if cursor.extent and cursor.extent.start.file:
-            return str(cursor.extent.start.file.name)
-        if cursor.location.file:
-            return str(cursor.location.file.name)
-        return ""
-
-    @staticmethod
-    def _extract_cursor_extent(cursor, location) -> Tuple[int, int]:
-        """Extract start and end lines from a cursor's extent, falling back to location line."""
-        try:
-            extent = cursor.extent
-            if extent and extent.start.file and extent.end.file:
-                return extent.start.line, extent.end.line
-        except Exception as e:
-            diagnostics.debug(f"Could not extract extent for {cursor.spelling}: {e}")
-        return location.line, location.line
-
-    def _extract_definition_location(self, cursor, result: dict) -> None:
-        """Populate header_* fields when declaration and definition are in different files."""
-        try:
-            definition_cursor = cursor.get_definition()
-            if not definition_cursor or definition_cursor == cursor:
-                return
-
-            decl_location = cursor.location
-            def_location = definition_cursor.location
-
-            if not decl_location.file or not def_location.file:
-                return
-
-            decl_file = str(decl_location.file.name)
-            def_file = str(def_location.file.name)
-
-            if decl_file == def_file:
-                return
-
-            result["header_file"] = def_file
-            result["header_line"] = def_location.line
-
-            try:
-                def_extent = definition_cursor.extent
-                if def_extent and def_extent.start.file:
-                    result["header_start_line"] = def_extent.start.line
-                    result["header_end_line"] = def_extent.end.line
-            except Exception:
-                result["header_start_line"] = def_location.line
-                result["header_end_line"] = def_location.line
-
-        except Exception as e:
-            diagnostics.debug(f"Could not track declaration/definition for {cursor.spelling}: {e}")
-
-    def _extract_line_range_info(self, cursor) -> dict:
-        """
-        Extract line range and location information from a cursor.
-        Handles declaration/definition split for header/source files.
-
-        Phase 1: LLM Integration - Critical bridging data
-
-        Args:
-            cursor: libclang cursor
-
-        Returns:
-            Dictionary with:
-                - file: Declaration location file path (uses extent.start for accurate attribution)
-                - line: Declaration location line
-                - column: Declaration location column
-                - start_line: Start line of declaration extent
-                - end_line: End line of declaration extent
-                - header_file: Definition file path (when declaration and definition are in different
-                  files, e.g. declared in .h, defined in .cpp). None when same file.
-                  Note: despite the name, this stores the DEFINITION location, not a header.
-                - header_line: Definition line
-                - header_start_line: Definition start line
-                - header_end_line: Definition end line
-        """
-        location = cursor.location
-        primary_file = self._get_primary_file(cursor)
-        start_line, end_line = self._extract_cursor_extent(cursor, location)
-
-        result = {
-            "file": primary_file,
-            "line": location.line,
-            "column": location.column,
-            "start_line": start_line,
-            "end_line": end_line,
-            "header_file": None,
-            "header_line": None,
-            "header_start_line": None,
-            "header_end_line": None,
-        }
-
-        self._extract_definition_location(cursor, result)
-
-        return result
-
-    @staticmethod
-    def _extract_brief_comment(cursor) -> Optional[str]:
-        """Extract and truncate brief comment from cursor."""
-        brief_comment = cursor.brief_comment
-        if not brief_comment:
-            return None
-        brief = str(brief_comment).strip()
-        if len(brief) > 200:
-            brief = brief[:200]
-        return brief
-
-    @staticmethod
-    def _extract_raw_doc_comment(cursor) -> Optional[str]:
-        """Extract and truncate full documentation comment from cursor."""
-        raw_comment = cursor.raw_comment
-        if not raw_comment:
-            return None
-        doc_comment = str(raw_comment).strip()
-        if len(doc_comment) > 4000:
-            doc_comment = doc_comment[:3997] + "..."
-        return doc_comment
-
-    @staticmethod
-    def _extract_brief_from_doc(doc_comment: str) -> Optional[str]:
-        """Extract first meaningful line from a documentation comment."""
-        for line in doc_comment.split("\n"):
-            cleaned = line.strip().lstrip("/*!/").lstrip("*").strip()
-            if cleaned and not cleaned.startswith("@"):
-                if len(cleaned) > 200:
-                    cleaned = cleaned[:200]
-                return cleaned
-        return None
-
-    def _extract_documentation(self, cursor) -> dict:
-        """
-        Extract documentation from cursor comments.
-
-        Phase 2: LLM Integration - Documentation extraction for symbol understanding
-
-        Args:
-            cursor: libclang cursor
-
-        Returns:
-            Dictionary with:
-                - brief: Brief description (first line, max 200 chars)
-                - doc_comment: Full documentation comment (max 4000 chars)
-        """
-        result: Dict[str, Optional[str]] = {"brief": None, "doc_comment": None}
-
-        try:
-            result["brief"] = self._extract_brief_comment(cursor)
-
-            doc_comment = self._extract_raw_doc_comment(cursor)
-            if doc_comment:
-                result["doc_comment"] = doc_comment
-                if not result["brief"]:
-                    result["brief"] = self._extract_brief_from_doc(doc_comment)
-
-        except Exception as e:
-            diagnostics.debug(f"Could not extract documentation for {cursor.spelling}: {e}")
-
-        return result
-
-    def _build_human_readable_signature(self, cursor) -> str:
-        """
-        Build a human-readable function signature from a libclang cursor.
-
-        Instead of the C function type notation from cursor.type.spelling
-        (e.g., "void (int, const std::string &)"), this produces a format like:
-        "void processData(int x, const std::string &y)"
-
-        Algorithm:
-        1. Get return type from cursor.result_type.spelling
-        2. Get function name from cursor.spelling
-        3. Try cursor.get_arguments() for param types + names
-        4. If get_arguments() returns empty: extract param types from
-           cursor.type.spelling by finding content between outermost ( and )
-        5. Extract qualifiers (const, etc.) from cursor.type.spelling
-        6. Assemble: "{return_type} {name}({params}){qualifiers}"
-
-        Returns:
-            Human-readable signature string, or "" if cursor.type is unavailable.
-        """
-        try:
-            return self._try_build_human_readable_signature(cursor)
-        except Exception as e:
-            diagnostics.debug(
-                f"Could not build human-readable signature for " f"{cursor.spelling}: {e}"
-            )
-            return self._fallback_signature(cursor)
-
-    def _try_build_human_readable_signature(self, cursor) -> str:
-        """Attempt to build signature without exception handling."""
-        type_spelling = self._get_type_spelling(cursor)
-        if type_spelling is None:
-            return ""
-
-        name = cursor.spelling or ""
-        return_type = self._get_return_type(cursor)
-        params_str = self._get_params_str(cursor, type_spelling)
-        qualifiers = self._extract_trailing_qualifiers(type_spelling)
-
-        return self._assemble_signature(return_type, name, params_str, qualifiers)
-
-    @staticmethod
-    def _get_type_spelling(cursor):
-        """Safely get cursor.type.spelling, returning None if unavailable."""
-        if not cursor.type:
-            return None
-        return cursor.type.spelling or None
-
-    @staticmethod
-    def _get_return_type(cursor) -> str:
-        """Safely get cursor.result_type.spelling."""
-        try:
-            if cursor.result_type and cursor.result_type.spelling:
-                return str(cursor.result_type.spelling)
-        except Exception:
-            pass
-        return ""
-
-    def _get_params_str(self, cursor, type_spelling: str) -> str:
-        """Get parameter string from cursor arguments or type spelling fallback."""
-        try:
-            args = list(cursor.get_arguments())
-            if args:
-                return self._format_args(args)
-            return self._extract_params_from_type_spelling(type_spelling)
-        except Exception:
-            return self._extract_params_from_type_spelling(type_spelling)
-
-    @staticmethod
-    def _format_args(args) -> str:
-        """Format a list of cursor arguments into a parameter string."""
-        param_parts = []
-        for arg in args:
-            arg_type = arg.type.spelling if arg.type else ""
-            arg_name = arg.spelling or ""
-            if arg_name:
-                param_parts.append(f"{arg_type} {arg_name}")
-            else:
-                param_parts.append(arg_type)
-        return ", ".join(param_parts)
-
-    @staticmethod
-    def _assemble_signature(return_type: str, name: str, params_str: str, qualifiers: str) -> str:
-        """Assemble the final human-readable signature string."""
-        if return_type:
-            return f"{return_type} {name}({params_str}){qualifiers}"
-        return f"{name}({params_str}){qualifiers}"
-
-    @staticmethod
-    def _fallback_signature(cursor) -> str:
-        """Return cursor.type.spelling as a fallback, or empty string on failure."""
-        try:
-            return cursor.type.spelling if cursor.type else ""
-        except Exception:
-            return ""
-
-    @staticmethod
-    def _extract_params_from_type_spelling(type_spelling: str) -> str:
-        """
-        Extract parameter types from a C function type spelling string.
-
-        Given "void (int, const std::string &)", returns "int, const std::string &".
-        Handles nested parentheses (function pointer params) by tracking paren depth.
-
-        Args:
-            type_spelling: The cursor.type.spelling string (e.g., "void (int, double)")
-
-        Returns:
-            The parameter string between the outermost parentheses, or "" if not found.
-        """
-        if not type_spelling:
-            return ""
-
-        # Find the first top-level '(' that starts the parameter list.
-        # We need to skip any parentheses that are part of the return type
-        # (e.g., function pointer return types).
-        depth = 0
-        start = -1
-        for i, ch in enumerate(type_spelling):
-            if ch == "(":
-                if depth == 0:
-                    start = i
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0 and start >= 0:
-                    # Found the matching close paren for the first open paren
-                    return type_spelling[start + 1 : i]
-
-        return ""
-
-    @staticmethod
-    def _extract_trailing_qualifiers(type_spelling: str) -> str:
-        """
-        Extract trailing qualifiers (const, volatile, noexcept, etc.) from type spelling.
-
-        Given "void (int) const", returns " const".
-        Given "void (int) const noexcept", returns " const noexcept".
-        Given "void (int)", returns "".
-
-        Finds the last ')' at depth 0 and returns everything after it.
-        """
-        if not type_spelling:
-            return ""
-
-        # Find the last ')' that closes the parameter list (at depth 0)
-        depth = 0
-        last_close = -1
-        for i, ch in enumerate(type_spelling):
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    last_close = i
-
-        if last_close >= 0 and last_close < len(type_spelling) - 1:
-            qualifiers = type_spelling[last_close + 1 :]
-            return qualifiers  # Already has leading space from type spelling
-
-        return ""
-
-    def _extract_template_parameters(self, cursor) -> Optional[str]:
-        """
-        Extract template parameters from a template cursor (CLASS_TEMPLATE, FUNCTION_TEMPLATE, etc.).
-
-        Task 3.2: Template Parameter Extraction - Template Search Support
-
-        This function extracts template parameter information including:
-        - name: Parameter name (e.g., "T", "N")
-        - kind: "type" for typename/class params, "non_type" for value params
-        - type: For non-type params, the parameter type (e.g., "int", "size_t")
-
-        Returns:
-            JSON string of template parameters, or None if no parameters found.
-            Example: '[{"name": "T", "kind": "type"}, {"name": "N", "kind": "non_type", "type": "int"}]'
-        """
-        from clang.cindex import CursorKind
-
-        template_params = []
-
-        for child in cursor.get_children():
-            if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
-                # Type parameter (e.g., "typename T", "class U")
-                template_params.append({"name": child.spelling, "kind": "type"})
-            elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
-                # Non-type parameter (e.g., "int N", "size_t Size")
-                template_params.append(
-                    {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
-                )
-            elif child.kind == CursorKind.TEMPLATE_TEMPLATE_PARAMETER:
-                # Template template parameter (e.g., "template<typename> class Container")
-                template_params.append({"name": child.spelling, "kind": "template"})
-
-        if template_params:
-            import json
-
-            return json.dumps(template_params)
-        return None
-
-    def _get_primary_template_usr(self, cursor) -> Optional[str]:
-        """
-        Get the USR of the primary template for a template specialization.
-
-        Task 3.4: Link Specializations to Primary - Template Search Support
-
-        Uses libclang's clang_getSpecializedCursorTemplate() to find the primary template
-        for partial or full template specializations.
-
-        Args:
-            cursor: libclang cursor representing a template specialization
-
-        Returns:
-            USR of the primary template, or None if cursor is not a specialization
-            or if the primary template cannot be determined.
-        """
-        from clang import cindex
-
-        try:
-            # Call the C API directly since Python bindings don't expose this
-            specialized_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(cursor)
-            if specialized_cursor and not specialized_cursor.kind.is_invalid():
-                usr: Optional[str] = specialized_cursor.get_usr()
-                if usr:
-                    return usr
-        except Exception:
-            # If the API call fails, return None gracefully
-            pass
-
-        return None
-
-    def _extract_template_alias_info(
-        self, cursor
-    ) -> Tuple[str, str, str, str, str, int, int, List[dict]]:
-        """Extract alias info from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
-        from clang.cindex import CursorKind
-
-        template_params = []
-        type_alias_decl = None
-
-        for child in cursor.get_children():
-            if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
-                template_params.append({"name": child.spelling, "kind": "type"})
-            elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
-                template_params.append(
-                    {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
-                )
-            elif child.kind == CursorKind.TYPE_ALIAS_DECL:
-                type_alias_decl = child
-
-        if type_alias_decl:
-            alias_name = type_alias_decl.spelling
-            qualified_name = self._get_qualified_name(type_alias_decl)
-
-            try:
-                underlying_type = type_alias_decl.underlying_typedef_type
-                target_type = underlying_type.spelling
-                canonical_type = underlying_type.get_canonical().spelling
-            except AttributeError:
-                target_type = type_alias_decl.type.spelling
-                canonical_type = type_alias_decl.type.get_canonical().spelling
-        else:
-            alias_name = cursor.spelling
-            qualified_name = self._get_qualified_name(cursor)
-            target_type = ""
-            canonical_type = ""
-
-        file_path = str(cursor.location.file.name) if cursor.location.file else ""
-        line = cursor.location.line
-        column = cursor.location.column
-
-        return (
-            alias_name,
-            qualified_name,
-            target_type,
-            canonical_type,
-            file_path,
-            line,
-            column,
-            template_params,
-        )
-
-    def _extract_simple_alias_info(self, cursor) -> Tuple[str, str, str, str, str, int, int, str]:
-        """Extract alias info from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
-        from clang.cindex import CursorKind
-
-        alias_name = cursor.spelling
-        qualified_name = self._get_qualified_name(cursor)
-
-        try:
-            underlying_type = cursor.underlying_typedef_type
-            target_type = underlying_type.spelling
-            canonical_type = underlying_type.get_canonical().spelling
-        except AttributeError:
-            target_type = cursor.type.spelling
-            canonical_type = cursor.type.get_canonical().spelling
-
-        if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
-            alias_kind = "using"
-        elif cursor.kind == CursorKind.TYPEDEF_DECL:
-            alias_kind = "typedef"
-        else:
-            alias_kind = "unknown"
-
-        file_path = str(cursor.location.file.name) if cursor.location.file else ""
-        line = cursor.location.line
-        column = cursor.location.column
-
-        return (
-            alias_name,
-            qualified_name,
-            target_type,
-            canonical_type,
-            file_path,
-            line,
-            column,
-            alias_kind,
-        )
-
-    def _extract_alias_info(self, cursor) -> dict:
-        """
-        Extract type alias information from TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL cursor.
-
-        Phase 1.3: Type Alias Tracking - Alias information extraction
-        Phase 2.0: Template Alias Tracking - Template parameter extraction
-
-        Args:
-            cursor: libclang cursor (must be TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL)
-
-        Returns:
-            Dictionary with:
-                - alias_name: Short name (e.g., "WidgetAlias", "Ptr")
-                - qualified_name: Fully qualified (e.g., "foo::WidgetAlias", "utils::Ptr")
-                - target_type: Immediate target spelling
-                - canonical_type: Final resolved type spelling
-                - file: File where alias is defined
-                - line: Line number
-                - column: Column number
-                - alias_kind: 'using' or 'typedef'
-                - namespace: Namespace portion (e.g., "foo")
-                - is_template_alias: True for template aliases (Phase 2.0)
-                - template_params: JSON string of template parameters (Phase 2.0)
-                - created_at: Unix timestamp
-        """
-        import json
-        import time
-
-        from clang.cindex import CursorKind
-
-        is_template_alias = cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL
-
-        if is_template_alias:
-            (
-                alias_name,
-                qualified_name,
-                target_type,
-                canonical_type,
-                file_path,
-                line,
-                column,
-                template_params,
-            ) = self._extract_template_alias_info(cursor)
-            alias_kind = "using"
-        else:
-            (
-                alias_name,
-                qualified_name,
-                target_type,
-                canonical_type,
-                file_path,
-                line,
-                column,
-                alias_kind,
-            ) = self._extract_simple_alias_info(cursor)
-            template_params = []
-
-        namespace = self._extract_namespace(qualified_name)
-
-        return {
-            "alias_name": alias_name,
-            "qualified_name": qualified_name,
-            "target_type": target_type,
-            "canonical_type": canonical_type,
-            "file": file_path,
-            "line": line,
-            "column": column,
-            "alias_kind": alias_kind,
-            "namespace": namespace,
-            "is_template_alias": is_template_alias,
-            "template_params": json.dumps(template_params) if template_params else None,
-            "created_at": time.time(),
-        }
-
-    def _detect_template_specialization(self, cursor) -> bool:
-        """
-        Detect if cursor represents a template specialization.
-
-        Uses cursor.kind + displayname analysis to distinguish:
-        - Generic templates (FUNCTION_TEMPLATE): False
-        - Explicit specializations (displayname contains '<>'): True
-        - Regular overloads (no template arguments): False
-
-        This metadata helps distinguish between:
-        - template<typename T> void foo(T) → False (generic template)
-        - template<> void foo<int>(int) → True (specialization)
-        - void foo(double) → False (regular overload)
-
-        Returns:
-            True if this is a template specialization, False otherwise
-
-        Implements:
-            Phase 3 (T3.3.2): Function overload metadata
-        """
-        try:
-            kind = cursor.kind
-        except ValueError:
-            # Unknown cursor kind (version mismatch)
-            return False
-
-        # Generic templates are not specializations
-        if kind == CursorKind.FUNCTION_TEMPLATE:
-            return False
-
-        # Check for template arguments in display name
-        # Works for both functions and classes
-        if kind in (
-            CursorKind.FUNCTION_DECL,
-            CursorKind.CXX_METHOD,
-            CursorKind.CLASS_DECL,
-            CursorKind.STRUCT_DECL,
-        ):
-            try:
-                displayname = cursor.displayname
-                if not isinstance(displayname, str):
-                    return False
-                # For functions/methods, displayname includes parameter types:
-                #   "foo<int>(int)" — specialization (angle brackets in name)
-                #   "doWork(std::initializer_list<std::string>)" — NOT a specialization
-                # Only check the name portion (before first '(') for angle brackets.
-                # Class displaynames don't include parameters, so this is safe for all.
-                if kind in (CursorKind.FUNCTION_DECL, CursorKind.CXX_METHOD):
-                    paren_pos = displayname.find("(")
-                    name_part = displayname[:paren_pos] if paren_pos >= 0 else displayname
-                else:
-                    name_part = displayname
-                return "<" in name_part and ">" in name_part
-            except (AttributeError, TypeError):
-                # Handle cases where displayname is not accessible or not iterable
-                return False
-
-        return False
-
-    def _get_common_symbol_data(self, cursor: Any) -> Dict[str, Any]:
-        """Extract common metadata for any symbol (qualified name, namespace, location, docs)."""
-        qualified_name = self._get_qualified_name(cursor)
-        return {
-            "qualified_name": qualified_name,
-            "namespace": self._extract_namespace(qualified_name),
-            "loc_info": self._extract_line_range_info(cursor),
-            "doc_info": self._extract_documentation(cursor),
-        }
-
     def _process_cursor(
         self,
         cursor: Any,
@@ -2540,562 +965,14 @@ class CppAnalyzer:
         parent_class: str = "",
         parent_function_usr: str = "",
     ) -> None:
-        """
-        Process a cursor and its children, extracting symbols based on file filter.
-        """
-        # Determine if we should extract from this cursor's file
-        should_extract = True
-        if cursor.location.file and should_extract_from_file is not None:
-            file_path = str(cursor.location.file.name)
-            should_extract = should_extract_from_file(file_path)
-
-            # PERFORMANCE OPTIMIZATION: Early exit for non-project files
-            if not should_extract and not parent_function_usr:
-                return
-
-        # Get cursor kind, handling unknown kinds from version mismatches
-        try:
-            kind = cursor.kind
-        except ValueError as e:
-            diagnostics.debug(f"Skipping cursor with unknown kind: {e}")
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child, should_extract_from_file, parent_class, parent_function_usr
-                )
-            return
-
-        # Process cursor based on kind
-        handler = self._get_cursor_handler(kind)
-        if handler is not None:
-            handler(
-                self,
-                cursor,
-                should_extract,
-                should_extract_from_file,
-                parent_class,
-                parent_function_usr,
-            )
-            return
-
-        if kind == CursorKind.CALL_EXPR and parent_function_usr:
-            self._handle_call_cursor(cursor, parent_function_usr)
-
-        # Recurse into children (always, to traverse entire AST)
-        for child in cursor.get_children():
-            self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
-
-    @staticmethod
-    def _get_cursor_handler(kind):
-        """Return the handler method for a given cursor kind, or None."""
-        if kind in (CursorKind.CLASS_TEMPLATE, CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION):
-            return CppAnalyzer._handle_class_template_cursor
-        if kind in (CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL):
-            return CppAnalyzer._handle_class_cursor
-        if kind == CursorKind.FUNCTION_TEMPLATE:
-            return CppAnalyzer._handle_function_template_cursor
-        if kind in (
-            CursorKind.FUNCTION_DECL,
-            CursorKind.CXX_METHOD,
-            CursorKind.CONSTRUCTOR,
-            CursorKind.DESTRUCTOR,
-            CursorKind.CONVERSION_FUNCTION,
-        ):
-            return CppAnalyzer._handle_function_cursor
-        if kind in (
-            CursorKind.TYPEDEF_DECL,
-            CursorKind.TYPE_ALIAS_DECL,
-            CursorKind.TYPE_ALIAS_TEMPLATE_DECL,
-        ):
-            return CppAnalyzer._handle_type_alias_cursor
-        return None
-
-    def _handle_class_template_cursor(
-        self,
-        cursor: Any,
-        should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
-        parent_class: str,
-        parent_function_usr: str,
-    ) -> None:
-        """Process template classes (generic and partial specializations)."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
-        kind = cursor.kind
-
-        if cursor.spelling and should_extract:
-            # Extract common symbol data
-            common = self._get_common_symbol_data(cursor)
-            qualified_name = common["qualified_name"]
-            namespace = common["namespace"]
-            loc_info = common["loc_info"]
-            doc_info = common["doc_info"]
-
-            # Get base classes (templates can inherit too)
-            base_classes = self._get_base_classes(cursor)
-
-            # Extract template parameters (Task 3.2)
-            template_params = self._extract_template_parameters(cursor)
-
-            # Determine kind and get primary template USR for specializations
-            if kind == CursorKind.CLASS_TEMPLATE:
-                symbol_kind = "class_template"
-                primary_usr = None
-            else:  # CLASS_TEMPLATE_PARTIAL_SPECIALIZATION
-                symbol_kind = "partial_specialization"
-                primary_usr = self._get_primary_template_usr(cursor)
-
-            info = SymbolInfo(
-                name=cursor.spelling,
-                kind=symbol_kind,
-                file=loc_info["file"],
-                line=loc_info["line"],
-                column=loc_info["column"],
-                qualified_name=qualified_name,
-                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
-                namespace=namespace,
-                parent_class="",
-                base_classes=base_classes,
-                usr=cursor.get_usr() if cursor.get_usr() else "",
-                is_template=True,
-                template_kind=symbol_kind,
-                template_parameters=template_params,
-                primary_template_usr=primary_usr,
-                start_line=loc_info["start_line"],
-                end_line=loc_info["end_line"],
-                header_file=loc_info["header_file"],
-                header_line=loc_info["header_line"],
-                header_start_line=loc_info["header_start_line"],
-                header_end_line=loc_info["header_end_line"],
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
-            )
-            symbols_buffer.append(info)
-
-        # Always process children
-        for child in cursor.get_children():
-            self._process_cursor(
-                child,
-                should_extract_from_file,
-                cursor.spelling if should_extract else parent_class,
-                parent_function_usr,
-            )
-
-    def _handle_class_cursor(
-        self,
-        cursor: Any,
-        should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
-        parent_class: str,
-        parent_function_usr: str,
-    ) -> None:
-        """Process classes and structs."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
-        kind = cursor.kind
-
-        if cursor.spelling and should_extract:
-            # Extract common symbol data
-            common = self._get_common_symbol_data(cursor)
-            qualified_name = common["qualified_name"]
-            namespace = common["namespace"]
-            loc_info = common["loc_info"]
-            doc_info = common["doc_info"]
-
-            base_classes = self._get_base_classes(cursor)
-            is_class_template_spec = self._detect_template_specialization(cursor)
-
-            primary_usr = None
-            stored_template_args = None
-            if is_class_template_spec:
-                primary_usr = self._get_primary_template_usr(cursor)
-                if not base_classes and primary_usr:
-                    base_classes = self._resolve_instantiation_base_classes(cursor, primary_usr)
-                    if not base_classes:
-                        targs = self._extract_template_args_from_displayname(cursor.displayname)
-                        if targs:
-                            stored_template_args = json.dumps(targs)
-
-            info = SymbolInfo(
-                name=cursor.spelling,
-                kind="class" if kind == CursorKind.CLASS_DECL else "struct",
-                file=loc_info["file"],
-                line=loc_info["line"],
-                column=loc_info["column"],
-                qualified_name=qualified_name,
-                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
-                namespace=namespace,
-                parent_class="",
-                base_classes=base_classes,
-                usr=cursor.get_usr() if cursor.get_usr() else "",
-                is_template_specialization=is_class_template_spec,
-                is_template=is_class_template_spec,
-                template_kind="full_specialization" if is_class_template_spec else None,
-                primary_template_usr=primary_usr,
-                template_arguments=stored_template_args,
-                start_line=loc_info["start_line"],
-                end_line=loc_info["end_line"],
-                header_file=loc_info["header_file"],
-                header_line=loc_info["header_line"],
-                header_start_line=loc_info["header_start_line"],
-                header_end_line=loc_info["header_end_line"],
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
-            )
-            symbols_buffer.append(info)
-
-        for child in cursor.get_children():
-            self._process_cursor(
-                child,
-                should_extract_from_file,
-                cursor.spelling if should_extract else parent_class,
-                parent_function_usr,
-            )
-
-    def _handle_function_template_cursor(
-        self,
-        cursor: Any,
-        should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
-        parent_class: str,
-        parent_function_usr: str,
-    ) -> None:
-        """Process template functions."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
-        if cursor.spelling and should_extract:
-            common = self._get_common_symbol_data(cursor)
-            qualified_name = common["qualified_name"]
-            namespace = common["namespace"]
-            loc_info = common["loc_info"]
-            doc_info = common["doc_info"]
-
-            signature = self._build_human_readable_signature(cursor)
-            function_usr = cursor.get_usr() if cursor.get_usr() else ""
-            template_params = self._extract_template_parameters(cursor)
-
-            effective_parent_class = parent_class
-            if not parent_class:
-                sem_parent = cursor.semantic_parent
-                if sem_parent and sem_parent.kind in (
-                    CursorKind.CLASS_DECL,
-                    CursorKind.STRUCT_DECL,
-                    CursorKind.CLASS_TEMPLATE,
-                ):
-                    effective_parent_class = sem_parent.spelling
-
-            is_method_template = bool(effective_parent_class)
-            is_virtual = cursor.is_virtual_method() if is_method_template else False
-            is_pure_virtual = cursor.is_pure_virtual_method() if is_method_template else False
-            is_const = cursor.is_const_method() if is_method_template else False
-            is_static = cursor.is_static_method()
-            access_spec = cursor.access_specifier
-            access = access_spec.name.lower() if access_spec else "public"
-            if access in ("none", "invalid"):
-                access = "public"
-
-            info = SymbolInfo(
-                name=cursor.spelling,
-                kind="function_template",
-                file=loc_info["file"],
-                line=loc_info["line"],
-                column=loc_info["column"],
-                qualified_name=qualified_name,
-                signature=signature,
-                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
-                namespace=namespace,
-                access=access,
-                parent_class=effective_parent_class,
-                usr=function_usr,
-                is_template_specialization=False,
-                is_template=True,
-                template_kind="function_template",
-                template_parameters=template_params,
-                start_line=loc_info["start_line"],
-                end_line=loc_info["end_line"],
-                header_file=loc_info["header_file"],
-                header_line=loc_info["header_line"],
-                header_start_line=loc_info["header_start_line"],
-                header_end_line=loc_info["header_end_line"],
-                is_virtual=is_virtual,
-                is_pure_virtual=is_pure_virtual,
-                is_const=is_const,
-                is_static=is_static,
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
-            )
-            symbols_buffer.append(info)
-
-        for child in cursor.get_children():
-            self._process_cursor(
-                child,
-                should_extract_from_file,
-                parent_class,
-                cursor.get_usr() if cursor.get_usr() else parent_function_usr,
-            )
-
-    def _handle_function_cursor(
-        self,
-        cursor: Any,
-        should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
-        parent_class: str,
-        parent_function_usr: str,
-    ) -> None:
-        """Process functions and methods."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
-        kind = cursor.kind
-        if cursor.spelling and should_extract:
-            common = self._get_common_symbol_data(cursor)
-            qualified_name = common["qualified_name"]
-            namespace = common["namespace"]
-            loc_info = common["loc_info"]
-            doc_info = common["doc_info"]
-
-            signature = self._build_human_readable_signature(cursor)
-            function_usr = cursor.get_usr() if cursor.get_usr() else ""
-            is_template_spec = self._detect_template_specialization(cursor)
-            primary_usr = self._get_primary_template_usr(cursor) if is_template_spec else None
-
-            is_method = kind in (
-                CursorKind.CXX_METHOD,
-                CursorKind.CONSTRUCTOR,
-                CursorKind.DESTRUCTOR,
-                CursorKind.CONVERSION_FUNCTION,
-            )
-            is_virtual = cursor.is_virtual_method() if is_method else False
-            is_pure_virtual = cursor.is_pure_virtual_method() if is_method else False
-            is_const = cursor.is_const_method() if is_method else False
-            is_static = cursor.is_static_method()
-            access_spec = cursor.access_specifier
-            access = access_spec.name.lower() if access_spec else "public"
-            if access in ("none", "invalid"):
-                access = "public"
-
-            effective_parent_class = parent_class
-            if is_method and not parent_class:
-                sem_parent = cursor.semantic_parent
-                if sem_parent and sem_parent.kind in (
-                    CursorKind.CLASS_DECL,
-                    CursorKind.STRUCT_DECL,
-                    CursorKind.CLASS_TEMPLATE,
-                ):
-                    effective_parent_class = sem_parent.spelling
-
-            info = SymbolInfo(
-                name=cursor.spelling,
-                kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
-                file=loc_info["file"],
-                line=loc_info["line"],
-                column=loc_info["column"],
-                qualified_name=qualified_name,
-                signature=signature,
-                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
-                namespace=namespace,
-                access=access,
-                parent_class=effective_parent_class if is_method else "",
-                usr=function_usr,
-                is_template_specialization=is_template_spec,
-                is_template=is_template_spec,
-                template_kind="full_specialization" if is_template_spec else None,
-                primary_template_usr=primary_usr,
-                start_line=loc_info["start_line"],
-                end_line=loc_info["end_line"],
-                header_file=loc_info["header_file"],
-                header_line=loc_info["header_line"],
-                header_start_line=loc_info["header_start_line"],
-                header_end_line=loc_info["header_end_line"],
-                is_virtual=is_virtual,
-                is_pure_virtual=is_pure_virtual,
-                is_const=is_const,
-                is_static=is_static,
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
-            )
-            symbols_buffer.append(info)
-
-        current_function_usr = (
-            cursor.get_usr() if (should_extract and cursor.get_usr()) else parent_function_usr
+        """Process a cursor and its children, extracting symbols based on file filter."""
+        self.symbol_extractor._process_cursor(
+            cursor, should_extract_from_file, parent_class, parent_function_usr
         )
-        for child in cursor.get_children():
-            self._process_cursor(
-                child, should_extract_from_file, parent_class, current_function_usr
-            )
-
-    def _handle_type_alias_cursor(
-        self,
-        cursor: Any,
-        should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
-        parent_class: str,
-        parent_function_usr: str,
-    ) -> None:
-        """Process type aliases."""
-        _, _, aliases_buffer = self._get_thread_local_buffers()
-        kind = cursor.kind
-        if cursor.spelling and should_extract:
-            try:
-                alias_info = self._extract_alias_info(cursor)
-                aliases_buffer.append(alias_info)
-            except Exception as e:
-                diagnostics.warning(
-                    f"Failed to extract alias info for {cursor.spelling} at "
-                    f"{cursor.location.file.name if cursor.location.file else 'unknown'}:"
-                    f"{cursor.location.line}: {e}"
-                )
-
-        if kind != CursorKind.TYPE_ALIAS_TEMPLATE_DECL:
-            for child in cursor.get_children():
-                self._process_cursor(
-                    child, should_extract_from_file, parent_class, parent_function_usr
-                )
-
-    def _handle_call_cursor(self, cursor: Any, parent_function_usr: str) -> None:
-        """Process function calls within function bodies."""
-        _, calls_buffer, _ = self._get_thread_local_buffers()
-        referenced = cursor.referenced
-        if referenced and referenced.get_usr():
-            called_usr = referenced.get_usr()
-            from clang import cindex
-
-            display_name = None
-            template_project_types = None
-
-            try:
-                template_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(referenced)
-                if template_cursor and not template_cursor.kind.is_invalid():
-                    template_usr = template_cursor.get_usr()
-                    if template_usr:
-                        display_name, template_project_types = self._extract_template_call_info(
-                            referenced, template_usr
-                        )
-                        called_usr = template_usr
-            except Exception:
-                pass
-
-            location = cursor.location
-            calls_buffer.append(
-                (
-                    parent_function_usr,
-                    called_usr,
-                    location.file.name if location.file else None,
-                    location.line if location.line else None,
-                    location.column if location.column else None,
-                    display_name,
-                    template_project_types,
-                )
-            )
 
     def _index_translation_unit(self, tu, source_file: str) -> Dict[str, Any]:
-        """
-        Process translation unit, extracting symbols from source and project headers.
-
-        Uses first-win strategy: headers are extracted only if not already processed.
-        This method is the core of header extraction functionality.
-
-        Args:
-            tu: libclang TranslationUnit (contains AST for source + all includes)
-            source_file: Path to the source file being analyzed
-
-        Returns:
-            Dictionary with:
-                - processed: List of files we extracted symbols from
-                - skipped: List of headers already processed by other sources
-
-        Algorithm:
-            1. Define should_extract_from_file(file_path) closure that:
-               - Always returns True for source file
-               - For headers: tries to claim via header_tracker
-               - Uses _is_project_file() to filter non-project files
-            2. Traverse TU.cursor with should_extract_from_file callback
-            3. Mark claimed headers as completed
-            4. Save header tracker state to disk
-
-        Implements:
-            REQ-10.1.1: Extract symbols from project headers included by source
-            REQ-10.1.2: Leverage libclang's TU to access already-parsed headers
-            REQ-10.1.4: Extract only from project headers
-            REQ-10.1.5: Support nested includes
-            REQ-10.2.1: First-win strategy
-            REQ-10.2.2: Skip headers already processed
-            REQ-10.5.4: Save tracker after analysis
-        """
-        processed_files: Set[str] = set()
-        skipped_headers: Set[str] = set()
-        headers_to_extract: Set[str] = set()
-
-        def should_extract_from_file(file_path: str) -> bool:
-            return self._should_extract_from_file(
-                file_path, source_file, processed_files, skipped_headers, headers_to_extract
-            )
-
-        self._init_thread_local_buffers()
-        self._process_cursor(tu.cursor, should_extract_from_file)
-        self._bulk_write_symbols()
-        self._mark_headers_completed(headers_to_extract)
-        self._update_dependencies(tu, source_file)
-
-        return {
-            "source_file": source_file,
-            "processed": list(processed_files),
-            "skipped": list(skipped_headers),
-        }
-
-    def _should_extract_from_file(
-        self,
-        file_path: str,
-        source_file: str,
-        processed_files: Set[str],
-        skipped_headers: Set[str],
-        headers_to_extract: Set[str],
-    ) -> bool:
-        """Decide if we should extract symbols from this file."""
-        if file_path == source_file:
-            processed_files.add(file_path)
-            return True
-
-        if file_path in headers_to_extract:
-            return True
-        if file_path in skipped_headers:
-            return False
-
-        if not self._is_project_file(file_path):
-            skipped_headers.add(file_path)
-            return False
-
-        try:
-            file_hash = self._get_file_hash(file_path)
-            if self.header_tracker.try_claim_header(file_path, file_hash):
-                headers_to_extract.add(file_path)
-                processed_files.add(file_path)
-                return True
-            else:
-                skipped_headers.add(file_path)
-                return False
-        except Exception as e:
-            diagnostics.warning(f"Error checking header {file_path}: {e}")
-            skipped_headers.add(file_path)
-            return False
-
-    def _mark_headers_completed(self, headers_to_extract: Set[str]) -> None:
-        """Mark newly processed headers as completed in the tracker."""
-        for header in headers_to_extract:
-            try:
-                file_hash = self._get_file_hash(header)
-                self.header_tracker.mark_completed(header, file_hash)
-            except Exception as e:
-                diagnostics.warning(f"Error marking header {header} as completed: {e}")
-
-    def _update_dependencies(self, tu, source_file: str) -> None:
-        """Extract and store include dependencies for incremental analysis."""
-        if self.dependency_graph is None:
-            return
-
-        try:
-            includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
-            self.dependency_graph.update_dependencies(source_file, includes)
-        except Exception as e:
-            diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
+        """Process translation unit, extracting symbols from source and project headers."""
+        return self.symbol_extractor._index_translation_unit(tu, source_file)
 
     def _get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
         """Get compilation arguments for a file, handling worker and fallback modes."""
@@ -3164,32 +1041,7 @@ class CppAnalyzer:
         self, file_path: str, args: List[str]
     ) -> Tuple[Optional[Any], Optional[str]]:
         """Try parsing with progressive fallback if initial attempt fails."""
-        index = self._get_thread_index()
-        parse_options_attempts = [
-            (
-                TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
-                "full detailed processing",
-            ),
-            (TranslationUnit.PARSE_INCOMPLETE, "incomplete parsing"),
-            (0, "minimal options"),
-        ]
-
-        last_error = None
-        for options, description in parse_options_attempts:
-            try:
-                tu = index.parse(file_path, args=args, options=options)
-                if tu:
-                    if description != "full detailed processing":
-                        diagnostics.debug(f"{file_path}: parsed with {description}")
-                    return tu, None
-            except TranslationUnitLoadError as e:
-                last_error = e
-                continue
-
-        error_msg = (
-            f"TranslationUnitLoadError: {last_error}" if last_error else "libclang returned None"
-        )
-        return None, error_msg
+        return self.clang_parser._try_parse_with_fallback(file_path, args)
 
     def _handle_index_file_failure(
         self,
@@ -3230,32 +1082,9 @@ class CppAnalyzer:
         self, file_path: str, tu: Any, current_hash: str, compile_args_hash: str, retry_count: int
     ) -> Optional[str]:
         """Extract and process diagnostics. Returns error message if any."""
-        error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
-        cache_error_msg = None
-
-        if error_diagnostics:
-            formatted_errors = self._format_diagnostics(error_diagnostics, max_count=5)
-            full_error_msg = (
-                f"libclang parsing errors ({len(error_diagnostics)} total):\n{formatted_errors}"
-            )
-            cache_error_msg = full_error_msg[:200]
-
-            parse_error = Exception(full_error_msg)
-            self.cache_manager.log_parse_error(
-                file_path, parse_error, current_hash, compile_args_hash, retry_count
-            )
-
-            diagnostics.warning(
-                f"{file_path}: Continuing despite {len(error_diagnostics)} error(s):\n{cache_error_msg}"
-            )
-
-        if warning_diagnostics:
-            formatted_warnings = self._format_diagnostics(warning_diagnostics, max_count=3)
-            diagnostics.debug(
-                f"{file_path}: {len(warning_diagnostics)} warning(s):\n{formatted_warnings}"
-            )
-
-        return cache_error_msg
+        return self.clang_parser._handle_index_file_diagnostics(
+            file_path, tu, current_hash, compile_args_hash, retry_count
+        )
 
     def _clear_file_index_entries(self, file_path: str) -> None:
         """Clear existing index entries for a file (atomicity should be handled by caller)."""
@@ -3320,9 +1149,7 @@ class CppAnalyzer:
         with self._get_lock():
             collected_symbols = self.file_index.get(file_path, []).copy()
             del tu
-            import gc
 
-            gc.collect()
             self.file_hashes[file_path] = current_hash
 
         self._save_file_cache(
@@ -3440,26 +1267,6 @@ class CppAnalyzer:
         diagnostics.debug(f"Found {len(files)} C++ files to index")
         self._log_compilation_environment(files)
         return files
-
-    def _setup_executor(self) -> Tuple[Executor, Optional[Any]]:
-        """Choose and setup executor based on configuration."""
-        if self.use_processes:
-            self.cache_manager.ensure_schema_current()
-            try:
-                mp_context = multiprocessing.get_context("spawn")
-                diagnostics.debug(
-                    f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers"
-                )
-                return (
-                    ProcessPoolExecutor(max_workers=self.max_workers, mp_context=mp_context),
-                    mp_context,
-                )
-            except Exception as e:
-                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-                return ProcessPoolExecutor(max_workers=self.max_workers), None
-        else:
-            diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
-            return ThreadPoolExecutor(max_workers=self.max_workers), None
 
     def _prepare_worker_compile_args(self, files: List[str]) -> Dict[str, List[str]]:
         """Pre-calculate compile arguments for each file to save worker memory."""
@@ -3802,7 +1609,7 @@ class CppAnalyzer:
         indexed_count, cache_hits, failed_count = 0, 0, 0
         last_report_time = start_time
 
-        executor, _ = self._setup_executor()
+        executor = self.worker_pool.setup()
 
         try:
             future_to_file = self._submit_indexing_tasks(
@@ -3838,11 +1645,10 @@ class CppAnalyzer:
 
         except KeyboardInterrupt:
             diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
-            self._shutdown_executor(executor, name="Indexing")
+            self.worker_pool.shutdown(name="Indexing")
             raise
         finally:
-            if executor:
-                executor.shutdown(wait=False)
+            self.worker_pool.shutdown(name="Indexing")
 
         return self._finalize_indexing(
             indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
@@ -4327,8 +2133,7 @@ class CppAnalyzer:
         if self.use_processes:
             self.cache_manager.ensure_schema_current()
 
-        executor_class = ProcessPoolExecutor if self.use_processes else ThreadPoolExecutor
-        with executor_class(max_workers=self.max_workers) as executor:
+        with self.worker_pool as executor:
             refreshed, failed = self._run_refresh_loop(
                 executor,
                 modified_files,
