@@ -26,6 +26,9 @@ except ImportError:
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from mcp_server.tool_registry import ToolRegistry
+import mcp_server.consolidated_tools  # noqa: F401
+
 try:
     from mcp_server.libclang_setup import configure_libclang, get_libclang_runtime_info
 except ImportError:
@@ -125,9 +128,7 @@ server = Server("cpp-analyzer")
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
-    from mcp_server.consolidated_tools import list_tools_b
-
-    return list_tools_b()
+    return ToolRegistry.call_tool("list_tools_b")
 
 
 def _parse_query_policy(policy_str: str) -> QueryBehaviorPolicy:
@@ -312,9 +313,7 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    from mcp_server.consolidated_tools import handle_tool_call_b
-
-    result = await handle_tool_call_b(name, arguments)
+    result = await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
     _try_log_tool_call(name, arguments, result)
     return result
 
@@ -1161,6 +1160,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
                 "Try restarting the MCP server.",
             )
         ]
+
+
+ToolRegistry.register("_handle_tool_call", _handle_tool_call)
 
 
 def _create_argument_parser():

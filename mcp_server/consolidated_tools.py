@@ -21,6 +21,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent, Tool
+from mcp_server.tool_registry import ToolRegistry
 
 # ---------------------------------------------------------------
 # Passthrough: tools delegated to internal handlers without translation
@@ -599,11 +600,10 @@ def list_tools_b() -> List[Tool]:
 
 async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     """Dispatch consolidated tool calls, delegating to internal handlers."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
     # Passthrough tools — delegate directly with same name and args
     if name in _PASSTHROUGH_MAP:
-        return await _handle_tool_call(_PASSTHROUGH_MAP[name], arguments)
+        return await ToolRegistry.call_tool("_handle_tool_call", _PASSTHROUGH_MAP[name], arguments)
 
     if name == "set_project":
         return await _handle_set_project(arguments)
@@ -628,7 +628,6 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
 
 async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
     """Handle set_project: set directory via config file + synchronous wait for indexing."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
     config_file = arguments["config_file"]
     internal_args: Dict[str, Any] = {
@@ -636,16 +635,18 @@ async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
     }
 
     # Step 1: Set project directory (starts background indexing)
-    await _handle_tool_call("set_project_directory", internal_args)
+    await ToolRegistry.call_tool("_handle_tool_call", "set_project_directory", internal_args)
 
     # Step 2: Determine sync timeout
     sync_timeout = _resolve_sync_timeout(arguments.get("sync_timeout"))
 
     # Step 3: Wait for indexing to complete (synchronous fast-path)
-    await _handle_tool_call("wait_for_indexing", {"timeout": sync_timeout})
+    await ToolRegistry.call_tool(
+        "_handle_tool_call", "wait_for_indexing", {"timeout": sync_timeout}
+    )
 
     # Step 4: Build response with status
-    status_result = await _handle_tool_call("check_system_status", {})
+    status_result = await ToolRegistry.call_tool("_handle_tool_call", "check_system_status", {})
     status_result = _add_system_state(status_result)
 
     try:
@@ -673,20 +674,23 @@ async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
 
 async def _handle_sync_project(arguments: Dict[str, Any]) -> List[TextContent]:
     """Handle sync_project: status check or refresh trigger."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
     refresh_mode = arguments.get("refresh_mode")
 
     if refresh_mode is not None:
         # Trigger refresh
-        await _handle_tool_call("refresh_project", {"refresh_mode": refresh_mode})
+        await ToolRegistry.call_tool(
+            "_handle_tool_call", "refresh_project", {"refresh_mode": refresh_mode}
+        )
 
         # Wait briefly for completion
         sync_timeout = _resolve_sync_timeout(None)
-        await _handle_tool_call("wait_for_indexing", {"timeout": sync_timeout})
+        await ToolRegistry.call_tool(
+            "_handle_tool_call", "wait_for_indexing", {"timeout": sync_timeout}
+        )
 
     # Always return current status
-    result = await _handle_tool_call("check_system_status", {})
+    result = await ToolRegistry.call_tool("_handle_tool_call", "check_system_status", {})
     return _add_system_state(result)
 
 
@@ -707,7 +711,6 @@ async def _handle_search_codebase(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
     """Route search_codebase to search_classes/search_functions/search_symbols."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
     target_type = arguments.get("target_type", "all_symbol_types")
     detail_level = arguments.get("output_detail_level", "locations_and_metadata")
@@ -716,11 +719,13 @@ async def _handle_search_codebase(
     schema_a_args = {k: v for k, v in arguments.items() if k not in _SEARCH_CONSOLIDATED_PARAMS}
 
     if target_type == "classes_and_structs_only":
-        result = await _handle_tool_call("search_classes", schema_a_args)
+        result = await ToolRegistry.call_tool("_handle_tool_call", "search_classes", schema_a_args)
     elif target_type == "functions_and_methods_only":
-        result = await _handle_tool_call("search_functions", schema_a_args)
+        result = await ToolRegistry.call_tool(
+            "_handle_tool_call", "search_functions", schema_a_args
+        )
     else:  # all_symbol_types
-        result = await _handle_tool_call("search_symbols", schema_a_args)
+        result = await ToolRegistry.call_tool("_handle_tool_call", "search_symbols", schema_a_args)
 
     return _filter_detail_level(result, detail_level)
 
@@ -729,7 +734,6 @@ async def _handle_find_outgoing_calls(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
     """Route to get_outgoing_calls or get_call_sites based on return_format."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
     return_format = arguments.get("return_format", "function_definitions_summary")
 
@@ -739,11 +743,11 @@ async def _handle_find_outgoing_calls(
             "function_name": arguments["function_name"],
             "class_name": arguments.get("class_name", ""),
         }
-        return await _handle_tool_call("get_call_sites", call_sites_args)
+        return await ToolRegistry.call_tool("_handle_tool_call", "get_call_sites", call_sites_args)
 
     # Route to get_outgoing_calls (strip Schema B-only params)
     schema_a_args = {k: v for k, v in arguments.items() if k not in _CALLGRAPH_CONSOLIDATED_PARAMS}
-    result = await _handle_tool_call("get_outgoing_calls", schema_a_args)
+    result = await ToolRegistry.call_tool("_handle_tool_call", "get_outgoing_calls", schema_a_args)
 
     # For summary format, strip location/doc fields for compact output
     if return_format == "function_definitions_summary":
@@ -756,16 +760,14 @@ async def _handle_find_incoming_calls(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
     """Translate find_incoming_calls -> find_incoming_calls (rename only)."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
-    return await _handle_tool_call("find_incoming_calls", arguments)
+    return await ToolRegistry.call_tool("_handle_tool_call", "find_incoming_calls", arguments)
 
 
 async def _handle_trace_execution_path(
     arguments: Dict[str, Any],
 ) -> List[TextContent]:
     """Translate trace_execution_path -> get_call_path (rename + param names)."""
-    from mcp_server.cpp_mcp_server import _handle_tool_call
 
     schema_a_args: Dict[str, Any] = {
         "from_function": arguments["source_function"],
@@ -775,4 +777,8 @@ async def _handle_trace_execution_path(
     if max_depth is not None:
         schema_a_args["max_depth"] = max_depth
 
-    return await _handle_tool_call("get_call_path", schema_a_args)
+    return await ToolRegistry.call_tool("_handle_tool_call", "get_call_path", schema_a_args)
+
+
+ToolRegistry.register("list_tools_b", list_tools_b)
+ToolRegistry.register("handle_tool_call_b", handle_tool_call_b)
