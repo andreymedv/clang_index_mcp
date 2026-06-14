@@ -18,7 +18,7 @@ Tool mapping (public      -> internal):
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from mcp.types import TextContent, Tool
 from mcp_server.tool_registry import ToolRegistry
@@ -603,7 +603,10 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
 
     # Passthrough tools — delegate directly with same name and args
     if name in _PASSTHROUGH_MAP:
-        return await ToolRegistry.call_tool("_handle_tool_call", _PASSTHROUGH_MAP[name], arguments)
+        return cast(
+            List[TextContent],
+            await ToolRegistry.call_tool("_handle_tool_call", _PASSTHROUGH_MAP[name], arguments),
+        )
 
     if name == "set_project":
         return await _handle_set_project(arguments)
@@ -743,11 +746,17 @@ async def _handle_find_outgoing_calls(
             "function_name": arguments["function_name"],
             "class_name": arguments.get("class_name", ""),
         }
-        return await ToolRegistry.call_tool("_handle_tool_call", "get_call_sites", call_sites_args)
+        return cast(
+            List[TextContent],
+            await ToolRegistry.call_tool("_handle_tool_call", "get_call_sites", call_sites_args),
+        )
 
     # Route to get_outgoing_calls (strip Schema B-only params)
     schema_a_args = {k: v for k, v in arguments.items() if k not in _CALLGRAPH_CONSOLIDATED_PARAMS}
-    result = await ToolRegistry.call_tool("_handle_tool_call", "get_outgoing_calls", schema_a_args)
+    result = cast(
+        List[TextContent],
+        await ToolRegistry.call_tool("_handle_tool_call", "get_outgoing_calls", schema_a_args),
+    )
 
     # For summary format, strip location/doc fields for compact output
     if return_format == "function_definitions_summary":
@@ -761,7 +770,10 @@ async def _handle_find_incoming_calls(
 ) -> List[TextContent]:
     """Translate find_incoming_calls -> find_incoming_calls (rename only)."""
 
-    return await ToolRegistry.call_tool("_handle_tool_call", "find_incoming_calls", arguments)
+    return cast(
+        List[TextContent],
+        await ToolRegistry.call_tool("_handle_tool_call", "find_incoming_calls", arguments),
+    )
 
 
 async def _handle_trace_execution_path(
@@ -777,7 +789,10 @@ async def _handle_trace_execution_path(
     if max_depth is not None:
         schema_a_args["max_depth"] = max_depth
 
-    return await ToolRegistry.call_tool("_handle_tool_call", "get_call_path", schema_a_args)
+    return cast(
+        List[TextContent],
+        await ToolRegistry.call_tool("_handle_tool_call", "get_call_path", schema_a_args),
+    )
 
 
 ToolRegistry.register("list_tools_b", list_tools_b)

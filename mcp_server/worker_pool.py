@@ -136,10 +136,12 @@ class WorkerPoolManager:
             return
 
         # 1. Identify worker processes (if using ProcessPoolExecutor)
-        is_process_pool = hasattr(self.executor, "_processes")
+        is_process_pool = isinstance(self.executor, ProcessPoolExecutor)
         workers = []
         if is_process_pool:
-            workers = list(self.executor._processes.values()) if self.executor._processes else []
+            # Safely access _processes which is internal to ProcessPoolExecutor
+            processes = getattr(self.executor, "_processes", None)
+            workers = list(processes.values()) if processes else []
 
         # 2. Cancel all pending futures
         self._cancel_executor_futures()
