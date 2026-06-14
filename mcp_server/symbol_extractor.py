@@ -1496,7 +1496,7 @@ class SymbolExtractor:
 
         try:
             file_hash = self.analyzer._get_file_hash(file_path)
-            return self.analyzer.header_tracker.try_claim_header(file_path, file_hash)
+            return bool(self.analyzer.header_tracker.try_claim_header(file_path, file_hash))
         except Exception as e:
             diagnostics.warning(f"Error checking header {file_path}: {e}")
             return False

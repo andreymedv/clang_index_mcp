@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 # Import diagnostics early
 try:
@@ -128,7 +128,7 @@ server = Server("cpp-analyzer")
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
-    return ToolRegistry.call_tool("list_tools_b")
+    return cast(List[Tool], ToolRegistry.call_tool("list_tools_b"))
 
 
 def _parse_query_policy(policy_str: str) -> QueryBehaviorPolicy:
@@ -313,7 +313,9 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    result = await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
+    result = cast(
+        List[TextContent], await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
+    )
     _try_log_tool_call(name, arguments, result)
     return result
 
