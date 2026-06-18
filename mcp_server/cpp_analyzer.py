@@ -5,7 +5,6 @@ This module provides C++ code analysis functionality using libclang bindings.
 It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
-import dataclasses
 import hashlib
 import json
 import os
@@ -13,7 +12,7 @@ import re
 import sys
 import threading
 import time
-from collections import defaultdict, deque
+from collections import deque
 from concurrent.futures import (
     Executor,
     Future,
@@ -24,23 +23,22 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .cache_manager import CacheManager
-from .call_graph import CallGraphAnalyzer
+from .call_graph_service import CallGraphService
 from .clang_parser import ClangParser
+from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
 from .cpp_analyzer_config import CppAnalyzerConfig
-from .dependency_graph import DependencyGraphBuilder
-from .file_scanner import FileScanner
 from .header_tracker import HeaderProcessingTracker
 from .project_identity import ProjectIdentity
 from .search_engine import SearchEngine
 from .smart_fallback import FallbackResult, SmartFallback
 from .state_manager import IndexingProgress
-from .symbol_extractor import SymbolExtractor, _usr_to_display_name
+from .symbol_extractor import SymbolExtractor
+from .symbol_index_store import SymbolIndexStore
 from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
     build_location_objects,
-    is_richer_definition,
     omit_empty,
 )
 from .worker_pool import WorkerPoolManager, _process_file_worker
@@ -117,21 +115,17 @@ class CppAnalyzer:
         self.clang_parser = ClangParser(self)
         self.symbol_extractor = SymbolExtractor(self)
 
-        # Indexes for fast lookup
-        self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
-        self.function_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
-        self.file_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
-        self.usr_index: Dict[str, SymbolInfo] = {}  # USR to symbol mapping
+        # Initialize call graph service (manages CallGraphAnalyzer + DependencyGraphBuilder)
+        self.call_graph_service = CallGraphService(self)
 
-        # Initialize call graph analyzer
-        self.call_graph_analyzer = CallGraphAnalyzer()
+        # Initialize symbol index store (manages class/function/file/USR indexes)
+        self.symbol_store = SymbolIndexStore(self)
 
         # Threading/Processing
         self.index_lock = threading.RLock()
 
         # Track indexed files
         self.translation_units: Dict[str, TranslationUnit] = {}
-        self.file_hashes: Dict[str, str] = {}
         self._no_op_lock = _NoOpLock()  # Reusable no-op lock for isolated processes
         self._thread_local = threading.local()
 
@@ -174,14 +168,16 @@ class CppAnalyzer:
         self.cache_manager = CacheManager(
             self.project_identity, skip_schema_recreation=self._skip_schema_recreation
         )
-        self.file_scanner = FileScanner(self.project_root)
+
+        # Initialize compilation environment (manages file scanner, compile commands, etc.)
+        self.compilation_env = CompilationEnvironment(self)
 
         # Initialize search engine (Phase 1.3: needs cache_manager for type alias lookups)
         self.search_engine = SearchEngine(
-            self.class_index,
-            self.function_index,
-            self.file_index,
-            self.usr_index,
+            self.symbol_store.class_index,
+            self.symbol_store.function_index,
+            self.symbol_store.file_index,
+            self.symbol_store.usr_index,
             self.index_lock,
             cache_manager=self.cache_manager,
         )
@@ -190,35 +186,21 @@ class CppAnalyzer:
         self.smart_fallback = SmartFallback()
         self._last_fallback: Optional[FallbackResult] = None  # Stores last fallback result
 
-        # Memory optimization: enable lazy loading of call sites from SQLite
-        # Instead of loading ALL call sites at startup (~150-200 MB for large projects),
-        # call sites are queried on-demand from the database
-        self.call_graph_analyzer.cache_backend = self.cache_manager.backend
-        # Apply configuration to file scanner
-        self.file_scanner.EXCLUDE_DIRS = set(self.config.get_exclude_directories())
-        self.file_scanner.DEPENDENCY_DIRS = set(self.config.get_dependency_directories())
+        # Wire call graph service to SQLite cache backend
+        self.call_graph_service.setup_cache_backend()
 
         # Keep cache_dir for compatibility
         self.cache_dir = self.cache_manager.cache_dir
 
         # Statistics
         self.last_index_time: float = 0
-        self.indexed_file_count = 0
-        self.include_dependencies = self.config.get_include_dependencies()
-        self.max_parse_retries = self.config.config.get("max_parse_retries", 2)
         self.cache_loaded = False  # Track whether cache was successfully loaded
-
-        # Task 3.2: Memory Optimization - Support for precomputed compile args
-        # When set, index_file() will use these args instead of querying CompileCommandsManager
-        # This allows workers to skip loading large compile_commands.json files (~6-10 GB savings)
-        self._provided_compile_args = None
 
         # Task 3.2: Initialize compile commands manager only if needed
         # Workers skip this to save ~6-10 GB memory by using precomputed args from main process
-        self.compile_commands_manager: Optional[CompileCommandsManager] = None
         if use_compile_commands_manager:
             compile_commands_config = self.config.get_compile_commands_config()
-            self.compile_commands_manager = CompileCommandsManager(
+            self.compilation_env.compile_commands_manager = CompileCommandsManager(
                 self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
             )
 
@@ -226,18 +208,7 @@ class CppAnalyzer:
         self.header_tracker = HeaderProcessingTracker()
 
         # Initialize dependency graph builder for incremental analysis
-        # Note: Only initialize if using SQLite backend (has conn attribute)
-        # Pass a callable to get the connection dynamically, ensuring it stays valid
-        # even if the cache is recreated (e.g., due to schema mismatch or corruption)
-        self.dependency_graph = None
-        if hasattr(self.cache_manager.backend, "conn"):
-            # Use lambda to get connection dynamically, not a static reference
-            # This prevents "Cannot operate on a closed database" errors when
-            # cache is recreated during operation
-            self.dependency_graph = DependencyGraphBuilder(lambda: self.cache_manager.backend.conn)
-            diagnostics.debug("Dependency graph builder initialized with dynamic connection")
-        else:
-            diagnostics.debug("Dependency graph not available (non-SQLite backend)")
+        self.call_graph_service.init_dependency_graph()
 
         # Track compile_commands.json version for header tracking invalidation
         self.compile_commands_hash = ""
@@ -316,38 +287,110 @@ class CppAnalyzer:
             # Suppress errors during shutdown - resources will be cleaned up by OS
             pass
 
+    @property
+    def call_graph_analyzer(self):
+        """Backward-compatible access to the CallGraphAnalyzer instance."""
+        return self.call_graph_service.call_graph_analyzer
+
+    @call_graph_analyzer.setter
+    def call_graph_analyzer(self, value):
+        """Allow resetting the CallGraphAnalyzer (used by worker processes)."""
+        self.call_graph_service.call_graph_analyzer = value
+
+    @property
+    def dependency_graph(self):
+        """Backward-compatible access to the DependencyGraphBuilder."""
+        return self.call_graph_service.dependency_graph
+
+    @property
+    def class_index(self):
+        """Backward-compatible access to the class index."""
+        return self.symbol_store.class_index
+
+    @property
+    def function_index(self):
+        """Backward-compatible access to the function index."""
+        return self.symbol_store.function_index
+
+    @property
+    def file_index(self):
+        """Backward-compatible access to the file index."""
+        return self.symbol_store.file_index
+
+    @property
+    def usr_index(self):
+        """Backward-compatible access to the USR index."""
+        return self.symbol_store.usr_index
+
+    @property
+    def file_hashes(self):
+        """Backward-compatible access to file hashes."""
+        return self.symbol_store.file_hashes
+
+    @property
+    def indexed_file_count(self):
+        """Backward-compatible access to indexed file count."""
+        return self.symbol_store.indexed_file_count
+
+    @indexed_file_count.setter
+    def indexed_file_count(self, value):
+        """Allow setting indexed file count (used by finalize_indexing)."""
+        self.symbol_store.indexed_file_count = value
+
+    @property
+    def compile_commands_manager(self):
+        """Backward-compatible access to the compile commands manager."""
+        return self.compilation_env.compile_commands_manager
+
+    @property
+    def file_scanner(self):
+        """Backward-compatible access to the file scanner."""
+        return self.compilation_env.file_scanner
+
+    @property
+    def include_dependencies(self):
+        """Backward-compatible access to include_dependencies setting."""
+        return self.compilation_env.include_dependencies
+
+    @include_dependencies.setter
+    def include_dependencies(self, value):
+        """Allow setting include_dependencies (used by worker processes)."""
+        self.compilation_env.include_dependencies = value
+
+    @property
+    def max_parse_retries(self):
+        """Backward-compatible access to max_parse_retries setting."""
+        return self.compilation_env.max_parse_retries
+
+    @property
+    def _provided_compile_args(self):
+        """Backward-compatible access to precomputed compile args."""
+        return self.compilation_env._provided_compile_args
+
+    @_provided_compile_args.setter
+    def _provided_compile_args(self, value):
+        """Allow setting precomputed compile args (used by worker processes)."""
+        self.compilation_env._provided_compile_args = value
+
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
 
     def _is_project_file(self, file_path: str) -> bool:
-        """
-        Check if a file is a project file (not system header or external dependency).
+        """Check if a file is a project file (delegates to compilation_env)."""
+        return self.compilation_env._is_project_file(file_path)
 
-        Uses FileScanner.is_project_file() to determine if the file is:
-        - Under the project root
-        - NOT in excluded directories (e.g., build/, .git/)
-        - NOT in dependency directories (e.g., vcpkg_installed/, third_party/)
+    def _should_skip_file(self, file_path: str) -> bool:
+        """Check if file should be skipped (delegates to compilation_env)."""
+        return self.compilation_env._should_skip_file(file_path)
 
-        Args:
-            file_path: Absolute or relative path to check
+    def get_compile_commands_stats(self) -> Dict[str, Any]:
+        """Get compile commands statistics (delegates to compilation_env)."""
+        return self.compilation_env.get_compile_commands_stats()
 
-        Returns:
-            True if file is a project file, False otherwise
-
-        Implements:
-            REQ-10.1.3: Distinguish between project headers, system headers, and external
-            REQ-10.1.4: Extract symbols only from project headers
-        """
-        if not file_path:
-            return False
-
-        # Convert to absolute path
-        if not os.path.isabs(file_path):
-            file_path = os.path.abspath(file_path)
-
-        # Use FileScanner's logic to check if it's a project file
-        return self.file_scanner.is_project_file(file_path)
+    def _find_cpp_files(self, include_dependencies: bool = False) -> List[str]:
+        """Find all C++ files in the project (delegates to compilation_env)."""
+        return self.compilation_env._find_cpp_files(include_dependencies)
 
     def _extract_template_call_info(self, referenced, called_usr: str):
         """Extract display_name and project-type template args from a template call."""
@@ -522,140 +565,6 @@ class CppAnalyzer:
             self._thread_local.collected_aliases,
         )
 
-    def _remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
-        """Remove a single symbol from class/function/USR indexes and call graph."""
-        # 1. Global name-based indexes
-        target_index = (
-            self.class_index
-            if symbol.kind in ("class", "struct", "class_template", "partial_specialization")
-            else self.function_index
-        )
-
-        if symbol.name in target_index:
-            # Use USR for identity check if available, otherwise fallback to object equality
-            if symbol.usr:
-                target_index[symbol.name] = [
-                    i for i in target_index[symbol.name] if i.usr != symbol.usr
-                ]
-            else:
-                target_index[symbol.name] = [i for i in target_index[symbol.name] if i != symbol]
-
-            if not target_index[symbol.name]:
-                del target_index[symbol.name]
-
-        # 2. USR and Call Graph
-        if symbol.usr:
-            if symbol.usr in self.usr_index:
-                # Only delete if it's actually the same symbol (to avoid accidental deletion of replacements)
-                existing = self.usr_index[symbol.usr]
-                if existing == symbol or existing.usr == symbol.usr:
-                    del self.usr_index[symbol.usr]
-            self.call_graph_analyzer.remove_symbol(symbol.usr)
-
-    def _handle_symbol_definition_wins(
-        self, info: SymbolInfo, existing_symbol: SymbolInfo
-    ) -> Optional[SymbolInfo]:
-        """Apply definition-wins logic when a symbol already exists in the USR index.
-
-        Returns the info object to use, or None if the symbol should be skipped.
-        """
-        # Definition-wins: If new symbol is a definition and existing is not, replace
-        if info.is_definition and not existing_symbol.is_definition:
-            # Preserve parent_class from declaration if definition lost it
-            if not info.parent_class and existing_symbol.parent_class:
-                info = dataclasses.replace(info, parent_class=existing_symbol.parent_class)
-
-            diagnostics.debug(
-                f"Definition-wins: Replacing declaration of {info.name} with definition "
-                f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
-            )
-
-            # Remove from class/function/usr indexes but KEEP in file_index
-            self._remove_symbol_from_indexes(existing_symbol)
-            return info
-
-        elif info.is_definition and existing_symbol.is_definition:
-            # Both are definitions. Pick the richer one.
-            if is_richer_definition(info, existing_symbol):
-                diagnostics.debug(
-                    f"Richer-definition: Replacing {info.name} "
-                    f"(from {existing_symbol.file}:{existing_symbol.line} "
-                    f"to {info.file}:{info.line})"
-                )
-                self._remove_symbol_from_indexes(existing_symbol)
-                return info
-            else:
-                return None  # Keep existing (it's richer or equal)
-        else:
-            # Keep existing symbol (existing is definition, new is declaration)
-            return None
-
-    def _add_symbol_to_file_index(self, info: SymbolInfo) -> None:
-        """Add symbol to file_index with deduplication check."""
-        if not info.file:
-            return
-
-        if info.file not in self.file_index:
-            self.file_index[info.file] = []
-
-        already_in_file_index = False
-        if info.usr:
-            for idx_pos, existing in enumerate(self.file_index[info.file]):
-                if existing.usr == info.usr:
-                    if (info.is_definition and not existing.is_definition) or (
-                        info.is_definition
-                        and existing.is_definition
-                        and is_richer_definition(info, existing)
-                    ):
-                        self.file_index[info.file][idx_pos] = info
-                    already_in_file_index = True
-                    break
-
-        if not already_in_file_index:
-            self.file_index[info.file].append(info)
-
-    def _process_call_buffer(self, calls_buffer: List[Any]) -> None:
-        """Process the call buffer and add relationships to the call graph analyzer."""
-        if not calls_buffer:
-            return
-
-        diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
-        diagnostics.debug(f"First call format: {calls_buffer[0]}")
-
-        for call_info in calls_buffer:
-            if len(call_info) == 7:
-                # v17.0 format
-                (
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    disp_name,
-                    tmpl_types,
-                ) = call_info
-                self.call_graph_analyzer.add_call(
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    display_name=disp_name,
-                    template_project_types=tmpl_types,
-                )
-            elif len(call_info) == 5:
-                # Phase 3 format
-                caller_usr, called_usr, call_file, call_line, call_column = call_info
-                self.call_graph_analyzer.add_call(
-                    caller_usr, called_usr, call_file, call_line, call_column
-                )
-            elif len(call_info) == 2:
-                # Legacy format
-                caller_usr, called_usr = call_info
-                self.call_graph_analyzer.add_call(caller_usr, called_usr)
-            else:
-                diagnostics.warning(f"Unexpected call_info format: {call_info}")
-
     def _bulk_write_symbols(self):
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
@@ -681,7 +590,9 @@ class CppAnalyzer:
                 # USR-based deduplication with definition-wins logic (Phase 1)
                 if info.usr and info.usr in self.usr_index:
                     existing_symbol = self.usr_index[info.usr]
-                    resolved_info = self._handle_symbol_definition_wins(info, existing_symbol)
+                    resolved_info = self.symbol_store._handle_symbol_definition_wins(
+                        info, existing_symbol
+                    )
                     if resolved_info is None:
                         continue
                     info = resolved_info
@@ -695,11 +606,11 @@ class CppAnalyzer:
                 if info.usr:
                     self.usr_index[info.usr] = info
 
-                self._add_symbol_to_file_index(info)
+                self.symbol_store._add_symbol_to_file_index(info)
                 added_count += 1
 
             # Add all collected call relationships (Phase 3: now includes location)
-            self._process_call_buffer(calls_buffer)
+            self.call_graph_service._process_call_buffer(calls_buffer)
 
             # Add all collected type aliases (Phase 1.3: Type Alias Tracking)
             if aliases_buffer:
@@ -713,12 +624,6 @@ class CppAnalyzer:
         aliases_buffer.clear()
 
         return added_count
-
-    def _compute_compile_args_hash(self, args: List[str]) -> str:
-        """Compute hash of compilation arguments for cache validation"""
-        # Sort and join args to create a consistent hash
-        args_str = " ".join(sorted(args))
-        return hashlib.md5(args_str.encode()).hexdigest()
 
     def _save_file_cache(
         self,
@@ -744,33 +649,6 @@ class CppAnalyzer:
             Dict with 'symbols', 'success', 'error_message', 'retry_count' or None
         """
         return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
-
-    def _should_skip_file(self, file_path: str) -> bool:
-        """Check if file should be skipped"""
-        # Update file scanner with current dependencies setting
-        self.file_scanner.include_dependencies = self.include_dependencies
-        return self.file_scanner.should_skip_file(file_path)
-
-    def _find_cpp_files(self, include_dependencies: bool = False) -> List[str]:
-        """Find all C++ files in the project
-
-        When compile_commands.json is loaded and has entries, returns ONLY the files
-        listed in it. Otherwise, scans for all C++ files based on extensions.
-        """
-        # If compile_commands.json is loaded and has entries, use only those files
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
-            compile_commands_files = self.compile_commands_manager.get_all_files()
-            if compile_commands_files:
-                diagnostics.debug(
-                    f"Using {len(compile_commands_files)} files from compile_commands.json"
-                )
-                return compile_commands_files
-
-        # Fall back to scanning all C++ files
-        # Update file scanner with dependencies setting
-        self.file_scanner.include_dependencies = include_dependencies
-        return self.file_scanner.find_cpp_files()
 
     @staticmethod
     def _get_qualified_name(cursor: Any) -> str:
@@ -974,69 +852,6 @@ class CppAnalyzer:
         """Process translation unit, extracting symbols from source and project headers."""
         return self.symbol_extractor._index_translation_unit(tu, source_file)
 
-    def _get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
-        """Get compilation arguments for a file, handling worker and fallback modes."""
-        if self._provided_compile_args is not None:
-            # Worker mode: use compile args provided by main process
-            return self._provided_compile_args
-
-        # Main process mode: query CompileCommandsManager
-        assert self.compile_commands_manager is not None
-        args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
-
-        # If compile commands are not available and we're using fallback, add vcpkg includes
-        if not self.compile_commands_manager.is_file_supported(file_path_obj):
-            # Add vcpkg includes if available
-            vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-            if vcpkg_include.exists():
-                args.append(f"-I{vcpkg_include}")
-
-            # Add common vcpkg paths
-            vcpkg_paths = [
-                "C:/vcpkg/installed/x64-windows/include",
-                "C:/dev/vcpkg/installed/x64-windows/include",
-            ]
-            for path in vcpkg_paths:
-                if Path(path).exists():
-                    args.append(f"-I{path}")
-                    break
-        return args
-
-    def _apply_cached_symbols(
-        self, file_path: str, cached_symbols: List[SymbolInfo], current_hash: str
-    ) -> None:
-        """Apply cached symbols to indexes and update file hash."""
-        # Build updates for class_index and function_index
-        class_updates = defaultdict(list)
-        function_updates = defaultdict(list)
-        usr_updates = {}
-
-        for symbol in cached_symbols:
-            if symbol.kind in ("class", "struct"):
-                class_updates[symbol.name].append(symbol)
-            else:
-                function_updates[symbol.name].append(symbol)
-
-            if symbol.usr:
-                usr_updates[symbol.usr] = symbol
-
-        # Apply all updates with a single lock acquisition
-        with self._get_lock():
-            # Clear old entries for this file
-            self._clear_file_index_entries(file_path)
-
-            # Add cached symbols
-            self.file_index[file_path] = cached_symbols
-
-            # Apply class/function/USR updates
-            for name, symbols in class_updates.items():
-                self.class_index[name].extend(symbols)
-            for name, symbols in function_updates.items():
-                self.function_index[name].extend(symbols)
-            self.usr_index.update(usr_updates)
-
-            self.file_hashes[file_path] = current_hash
-
     def _try_parse_with_fallback(
         self, file_path: str, args: List[str]
     ) -> Tuple[Optional[Any], Optional[str]]:
@@ -1086,10 +901,6 @@ class CppAnalyzer:
             file_path, tu, current_hash, compile_args_hash, retry_count
         )
 
-    def _clear_file_index_entries(self, file_path: str) -> None:
-        """Clear existing index entries for a file (atomicity should be handled by caller)."""
-        self._remove_file_from_indexes(file_path)
-
     def _try_load_cached_index(
         self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
     ) -> Optional[tuple[bool, bool]]:
@@ -1111,7 +922,7 @@ class CppAnalyzer:
                 return (False, True)
             return None
 
-        self._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
+        self.symbol_store._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
         return (True, True)
 
     def _compute_retry_count(
@@ -1136,7 +947,7 @@ class CppAnalyzer:
     ) -> tuple[bool, bool]:
         """Clear old entries, process TU, collect symbols, and save to cache."""
         with self._get_lock():
-            self._clear_file_index_entries(file_path)
+            self.symbol_store._clear_file_index_entries(file_path)
 
         extraction_result = self._index_translation_unit(tu, file_path)
         processed_count = len(extraction_result["processed"])
@@ -1204,8 +1015,8 @@ class CppAnalyzer:
             return (False, False)
 
         current_hash = self._get_file_hash(file_path)
-        args = self._get_compile_args_for_file(Path(file_path))
-        compile_args_hash = self._compute_compile_args_hash(args)
+        args = self.compilation_env._get_compile_args_for_file(Path(file_path))
+        compile_args_hash = self.compilation_env._compute_compile_args_hash(args)
 
         cached = self._try_load_cached_index(file_path, current_hash, compile_args_hash, force)
         if cached is not None:
@@ -1258,104 +1069,15 @@ class CppAnalyzer:
     def _prepare_indexing_files(self, include_dependencies: bool) -> List[str]:
         """Find C++ files to index and log compilation environment."""
         diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
-        files = self._find_cpp_files(include_dependencies=include_dependencies)
+        files = self.compilation_env._find_cpp_files(include_dependencies=include_dependencies)
 
         if not files:
             diagnostics.warning("No C++ files found in project")
             return []
 
         diagnostics.debug(f"Found {len(files)} C++ files to index")
-        self._log_compilation_environment(files)
+        self.compilation_env._log_compilation_environment(files)
         return files
-
-    def _prepare_worker_compile_args(self, files: List[str]) -> Dict[str, List[str]]:
-        """Pre-calculate compile arguments for each file to save worker memory."""
-        file_compile_args = {}
-        assert self.compile_commands_manager is not None
-        vcpkg_include = self.project_root / "vcpkg_installed" / "x64-windows" / "include"
-        vcpkg_paths = [
-            "C:/vcpkg/installed/x64-windows/include",
-            "C:/dev/vcpkg/installed/x64-windows/include",
-        ]
-
-        for file_path in files:
-            file_path_obj = Path(file_path)
-            args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
-
-            if not self.compile_commands_manager.is_file_supported(file_path_obj):
-                if vcpkg_include.exists():
-                    args.append(f"-I{vcpkg_include}")
-                for path in vcpkg_paths:
-                    if Path(path).exists():
-                        args.append(f"-I{path}")
-                        break
-            file_compile_args[file_path] = args
-        return file_compile_args
-
-    def _add_to_file_index(self, symbol: SymbolInfo):
-        """Add symbol to file index with deduplication."""
-        if symbol.file not in self.file_index:
-            self.file_index[symbol.file] = []
-            self.file_index[symbol.file].append(symbol)
-            return
-
-        if not symbol.usr:
-            self.file_index[symbol.file].append(symbol)
-            return
-
-        for idx_pos, existing in enumerate(self.file_index[symbol.file]):
-            if existing.usr == symbol.usr:
-                if (symbol.is_definition and not existing.is_definition) or (
-                    symbol.is_definition
-                    and existing.is_definition
-                    and is_richer_definition(symbol, existing)
-                ):
-                    self.file_index[symbol.file][idx_pos] = symbol
-                return
-
-        self.file_index[symbol.file].append(symbol)
-
-    def _merge_symbol_into_indexes(self, symbol: SymbolInfo):
-        """Merge a single symbol into the main process indexes with deduplication."""
-        if symbol.usr and symbol.usr in self.usr_index:
-            existing = self.usr_index[symbol.usr]
-            if symbol.is_definition and not existing.is_definition:
-                self._remove_symbol_from_indexes(existing)
-            elif symbol.is_definition and existing.is_definition:
-                if is_richer_definition(symbol, existing):
-                    self._remove_symbol_from_indexes(existing)
-                else:
-                    return
-            else:
-                return
-
-        if symbol.kind in CLASS_KINDS:
-            self.class_index[symbol.name].append(symbol)
-        else:
-            self.function_index[symbol.name].append(symbol)
-
-        if symbol.usr:
-            self.usr_index[symbol.usr] = symbol
-
-        if symbol.file:
-            self._add_to_file_index(symbol)
-
-    def _stream_call_sites(self, file_path: str, call_sites: List[Dict]):
-        """Stream call sites to SQLite and update in-memory call graph."""
-        diagnostics.debug(f"Streaming {len(call_sites)} call sites from {file_path} to SQLite")
-        if self.cache_manager and self.cache_manager.backend:
-            self.cache_manager.backend.delete_call_sites_by_file(file_path)
-            self.cache_manager.backend.save_call_sites_batch(call_sites)
-
-        for cs_dict in call_sites:
-            self.call_graph_analyzer.add_call(
-                cs_dict["caller_usr"],
-                cs_dict["callee_usr"],
-                cs_dict["file"],
-                cs_dict["line"],
-                cs_dict.get("column"),
-                store_call_site=False,
-            )
 
     def _merge_worker_result(self, result: Tuple, file_path: str):
         """Merge symbols and call sites from a worker process result."""
@@ -1365,13 +1087,13 @@ class CppAnalyzer:
             with self.index_lock:
                 # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
                 # This ensures that modified files don't have duplicate/stale symbols
-                self._clear_file_index_entries(file_path)
+                self.symbol_store._clear_file_index_entries(file_path)
 
                 for symbol in symbols:
-                    self._merge_symbol_into_indexes(symbol)
+                    self.symbol_store._merge_symbol_into_indexes(symbol)
 
             if call_sites:
-                self._stream_call_sites(file_path, call_sites)
+                self.call_graph_service._stream_call_sites(file_path, call_sites)
 
             if processed_headers:
                 for header_path, header_hash in processed_headers.items():
@@ -1458,7 +1180,7 @@ class CppAnalyzer:
                 if self.project_identity.config_file_path
                 else None
             )
-            file_compile_args = self._prepare_worker_compile_args(files)
+            file_compile_args = self.compilation_env._prepare_worker_compile_args(files)
 
             return {
                 executor.submit(
@@ -1695,54 +1417,6 @@ class CppAnalyzer:
             if saved_count != len(call_sites):
                 diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
 
-    def _populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
-        """Populate main and file indexes from cache data."""
-        # Load indexes - Memory optimization: SymbolInfo objects come directly
-        # from SQLite backend (no dict conversion needed, saves ~500 MB peak)
-        self.class_index.clear()
-        for name, infos in cache_data.get("class_index", {}).items():
-            self.class_index[name] = infos
-
-        self.function_index.clear()
-        for name, infos in cache_data.get("function_index", {}).items():
-            self.function_index[name] = infos
-
-        # Rebuild file index mapping from loaded symbols
-        self.file_index.clear()
-        for infos in self.class_index.values():
-            for symbol in infos:
-                if symbol.file:
-                    self.file_index[symbol.file].append(symbol)
-        for infos in self.function_index.values():
-            for symbol in infos:
-                if symbol.file:
-                    self.file_index[symbol.file].append(symbol)
-
-        self.file_hashes = cache_data.get("file_hashes", {})
-        self.indexed_file_count = cache_data.get("indexed_file_count", 0)
-
-    def _rebuild_auxiliary_structures(self) -> None:
-        """Rebuild USR index and call graph from loaded symbols."""
-        self.usr_index.clear()
-        self.call_graph_analyzer.clear()
-
-        # Rebuild from all loaded symbols
-        all_symbols = []
-        for class_list in self.class_index.values():
-            for symbol in class_list:
-                if symbol.usr:
-                    self.usr_index[symbol.usr] = symbol
-                    all_symbols.append(symbol)
-
-        for func_list in self.function_index.values():
-            for symbol in func_list:
-                if symbol.usr:
-                    self.usr_index[symbol.usr] = symbol
-                    all_symbols.append(symbol)
-
-        # Rebuild call graph from all symbols
-        self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
-
     def _load_cache(self) -> bool:
         """Load index from cache file"""
         # Get current config file info
@@ -1770,8 +1444,8 @@ class CppAnalyzer:
             return False
 
         try:
-            self._populate_indexes_from_cache(cache_data)
-            self._rebuild_auxiliary_structures()
+            self.symbol_store._populate_indexes_from_cache(cache_data)
+            self.symbol_store._rebuild_auxiliary_structures()
 
             # Memory optimization: call sites are now loaded LAZILY on-demand
             # instead of loading all at startup (saves ~150-200 MB for large projects)
@@ -1917,88 +1591,6 @@ class CppAnalyzer:
 
             return stats
 
-    def get_compile_commands_stats(self) -> Dict[str, Any]:
-        """Get compile commands statistics"""
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compile_commands_manager is None or not self.compile_commands_manager.enabled:
-            return {"enabled": False}
-
-        return self.compile_commands_manager.get_stats()
-
-    def _log_compilation_environment(self, files: List[str]) -> None:
-        """Log libclang compilation environment for diagnostics."""
-        if self.compile_commands_manager is None:
-            return
-
-        compile_stats = self.compile_commands_manager.get_stats()
-        diagnostics.info(
-            "Compilation environment: "
-            f"compile_commands_enabled={compile_stats.get('enabled')} "
-            f"compile_commands_count={compile_stats.get('compile_commands_count')} "
-            f"clang_resource_dir={compile_stats.get('clang_resource_dir')} "
-            f"fallback_cxx_standards={compile_stats.get('fallback_cxx_standards')} "
-            f"fallback_system_include_dirs={compile_stats.get('fallback_system_include_dirs')}"
-        )
-
-        if not files:
-            return
-
-        sample_count = min(3, len(files))
-        for source_file in files[:sample_count]:
-            profile = self.compile_commands_manager.get_compile_arg_profile(Path(source_file))
-            diagnostics.info(
-                "Compile args profile: "
-                f"file={profile.get('file')} "
-                f"source={profile.get('args_source')} "
-                f"cxx_standards={profile.get('cxx_standards')} "
-                f"system_include_dirs={profile.get('system_include_dirs')}"
-            )
-
-    def _handle_deleted_files(self, current_files: Set[str]) -> int:
-        """Find and remove deleted files from indexes."""
-        tracked_files = set(self.file_hashes.keys())
-        deleted_files = set()
-        for tracked_file in tracked_files:
-            if tracked_file in current_files:
-                continue
-
-            if tracked_file.endswith((".h", ".hpp", ".hxx", ".h++")):
-                if not os.path.exists(tracked_file):
-                    deleted_files.add(tracked_file)
-            else:
-                deleted_files.add(tracked_file)
-
-        deleted_count = 0
-        for file_path in deleted_files:
-            self._remove_file_from_indexes(file_path)
-            if file_path in self.file_hashes:
-                del self.file_hashes[file_path]
-            self.cache_manager.remove_file_cache(file_path)
-            deleted_count += 1
-        return deleted_count
-
-    def _identify_refresh_files(self, current_files: Set[str]) -> Tuple[List[str], List[str]]:
-        """Identify modified and new files needing refresh."""
-        tracked_files = set(self.file_hashes.keys())
-        new_files = list(current_files - tracked_files)
-        modified_files = []
-        for file_path in self.file_hashes:
-            if not os.path.exists(file_path):
-                continue
-            if self._get_file_hash(file_path) != self.file_hashes.get(file_path):
-                modified_files.append(file_path)
-        return modified_files, new_files
-
-    def _prepare_refresh_compile_args(
-        self, all_files_to_process: List[str]
-    ) -> Dict[str, List[str]]:
-        """Prepare compilation arguments for all files in main process."""
-        file_compile_args = {}
-        for file_path in all_files_to_process:
-            file_path_obj = Path(file_path)
-            file_compile_args[file_path] = self._get_compile_args_for_file(file_path_obj)
-        return file_compile_args
-
     def _submit_refresh_tasks(
         self, executor: Executor, modified_files: List[str], new_files: List[str]
     ) -> Dict[Future, str]:
@@ -2013,7 +1605,9 @@ class CppAnalyzer:
             )
 
             all_files_to_process = list(modified_files) + list(new_files)
-            file_compile_args = self._prepare_refresh_compile_args(all_files_to_process)
+            file_compile_args = self.compilation_env._prepare_refresh_compile_args(
+                all_files_to_process
+            )
 
             for f in modified_files:
                 future = executor.submit(
@@ -2071,9 +1665,9 @@ class CppAnalyzer:
 
     def _prepare_refresh_set(self) -> Tuple[List[str], List[str], int]:
         """Identify files to refresh and handle deleted files. Returns (modified, new, deleted_count)."""
-        current_files = set(self._find_cpp_files(self.include_dependencies))
-        deleted_count = self._handle_deleted_files(current_files)
-        modified_files, new_files = self._identify_refresh_files(current_files)
+        current_files = set(self.compilation_env._find_cpp_files(self.include_dependencies))
+        deleted_count = self.compilation_env._handle_deleted_files(current_files)
+        modified_files, new_files = self.compilation_env._identify_refresh_files(current_files)
         return modified_files, new_files, deleted_count
 
     def _run_refresh_loop(
@@ -2192,22 +1786,6 @@ class CppAnalyzer:
         except Exception as e:
             # Don't fail refresh if progress callback fails
             diagnostics.debug(f"Progress callback failed: {e}")
-
-    def _remove_file_from_indexes(self, file_path: str):
-        """Remove all symbols from a deleted file from all indexes"""
-        with self.index_lock:
-            # Get all symbols that were in this file
-            symbols_to_remove = self.file_index.get(file_path, []).copy()
-            if symbols_to_remove:
-                diagnostics.debug(f"Removing {len(symbols_to_remove)} symbols for file {file_path}")
-
-            for symbol in symbols_to_remove:
-                self._remove_symbol_from_indexes(symbol)
-
-            # Finally remove from file_index
-            if file_path in self.file_index:
-                del self.file_index[file_path]
-                diagnostics.debug(f"Removed file {file_path} from file_index")
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific class, including direct derived classes."""
@@ -2991,140 +2569,6 @@ class CppAnalyzer:
             )
         return result
 
-    def _lookup_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
-        """Return a rich symbol dict for *usr*, querying SQLite when not in usr_index.
-
-        Used by find_incoming_calls/find_callees to avoid returning opaque USR strings for
-        external symbols.  Returns None when the symbol cannot be found at all.
-        """
-        if usr in self.usr_index:
-            info = self.usr_index[usr]
-            return omit_empty(
-                {
-                    "qualified_name": info.qualified_name or info.name,
-                    "kind": info.kind,
-                    "signature": info.signature,
-                    "parent_class": info.parent_class or None,
-                    "is_project": info.is_project,
-                    **build_location_objects(info),
-                }
-            )
-        # Not in in-memory index — try SQLite (external symbols indexed as dependencies)
-        backend = getattr(self.cache_manager, "backend", None)
-        if backend is not None and hasattr(backend, "load_symbol_by_usr"):
-            info = backend.load_symbol_by_usr(usr)
-            if info is not None:
-                return omit_empty(
-                    {
-                        "qualified_name": info.qualified_name or info.name,
-                        "kind": info.kind,
-                        "signature": info.signature,
-                        "parent_class": info.parent_class or None,
-                        "is_project": False,
-                        **build_location_objects(info),
-                    }
-                )
-        return None
-
-    def _get_template_mediated_info(
-        self, target_usrs: set, callee_usr: str
-    ) -> Optional[Dict[str, Any]]:
-        """Check if a callee has template-mediated project type relevance.
-
-        When an external template function (e.g. std::make_shared) is called with a
-        project type as a template argument, this returns a result dict that surfaces
-        the call even when project_only=True.
-
-        Returns None if no project-type template args are found.
-        """
-        backend = getattr(self.cache_manager, "backend", None)
-        if backend is None or not hasattr(backend, "get_template_mediated_call_sites"):
-            return None
-        rows = backend.get_template_mediated_call_sites(list(target_usrs), callee_usr)
-        if not rows:
-            return None
-        # Use the first row's metadata (all rows share the same callee)
-        row = rows[0]
-        display_name = row.get("display_name") or _usr_to_display_name(callee_usr)
-        try:
-            project_types = json.loads(row["template_project_types"])
-        except (json.JSONDecodeError, TypeError):
-            project_types = []
-        return {
-            "qualified_name": display_name,
-            "is_project": False,
-            "is_template_mediated": True,
-            "template_types": project_types,
-        }
-
-    def _collect_target_usrs(self, target_functions: List[Dict[str, Any]]) -> Set[str]:
-        """Collect USRs for target functions by matching file/line metadata."""
-        target_usrs = set()
-        for func in target_functions:
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    target_usrs.add(symbol.usr)
-        return target_usrs
-
-    def _add_caller(
-        self, caller_usr: str, callers_list: List[Dict[str, Any]], project_only: bool
-    ) -> None:
-        """Add a single caller to the callers list, respecting project_only filter."""
-        if caller_usr in self.usr_index:
-            caller_info = self.usr_index[caller_usr]
-            callers_list.append(
-                omit_empty(
-                    {
-                        "qualified_name": caller_info.qualified_name or caller_info.name,
-                        "kind": caller_info.kind,
-                        "signature": caller_info.signature,
-                        "parent_class": caller_info.parent_class or None,
-                        "is_project": caller_info.is_project,
-                        **build_location_objects(caller_info),
-                    }
-                )
-            )
-        elif not project_only:
-            rich = self._lookup_symbol_info(caller_usr)
-            if rich is not None:
-                callers_list.append(rich)
-            else:
-                callers_list.append(
-                    {
-                        "qualified_name": _usr_to_display_name(caller_usr),
-                        "is_project": False,
-                    }
-                )
-
-    def _add_call_site(
-        self, call_site, call_sites_list: List[Dict[str, Any]], project_only: bool
-    ) -> None:
-        """Add a single call site to the call sites list, respecting project_only filter."""
-        if call_site.caller_usr in self.usr_index:
-            caller_info = self.usr_index[call_site.caller_usr]
-            call_sites_list.append(
-                {
-                    "file": call_site.file,
-                    "line": call_site.line,
-                    "column": call_site.column,
-                    "caller": caller_info.name,
-                    "caller_file": caller_info.file,
-                    "caller_signature": caller_info.signature,
-                }
-            )
-        elif not project_only:
-            call_sites_list.append(
-                {
-                    "file": call_site.file,
-                    "line": call_site.line,
-                    "column": call_site.column,
-                    "caller": _usr_to_display_name(call_site.caller_usr),
-                }
-            )
-
     def find_incoming_calls(
         self,
         function_name: str,
@@ -3132,284 +2576,26 @@ class CppAnalyzer:
         include_call_sites: bool = True,
         project_only: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Find all functions that call the specified function.
-
-        Args:
-            function_name: Name of the target function
-            class_name: Optional class name to disambiguate methods
-            include_call_sites: Whether to include call site locations (Phase 3)
-            project_only: When True (default), only return callers from project files.
-                When False, also include callers from external dependencies (shown as
-                {"usr": "<USR>", "is_project": false} entries since no metadata is indexed).
-
-        Returns:
-            Dictionary with:
-                - callers: List of caller function info (backward compatible)
-                - call_sites: List of call site locations (Phase 3, if include_call_sites=True)
-        """
-        callers_list: List[Dict[str, Any]] = []
-        call_sites_list: List[Dict[str, Any]] = []
-
-        target_functions = self.search_functions(
-            function_name, project_only=False, class_name=class_name
+        """Find all functions that call the specified function."""
+        return self.call_graph_service.find_incoming_calls(
+            function_name, class_name, include_call_sites, project_only
         )
-
-        target_usrs = self._collect_target_usrs(target_functions)
-
-        total_raw_callers = 0
-        for usr in target_usrs:
-            callers = self.call_graph_analyzer.find_incoming_calls(usr)
-            total_raw_callers += len(callers)
-            for caller_usr in callers:
-                self._add_caller(caller_usr, callers_list, project_only)
-
-            if include_call_sites:
-                call_sites = self.call_graph_analyzer.get_call_sites_for_callee(usr)
-                for call_site in call_sites:
-                    self._add_call_site(call_site, call_sites_list, project_only)
-
-        target_qualified_name = (
-            target_functions[0]["qualified_name"] if target_functions else function_name
-        )
-        result: Dict[str, Any] = {
-            "function": function_name,
-            "callers": callers_list,
-            "_function_found": len(target_usrs) > 0,
-            "_has_any_in_graph": total_raw_callers > 0,
-            "_target_qualified_name": target_qualified_name,
-        }
-
-        if include_call_sites:
-            call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
-            result["call_sites"] = call_sites_list
-            result["total_call_sites"] = len(call_sites_list)
-
-        return result
-
-    def _build_call_site_entry(self, call_site: Any) -> Dict[str, Any]:
-        """Build a call site entry for a callee that exists in the project index."""
-        target_info = self.usr_index[call_site.callee_usr]
-        entry: Dict[str, Any] = {
-            "target": target_info.name,
-            "target_signature": target_info.signature,
-            "target_file": target_info.file,
-            "target_kind": target_info.kind,
-            "file": call_site.file,
-            "line": call_site.line,
-            "column": call_site.column,
-        }
-        if call_site.display_name:
-            entry["target"] = call_site.display_name
-        return entry
-
-    def _add_external_call_site(
-        self, call_site: Any, call_sites_list: List[Dict[str, Any]]
-    ) -> None:
-        """Add an external call site if it is template-mediated."""
-        if not (call_site.display_name and call_site.template_project_types):
-            return
-        try:
-            tmpl_types = json.loads(call_site.template_project_types)
-        except (json.JSONDecodeError, TypeError):
-            tmpl_types = []
-        call_sites_list.append(
-            {
-                "target": call_site.display_name,
-                "target_kind": "function",
-                "file": call_site.file,
-                "line": call_site.line,
-                "column": call_site.column,
-                "is_template_mediated": True,
-                "template_types": tmpl_types,
-            }
-        )
-
-    def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
-        """
-        Get all call sites FROM a specific function with line-level precision (Phase 3).
-
-        Args:
-            function_name: Name of the source function
-            class_name: Optional class name to disambiguate methods
-
-        Returns:
-            List of call site dictionaries with exact file:line:column locations
-        """
-        call_sites_list: List[Dict[str, Any]] = []
-
-        source_functions = self.search_functions(
-            function_name, project_only=False, class_name=class_name
-        )
-
-        source_usrs = self._collect_target_usrs(source_functions)
-
-        for usr in source_usrs:
-            call_sites = self.call_graph_analyzer.get_call_sites_for_caller(usr)
-            for call_site in call_sites:
-                if call_site.callee_usr in self.usr_index:
-                    call_sites_list.append(self._build_call_site_entry(call_site))
-                else:
-                    self._add_external_call_site(call_site, call_sites_list)
-
-        call_sites_list.sort(key=lambda cs: (cs["file"], cs["line"]))
-
-        return call_sites_list
-
-    def _add_callee(
-        self,
-        callee_usr: str,
-        callees_list: List[Dict[str, Any]],
-        project_only: bool,
-        target_usrs: Set[str],
-    ) -> None:
-        """Add a single callee to the callees list, respecting project_only filter."""
-        if callee_usr in self.usr_index:
-            callee_info = self.usr_index[callee_usr]
-            callees_list.append(
-                omit_empty(
-                    {
-                        "qualified_name": callee_info.qualified_name or callee_info.name,
-                        "kind": callee_info.kind,
-                        "signature": callee_info.signature,
-                        "parent_class": callee_info.parent_class or None,
-                        "is_project": callee_info.is_project,
-                        **build_location_objects(callee_info),
-                    }
-                )
-            )
-            return
-
-        tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
-        if tmpl_info:
-            callees_list.append(tmpl_info)
-            return
-
-        if not project_only:
-            rich = self._lookup_symbol_info(callee_usr)
-            if rich is not None:
-                callees_list.append(rich)
-            else:
-                callees_list.append(
-                    {
-                        "qualified_name": _usr_to_display_name(callee_usr),
-                        "is_project": False,
-                    }
-                )
 
     def find_callees(
         self, function_name: str, class_name: str = "", project_only: bool = True
     ) -> Dict[str, Any]:
-        """
-        Find all functions called by the specified function.
+        """Find all functions called by the specified function."""
+        return self.call_graph_service.find_callees(function_name, class_name, project_only)
 
-        Args:
-            function_name: Name of the source function
-            class_name: Optional class name to disambiguate methods
-            project_only: When True (default), only return callees from project files.
-                When False, also include callees from external dependencies (shown as
-                {"usr": "<USR>", "is_project": false} entries since no metadata is indexed).
-
-        Returns:
-            Dictionary with:
-                - function: The source function name
-                - callees: List of callee function info (name, kind, file, line, signature,
-                          parent_class, is_project, start_line, end_line, header info)
-        """
-        callees_list: List[Dict[str, Any]] = []
-
-        target_functions = self.search_functions(
-            function_name, project_only=False, class_name=class_name
-        )
-
-        target_usrs = self._collect_target_usrs(target_functions)
-
-        total_raw_callees = 0
-        for usr in target_usrs:
-            callees = self.call_graph_analyzer.find_callees(usr)
-            total_raw_callees += len(callees)
-            for callee_usr in callees:
-                self._add_callee(callee_usr, callees_list, project_only, target_usrs)
-
-        target_qualified_name = (
-            target_functions[0]["qualified_name"] if target_functions else function_name
-        )
-        return {
-            "function": function_name,
-            "callees": callees_list,
-            "_function_found": len(target_usrs) > 0,
-            "_has_any_in_graph": total_raw_callees > 0,
-            "_target_qualified_name": target_qualified_name,
-        }
-
-    def _get_usrs_for_functions(self, funcs: List[Dict[str, Any]]) -> set:
-        """Resolve a list of function search results to a set of USRs."""
-        usrs = set()
-        for func in funcs:
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.function_index.get(func["qualified_name"].split("::")[-1], []):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    usrs.add(symbol.usr)
-        return usrs
-
-    def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> List[List[str]]:
-        """Perform BFS to find paths between sets of USRs."""
-        paths = []
-        for from_usr in from_usrs:
-            # Queue contains (current_usr, path)
-            queue = [(from_usr, [from_usr])]
-            visited = {from_usr}
-            depth = 0
-
-            while queue and depth < max_depth:
-                next_queue = []
-                for current_usr, path in queue:
-                    # Check if we reached the target
-                    if current_usr in to_usrs:
-                        # Convert path of USRs to function names
-                        name_path = []
-                        for usr in path:
-                            if usr in self.usr_index:
-                                info = self.usr_index[usr]
-                                name_path.append(
-                                    f"{info.parent_class}::{info.name}"
-                                    if info.parent_class
-                                    else info.name
-                                )
-                        paths.append(name_path)
-                        continue
-
-                    # Explore callees
-                    for callee_usr in self.call_graph_analyzer.find_callees(current_usr):
-                        if callee_usr not in visited:
-                            visited.add(callee_usr)
-                            next_queue.append((callee_usr, path + [callee_usr]))
-
-                queue = next_queue
-                depth += 1
-
-        return paths
+    def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
+        """Get all call sites FROM a specific function."""
+        return self.call_graph_service.get_call_sites(function_name, class_name)
 
     def get_call_path(
         self, from_function: str, to_function: str, max_depth: int = 10
     ) -> List[List[str]]:
-        """Find call paths from one function to another using BFS"""
-        # Find source and target USRs
-        # Pass names directly (see find_incoming_calls comment for rationale).
-        from_funcs = self.search_functions(from_function, project_only=False)
-        to_funcs = self.search_functions(to_function, project_only=False)
-
-        if not from_funcs or not to_funcs:
-            return []
-
-        # Get USRs
-        from_usrs = self._get_usrs_for_functions(from_funcs)
-        to_usrs = self._get_usrs_for_functions(to_funcs)
-
-        # BFS to find paths
-        return self._find_paths_bfs(from_usrs, to_usrs, max_depth)
+        """Find call paths from one function to another using BFS."""
+        return self.call_graph_service.get_call_path(from_function, to_function, max_depth)
 
     def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
         """Search for symbols within a specific file or files matching a glob pattern.
@@ -3742,7 +2928,7 @@ class CppAnalyzer:
         if kind in ("class", "struct") or (not kind and symbol_kind in (None, "class")):
             # Check file index for files that might reference the class
             for file_path, symbols in self.file_index.items():
-                if not project_only or self._is_project_file(file_path):
+                if not project_only or self.compilation_env._is_project_file(file_path):
                     # If file has the class definition or any methods of the class
                     for symbol in symbols:
                         sym_qname = symbol.qualified_name or symbol.name
