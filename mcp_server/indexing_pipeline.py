@@ -8,43 +8,32 @@ and cache persistence.
 
 import os
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from . import diagnostics
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class SingleFileIndexingPipeline:
     """Coordinates parsing and symbol extraction for a single C++ file."""
 
-    def __init__(
-        self,
-        clang_parser: Any,
-        symbol_extractor: Any,
-        compilation_env: Any,
-        cache_orchestrator: Any,
-        cache_manager: Any,
-        concurrency: Any,
-        symbol_store: Any,
-    ):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize the single-file indexing pipeline.
 
         Args:
-            clang_parser: ClangParser instance.
-            symbol_extractor: SymbolExtractor instance.
-            compilation_env: CompilationEnvironment instance.
-            cache_orchestrator: CacheOrchestrator instance.
-            cache_manager: CacheManager instance.
-            concurrency: ConcurrencyContext instance.
-            symbol_store: SymbolIndexStore instance.
+            context: Shared project context with all required services.
         """
-        self.clang_parser = clang_parser
-        self.symbol_extractor = symbol_extractor
-        self.compilation_env = compilation_env
-        self.cache_orchestrator = cache_orchestrator
-        self.cache_manager = cache_manager
-        self.concurrency = concurrency
-        self.symbol_store = symbol_store
+        self.context = context
+        self.clang_parser = context.clang_parser
+        self.symbol_extractor = context.symbol_extractor
+        self.compilation_env = context.compilation_env
+        self.cache_orchestrator = context.cache_orchestrator
+        self.cache_manager = context.cache_manager
+        self.concurrency = context.concurrency
+        self.symbol_store = context.symbol_store
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file.
