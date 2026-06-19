@@ -1,9 +1,12 @@
 import threading
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError
 
 from . import diagnostics
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class ClangParser:
@@ -11,14 +14,14 @@ class ClangParser:
     Handles libclang Index and TranslationUnit management.
     """
 
-    def __init__(self, analyzer: Any):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize ClangParser.
 
         Args:
-            analyzer: Reference to the CppAnalyzer instance for access to config and cache_manager.
+            context: Shared project context for access to config and cache_manager.
         """
-        self.analyzer = analyzer
+        self.context = context
         self._thread_local = threading.local()
 
     def _get_thread_index(self) -> Index:
@@ -144,7 +147,7 @@ class ClangParser:
             cache_error_msg = full_error_msg[:200]
 
             parse_error = Exception(full_error_msg)
-            self.analyzer.cache_manager.log_parse_error(
+            self.context.cache_manager.log_parse_error(
                 file_path, parse_error, current_hash, compile_args_hash, retry_count
             )
 
