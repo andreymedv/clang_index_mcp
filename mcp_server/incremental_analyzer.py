@@ -304,27 +304,42 @@ class IncrementalAnalyzer:
 
     def _remove_file(self, file_path: str):
         """
-        Remove file from cache and dependency graph.
+        Remove file from cache, indexes, and dependency graph.
 
         Args:
             file_path: Path to deleted file
         """
         diagnostics.info(f"Removing deleted file: {file_path}")
 
-        # Remove from cache
+        self._remove_from_indexes(file_path)
+        self._remove_from_cache(file_path)
+        self._remove_from_dependency_graph(file_path)
+        self._remove_from_header_tracker(file_path)
+
+    def _remove_from_indexes(self, file_path: str):
+        """Remove file from in-memory indexes (class, function, file, usr indexes)."""
+        try:
+            self.analyzer.symbol_store._remove_file_from_indexes(file_path)
+        except Exception as e:
+            diagnostics.warning(f"Failed to remove {file_path} from indexes: {e}")
+
+    def _remove_from_cache(self, file_path: str):
+        """Remove file from cache."""
         try:
             self.analyzer.cache_manager.backend.remove_file_cache(file_path)
         except Exception as e:
             diagnostics.warning(f"Failed to remove {file_path} from cache: {e}")
 
-        # Remove from dependency graph
+    def _remove_from_dependency_graph(self, file_path: str):
+        """Remove file from dependency graph."""
         if self.analyzer.dependency_graph:
             try:
                 self.analyzer.dependency_graph.remove_file_dependencies(file_path)
             except Exception as e:
                 diagnostics.warning(f"Failed to remove {file_path} from dependency graph: {e}")
 
-        # Remove from header tracker if it's a header
+    def _remove_from_header_tracker(self, file_path: str):
+        """Remove file from header tracker if it's a header."""
         from .file_scanner import FileScanner
 
         if self.analyzer.header_tracker and file_path.endswith(
