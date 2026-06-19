@@ -97,7 +97,7 @@ class CppAnalyzer:
         self.progress_reporter = self.context.progress_reporter
 
         # Components migrated to ProjectContext are created with the context.
-        self.call_graph_service = CallGraphService(self)
+        self.call_graph_service = CallGraphService(self.context)
         self.context.call_graph_service = self.call_graph_service
 
         self.symbol_store = SymbolIndexStore(self.context)
@@ -105,6 +105,9 @@ class CppAnalyzer:
 
         self.query_engine = QueryEngine(self)
         self.context.query_engine = self.query_engine
+
+        # Break circular dependency: CallGraphService needs symbol_store/query_engine.
+        self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
 
         self.cache_orchestrator = CacheOrchestrator(self)
         self.context.cache_orchestrator = self.cache_orchestrator

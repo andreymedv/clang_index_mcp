@@ -6,13 +6,16 @@ and call paths between functions.
 """
 
 import json
-from typing import Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from . import diagnostics
 from .call_graph import CallGraphAnalyzer
 from .dependency_graph import DependencyGraphBuilder
 from .symbol_extractor import _usr_to_display_name
 from .symbol_info import build_location_objects, omit_empty
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class CallGraphService:
@@ -21,21 +24,34 @@ class CallGraphService:
     and call path queries.
     """
 
-    def __init__(self, analyzer: Any):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize CallGraphService.
 
         Args:
-            analyzer: Reference to the CppAnalyzer instance for access to
-                      indexes, cache_manager, and search_functions.
+            context: Shared project context for access to indexes,
+                     cache_manager, and search_functions.
         """
-        self.analyzer = analyzer
+        self.context = context
+        assert context.cache_manager is not None
+        self.cache_manager = context.cache_manager
+
+        # Dependencies set after construction to break the circular dependency
+        # between CallGraphService and SymbolIndexStore/QueryEngine.
+        self.symbol_store: Any = None
+        self.query_engine: Any = None
+
         self.call_graph_analyzer = CallGraphAnalyzer()
         self.dependency_graph: Optional[DependencyGraphBuilder] = None
 
+    def set_dependencies(self, symbol_store: Any, query_engine: Any) -> None:
+        """Wire symbol store and query engine after they are created."""
+        self.symbol_store = symbol_store
+        self.query_engine = query_engine
+
     def init_dependency_graph(self) -> None:
         """Initialize the dependency graph builder after cache_manager is available."""
-        cache_manager = self.analyzer.cache_manager
+        cache_manager = self.cache_manager
         if hasattr(cache_manager.backend, "conn"):
             self.dependency_graph = DependencyGraphBuilder(lambda: cache_manager.backend.conn)
             diagnostics.debug("Dependency graph builder initialized with dynamic connection")
@@ -44,7 +60,7 @@ class CallGraphService:
 
     def setup_cache_backend(self) -> None:
         """Wire the call graph analyzer to the SQLite cache backend."""
-        self.call_graph_analyzer.cache_backend = self.analyzer.cache_manager.backend
+        self.call_graph_analyzer.cache_backend = self.cache_manager.backend
 
     # ------------------------------------------------------------------
     # Call site streaming (used during indexing)
@@ -95,7 +111,7 @@ class CallGraphService:
     def _stream_call_sites(self, file_path: str, call_sites: List[Dict]):
         """Stream call sites to SQLite and update in-memory call graph."""
         diagnostics.debug(f"Streaming {len(call_sites)} call sites from {file_path} to SQLite")
-        cache_manager = self.analyzer.cache_manager
+        cache_manager = self.cache_manager
         if cache_manager and cache_manager.backend:
             cache_manager.backend.delete_call_sites_by_file(file_path)
             cache_manager.backend.save_call_sites_batch(call_sites)
@@ -140,7 +156,7 @@ class CallGraphService:
         callers_list: List[Dict[str, Any]] = []
         call_sites_list: List[Dict[str, Any]] = []
 
-        target_functions = self.analyzer.search_functions(
+        target_functions = self.query_engine.search_functions(
             function_name, project_only=False, class_name=class_name
         )
 
@@ -195,7 +211,7 @@ class CallGraphService:
         """
         callees_list: List[Dict[str, Any]] = []
 
-        target_functions = self.analyzer.search_functions(
+        target_functions = self.query_engine.search_functions(
             function_name, project_only=False, class_name=class_name
         )
 
@@ -232,13 +248,13 @@ class CallGraphService:
         """
         call_sites_list: List[Dict[str, Any]] = []
 
-        source_functions = self.analyzer.search_functions(
+        source_functions = self.query_engine.search_functions(
             function_name, project_only=False, class_name=class_name
         )
 
         source_usrs = self._collect_target_usrs(source_functions)
 
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         for usr in source_usrs:
             call_sites = self.call_graph_analyzer.get_call_sites_for_caller(usr)
             for call_site in call_sites:
@@ -255,8 +271,8 @@ class CallGraphService:
         self, from_function: str, to_function: str, max_depth: int = 10
     ) -> List[List[str]]:
         """Find call paths from one function to another using BFS"""
-        from_funcs = self.analyzer.search_functions(from_function, project_only=False)
-        to_funcs = self.analyzer.search_functions(to_function, project_only=False)
+        from_funcs = self.query_engine.search_functions(from_function, project_only=False)
+        to_funcs = self.query_engine.search_functions(to_function, project_only=False)
 
         if not from_funcs or not to_funcs:
             return []
@@ -273,7 +289,7 @@ class CallGraphService:
     def _collect_target_usrs(self, target_functions: List[Dict[str, Any]]) -> Set[str]:
         """Collect USRs for target functions by matching file/line metadata."""
         target_usrs = set()
-        function_index = self.analyzer.function_index
+        function_index = self.symbol_store.function_index
         for func in target_functions:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
@@ -287,7 +303,7 @@ class CallGraphService:
         self, caller_usr: str, callers_list: List[Dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single caller to the callers list, respecting project_only filter."""
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         if caller_usr in usr_index:
             caller_info = usr_index[caller_usr]
             callers_list.append(
@@ -318,7 +334,7 @@ class CallGraphService:
         self, call_site, call_sites_list: List[Dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single call site to the call sites list, respecting project_only filter."""
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         if call_site.caller_usr in usr_index:
             caller_info = usr_index[call_site.caller_usr]
             call_sites_list.append(
@@ -343,7 +359,7 @@ class CallGraphService:
 
     def _build_call_site_entry(self, call_site: Any) -> Dict[str, Any]:
         """Build a call site entry for a callee that exists in the project index."""
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         target_info = usr_index[call_site.callee_usr]
         entry: Dict[str, Any] = {
             "target": target_info.name,
@@ -388,7 +404,7 @@ class CallGraphService:
         target_usrs: Set[str],
     ) -> None:
         """Add a single callee to the callees list, respecting project_only filter."""
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         if callee_usr in usr_index:
             callee_info = usr_index[callee_usr]
             callees_list.append(
@@ -425,7 +441,7 @@ class CallGraphService:
     def _get_usrs_for_functions(self, funcs: List[Dict[str, Any]]) -> set:
         """Resolve a list of function search results to a set of USRs."""
         usrs = set()
-        function_index = self.analyzer.function_index
+        function_index = self.symbol_store.function_index
         for func in funcs:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
@@ -438,7 +454,7 @@ class CallGraphService:
     def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> List[List[str]]:
         """Perform BFS to find paths between sets of USRs."""
         paths = []
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         for from_usr in from_usrs:
             queue = [(from_usr, [from_usr])]
             visited = {from_usr}
@@ -476,7 +492,7 @@ class CallGraphService:
         Used by find_incoming_calls/find_callees to avoid returning opaque USR strings for
         external symbols.  Returns None when the symbol cannot be found at all.
         """
-        usr_index = self.analyzer.usr_index
+        usr_index = self.symbol_store.usr_index
         if usr in usr_index:
             info = usr_index[usr]
             return omit_empty(
@@ -489,7 +505,7 @@ class CallGraphService:
                     **build_location_objects(info),
                 }
             )
-        backend = getattr(self.analyzer.cache_manager, "backend", None)
+        backend = getattr(self.cache_manager, "backend", None)
         if backend is not None and hasattr(backend, "load_symbol_by_usr"):
             info = backend.load_symbol_by_usr(usr)
             if info is not None:
@@ -516,7 +532,7 @@ class CallGraphService:
 
         Returns None if no project-type template args are found.
         """
-        backend = getattr(self.analyzer.cache_manager, "backend", None)
+        backend = getattr(self.cache_manager, "backend", None)
         if backend is None or not hasattr(backend, "get_template_mediated_call_sites"):
             return None
         rows = backend.get_template_mediated_call_sites(list(target_usrs), callee_usr)
