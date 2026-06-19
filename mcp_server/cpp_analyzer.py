@@ -7,7 +7,6 @@ It's slower than the C++ implementation but more reliable and easier to debug.
 
 import json
 import os
-import re
 import sys
 import threading
 import time
@@ -29,8 +28,8 @@ from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .project_identity import ProjectIdentity
+from .query_engine import QueryEngine
 from .search_engine import SearchEngine
-from .smart_fallback import FallbackResult, SmartFallback
 from .state_manager import IndexingProgress
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
@@ -171,19 +170,8 @@ class CppAnalyzer:
         # Initialize compilation environment (manages file scanner, compile commands, etc.)
         self.compilation_env = CompilationEnvironment(self)
 
-        # Initialize search engine (Phase 1.3: needs cache_manager for type alias lookups)
-        self.search_engine = SearchEngine(
-            self.symbol_store.class_index,
-            self.symbol_store.function_index,
-            self.symbol_store.file_index,
-            self.symbol_store.usr_index,
-            self.index_lock,
-            cache_manager=self.cache_manager,
-        )
-
-        # Smart fallback for empty search results
-        self.smart_fallback = SmartFallback()
-        self._last_fallback: Optional[FallbackResult] = None  # Stores last fallback result
+        # Initialize query engine (manages search, hierarchy, and analysis operations)
+        self.query_engine = QueryEngine(self)
 
         # Wire call graph service to SQLite cache backend
         self.call_graph_service.setup_cache_backend()
@@ -393,6 +381,26 @@ class CppAnalyzer:
     def header_tracker(self):
         """Backward-compatible access to header_tracker."""
         return self.cache_orchestrator.header_tracker
+
+    @property
+    def search_engine(self):
+        """Backward-compatible access to search_engine."""
+        return self.query_engine.search_engine
+
+    @property
+    def smart_fallback(self):
+        """Backward-compatible access to smart_fallback."""
+        return self.query_engine.smart_fallback
+
+    @property
+    def _last_fallback(self):
+        """Backward-compatible access to _last_fallback."""
+        return self.query_engine._last_fallback
+
+    @_last_fallback.setter
+    def _last_fallback(self, value):
+        """Allow setting _last_fallback."""
+        self.query_engine._last_fallback = value
 
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection (delegates to cache_orchestrator)."""
@@ -1267,14 +1275,8 @@ class CppAnalyzer:
         )
 
     def pop_last_fallback(self):
-        """Return and clear the last fallback result.
-
-        Called by the MCP server layer to retrieve smart suggestions
-        after a search returns empty results.
-        """
-        result = self._last_fallback
-        self._last_fallback = None
-        return result
+        """Return and clear the last fallback result (delegates to query_engine)."""
+        return self.query_engine.pop_last_fallback()
 
     def search_classes(
         self,
@@ -1285,27 +1287,10 @@ class CppAnalyzer:
         max_results: Optional[int] = None,
         include_base_classes: bool = True,
     ):
-        """Search for classes matching pattern"""
-        self._last_fallback = None
-        try:
-            results = self.search_engine.search_classes(
-                pattern, project_only, file_name, namespace, max_results, include_base_classes
-            )
-            actual = results[0] if isinstance(results, tuple) else results
-            if not actual:
-                self._last_fallback = self.smart_fallback.analyze_empty_result(
-                    pattern=pattern,
-                    tool_name="search_classes",
-                    class_index=self.class_index,
-                    function_index=self.function_index,
-                    file_index=self.file_index,
-                    file_name=file_name,
-                    namespace=namespace,
-                )
-            return results
-        except re.error as e:
-            diagnostics.error(f"Invalid regex pattern: {e}")
-            return []
+        """Search for classes matching pattern (delegates to query_engine)."""
+        return self.query_engine.search_classes(
+            pattern, project_only, file_name, namespace, max_results, include_base_classes
+        )
 
     def search_functions(
         self,
@@ -1318,62 +1303,21 @@ class CppAnalyzer:
         signature_pattern: Optional[str] = None,
         include_attributes: bool = False,
     ):
-        """Search for functions matching pattern, optionally within a specific class"""
-        self._last_fallback = None
-        try:
-            results = self.search_engine.search_functions(
-                pattern,
-                project_only,
-                class_name,
-                file_name,
-                namespace,
-                max_results,
-                signature_pattern,
-                include_attributes,
-            )
-            actual = results[0] if isinstance(results, tuple) else results
-            if not actual:
-                self._last_fallback = self.smart_fallback.analyze_empty_result(
-                    pattern=pattern,
-                    tool_name="search_functions",
-                    class_index=self.class_index,
-                    function_index=self.function_index,
-                    file_index=self.file_index,
-                    file_name=file_name,
-                    namespace=namespace,
-                    class_name=class_name,
-                )
-            return results
-        except re.error as e:
-            diagnostics.error(f"Invalid regex pattern: {e}")
-            return []
+        """Search for functions matching pattern (delegates to query_engine)."""
+        return self.query_engine.search_functions(
+            pattern,
+            project_only,
+            class_name,
+            file_name,
+            namespace,
+            max_results,
+            signature_pattern,
+            include_attributes,
+        )
 
     def get_stats(self) -> Dict[str, int]:
-        """Get indexer statistics"""
-        with self.index_lock:
-            # Count total symbols (not just unique names)
-            class_count = sum(len(infos) for infos in self.class_index.values())
-            function_count = sum(len(infos) for infos in self.function_index.values())
-
-            stats = {
-                "class_count": class_count,
-                "function_count": function_count,
-                "file_count": self.indexed_file_count,
-            }
-
-            # Add compile commands statistics if enabled
-            # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-            if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
-                compile_stats = self.compile_commands_manager.get_stats()
-                stats.update(
-                    {
-                        "compile_commands_enabled": compile_stats["enabled"],
-                        "compile_commands_count": compile_stats["compile_commands_count"],
-                        "compile_commands_file_mapping_count": compile_stats["file_mapping_count"],
-                    }
-                )
-
-            return stats
+        """Get indexer statistics (delegates to query_engine)."""
+        return self.query_engine.get_stats()
 
     def _submit_refresh_tasks(
         self, executor: Executor, modified_files: List[str], new_files: List[str]
@@ -1572,20 +1516,14 @@ class CppAnalyzer:
             diagnostics.debug(f"Progress callback failed: {e}")
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
-        """Get detailed information about a specific class, including direct derived classes."""
-        result = self.search_engine.get_class_info(class_name)
-        if result and "error" not in result:
-            # Append direct derived classes (project_only=True by default)
-            # Use qualified_name for accurate lookup when available
-            lookup_name = result.get("qualified_name") or class_name
-            result["derived_classes"] = self.get_derived_classes(lookup_name, project_only=True)
-        return result
+        """Get detailed information about a specific class (delegates to query_engine)."""
+        return self.query_engine.get_class_info(class_name)
 
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
     ) -> List[str]:
-        """Get signature details for functions with given name, optionally within a specific class"""
-        return self.search_engine.get_function_signature(function_name, class_name)
+        """Get signature details for functions (delegates to query_engine)."""
+        return self.query_engine.get_function_signature(function_name, class_name)
 
     def _get_alias_details_from_db(self, alias_names: List[str]) -> List[Dict[str, Any]]:
         """Query type_aliases table for detailed information about a set of aliases."""
@@ -1699,41 +1637,7 @@ class CppAnalyzer:
         return None
 
     def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
-        """
-        Get comprehensive type alias information for a given type name.
-
-        Phase 1.6: MCP Tool Integration
-
-        This method resolves type aliases bidirectionally:
-        - If type_name is an alias, returns canonical type + all other aliases
-        - If type_name is a canonical type, returns it + all its aliases
-        - Supports unqualified, partially qualified, and fully qualified names
-        - Detects and reports ambiguous type names
-
-        Args:
-            type_name: Type name to query (unqualified, partially qualified, or fully qualified)
-                      Examples: "Widget", "ui::Widget", "::ui::Widget"
-
-        Returns:
-            Dictionary with type alias information:
-            - Success case: canonical_type, qualified_name, namespace, file, line,
-                           input_was_alias, is_ambiguous, aliases[]
-            - Ambiguous case: error, is_ambiguous, matches[], suggestion
-            - Not found case: error, canonical_type=null, aliases=[]
-
-        Examples:
-            # Input is canonical type
-            get_type_alias_info("ui::Widget")
-            → {"canonical_type": "ui::Widget", "aliases": [...], "input_was_alias": false}
-
-            # Input is alias
-            get_type_alias_info("WidgetAlias")
-            → {"canonical_type": "ui::Widget", "aliases": [...], "input_was_alias": true}
-
-            # Ambiguous unqualified name
-            get_type_alias_info("Widget")
-            → {"error": "Ambiguous type name 'Widget'", "is_ambiguous": true, "matches": [...]}
-        """
+        """Get comprehensive type alias information."""
         # Step 1: Check if input is a known alias in the type_aliases table
         input_canonical = self.cache_manager.get_canonical_for_alias(type_name)
         input_was_alias = False
@@ -1745,10 +1649,9 @@ class CppAnalyzer:
                 return info
 
         # Step 2: Input is not a known alias - search class_index for matching classes
-        # This handles queries by class/struct name (e.g., "Widget", "ui::Widget")
         matches = self._find_type_matches(type_name)
 
-        # Step 3: Check for ambiguity (multiple matches with different qualified names)
+        # Step 3: Check for ambiguity
         ambiguity_error = self._check_type_ambiguity(type_name, matches)
         if ambiguity_error:
             return ambiguity_error
@@ -1761,8 +1664,7 @@ class CppAnalyzer:
                 "aliases": [],
             }
 
-        # Step 5: We have exactly one match (or multiple with same qualified_name)
-        # Use the first match (prefer definitions over declarations)
+        # Step 5: Use the first match (prefer definitions over declarations)
         canonical_info = matches[0]
         for m in matches:
             if m.is_definition:
@@ -1804,51 +1706,10 @@ class CppAnalyzer:
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
     ):
-        """
-        Search for all symbols (classes and functions) matching pattern.
-
-        Args:
-            pattern: Regex pattern to search for
-            project_only: Only include project files (exclude dependencies)
-            symbol_types: List of symbol types to include. Options: ['class', 'struct', 'function', 'method']
-                         If None, includes all types.
-            namespace: Optional namespace filter (exact match, case-sensitive)
-            max_results: Optional maximum number of results to return
-            signature_pattern: Optional substring to match against function signatures
-                             (case-insensitive). Only applies to function results.
-
-        Returns:
-            Dictionary with keys 'classes' and 'functions' containing matching symbols
-            (or tuple with total_count if max_results is specified)
-        """
-        self._last_fallback = None
-        try:
-            results = self.search_engine.search_symbols(
-                pattern,
-                project_only,
-                symbol_types,
-                namespace,
-                max_results,
-                signature_pattern,
-            )
-            actual = results[0] if isinstance(results, tuple) else results
-            if isinstance(actual, dict):
-                count = sum(len(v) for v in actual.values() if isinstance(v, list))
-            else:
-                count = len(actual) if actual else 0
-            if count == 0:
-                self._last_fallback = self.smart_fallback.analyze_empty_result(
-                    pattern=pattern,
-                    tool_name="search_symbols",
-                    class_index=self.class_index,
-                    function_index=self.function_index,
-                    file_index=self.file_index,
-                    namespace=namespace,
-                )
-            return results
-        except re.error as e:
-            diagnostics.error(f"Invalid regex pattern: {e}")
-            return {"classes": [], "functions": []}
+        """Search for all symbols (classes and functions) matching pattern (delegates to query_engine)."""
+        return self.query_engine.search_symbols(
+            pattern, project_only, symbol_types, namespace, max_results, signature_pattern
+        )
 
     def _check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
         """
@@ -2382,42 +2243,7 @@ class CppAnalyzer:
         return self.call_graph_service.get_call_path(from_function, to_function, max_depth)
 
     def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
-        """Search for symbols within a specific file or files matching a glob pattern.
-
-        Phase 2 (Qualified Names): Supports qualified pattern matching.
-        Phase LLM: Supports glob patterns and returns suggestions when no match.
-
-        File path formats:
-        - Absolute path: /full/path/to/file.cpp
-        - Relative path: src/main.cpp (relative to project root)
-        - Filename only: main.cpp (matches any file with this name)
-        - Glob pattern: **/Tests/**/*.cpp, src/*.h (matches multiple files)
-
-        Symbol pattern matching modes:
-        - Empty string ("") matches ALL symbols in the file(s)
-        - Unqualified ("View") matches View in any namespace (case-insensitive)
-        - Qualified ("ui::View") matches with component-based suffix
-        - Exact ("::View") matches only global namespace symbols
-        - Regex ("test.*") uses case-insensitive regex fullmatch
-
-        Args:
-            file_path: Path to file (absolute, relative, filename, or glob pattern)
-            pattern: Search pattern (qualified, unqualified, or regex)
-
-        Returns:
-            Dict with:
-            - results: List of matching symbols
-            - matched_files: Files that were searched (for glob patterns)
-            - suggestions: Similar file paths when no exact match (for non-glob)
-            - message: Helpful message about the search
-
-        Examples:
-            find_in_file("view.h", "View") - all View symbols in view.h
-            find_in_file("**/tests/**/*.cpp", "") - all symbols in test files
-            find_in_file("myfile", "") - suggestions if not found
-
-        Task: T2.2.4 (Qualified Names Phase 2), LLM Integration (bd1)
-        """
+        """Search for symbols within a specific file or files matching a glob pattern."""
         # Detect if file_path is a glob pattern
         glob_chars = set("*?[]")
         is_glob = any(c in file_path for c in glob_chars)
