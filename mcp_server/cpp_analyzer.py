@@ -45,7 +45,7 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 try:
-    from clang.cindex import Index, TranslationUnit
+    from clang.cindex import Index
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
@@ -108,9 +108,6 @@ class CppAnalyzer:
 
         # Concurrency context (locks, thread-local buffers, locking strategy)
         self.concurrency = ConcurrencyContext()
-
-        # Track indexed files
-        self.translation_units: Dict[str, TranslationUnit] = {}
 
         # Cancellation support
         self.cancellation = CancellationCoordinator()
