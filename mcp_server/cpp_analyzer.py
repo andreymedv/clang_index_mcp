@@ -22,10 +22,7 @@ from .query_engine import QueryEngine
 from .refresh_pipeline import RefreshPipeline
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
-from .symbol_info import (
-    CLASS_KINDS,
-    SymbolInfo,
-)
+from .symbol_info import SymbolInfo
 
 # Handle both package and script imports
 try:
@@ -140,7 +137,7 @@ class CppAnalyzer:
         self.clang_parser = ClangParser(self.context)
         self.context.clang_parser = self.clang_parser
 
-        self.symbol_extractor = SymbolExtractor(self)
+        self.symbol_extractor = SymbolExtractor(self.context)
         self.context.symbol_extractor = self.symbol_extractor
 
         # Indexing/refresh pipelines receive the fully wired context.
@@ -504,61 +501,10 @@ class CppAnalyzer:
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
 
-        This method takes all symbols collected in thread-local buffers during parsing
-        and adds them to the shared indexes in one atomic operation, dramatically
-        reducing lock contention compared to per-symbol locking.
-
-        Returns:
-            Number of symbols actually added (after deduplication)
+        Delegates to SymbolIndexStore; kept as a backward-compatible shim on
+        CppAnalyzer.
         """
-        symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
-
-        if not symbols_buffer and not calls_buffer and not aliases_buffer:
-            return 0
-
-        added_count = 0
-
-        # Single lock acquisition for all symbols (conditional based on execution mode)
-        with self._get_lock():
-            # Add all collected symbols
-            for info in symbols_buffer:
-                # USR-based deduplication with definition-wins logic (Phase 1)
-                if info.usr and info.usr in self.usr_index:
-                    existing_symbol = self.usr_index[info.usr]
-                    resolved_info = self.symbol_store._handle_symbol_definition_wins(
-                        info, existing_symbol
-                    )
-                    if resolved_info is None:
-                        continue
-                    info = resolved_info
-
-                # New symbol or replacement - add to all indexes
-                if info.kind in CLASS_KINDS:
-                    self.class_index[info.name].append(info)
-                else:
-                    self.function_index[info.name].append(info)
-
-                if info.usr:
-                    self.usr_index[info.usr] = info
-
-                self.symbol_store._add_symbol_to_file_index(info)
-                added_count += 1
-
-            # Add all collected call relationships (Phase 3: now includes location)
-            self.call_graph_service._process_call_buffer(calls_buffer)
-
-            # Add all collected type aliases (Phase 1.3: Type Alias Tracking)
-            if aliases_buffer:
-                diagnostics.debug(f"Processing {len(aliases_buffer)} type aliases from buffer")
-                saved_count = self.cache_manager.save_type_aliases_batch(aliases_buffer)
-                diagnostics.debug(f"Saved {saved_count} type aliases to cache")
-
-        # Clear buffers for next use
-        symbols_buffer.clear()
-        calls_buffer.clear()
-        aliases_buffer.clear()
-
-        return added_count
+        return self.symbol_store._bulk_write_symbols()
 
     def _extract_diagnostics(self, tu: Any) -> Tuple[List[Any], List[Any]]:
         """Extract diagnostics from translation unit."""

@@ -1,12 +1,15 @@
 import json
 import re
 import time
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 from clang.cindex import CursorKind
 
 from . import diagnostics
 from .symbol_info import SymbolInfo
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 # ---------------------------------------------------------------------------
 # USR → human-readable qualified name conversion
@@ -267,14 +270,64 @@ class SymbolExtractor:
     Handles AST traversal and symbol extraction from libclang cursors.
     """
 
-    def __init__(self, analyzer: Any):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize SymbolExtractor.
 
         Args:
-            analyzer: Reference to the CppAnalyzer instance for access to indexes and config.
+            context: Shared project context for access to indexes and config.
         """
-        self.analyzer = analyzer
+        self.context = context
+        assert context.symbol_store is not None
+        self.symbol_store = context.symbol_store
+        assert context.concurrency is not None
+        self.concurrency = context.concurrency
+        assert context.compilation_env is not None
+        self.compilation_env = context.compilation_env
+        assert context.cache_orchestrator is not None
+        self.cache_orchestrator = context.cache_orchestrator
+        assert context.call_graph_service is not None
+        self.call_graph_service = context.call_graph_service
+
+    @property
+    def index_lock(self):
+        return self.concurrency.index_lock
+
+    @property
+    def class_index(self):
+        return self.symbol_store.class_index
+
+    @property
+    def function_index(self):
+        return self.symbol_store.function_index
+
+    @property
+    def file_index(self):
+        return self.symbol_store.file_index
+
+    @property
+    def usr_index(self):
+        return self.symbol_store.usr_index
+
+    @property
+    def header_tracker(self):
+        return self.cache_orchestrator.header_tracker
+
+    @property
+    def dependency_graph(self):
+        return self.call_graph_service.dependency_graph
+
+    def _is_project_file(self, file_path: str) -> bool:
+        return self.compilation_env._is_project_file(file_path)
+
+    def _get_file_hash(self, file_path: str) -> str:
+        return self.cache_orchestrator._get_file_hash(file_path)
+
+    def _init_thread_local_buffers(self):
+        return self.concurrency.init_thread_local_buffers()
+
+    def _get_thread_local_buffers(self):
+        return self.concurrency.get_thread_local_buffers()
 
     @staticmethod
     def _get_qualified_name(cursor: Any) -> str:
@@ -441,8 +494,8 @@ class SymbolExtractor:
 
     def _find_primary_template_info(self, primary_template_usr: str) -> Optional[Any]:
         """Look up the primary template in class_index by USR."""
-        with self.analyzer.index_lock:
-            for name, infos in self.analyzer.class_index.items():
+        with self.index_lock:
+            for name, infos in self.class_index.items():
                 for info in infos:
                     if info.usr == primary_template_usr:
                         return info
@@ -501,7 +554,7 @@ class SymbolExtractor:
         if not template_args:
             return False
 
-        primary_info = self.analyzer.usr_index.get(info.primary_template_usr)
+        primary_info = self.usr_index.get(info.primary_template_usr)
         if not primary_info:
             return False
 
@@ -525,7 +578,7 @@ class SymbolExtractor:
     def _resolve_deferred_instantiation_bases(self) -> int:
         """Resolve base_classes for template instantiations that couldn't be resolved during parsing."""
         resolved_count = 0
-        for name, infos in self.analyzer.class_index.items():
+        for name, infos in self.class_index.items():
             for info in infos:
                 if self._process_deferred_instantiation(info):
                     resolved_count += 1
@@ -1089,7 +1142,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process template classes (generic and partial specializations)."""
-        symbols_buffer, _, _ = self.analyzer._get_thread_local_buffers()
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
         kind = cursor.kind
 
         if cursor.spelling and should_extract:
@@ -1116,9 +1169,7 @@ class SymbolExtractor:
                 line=loc_info["line"],
                 column=loc_info["column"],
                 qualified_name=qualified_name,
-                is_project=(
-                    self.analyzer._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                ),
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
                 namespace=namespace,
                 parent_class="",
                 base_classes=base_classes,
@@ -1156,7 +1207,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process classes and structs."""
-        symbols_buffer, _, _ = self.analyzer._get_thread_local_buffers()
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
         kind = cursor.kind
 
         if cursor.spelling and should_extract:
@@ -1187,9 +1238,7 @@ class SymbolExtractor:
                 line=loc_info["line"],
                 column=loc_info["column"],
                 qualified_name=qualified_name,
-                is_project=(
-                    self.analyzer._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                ),
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
                 namespace=namespace,
                 parent_class="",
                 base_classes=base_classes,
@@ -1228,7 +1277,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process template functions."""
-        symbols_buffer, _, _ = self.analyzer._get_thread_local_buffers()
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
             qualified_name = common["qualified_name"]
@@ -1268,9 +1317,7 @@ class SymbolExtractor:
                 column=loc_info["column"],
                 qualified_name=qualified_name,
                 signature=signature,
-                is_project=(
-                    self.analyzer._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                ),
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
                 namespace=namespace,
                 access=access,
                 parent_class=effective_parent_class,
@@ -1312,7 +1359,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process functions and methods."""
-        symbols_buffer, _, _ = self.analyzer._get_thread_local_buffers()
+        symbols_buffer, _, _ = self._get_thread_local_buffers()
         kind = cursor.kind
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
@@ -1359,9 +1406,7 @@ class SymbolExtractor:
                 column=loc_info["column"],
                 qualified_name=qualified_name,
                 signature=signature,
-                is_project=(
-                    self.analyzer._is_project_file(loc_info["file"]) if loc_info["file"] else False
-                ),
+                is_project=(self._is_project_file(loc_info["file"]) if loc_info["file"] else False),
                 namespace=namespace,
                 access=access,
                 parent_class=effective_parent_class if is_method else "",
@@ -1403,7 +1448,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process type aliases."""
-        _, _, aliases_buffer = self.analyzer._get_thread_local_buffers()
+        _, _, aliases_buffer = self._get_thread_local_buffers()
         kind = cursor.kind
         if cursor.spelling and should_extract:
             try:
@@ -1441,7 +1486,7 @@ class SymbolExtractor:
                 all_type_names.append(type_name)
                 decl = arg_type.get_declaration()
                 if decl and decl.location and decl.location.file:
-                    if self.analyzer._is_project_file(decl.location.file.name):
+                    if self._is_project_file(decl.location.file.name):
                         project_types.append(type_name)
 
             if not project_types:
@@ -1455,7 +1500,7 @@ class SymbolExtractor:
 
     def _handle_call_cursor(self, cursor: Any, parent_function_usr: str) -> None:
         """Process function calls within function bodies."""
-        _, calls_buffer, _ = self.analyzer._get_thread_local_buffers()
+        _, calls_buffer, _ = self._get_thread_local_buffers()
         referenced = cursor.referenced
         if referenced and referenced.get_usr():
             called_usr = referenced.get_usr()
@@ -1491,12 +1536,12 @@ class SymbolExtractor:
 
     def _should_extract_header(self, file_path: str) -> bool:
         """Check if a header file should be extracted based on project status and tracker."""
-        if not self.analyzer._is_project_file(file_path):
+        if not self._is_project_file(file_path):
             return False
 
         try:
-            file_hash = self.analyzer._get_file_hash(file_path)
-            return bool(self.analyzer.header_tracker.try_claim_header(file_path, file_hash))
+            file_hash = self._get_file_hash(file_path)
+            return bool(self.header_tracker.try_claim_header(file_path, file_hash))
         except Exception as e:
             diagnostics.warning(f"Error checking header {file_path}: {e}")
             return False
@@ -1505,17 +1550,17 @@ class SymbolExtractor:
         """Mark successfully claimed headers as completed in the tracker."""
         for header in headers_to_extract:
             try:
-                file_hash = self.analyzer._get_file_hash(header)
-                self.analyzer.header_tracker.mark_completed(header, file_hash)
+                file_hash = self._get_file_hash(header)
+                self.header_tracker.mark_completed(header, file_hash)
             except Exception as e:
                 diagnostics.warning(f"Error marking header {header} as completed: {e}")
 
     def _update_dependency_graph(self, tu: Any, source_file: str):
         """Extract and update dependencies for the given translation unit."""
-        if self.analyzer.dependency_graph is not None:
+        if self.dependency_graph is not None:
             try:
-                includes = self.analyzer.dependency_graph.extract_includes_from_tu(tu, source_file)
-                self.analyzer.dependency_graph.update_dependencies(source_file, includes)
+                includes = self.dependency_graph.extract_includes_from_tu(tu, source_file)
+                self.dependency_graph.update_dependencies(source_file, includes)
             except Exception as e:
                 diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
 
@@ -1543,9 +1588,9 @@ class SymbolExtractor:
                 skipped_headers.add(file_path)
                 return False
 
-        self.analyzer._init_thread_local_buffers()
+        self._init_thread_local_buffers()
         self._process_cursor(tu.cursor, should_extract_from_file)
-        self.analyzer._bulk_write_symbols()
+        self.symbol_store._bulk_write_symbols()
 
         self._finalize_header_status(headers_to_extract)
         self._update_dependency_graph(tu, source_file)

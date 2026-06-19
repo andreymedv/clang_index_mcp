@@ -33,7 +33,8 @@ class SymbolIndexStore:
         """
         self.context = context
         assert context.call_graph_service is not None
-        self.call_graph_analyzer = context.call_graph_service.call_graph_analyzer
+        self.call_graph_service = context.call_graph_service
+        self.call_graph_analyzer = self.call_graph_service.call_graph_analyzer
         assert context.concurrency is not None
         self._get_lock = context.concurrency.get_lock
 
@@ -273,6 +274,65 @@ class SymbolIndexStore:
 
         # Rebuild call graph from all symbols
         self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+
+    def _bulk_write_symbols(self) -> int:
+        """
+        Bulk write collected symbols to shared indexes with a single lock acquisition.
+
+        Takes all symbols collected in thread-local buffers during parsing and adds
+        them to the shared indexes in one atomic operation, reducing lock contention.
+
+        Returns:
+            Number of symbols actually added (after deduplication)
+        """
+        symbols_buffer, calls_buffer, aliases_buffer = (
+            self.context.concurrency.get_thread_local_buffers()
+        )
+
+        if not symbols_buffer and not calls_buffer and not aliases_buffer:
+            return 0
+
+        added_count = 0
+
+        # Single lock acquisition for all symbols (conditional based on execution mode)
+        with self._get_lock():
+            # Add all collected symbols
+            for info in symbols_buffer:
+                # USR-based deduplication with definition-wins logic
+                if info.usr and info.usr in self.usr_index:
+                    existing_symbol = self.usr_index[info.usr]
+                    resolved_info = self._handle_symbol_definition_wins(info, existing_symbol)
+                    if resolved_info is None:
+                        continue
+                    info = resolved_info
+
+                # New symbol or replacement - add to all indexes
+                if info.kind in CLASS_KINDS:
+                    self.class_index[info.name].append(info)
+                else:
+                    self.function_index[info.name].append(info)
+
+                if info.usr:
+                    self.usr_index[info.usr] = info
+
+                self._add_symbol_to_file_index(info)
+                added_count += 1
+
+            # Add all collected call relationships
+            self.call_graph_service._process_call_buffer(calls_buffer)
+
+            # Add all collected type aliases
+            if aliases_buffer:
+                diagnostics.debug(f"Processing {len(aliases_buffer)} type aliases from buffer")
+                saved_count = self.context.cache_manager.save_type_aliases_batch(aliases_buffer)
+                diagnostics.debug(f"Saved {saved_count} type aliases to cache")
+
+        # Clear buffers for next use
+        symbols_buffer.clear()
+        calls_buffer.clear()
+        aliases_buffer.clear()
+
+        return added_count
 
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
