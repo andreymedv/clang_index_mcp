@@ -577,7 +577,7 @@ class IncrementalAnalyzer:
         """Submit re-analysis tasks to the executor."""
         if use_processes:
             # ProcessPoolExecutor: use worker function (same as index_project)
-            from mcp_server.cpp_analyzer import _process_file_worker
+            from mcp_server.worker_pool import _process_file_worker
 
             # Get project configuration for workers
             project_root = str(self.analyzer.project_root)

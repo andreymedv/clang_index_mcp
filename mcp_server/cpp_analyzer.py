@@ -10,7 +10,6 @@ import sys
 import time
 from concurrent.futures import (
     Executor,
-    Future,
     as_completed,
 )
 from pathlib import Path
@@ -27,6 +26,7 @@ from .concurrency_context import ConcurrencyContext
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .execution_config import ExecutionConfig
 from .indexing_progress_reporter import IndexingProgressReporter
+from .indexing_task_submitter import IndexingTaskSubmitter
 from .project_identity import ProjectIdentity
 from .query_engine import QueryEngine
 from .symbol_extractor import SymbolExtractor
@@ -35,7 +35,6 @@ from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
 )
-from .worker_pool import _process_file_worker
 
 # Handle both package and script imports
 try:
@@ -125,6 +124,15 @@ class CppAnalyzer:
 
         # Initialize compilation environment (manages file scanner, compile commands, etc.)
         self.compilation_env = CompilationEnvironment(self)
+
+        # Task submitter (extracted helper for submitting work to the executor)
+        self.task_submitter = IndexingTaskSubmitter(
+            self.project_root,
+            self.project_identity,
+            self.execution,
+            self.compilation_env,
+            self.index_file,
+        )
 
         # Initialize query engine (manages search, hierarchy, and analysis operations)
         self.query_engine = QueryEngine(self)
@@ -836,38 +844,6 @@ class CppAnalyzer:
             file_hash = self._get_file_hash(file_path)
             self.file_hashes[file_path] = file_hash
 
-    def _submit_indexing_tasks(
-        self, executor: Executor, files: List[str], force: bool, include_dependencies: bool
-    ) -> Dict:
-        """Submit indexing tasks to executor."""
-        if self.execution.use_processes:
-            config_file_str = (
-                str(self.project_identity.config_file_path)
-                if self.project_identity.config_file_path
-                else None
-            )
-            file_compile_args = self.compilation_env._prepare_worker_compile_args(files)
-
-            return {
-                executor.submit(
-                    _process_file_worker,
-                    (
-                        str(self.project_root),
-                        config_file_str,
-                        os.path.abspath(f),
-                        force,
-                        include_dependencies,
-                        file_compile_args[f],
-                    ),
-                ): os.path.abspath(f)
-                for f in files
-            }
-        else:
-            return {
-                executor.submit(self.index_file, os.path.abspath(f), force): os.path.abspath(f)
-                for f in files
-            }
-
     def _finalize_indexing(
         self,
         indexed_count: int,
@@ -968,7 +944,7 @@ class CppAnalyzer:
         executor = self.execution.worker_pool.setup()
 
         try:
-            future_to_file = self._submit_indexing_tasks(
+            future_to_file = self.task_submitter.submit_indexing_tasks(
                 executor, files, force, include_dependencies
             )
 
@@ -1055,57 +1031,6 @@ class CppAnalyzer:
         """Get indexer statistics (delegates to query_engine)."""
         return self.query_engine.get_stats()
 
-    def _submit_refresh_tasks(
-        self, executor: Executor, modified_files: List[str], new_files: List[str]
-    ) -> Dict[Future, str]:
-        """Submit indexing tasks for modified and new files."""
-        future_to_file = {}
-        if self.execution.use_processes:
-            project_root = str(self.project_root)
-            config_file_str = (
-                str(self.project_identity.config_file_path)
-                if self.project_identity.config_file_path
-                else None
-            )
-
-            all_files_to_process = list(modified_files) + list(new_files)
-            file_compile_args = self.compilation_env._prepare_refresh_compile_args(
-                all_files_to_process
-            )
-
-            for f in modified_files:
-                future = executor.submit(
-                    _process_file_worker,
-                    (
-                        project_root,
-                        config_file_str,
-                        os.path.abspath(f),
-                        True,
-                        self.include_dependencies,
-                        file_compile_args[f],
-                    ),
-                )
-                future_to_file[future] = f
-            for f in new_files:
-                future = executor.submit(
-                    _process_file_worker,
-                    (
-                        project_root,
-                        config_file_str,
-                        os.path.abspath(f),
-                        False,
-                        self.include_dependencies,
-                        file_compile_args[f],
-                    ),
-                )
-                future_to_file[future] = f
-        else:
-            for f in modified_files:
-                future_to_file[executor.submit(self.index_file, f, True)] = f
-            for f in new_files:
-                future_to_file[executor.submit(self.index_file, f, False)] = f
-        return future_to_file
-
     def _finalize_refresh(self, refreshed: int, deleted: int) -> None:
         """Perform post-refresh cleanup and optimizations."""
         if refreshed > 0 or deleted > 0:
@@ -1146,7 +1071,9 @@ class CppAnalyzer:
     ) -> Tuple[int, int]:
         """Run the parallel refresh loop and return (refreshed_count, failed_count)."""
         refreshed, failed = 0, 0
-        future_to_file = self._submit_refresh_tasks(executor, modified_files, new_files)
+        future_to_file = self.task_submitter.submit_refresh_tasks(
+            executor, modified_files, new_files, self.include_dependencies
+        )
         for i, future in enumerate(as_completed(future_to_file)):
             if wait_for_tools_callback:
                 wait_for_tools_callback()
