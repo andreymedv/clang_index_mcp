@@ -325,7 +325,11 @@ class IncrementalAnalyzer:
                 diagnostics.warning(f"Failed to remove {file_path} from dependency graph: {e}")
 
         # Remove from header tracker if it's a header
-        if self.analyzer.header_tracker and file_path.endswith((".h", ".hpp", ".hxx", ".h++")):
+        from .file_scanner import FileScanner
+
+        if self.analyzer.header_tracker and file_path.endswith(
+            tuple(FileScanner.HEADER_EXTENSIONS)
+        ):
             try:
                 self.analyzer.header_tracker.invalidate_header(file_path)
             except Exception as e:
