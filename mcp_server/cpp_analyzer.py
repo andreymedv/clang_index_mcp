@@ -7,10 +7,7 @@ It's slower than the C++ implementation but more reliable and easier to debug.
 
 import sys
 import time
-from concurrent.futures import (
-    Executor,
-    as_completed,
-)
+from concurrent.futures import as_completed
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -30,6 +27,7 @@ from .indexing_task_submitter import IndexingTaskSubmitter
 from .project_identity import ProjectIdentity
 from .worker_result_merger import WorkerResultMerger
 from .query_engine import QueryEngine
+from .refresh_pipeline import RefreshPipeline
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
 from .symbol_info import (
@@ -164,6 +162,19 @@ class CppAnalyzer:
             self.cache_manager,
             self.concurrency,
             self.symbol_store,
+        )
+
+        # Refresh pipeline
+        self.refresh_pipeline = RefreshPipeline(
+            self.compilation_env,
+            self.execution,
+            self.cache_manager,
+            self.cache_orchestrator,
+            self.symbol_extractor,
+            self.symbol_store,
+            self.task_submitter,
+            self.worker_result_merger,
+            self.progress_reporter,
         )
 
         # Task 3.2: Initialize compile commands manager only if needed
@@ -854,62 +865,6 @@ class CppAnalyzer:
         """Get indexer statistics (delegates to query_engine)."""
         return self.query_engine.get_stats()
 
-    def _finalize_refresh(self, refreshed: int, deleted: int) -> None:
-        """Perform post-refresh cleanup and optimizations."""
-        if refreshed > 0 or deleted > 0:
-            self._resolve_deferred_instantiation_bases()
-            self._save_cache()
-            self._save_header_tracking()
-            if deleted > 0:
-                diagnostics.info(f"Removed {deleted} deleted files from indexes")
-            if refreshed > 0:
-                self.cache_manager.backend.rebuild_fts()
-        self.indexed_file_count = len(self.file_hashes)
-
-    def _prepare_refresh_set(self) -> Tuple[List[str], List[str], int]:
-        """Identify files to refresh and handle deleted files. Returns (modified, new, deleted_count)."""
-        current_files = set(self.compilation_env._find_cpp_files(self.include_dependencies))
-        deleted_count = self.compilation_env._handle_deleted_files(current_files)
-        modified_files, new_files = self.compilation_env._identify_refresh_files(current_files)
-        return modified_files, new_files, deleted_count
-
-    def _run_refresh_loop(
-        self,
-        executor: Executor,
-        modified_files: List[str],
-        new_files: List[str],
-        total_to_check: int,
-        start_time: float,
-        progress_callback: Optional[Callable],
-        wait_for_tools_callback: Optional[Callable[[], None]],
-    ) -> Tuple[int, int]:
-        """Run the parallel refresh loop and return (refreshed_count, failed_count)."""
-        refreshed, failed = 0, 0
-        future_to_file = self.task_submitter.submit_refresh_tasks(
-            executor, modified_files, new_files, self.include_dependencies
-        )
-        for i, future in enumerate(as_completed(future_to_file)):
-            if wait_for_tools_callback:
-                wait_for_tools_callback()
-
-            file_path = future_to_file[future]
-            try:
-                if self.worker_result_merger.process_refresh_result(
-                    file_path, future.result(), self.execution.use_processes
-                ):
-                    refreshed += 1
-                else:
-                    failed += 1
-            except Exception as e:
-                failed += 1
-                diagnostics.error(f"Error refreshing {file_path}: {e}")
-
-            if progress_callback and ((i + 1) % 10 == 0 or (i + 1) == total_to_check):
-                self.progress_reporter.report_refresh_progress(
-                    progress_callback, total_to_check, refreshed, failed, file_path, start_time
-                )
-        return refreshed, failed
-
     def refresh_if_needed(
         self,
         progress_callback: Optional[Callable] = None,
@@ -918,21 +873,6 @@ class CppAnalyzer:
         """
         Refresh index for changed files and remove deleted files.
 
-        This is the legacy refresh path used during initial cache loading.
-        It performs simple hash-based change detection without dependency
-        graph analysis or header cascade.
-
-        For more sophisticated incremental updates (with header dependency
-        tracking and compile_commands diffing), use IncrementalAnalyzer
-        via the MCP refresh_project tool with mode="incremental".
-
-        Both paths now use shared primitives from file_utils:
-        - hash_file() for consistent file content hashing
-        - hash_compile_args() for consistent argument hashing
-
-        This ensures both paths agree on whether files or arguments have
-        changed, even though they process changes differently.
-
         Args:
             progress_callback: Optional callback for progress updates
             wait_for_tools_callback: Optional callback to wait for tool availability
@@ -940,44 +880,12 @@ class CppAnalyzer:
         Returns:
             Number of files refreshed
         """
-        refreshed, deleted, start_time = 0, 0, time.time()
-
-        if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
-            if self.compile_commands_manager.refresh_if_needed():
-                diagnostics.debug("Compile commands refreshed")
-
-        modified_files, new_files, deleted = self._prepare_refresh_set()
-        total_to_check = len(modified_files) + len(new_files)
-
-        if total_to_check == 0:
-            if deleted > 0:
-                self._finalize_refresh(0, deleted)
-            return 0
-
-        diagnostics.debug(f"Refresh: {len(modified_files)} modified, {len(new_files)} new files")
-        if self.execution.use_processes:
-            self.cache_manager.ensure_schema_current()
-
-        executor = self.execution.worker_pool.setup()
-        try:
-            refreshed, failed = self._run_refresh_loop(
-                executor,
-                modified_files,
-                new_files,
-                total_to_check,
-                start_time,
-                progress_callback,
-                wait_for_tools_callback,
-            )
-        except KeyboardInterrupt:
-            diagnostics.info("\nRefresh interrupted by user (Ctrl-C)")
-            self.execution.worker_pool.shutdown(name="Refresh")
-            raise
-        finally:
-            self.execution.worker_pool.shutdown_nowait(name="Refresh")
-
-        self._finalize_refresh(refreshed, deleted)
-        return refreshed
+        return self.refresh_pipeline.refresh_if_needed(
+            self.include_dependencies,
+            self.compile_commands_manager,
+            progress_callback,
+            wait_for_tools_callback,
+        )
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific class (delegates to query_engine)."""
