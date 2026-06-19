@@ -7,11 +7,14 @@ and compilation argument resolution.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from . import diagnostics
 from .compile_commands_manager import CompileCommandsManager
 from .file_scanner import FileScanner
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class CompilationEnvironment:
@@ -20,27 +23,27 @@ class CompilationEnvironment:
     file scanning, and compilation argument resolution.
     """
 
-    def __init__(self, analyzer: Any):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize CompilationEnvironment.
 
         Args:
-            analyzer: Reference to the CppAnalyzer instance for access to
-                      project_root, config, cache_manager, and symbol_store.
+            context: Shared project context for access to project_root, config,
+                     cache_manager, and symbol_store.
         """
-        self.analyzer = analyzer
+        self.context = context
 
         # File scanner
-        self.file_scanner = FileScanner(analyzer.project_root)
-        self.file_scanner.EXCLUDE_DIRS = set(analyzer.config.get_exclude_directories())
-        self.file_scanner.DEPENDENCY_DIRS = set(analyzer.config.get_dependency_directories())
+        self.file_scanner = FileScanner(context.project_root)
+        self.file_scanner.EXCLUDE_DIRS = set(context.config.get_exclude_directories())
+        self.file_scanner.DEPENDENCY_DIRS = set(context.config.get_dependency_directories())
 
         # Compile commands manager (initialized later by CppAnalyzer)
         self.compile_commands_manager: Optional[CompileCommandsManager] = None
 
         # Configuration
-        self.include_dependencies = analyzer.config.get_include_dependencies()
-        self.max_parse_retries = analyzer.config.config.get("max_parse_retries", 2)
+        self.include_dependencies = context.config.get_include_dependencies()
+        self.max_parse_retries = context.config.config.get("max_parse_retries", 2)
 
         # Precomputed compile args for worker mode
         self._provided_compile_args = None
@@ -121,7 +124,7 @@ class CompilationEnvironment:
         if not self.compile_commands_manager.is_file_supported(file_path_obj):
             # Add vcpkg includes if available
             vcpkg_include = (
-                self.analyzer.project_root / "vcpkg_installed" / "x64-windows" / "include"
+                self.context.project_root / "vcpkg_installed" / "x64-windows" / "include"
             )
             if vcpkg_include.exists():
                 args.append(f"-I{vcpkg_include}")
@@ -141,7 +144,7 @@ class CompilationEnvironment:
         """Pre-calculate compile arguments for each file to save worker memory."""
         file_compile_args = {}
         assert self.compile_commands_manager is not None
-        vcpkg_include = self.analyzer.project_root / "vcpkg_installed" / "x64-windows" / "include"
+        vcpkg_include = self.context.project_root / "vcpkg_installed" / "x64-windows" / "include"
         vcpkg_paths = [
             "C:/vcpkg/installed/x64-windows/include",
             "C:/dev/vcpkg/installed/x64-windows/include",
@@ -200,7 +203,7 @@ class CompilationEnvironment:
 
     def _handle_deleted_files(self, current_files: Set[str]) -> int:
         """Find and remove deleted files from indexes."""
-        tracked_files = set(self.analyzer.symbol_store.file_hashes.keys())
+        tracked_files = set(self.context.symbol_store.file_hashes.keys())
         deleted_files = set()
         for tracked_file in tracked_files:
             if tracked_file in current_files:
@@ -214,24 +217,24 @@ class CompilationEnvironment:
 
         deleted_count = 0
         for file_path in deleted_files:
-            self.analyzer.symbol_store._remove_file_from_indexes(file_path)
-            if file_path in self.analyzer.symbol_store.file_hashes:
-                del self.analyzer.symbol_store.file_hashes[file_path]
-            self.analyzer.cache_manager.remove_file_cache(file_path)
+            self.context.symbol_store._remove_file_from_indexes(file_path)
+            if file_path in self.context.symbol_store.file_hashes:
+                del self.context.symbol_store.file_hashes[file_path]
+            self.context.cache_manager.remove_file_cache(file_path)
             deleted_count += 1
         return deleted_count
 
     def _identify_refresh_files(self, current_files: Set[str]) -> Tuple[List[str], List[str]]:
         """Identify modified and new files needing refresh."""
-        tracked_files = set(self.analyzer.symbol_store.file_hashes.keys())
+        tracked_files = set(self.context.symbol_store.file_hashes.keys())
         new_files = list(current_files - tracked_files)
         modified_files = []
-        for file_path in self.analyzer.symbol_store.file_hashes:
+        for file_path in self.context.symbol_store.file_hashes:
             if not os.path.exists(file_path):
                 continue
-            if self.analyzer.cache_manager.get_file_hash(
+            if self.context.cache_manager.get_file_hash(
                 file_path
-            ) != self.analyzer.symbol_store.file_hashes.get(file_path):
+            ) != self.context.symbol_store.file_hashes.get(file_path):
                 modified_files.append(file_path)
         return modified_files, new_files
 

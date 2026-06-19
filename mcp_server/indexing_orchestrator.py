@@ -39,6 +39,7 @@ class ProjectIndexingOrchestrator:
         self.cancellation = context.cancellation
         self.concurrency = context.concurrency
         self.execution = context.execution
+        assert context.compilation_env is not None
         self.compilation_env = context.compilation_env
         self.cache_orchestrator = context.cache_orchestrator
         self.cache_manager = context.cache_manager

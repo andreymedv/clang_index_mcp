@@ -29,6 +29,7 @@ class SingleFileIndexingPipeline:
         self.context = context
         self.clang_parser = context.clang_parser
         self.symbol_extractor = context.symbol_extractor
+        assert context.compilation_env is not None
         self.compilation_env = context.compilation_env
         self.cache_orchestrator = context.cache_orchestrator
         self.cache_manager = context.cache_manager

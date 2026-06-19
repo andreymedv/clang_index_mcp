@@ -35,6 +35,7 @@ class RefreshPipeline:
             worker_result_merger: WorkerResultMerger instance.
         """
         self.context = context
+        assert context.compilation_env is not None
         self.compilation_env = context.compilation_env
         self.execution = context.execution
         self.cache_manager = context.cache_manager
