@@ -662,92 +662,12 @@ class CppAnalyzer:
         return self.symbol_extractor._resolve_deferred_instantiation_bases()
 
     def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
-        """
-        Extract the base template name from a USR.
-
-        USR Format Examples:
-        - Generic Template:        c:@ST>1#T@Container
-        - Explicit Specialization: c:@S@Container>#I
-        - Partial Specialization:  c:@SP>1#T@Container>#*t0.0
-
-        Args:
-            usr: Unified Symbol Resolution string
-
-        Returns:
-            Base template name (e.g., "Container") or None if not a template-related USR
-
-        Task: Issue #99 Phase 3 - Template→Specialization linkage
-        """
-        if not usr:
-            return None
-
-        import re
-
-        # Pattern 1: Generic template - c:@ST>...@ClassName
-        match = re.search(r"c:@ST>[^@]*@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        # Pattern 2: Regular class (potential specialization) - c:@S@ClassName
-        match = re.search(r"c:@S@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        # Pattern 3: Partial specialization - c:@SP>...@ClassName
-        match = re.search(r"c:@SP>[^@]*@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        return None
-
-    def _add_class_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
-        """Add class template and specialization symbols to results."""
-        if base_name not in self.class_index:
-            return
-        for symbol in self.class_index[base_name]:
-            if symbol.kind in ("class_template", "partial_specialization"):
-                results.append(symbol)
-            elif symbol.kind in ("class", "struct"):
-                if symbol.usr and ">#" in symbol.usr:
-                    results.append(symbol)
-
-    def _add_function_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
-        """Add function template and specialization symbols to results."""
-        if base_name not in self.function_index:
-            return
-        for symbol in self.function_index[base_name]:
-            if symbol.kind == "function_template":
-                results.append(symbol)
-            elif symbol.kind in ("function", "method"):
-                if symbol.is_template_specialization or (
-                    symbol.usr and ("<#" in symbol.usr or ">#" in symbol.usr)
-                ):
-                    results.append(symbol)
+        """Extract the base template name from a USR (delegates to SymbolIndexStore)."""
+        return SymbolIndexStore.extract_template_base_name_from_usr(usr)
 
     def _find_template_specializations(self, base_name: str) -> List[SymbolInfo]:
-        """
-        Find all specializations of a template by base name.
-
-        Searches for:
-        1. Generic template definition (kind=class_template, function_template)
-        2. Explicit full specializations (kind=class, function with template args in USR)
-        3. Partial specializations (kind=partial_specialization)
-
-        Args:
-            base_name: Template base name (e.g., "Container")
-
-        Returns:
-            List of SymbolInfo objects for template and all its specializations
-
-        Task: Issue #99 Phase 3 - Template→Specialization linkage
-        """
-        results: List[SymbolInfo] = []
-
-        with self.index_lock:
-            self._add_class_template_symbols(base_name, results)
-            self._add_function_template_symbols(base_name, results)
-
-        return results
+        """Find all specializations of a template by base name (delegates to SymbolIndexStore)."""
+        return self.symbol_store.find_template_specializations(base_name)
 
     def _process_cursor(
         self,
