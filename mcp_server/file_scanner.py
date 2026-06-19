@@ -12,6 +12,12 @@ class FileScanner:
     # C++ file extensions
     CPP_EXTENSIONS = {".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"}
 
+    # Header-only extensions
+    HEADER_EXTENSIONS = {".h", ".hpp", ".hxx", ".h++"}
+
+    # Source-only extensions
+    SOURCE_EXTENSIONS = CPP_EXTENSIONS - HEADER_EXTENSIONS
+
     # Directories to exclude (set by configuration)
     EXCLUDE_DIRS: set[str] = set()
 
