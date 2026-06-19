@@ -8,10 +8,13 @@ and index maintenance operations.
 import dataclasses
 import re
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from . import diagnostics
 from .symbol_info import CLASS_KINDS, SymbolInfo, is_richer_definition
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class SymbolIndexStore:
@@ -20,15 +23,19 @@ class SymbolIndexStore:
     and maintaining symbol data across multiple lookup structures.
     """
 
-    def __init__(self, analyzer: Any):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize SymbolIndexStore.
 
         Args:
-            analyzer: Reference to the CppAnalyzer instance for access to
-                      call_graph_analyzer and _get_lock().
+            context: Shared project context for access to call graph service
+                     and concurrency utilities.
         """
-        self.analyzer = analyzer
+        self.context = context
+        assert context.call_graph_service is not None
+        self.call_graph_analyzer = context.call_graph_service.call_graph_analyzer
+        assert context.concurrency is not None
+        self._get_lock = context.concurrency.get_lock
 
         # Indexes for fast lookup
         self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
@@ -68,7 +75,7 @@ class SymbolIndexStore:
                 existing = self.usr_index[symbol.usr]
                 if existing == symbol or existing.usr == symbol.usr:
                     del self.usr_index[symbol.usr]
-            self.analyzer.call_graph_analyzer.remove_symbol(symbol.usr)
+            self.call_graph_analyzer.remove_symbol(symbol.usr)
 
     def _handle_symbol_definition_wins(
         self, info: SymbolInfo, existing_symbol: SymbolInfo
@@ -151,7 +158,7 @@ class SymbolIndexStore:
                 usr_updates[symbol.usr] = symbol
 
         # Apply all updates with a single lock acquisition
-        with self.analyzer._get_lock():
+        with self._get_lock():
             # Clear old entries for this file
             self._clear_file_index_entries(file_path)
 
@@ -248,7 +255,7 @@ class SymbolIndexStore:
     def _rebuild_auxiliary_structures(self) -> None:
         """Rebuild USR index and call graph from loaded symbols."""
         self.usr_index.clear()
-        self.analyzer.call_graph_analyzer.clear()
+        self.call_graph_analyzer.clear()
 
         # Rebuild from all loaded symbols
         all_symbols = []
@@ -265,11 +272,11 @@ class SymbolIndexStore:
                     all_symbols.append(symbol)
 
         # Rebuild call graph from all symbols
-        self.analyzer.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+        self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
 
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
-        with self.analyzer.index_lock:
+        with self.context.concurrency.index_lock:
             # Get all symbols that were in this file
             symbols_to_remove = self.file_index.get(file_path, []).copy()
             if symbols_to_remove:
@@ -348,7 +355,7 @@ class SymbolIndexStore:
         """
         results: List[SymbolInfo] = []
 
-        with self.analyzer.index_lock:
+        with self.context.concurrency.index_lock:
             self._add_class_template_symbols(base_name, results)
             self._add_function_template_symbols(base_name, results)
 

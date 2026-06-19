@@ -96,13 +96,12 @@ class CppAnalyzer:
         self.execution = self.context.execution
         self.progress_reporter = self.context.progress_reporter
 
-        # Components not yet migrated to ProjectContext are created with self
-        # and then wired into the context.
-        self.symbol_store = SymbolIndexStore(self)
-        self.context.symbol_store = self.symbol_store
-
+        # Components migrated to ProjectContext are created with the context.
         self.call_graph_service = CallGraphService(self)
         self.context.call_graph_service = self.call_graph_service
+
+        self.symbol_store = SymbolIndexStore(self.context)
+        self.context.symbol_store = self.symbol_store
 
         self.query_engine = QueryEngine(self)
         self.context.query_engine = self.query_engine
