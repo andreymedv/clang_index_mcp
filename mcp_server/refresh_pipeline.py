@@ -37,13 +37,19 @@ class RefreshPipeline:
         self.context = context
         assert context.compilation_env is not None
         self.compilation_env = context.compilation_env
+        assert context.execution is not None
         self.execution = context.execution
+        assert context.cache_manager is not None
         self.cache_manager = context.cache_manager
+        assert context.cache_orchestrator is not None
         self.cache_orchestrator = context.cache_orchestrator
+        assert context.symbol_extractor is not None
         self.symbol_extractor = context.symbol_extractor
+        assert context.symbol_store is not None
         self.symbol_store = context.symbol_store
         self.task_submitter = task_submitter
         self.worker_result_merger = worker_result_merger
+        assert context.progress_reporter is not None
         self.progress_reporter = context.progress_reporter
 
     def refresh_if_needed(

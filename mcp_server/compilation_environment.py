@@ -32,6 +32,10 @@ class CompilationEnvironment:
                      cache_manager, and symbol_store.
         """
         self.context = context
+        assert context.symbol_store is not None
+        assert context.cache_manager is not None
+        self.symbol_store = context.symbol_store
+        self.cache_manager = context.cache_manager
 
         # File scanner
         self.file_scanner = FileScanner(context.project_root)
@@ -203,7 +207,7 @@ class CompilationEnvironment:
 
     def _handle_deleted_files(self, current_files: Set[str]) -> int:
         """Find and remove deleted files from indexes."""
-        tracked_files = set(self.context.symbol_store.file_hashes.keys())
+        tracked_files = set(self.symbol_store.file_hashes.keys())
         deleted_files = set()
         for tracked_file in tracked_files:
             if tracked_file in current_files:
@@ -217,24 +221,24 @@ class CompilationEnvironment:
 
         deleted_count = 0
         for file_path in deleted_files:
-            self.context.symbol_store._remove_file_from_indexes(file_path)
-            if file_path in self.context.symbol_store.file_hashes:
-                del self.context.symbol_store.file_hashes[file_path]
-            self.context.cache_manager.remove_file_cache(file_path)
+            self.symbol_store._remove_file_from_indexes(file_path)
+            if file_path in self.symbol_store.file_hashes:
+                del self.symbol_store.file_hashes[file_path]
+            self.cache_manager.remove_file_cache(file_path)
             deleted_count += 1
         return deleted_count
 
     def _identify_refresh_files(self, current_files: Set[str]) -> Tuple[List[str], List[str]]:
         """Identify modified and new files needing refresh."""
-        tracked_files = set(self.context.symbol_store.file_hashes.keys())
+        tracked_files = set(self.symbol_store.file_hashes.keys())
         new_files = list(current_files - tracked_files)
         modified_files = []
-        for file_path in self.context.symbol_store.file_hashes:
+        for file_path in self.symbol_store.file_hashes:
             if not os.path.exists(file_path):
                 continue
-            if self.context.cache_manager.get_file_hash(
+            if self.cache_manager.get_file_hash(file_path) != self.symbol_store.file_hashes.get(
                 file_path
-            ) != self.context.symbol_store.file_hashes.get(file_path):
+            ):
                 modified_files.append(file_path)
         return modified_files, new_files
 

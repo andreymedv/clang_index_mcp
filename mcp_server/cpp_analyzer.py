@@ -6,25 +6,17 @@ It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
 import sys
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from .cache_manager import CacheManager
 from .cache_orchestrator import CacheOrchestrator
 from .call_graph_service import CallGraphService
-from .cancellation_coordinator import CancellationCoordinator
 from .clang_parser import ClangParser
 from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
-from .concurrency_context import ConcurrencyContext
-from .cpp_analyzer_config import CppAnalyzerConfig
-from .execution_config import ExecutionConfig
 from .indexing_orchestrator import ProjectIndexingOrchestrator
 from .indexing_pipeline import SingleFileIndexingPipeline
-from .indexing_progress_reporter import IndexingProgressReporter
 from .indexing_task_submitter import IndexingTaskSubmitter
 from .project_context import ProjectContext
-from .project_identity import ProjectIdentity
 from .worker_result_merger import WorkerResultMerger
 from .query_engine import QueryEngine
 from .refresh_pipeline import RefreshPipeline
@@ -82,124 +74,82 @@ class CppAnalyzer:
             Project identity is determined by (source_directory, config_file) pair.
             Different config_file values create separate cache directories.
         """
-        self.project_root = Path(project_root).resolve()
-        self.index = Index.create()
         self._skip_schema_recreation = skip_schema_recreation
 
-        # Create project identity
-        config_path = Path(config_file).resolve() if config_file else None
-        self.project_identity = ProjectIdentity(self.project_root, config_path)
+        # ProjectContext is the shared dependency container.  Components that
+        # have been migrated receive the context; the rest still receive self
+        # (CppAnalyzer) and are attached to the context so that pipeline classes
+        # can access them uniformly.
+        self.context: ProjectContext = ProjectContext(
+            project_root,
+            config_file=config_file,
+            skip_schema_recreation=skip_schema_recreation,
+        )
+        # Expose core context attributes directly on CppAnalyzer for backward compatibility.
+        self.project_root = self.context.project_root
+        self.index = self.context.index
+        self.project_identity = self.context.project_identity
+        self.config = self.context.config
+        self.cache_manager = self.context.cache_manager
+        self.concurrency = self.context.concurrency
+        self.cancellation = self.context.cancellation
+        self.execution = self.context.execution
+        self.progress_reporter = self.context.progress_reporter
 
-        # Load project configuration
-        self.config = CppAnalyzerConfig(self.project_root, config_path=config_path)
-
-        # Initialize core components
-        self.clang_parser = ClangParser(self)
-        self.symbol_extractor = SymbolExtractor(self)
-
-        # Initialize call graph service (manages CallGraphAnalyzer + DependencyGraphBuilder)
-        self.call_graph_service = CallGraphService(self)
-
-        # Initialize symbol index store (manages class/function/file/USR indexes)
+        # Components not yet migrated to ProjectContext are created with self
+        # and then wired into the context.
         self.symbol_store = SymbolIndexStore(self)
+        self.context.symbol_store = self.symbol_store
 
-        # Concurrency context (locks, thread-local buffers, locking strategy)
-        self.concurrency = ConcurrencyContext()
+        self.call_graph_service = CallGraphService(self)
+        self.context.call_graph_service = self.call_graph_service
 
-        # Cancellation support
-        self.cancellation = CancellationCoordinator()
-
-        # Execution configuration (worker pool strategy)
-        self.execution = ExecutionConfig(config_max_workers=self.config.get_max_workers())
-
-        # Progress reporter (extracted helper for indexing/refresh progress)
-        self.progress_reporter = IndexingProgressReporter()
-
-        # Initialize cache manager with project identity
-        # Pass skip_schema_recreation for worker processes to avoid race conditions
-        self.cache_manager = CacheManager(
-            self.project_identity, skip_schema_recreation=self._skip_schema_recreation
-        )
-
-        # Initialize query engine (manages search, hierarchy, and analysis operations)
         self.query_engine = QueryEngine(self)
+        self.context.query_engine = self.query_engine
 
-        # Wire call graph service to SQLite cache backend
-        self.call_graph_service.setup_cache_backend()
-
-        # Keep cache_dir for compatibility
-        self.cache_dir = self.cache_manager.cache_dir
-
-        # Initialize cache orchestrator (manages cache operations and header tracking)
         self.cache_orchestrator = CacheOrchestrator(self)
+        self.context.cache_orchestrator = self.cache_orchestrator
 
-        # Shared project context for all indexing/refresh/query pipelines.
-        # Components still receive the CppAnalyzer directly where the refactor has
-        # not reached them yet; new pipeline classes receive this context.
-        self.context = ProjectContext(
-            project_root=self.project_root,
-            project_identity=self.project_identity,
-            config=self.config,
-            index=self.index,
-            skip_schema_recreation=self._skip_schema_recreation,
-            clang_parser=self.clang_parser,
-            symbol_extractor=self.symbol_extractor,
-            symbol_store=self.symbol_store,
-            call_graph_service=self.call_graph_service,
-            query_engine=self.query_engine,
-            cache_manager=self.cache_manager,
-            cache_orchestrator=self.cache_orchestrator,
-            concurrency=self.concurrency,
-            execution=self.execution,
-            cancellation=self.cancellation,
-            progress_reporter=self.progress_reporter,
-        )
-
-        # Initialize compilation environment after the context so it can depend on
-        # the context rather than the full CppAnalyzer.
+        # CompilationEnvironment is migrated to ProjectContext.
         self.compilation_env = CompilationEnvironment(self.context)
         self.context.compilation_env = self.compilation_env
 
-        # Task submitter (extracted helper for submitting work to the executor)
-        self.task_submitter = IndexingTaskSubmitter(
-            self.context,
-            self.index_file,
-        )
+        # Wire call graph service to SQLite cache backend.
+        self.call_graph_service.setup_cache_backend()
 
-        # Worker result merger (extracted helper for merging worker results)
-        self.worker_result_merger = WorkerResultMerger(self.context)
+        # Keep cache_dir for compatibility.
+        self.cache_dir = self.cache_manager.cache_dir
 
-        # Single-file indexing pipeline
-        self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
-
-        # Refresh pipeline
-        self.refresh_pipeline = RefreshPipeline(
-            self.context,
-            self.task_submitter,
-            self.worker_result_merger,
-        )
-
-        # Project indexing orchestrator
-        self.indexing_orchestrator = ProjectIndexingOrchestrator(
-            self.context,
-            self.task_submitter,
-            self.worker_result_merger,
-        )
-
-        # Task 3.2: Initialize compile commands manager only if needed
-        # Workers skip this to save ~6-10 GB memory by using precomputed args from main process
+        # Task 3.2: Initialize compile commands manager only if needed.
+        # Workers skip this to save ~6-10 GB memory by using precomputed args.
         if use_compile_commands_manager:
             compile_commands_config = self.config.get_compile_commands_config()
             self.compilation_env.compile_commands_manager = CompileCommandsManager(
                 self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
             )
 
-        # Initialize dependency graph builder for incremental analysis
+        # Initialize dependency graph builder and restore header tracking.
         self.call_graph_service.init_dependency_graph()
-
-        # Calculate compile_commands.json hash and restore header tracking
         self.cache_orchestrator._calculate_compile_commands_hash()
         self.cache_orchestrator._restore_or_reset_header_tracking()
+
+        # Parsing services (not yet migrated to ProjectContext).
+        self.clang_parser = ClangParser(self)
+        self.context.clang_parser = self.clang_parser
+
+        self.symbol_extractor = SymbolExtractor(self)
+        self.context.symbol_extractor = self.symbol_extractor
+
+        # Indexing/refresh pipelines receive the fully wired context.
+        self.task_submitter = IndexingTaskSubmitter(self.context, self.index_file)
+        self.worker_result_merger = WorkerResultMerger(self.context)
+        self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
+        self.refresh_pipeline = RefreshPipeline(
+            self.context, self.task_submitter, self.worker_result_merger
+        )
+        self.indexing_orchestrator = ProjectIndexingOrchestrator(
+            self.context, self.task_submitter, self.worker_result_merger
+        )
 
         diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
         diagnostics.debug(
