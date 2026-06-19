@@ -28,6 +28,7 @@ from .execution_config import ExecutionConfig
 from .indexing_progress_reporter import IndexingProgressReporter
 from .indexing_task_submitter import IndexingTaskSubmitter
 from .project_identity import ProjectIdentity
+from .worker_result_merger import WorkerResultMerger
 from .query_engine import QueryEngine
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
@@ -145,6 +146,14 @@ class CppAnalyzer:
 
         # Initialize cache orchestrator (manages cache operations and header tracking)
         self.cache_orchestrator = CacheOrchestrator(self)
+
+        # Worker result merger (extracted helper for merging worker results)
+        self.worker_result_merger = WorkerResultMerger(
+            self.concurrency,
+            self.symbol_store,
+            self.call_graph_service,
+            self.cache_orchestrator,
+        )
 
         # Task 3.2: Initialize compile commands manager only if needed
         # Workers skip this to save ~6-10 GB memory by using precomputed args from main process
@@ -821,29 +830,6 @@ class CppAnalyzer:
         self.compilation_env._log_compilation_environment(files)
         return files
 
-    def _merge_worker_result(self, result: Tuple, file_path: str):
-        """Merge symbols and call sites from a worker process result."""
-        _, success, was_cached, symbols, call_sites, processed_headers = result
-
-        if success and symbols:
-            with self.index_lock:
-                # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
-                # This ensures that modified files don't have duplicate/stale symbols
-                self.symbol_store._clear_file_index_entries(file_path)
-
-                for symbol in symbols:
-                    self.symbol_store._merge_symbol_into_indexes(symbol)
-
-            if call_sites:
-                self.call_graph_service._stream_call_sites(file_path, call_sites)
-
-            if processed_headers:
-                for header_path, header_hash in processed_headers.items():
-                    self.header_tracker.mark_completed(header_path, header_hash)
-
-            file_hash = self._get_file_hash(file_path)
-            self.file_hashes[file_path] = file_hash
-
     def _finalize_indexing(
         self,
         indexed_count: int,
@@ -883,21 +869,6 @@ class CppAnalyzer:
         self.cache_manager.backend.rebuild_fts()
 
         return indexed_count
-
-    def _get_worker_result(self, future, file_path) -> Tuple[bool, bool]:
-        """Get result from future and merge into indexes."""
-        try:
-            result = future.result()
-            if self.execution.use_processes:
-                # ProcessPoolExecutor: result is 6-tuple
-                self._merge_worker_result(result, file_path)
-                return bool(result[1]), bool(result[2])  # success, was_cached
-
-            # ThreadPoolExecutor: result is (success, was_cached)
-            return bool(result[0]), bool(result[1])
-        except Exception as exc:
-            diagnostics.error(f"Error indexing {file_path}: {exc}")
-            return False, False
 
     @staticmethod
     def _update_indexing_counts(success: bool, was_cached: bool) -> Tuple[int, int, int]:
@@ -955,7 +926,9 @@ class CppAnalyzer:
                     wait_for_tools_callback()
 
                 file_path = future_to_file[future]
-                success, was_cached = self._get_worker_result(future, file_path)
+                success, was_cached = self.worker_result_merger.get_worker_result(
+                    future, file_path, self.execution.use_processes
+                )
 
                 idx_d, cache_d, fail_d = self._update_indexing_counts(success, was_cached)
                 indexed_count += idx_d
@@ -1043,15 +1016,6 @@ class CppAnalyzer:
                 self.cache_manager.backend.rebuild_fts()
         self.indexed_file_count = len(self.file_hashes)
 
-    def _process_refresh_result(self, file_path: str, res: Any) -> bool:
-        """Process result from indexing worker during refresh. Returns True if successful."""
-        success = res[1] if self.execution.use_processes else res[0]
-        if success:
-            if self.execution.use_processes:
-                self._merge_worker_result(res, file_path)
-            return True
-        return False
-
     def _prepare_refresh_set(self) -> Tuple[List[str], List[str], int]:
         """Identify files to refresh and handle deleted files. Returns (modified, new, deleted_count)."""
         current_files = set(self.compilation_env._find_cpp_files(self.include_dependencies))
@@ -1080,7 +1044,9 @@ class CppAnalyzer:
 
             file_path = future_to_file[future]
             try:
-                if self._process_refresh_result(file_path, future.result()):
+                if self.worker_result_merger.process_refresh_result(
+                    file_path, future.result(), self.execution.use_processes
+                ):
                     refreshed += 1
                 else:
                     failed += 1
