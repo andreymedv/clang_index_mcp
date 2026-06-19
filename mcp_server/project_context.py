@@ -7,7 +7,7 @@ no behavior lives here except trivial delegations to the owned components.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from clang.cindex import Index
 
@@ -25,6 +25,9 @@ from .project_identity import ProjectIdentity
 from .query_engine import QueryEngine
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
+
+if TYPE_CHECKING:
+    from .refresh_pipeline import RefreshPipeline
 
 
 class ProjectContext:
@@ -80,6 +83,7 @@ class ProjectContext:
         self.query_engine: Optional[QueryEngine] = None
         self.compilation_env: Optional[CompilationEnvironment] = None
         self.cache_orchestrator: Optional[CacheOrchestrator] = None
+        self.refresh_pipeline: Optional["RefreshPipeline"] = None
 
     @property
     def compile_commands_manager(self):
