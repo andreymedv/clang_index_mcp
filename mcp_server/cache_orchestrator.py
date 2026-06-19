@@ -243,7 +243,7 @@ class CacheOrchestrator:
                 diagnostics.debug(f"Using cached index (updated {refreshed} files)")
             else:
                 diagnostics.debug("Using cached index")
-            return self.analyzer.indexed_file_count
+            return int(self.analyzer.indexed_file_count)  # type: ignore[no-any-return]
         return None
 
     def _save_cache(self):

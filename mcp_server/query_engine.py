@@ -598,7 +598,7 @@ class QueryEngine:
                         files.add(info.file)
                         if info.header_file:
                             files.add(info.header_file)
-                        return info.kind
+                        return str(info.kind)  # type: ignore[no-any-return]
         return None
 
     def _find_function_definition_files(
@@ -1011,7 +1011,7 @@ class QueryEngine:
                     if not SearchEngine.matches_qualified_pattern(info_qn, lookup):
                         continue
                 qn = info.qualified_name if info.qualified_name else info.name
-                return qn
+                return str(qn)  # type: ignore[no-any-return]
         return raw
 
     def _lookup_class_infos(self, key: str) -> List[SymbolInfo]:
