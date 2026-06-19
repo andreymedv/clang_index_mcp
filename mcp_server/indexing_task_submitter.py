@@ -13,32 +13,26 @@ from .worker_pool import _process_file_worker
 if TYPE_CHECKING:
     from concurrent.futures import Executor, Future
 
+    from .project_context import ProjectContext
+
 
 class IndexingTaskSubmitter:
     """Submits indexing/refresh tasks to the configured executor."""
 
-    def __init__(
-        self,
-        project_root: Any,
-        project_identity: Any,
-        execution: Any,
-        compilation_env: Any,
-        index_file: Callable[[str, bool], Any],
-    ):
+    def __init__(self, context: "ProjectContext", index_file: Callable[[str, bool], Any]):
         """
         Initialize the task submitter.
 
         Args:
-            project_root: Resolved project root path.
-            project_identity: ProjectIdentity instance.
-            execution: ExecutionConfig instance.
-            compilation_env: CompilationEnvironment instance.
+            context: Shared project context with project root, identity, execution,
+                     and compilation environment.
             index_file: Callable used in thread mode to index a single file.
         """
-        self.project_root = project_root
-        self.project_identity = project_identity
-        self.execution = execution
-        self.compilation_env = compilation_env
+        self.context = context
+        self.project_root = context.project_root
+        self.project_identity = context.project_identity
+        self.execution = context.execution
+        self.compilation_env = context.compilation_env
         self.index_file = index_file
 
     def submit_indexing_tasks(

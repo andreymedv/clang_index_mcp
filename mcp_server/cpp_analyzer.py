@@ -23,6 +23,7 @@ from .indexing_orchestrator import ProjectIndexingOrchestrator
 from .indexing_pipeline import SingleFileIndexingPipeline
 from .indexing_progress_reporter import IndexingProgressReporter
 from .indexing_task_submitter import IndexingTaskSubmitter
+from .project_context import ProjectContext
 from .project_identity import ProjectIdentity
 from .worker_result_merger import WorkerResultMerger
 from .query_engine import QueryEngine
@@ -123,15 +124,6 @@ class CppAnalyzer:
         # Initialize compilation environment (manages file scanner, compile commands, etc.)
         self.compilation_env = CompilationEnvironment(self)
 
-        # Task submitter (extracted helper for submitting work to the executor)
-        self.task_submitter = IndexingTaskSubmitter(
-            self.project_root,
-            self.project_identity,
-            self.execution,
-            self.compilation_env,
-            self.index_file,
-        )
-
         # Initialize query engine (manages search, hierarchy, and analysis operations)
         self.query_engine = QueryEngine(self)
 
@@ -144,51 +136,53 @@ class CppAnalyzer:
         # Initialize cache orchestrator (manages cache operations and header tracking)
         self.cache_orchestrator = CacheOrchestrator(self)
 
-        # Worker result merger (extracted helper for merging worker results)
-        self.worker_result_merger = WorkerResultMerger(
-            self.concurrency,
-            self.symbol_store,
-            self.call_graph_service,
-            self.cache_orchestrator,
+        # Shared project context for all indexing/refresh/query pipelines.
+        # Components still receive the CppAnalyzer directly where the refactor has
+        # not reached them yet; new pipeline classes receive this context.
+        self.context = ProjectContext(
+            project_root=self.project_root,
+            project_identity=self.project_identity,
+            config=self.config,
+            index=self.index,
+            skip_schema_recreation=self._skip_schema_recreation,
+            clang_parser=self.clang_parser,
+            symbol_extractor=self.symbol_extractor,
+            symbol_store=self.symbol_store,
+            call_graph_service=self.call_graph_service,
+            query_engine=self.query_engine,
+            cache_manager=self.cache_manager,
+            cache_orchestrator=self.cache_orchestrator,
+            compilation_env=self.compilation_env,
+            concurrency=self.concurrency,
+            execution=self.execution,
+            cancellation=self.cancellation,
+            progress_reporter=self.progress_reporter,
         )
 
-        # Single-file indexing pipeline
-        self.indexing_pipeline = SingleFileIndexingPipeline(
-            self.clang_parser,
-            self.symbol_extractor,
-            self.compilation_env,
-            self.cache_orchestrator,
-            self.cache_manager,
-            self.concurrency,
-            self.symbol_store,
+        # Task submitter (extracted helper for submitting work to the executor)
+        self.task_submitter = IndexingTaskSubmitter(
+            self.context,
+            self.index_file,
         )
+
+        # Worker result merger (extracted helper for merging worker results)
+        self.worker_result_merger = WorkerResultMerger(self.context)
+
+        # Single-file indexing pipeline
+        self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
 
         # Refresh pipeline
         self.refresh_pipeline = RefreshPipeline(
-            self.compilation_env,
-            self.execution,
-            self.cache_manager,
-            self.cache_orchestrator,
-            self.symbol_extractor,
-            self.symbol_store,
+            self.context,
             self.task_submitter,
             self.worker_result_merger,
-            self.progress_reporter,
         )
 
         # Project indexing orchestrator
         self.indexing_orchestrator = ProjectIndexingOrchestrator(
-            self.cancellation,
-            self.concurrency,
-            self.execution,
-            self.compilation_env,
-            self.cache_orchestrator,
-            self.cache_manager,
-            self.symbol_extractor,
-            self.symbol_store,
+            self.context,
             self.task_submitter,
             self.worker_result_merger,
-            self.progress_reporter,
         )
 
         # Task 3.2: Initialize compile commands manager only if needed

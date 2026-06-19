@@ -9,9 +9,12 @@ reporting, and finalization.
 import sys
 import time
 from concurrent.futures import as_completed
-from typing import Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
 
 from . import diagnostics
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class ProjectIndexingOrchestrator:
@@ -19,45 +22,31 @@ class ProjectIndexingOrchestrator:
 
     def __init__(
         self,
-        cancellation: Any,
-        concurrency: Any,
-        execution: Any,
-        compilation_env: Any,
-        cache_orchestrator: Any,
-        cache_manager: Any,
-        symbol_extractor: Any,
-        symbol_store: Any,
+        context: "ProjectContext",
         task_submitter: Any,
         worker_result_merger: Any,
-        progress_reporter: Any,
     ):
         """
         Initialize the project indexing orchestrator.
 
         Args:
-            cancellation: CancellationCoordinator instance.
-            concurrency: ConcurrencyContext instance.
-            execution: ExecutionConfig instance.
-            compilation_env: CompilationEnvironment instance.
-            cache_orchestrator: CacheOrchestrator instance.
-            cache_manager: CacheManager instance.
-            symbol_extractor: SymbolExtractor instance.
-            symbol_store: SymbolIndexStore instance.
+            context: Shared project context with cancellation, concurrency,
+                     execution, compilation, cache, and symbol services.
             task_submitter: IndexingTaskSubmitter instance.
             worker_result_merger: WorkerResultMerger instance.
-            progress_reporter: IndexingProgressReporter instance.
         """
-        self.cancellation = cancellation
-        self.concurrency = concurrency
-        self.execution = execution
-        self.compilation_env = compilation_env
-        self.cache_orchestrator = cache_orchestrator
-        self.cache_manager = cache_manager
-        self.symbol_extractor = symbol_extractor
-        self.symbol_store = symbol_store
+        self.context = context
+        self.cancellation = context.cancellation
+        self.concurrency = context.concurrency
+        self.execution = context.execution
+        self.compilation_env = context.compilation_env
+        self.cache_orchestrator = context.cache_orchestrator
+        self.cache_manager = context.cache_manager
+        self.symbol_extractor = context.symbol_extractor
+        self.symbol_store = context.symbol_store
         self.task_submitter = task_submitter
         self.worker_result_merger = worker_result_merger
-        self.progress_reporter = progress_reporter
+        self.progress_reporter = context.progress_reporter
 
     def index_project(
         self,

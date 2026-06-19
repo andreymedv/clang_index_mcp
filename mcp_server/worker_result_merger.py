@@ -6,29 +6,30 @@ and header-tracking state produced by worker processes (or threads) back into th
 main process indexes.
 """
 
-from typing import Any, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
 
 from . import diagnostics
+
+if TYPE_CHECKING:
+    from .project_context import ProjectContext
 
 
 class WorkerResultMerger:
     """Merges results from indexing workers into the shared indexes."""
 
-    def __init__(self, concurrency, symbol_store, call_graph_service, cache_orchestrator):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize the worker result merger.
 
         Args:
-            concurrency: ConcurrencyContext instance (provides index_lock).
-            symbol_store: SymbolIndexStore instance.
-            call_graph_service: CallGraphService instance.
-            cache_orchestrator: CacheOrchestrator instance (provides file hashing
-                                and header tracker access).
+            context: Shared project context with concurrency, symbol store, call
+                     graph service, and cache orchestrator.
         """
-        self.concurrency = concurrency
-        self.symbol_store = symbol_store
-        self.call_graph_service = call_graph_service
-        self.cache_orchestrator = cache_orchestrator
+        self.context = context
+        self.concurrency = context.concurrency
+        self.symbol_store = context.symbol_store
+        self.call_graph_service = context.call_graph_service
+        self.cache_orchestrator = context.cache_orchestrator
 
     def merge_worker_result(self, result: Tuple, file_path: str):
         """Merge symbols and call sites from a worker process result."""

@@ -13,45 +13,37 @@ from . import diagnostics
 if TYPE_CHECKING:
     from concurrent.futures import Executor
 
+    from .project_context import ProjectContext
+
 
 class RefreshPipeline:
     """Detects changed files and refreshes the index incrementally."""
 
     def __init__(
         self,
-        compilation_env: Any,
-        execution: Any,
-        cache_manager: Any,
-        cache_orchestrator: Any,
-        symbol_extractor: Any,
-        symbol_store: Any,
+        context: "ProjectContext",
         task_submitter: Any,
         worker_result_merger: Any,
-        progress_reporter: Any,
     ):
         """
         Initialize the refresh pipeline.
 
         Args:
-            compilation_env: CompilationEnvironment instance.
-            execution: ExecutionConfig instance.
-            cache_manager: CacheManager instance.
-            cache_orchestrator: CacheOrchestrator instance.
-            symbol_extractor: SymbolExtractor instance.
-            symbol_store: SymbolIndexStore instance.
+            context: Shared project context with compilation, cache, symbol, and
+                     progress services.
             task_submitter: IndexingTaskSubmitter instance.
             worker_result_merger: WorkerResultMerger instance.
-            progress_reporter: IndexingProgressReporter instance.
         """
-        self.compilation_env = compilation_env
-        self.execution = execution
-        self.cache_manager = cache_manager
-        self.cache_orchestrator = cache_orchestrator
-        self.symbol_extractor = symbol_extractor
-        self.symbol_store = symbol_store
+        self.context = context
+        self.compilation_env = context.compilation_env
+        self.execution = context.execution
+        self.cache_manager = context.cache_manager
+        self.cache_orchestrator = context.cache_orchestrator
+        self.symbol_extractor = context.symbol_extractor
+        self.symbol_store = context.symbol_store
         self.task_submitter = task_submitter
         self.worker_result_merger = worker_result_merger
-        self.progress_reporter = progress_reporter
+        self.progress_reporter = context.progress_reporter
 
     def refresh_if_needed(
         self,
