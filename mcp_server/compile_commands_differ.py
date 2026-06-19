@@ -20,7 +20,6 @@ Usage:
     differ.store_current_commands(new_commands)
 """
 
-import hashlib
 from typing import Dict, List, Set, Tuple
 
 # Handle both package and script imports
@@ -179,19 +178,14 @@ class CompileCommandsDiffer:
             args: List of compilation arguments
 
         Returns:
-            SHA-256 hash (first 16 characters) of concatenated arguments
-
-        Algorithm:
-            1. Join arguments with "|" separator
-            2. Compute SHA-256 hash
-            3. Return first 16 hex characters
+            SHA-256 hash (full length) of concatenated arguments
 
         Note:
             Order matters - different order = different hash
         """
-        args_str = "|".join(args)
-        hash_value = hashlib.sha256(args_str.encode("utf-8")).hexdigest()
-        return hash_value[:16]  # 16 chars = 64 bits
+        from .file_utils import hash_compile_args
+
+        return hash_compile_args(args, normalize_order=False)
 
     def get_stored_commands_hash(self, file_path: str) -> str:
         """
