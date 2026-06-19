@@ -97,13 +97,18 @@ class CppAnalyzer:
         self.progress_reporter = self.context.progress_reporter
 
         # Components migrated to ProjectContext are created with the context.
+        # Order matters: CompilationEnvironment needs symbol_store, QueryEngine
+        # needs both CompilationEnvironment and CallGraphService.
         self.call_graph_service = CallGraphService(self.context)
         self.context.call_graph_service = self.call_graph_service
 
         self.symbol_store = SymbolIndexStore(self.context)
         self.context.symbol_store = self.symbol_store
 
-        self.query_engine = QueryEngine(self)
+        self.compilation_env = CompilationEnvironment(self.context)
+        self.context.compilation_env = self.compilation_env
+
+        self.query_engine = QueryEngine(self.context)
         self.context.query_engine = self.query_engine
 
         # Break circular dependency: CallGraphService needs symbol_store/query_engine.
@@ -111,10 +116,6 @@ class CppAnalyzer:
 
         self.cache_orchestrator = CacheOrchestrator(self)
         self.context.cache_orchestrator = self.cache_orchestrator
-
-        # CompilationEnvironment is migrated to ProjectContext.
-        self.compilation_env = CompilationEnvironment(self.context)
-        self.context.compilation_env = self.compilation_env
 
         # Wire call graph service to SQLite cache backend.
         self.call_graph_service.setup_cache_backend()
