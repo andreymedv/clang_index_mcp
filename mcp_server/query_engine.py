@@ -10,7 +10,7 @@ import json
 import re
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from .search_engine import SearchEngine
 from .smart_fallback import FallbackResult, SmartFallback
@@ -545,3 +545,156 @@ class QueryEngine:
 
         suggestions.sort(key=lambda x: (-x[0], x[1]))
         return [path for _, path in suggestions[:max_suggestions]]
+
+    async def get_files_containing_symbol(
+        self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
+    ) -> Dict[str, Any]:
+        """Get all files that contain references to or define a symbol."""
+        files: Set[str] = set()
+        total_refs = 0
+        kind = None
+
+        simple_name = symbol_name.split("::")[-1]
+
+        with self.analyzer.index_lock:
+            kind = self._find_symbol_definition_files(
+                symbol_name, symbol_kind, simple_name, project_only, files
+            )
+
+            total_refs = self._find_symbol_caller_files(
+                symbol_name, symbol_kind, simple_name, project_only, kind, files
+            )
+
+            self._find_class_reference_files(symbol_name, symbol_kind, project_only, kind, files)
+
+        file_list = sorted(list(files))
+
+        if total_refs == 0:
+            total_refs = len(file_list)
+
+        return {
+            "symbol": symbol_name,
+            "kind": kind,
+            "files": file_list,
+            "total_references": total_refs,
+        }
+
+    def _find_class_definition_files(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str],
+        simple_name: str,
+        project_only: bool,
+        files: Set[str],
+    ) -> Optional[str]:
+        """Find files where the class is defined and return its kind."""
+        if symbol_kind in (None, "class"):
+            for info in self.analyzer.class_index.get(simple_name, []):
+                if SearchEngine.matches_qualified_pattern(
+                    info.qualified_name or info.name, symbol_name
+                ):
+                    if not project_only or info.is_project:
+                        files.add(info.file)
+                        if info.header_file:
+                            files.add(info.header_file)
+                        return info.kind
+        return None
+
+    def _find_function_definition_files(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str],
+        simple_name: str,
+        project_only: bool,
+        files: Set[str],
+    ) -> Optional[str]:
+        """Find files where the function/method is defined and return its kind."""
+        kind = None
+        if symbol_kind in (None, "function", "method"):
+            for info in self.analyzer.function_index.get(simple_name, []):
+                if SearchEngine.matches_qualified_pattern(
+                    info.qualified_name or info.name, symbol_name
+                ):
+                    if not project_only or info.is_project:
+                        files.add(info.file)
+                        if info.header_file:
+                            files.add(info.header_file)
+                        if not kind:
+                            kind = info.kind
+        return kind
+
+    def _find_symbol_definition_files(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str],
+        simple_name: str,
+        project_only: bool,
+        files: Set[str],
+    ) -> Optional[str]:
+        """Find files where the symbol is defined and return the first found kind."""
+        kind = self._find_class_definition_files(
+            symbol_name, symbol_kind, simple_name, project_only, files
+        )
+
+        func_kind = self._find_function_definition_files(
+            symbol_name, symbol_kind, simple_name, project_only, files
+        )
+
+        return kind or func_kind
+
+    def _find_symbol_caller_files(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str],
+        simple_name: str,
+        project_only: bool,
+        kind: Optional[str],
+        files: Set[str],
+    ) -> int:
+        """Find files that call the symbol and return the reference count."""
+        total_refs = 0
+        if kind in ("function", "method") or (
+            not kind and symbol_kind in (None, "function", "method")
+        ):
+
+            def _name_matches(info) -> bool:
+                return SearchEngine.matches_qualified_pattern(
+                    info.qualified_name or info.name, symbol_name
+                )
+
+            target_usrs = set()
+            for info in self.analyzer.function_index.get(simple_name, []):
+                if _name_matches(info) and info.usr:
+                    if not project_only or info.is_project:
+                        target_usrs.add(info.usr)
+
+            for usr in target_usrs:
+                callers = self.analyzer.call_graph_analyzer.find_incoming_calls(usr)
+                for caller_usr in callers:
+                    if caller_usr in self.analyzer.usr_index:
+                        caller_info = self.analyzer.usr_index[caller_usr]
+                        if not project_only or caller_info.is_project:
+                            files.add(caller_info.file)
+                            total_refs += 1
+        return total_refs
+
+    def _find_class_reference_files(
+        self,
+        symbol_name: str,
+        symbol_kind: Optional[str],
+        project_only: bool,
+        kind: Optional[str],
+        files: Set[str],
+    ) -> None:
+        """Find files that reference a class and add them to the set."""
+        if kind in ("class", "struct") or (not kind and symbol_kind in (None, "class")):
+            for file_path, symbols in self.analyzer.file_index.items():
+                if not project_only or self.analyzer.compilation_env._is_project_file(file_path):
+                    for symbol in symbols:
+                        sym_qname = symbol.qualified_name or symbol.name
+                        parent_qname = symbol.parent_class or ""
+                        if SearchEngine.matches_qualified_pattern(
+                            sym_qname, symbol_name
+                        ) or SearchEngine.matches_qualified_pattern(parent_qname, symbol_name):
+                            files.add(file_path)
+                            break
