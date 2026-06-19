@@ -556,16 +556,6 @@ class CppAnalyzer:
 
         return added_count
 
-    @staticmethod
-    def _get_qualified_name(cursor: Any) -> str:
-        """Build fully qualified name."""
-        return SymbolExtractor._get_qualified_name(cursor)
-
-    @staticmethod
-    def _extract_namespace(qualified_name: str) -> str:
-        """Extract namespace portion from qualified name."""
-        return SymbolExtractor._extract_namespace(qualified_name)
-
     def _extract_diagnostics(self, tu: Any) -> Tuple[List[Any], List[Any]]:
         """Extract diagnostics from translation unit."""
         return self.clang_parser._extract_diagnostics(tu)
@@ -605,46 +595,6 @@ class CppAnalyzer:
         return self.symbol_extractor._resolve_instantiation_base_classes(
             cursor, primary_template_usr
         )
-
-    @staticmethod
-    def _extract_params_from_type_spelling(type_spelling: str) -> str:
-        """Facade for SymbolExtractor._extract_params_from_type_spelling"""
-        return SymbolExtractor._extract_params_from_type_spelling(type_spelling)
-
-    @staticmethod
-    def _extract_trailing_qualifiers(type_spelling: str) -> str:
-        """Facade for SymbolExtractor._extract_trailing_qualifiers"""
-        return SymbolExtractor._extract_trailing_qualifiers(type_spelling)
-
-    @staticmethod
-    def _extract_brief_comment(cursor: Any) -> Optional[str]:
-        """Facade for SymbolExtractor._extract_brief_comment"""
-        return SymbolExtractor._extract_brief_comment(cursor)
-
-    @staticmethod
-    def _extract_raw_doc_comment(cursor: Any) -> Optional[str]:
-        """Facade for SymbolExtractor._extract_raw_doc_comment"""
-        return SymbolExtractor._extract_raw_doc_comment(cursor)
-
-    @staticmethod
-    def _extract_brief_from_doc(doc_comment: str) -> Optional[str]:
-        """Facade for SymbolExtractor._extract_brief_from_doc"""
-        return SymbolExtractor._extract_brief_from_doc(doc_comment)
-
-    @staticmethod
-    def _extract_template_args_from_displayname(displayname: str) -> List[str]:
-        """Facade for SymbolExtractor._extract_template_args_from_displayname"""
-        return SymbolExtractor._extract_template_args_from_displayname(displayname)
-
-    @staticmethod
-    def _is_system_header_diagnostic(diag: Any) -> bool:
-        """Facade for ClangParser._is_system_header_diagnostic"""
-        return ClangParser._is_system_header_diagnostic(diag)
-
-    @staticmethod
-    def _format_diagnostics(diagnostics_list: List[Any], max_count: int = 5) -> str:
-        """Facade for ClangParser._format_diagnostics"""
-        return ClangParser._format_diagnostics(diagnostics_list, max_count)
 
     def _process_deferred_instantiation(self, info: SymbolInfo) -> bool:
         """Process a single deferred instantiation and return True if resolved."""
