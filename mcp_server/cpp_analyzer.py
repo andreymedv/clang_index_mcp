@@ -7,7 +7,6 @@ It's slower than the C++ implementation but more reliable and easier to debug.
 
 import os
 import sys
-import threading
 import time
 from concurrent.futures import (
     Executor,
@@ -25,6 +24,7 @@ from .cancellation_coordinator import CancellationCoordinator
 from .clang_parser import ClangParser
 from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
+from .concurrency_context import ConcurrencyContext
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .execution_config import ExecutionConfig
 from .project_identity import ProjectIdentity
@@ -49,16 +49,6 @@ try:
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
-
-
-class _NoOpLock:
-    """A no-op context manager that doesn't actually acquire any lock."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return False
 
 
 class CppAnalyzer:
@@ -116,13 +106,11 @@ class CppAnalyzer:
         # Initialize symbol index store (manages class/function/file/USR indexes)
         self.symbol_store = SymbolIndexStore(self)
 
-        # Threading/Processing
-        self.index_lock = threading.RLock()
+        # Concurrency context (locks, thread-local buffers, locking strategy)
+        self.concurrency = ConcurrencyContext()
 
         # Track indexed files
         self.translation_units: Dict[str, TranslationUnit] = {}
-        self._no_op_lock = _NoOpLock()  # Reusable no-op lock for isolated processes
-        self._thread_local = threading.local()
 
         # Cancellation support
         self.cancellation = CancellationCoordinator()
@@ -133,12 +121,6 @@ class CppAnalyzer:
         # Initialize helper components (Phase 2 refactor)
         self.clang_parser = ClangParser(self)
         self.symbol_extractor = SymbolExtractor(self)
-
-        # Locking strategy:
-        # - True (default): Use locks for thread safety (ThreadPoolExecutor or shared instance)
-        # - False: Skip locks for performance (ProcessPoolExecutor worker with isolated memory)
-        # This flag is set to False by _process_file_worker for worker processes
-        self._needs_locking = True
 
         # Initialize cache manager with project identity
         # Pass skip_schema_recreation for worker processes to avoid race conditions
@@ -393,6 +375,21 @@ class CppAnalyzer:
         """Backward-compatible access to worker_pool."""
         return self.execution.worker_pool
 
+    @property
+    def index_lock(self):
+        """Backward-compatible access to index_lock."""
+        return self.concurrency.index_lock
+
+    @property
+    def _needs_locking(self):
+        """Backward-compatible access to _needs_locking."""
+        return self.concurrency._needs_locking
+
+    @_needs_locking.setter
+    def _needs_locking(self, value):
+        """Allow setting _needs_locking (used by worker processes)."""
+        self.concurrency._needs_locking = value
+
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection (delegates to cache_orchestrator)."""
         return self.cache_orchestrator._get_file_hash(file_path)
@@ -492,7 +489,7 @@ class CppAnalyzer:
         to skip synchronization in that case while maintaining correctness
         in ThreadPoolExecutor mode where memory is actually shared.
         """
-        return self.index_lock if self._needs_locking else self._no_op_lock
+        return self.concurrency.get_lock()
 
     def _get_thread_index(self) -> Index:
         """Return a thread-local libclang Index instance."""
@@ -500,19 +497,11 @@ class CppAnalyzer:
 
     def _init_thread_local_buffers(self):
         """Initialize thread-local buffers for collecting symbols during parsing."""
-        self._thread_local.collected_symbols = []
-        self._thread_local.collected_calls = []
-        self._thread_local.collected_aliases = []
+        self.concurrency.init_thread_local_buffers()
 
     def _get_thread_local_buffers(self):
         """Get thread-local buffers, initializing if needed."""
-        if not hasattr(self._thread_local, "collected_symbols"):
-            self._init_thread_local_buffers()
-        return (
-            self._thread_local.collected_symbols,
-            self._thread_local.collected_calls,
-            self._thread_local.collected_aliases,
-        )
+        return self.concurrency.get_thread_local_buffers()
 
     def _bulk_write_symbols(self):
         """
