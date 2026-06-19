@@ -118,10 +118,6 @@ class CppAnalyzer:
         # Execution configuration (worker pool strategy)
         self.execution = ExecutionConfig(config_max_workers=self.config.get_max_workers())
 
-        # Initialize helper components (Phase 2 refactor)
-        self.clang_parser = ClangParser(self)
-        self.symbol_extractor = SymbolExtractor(self)
-
         # Initialize cache manager with project identity
         # Pass skip_schema_recreation for worker processes to avoid race conditions
         self.cache_manager = CacheManager(
