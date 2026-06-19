@@ -121,9 +121,6 @@ class CppAnalyzer:
             self.project_identity, skip_schema_recreation=self._skip_schema_recreation
         )
 
-        # Initialize compilation environment (manages file scanner, compile commands, etc.)
-        self.compilation_env = CompilationEnvironment(self)
-
         # Initialize query engine (manages search, hierarchy, and analysis operations)
         self.query_engine = QueryEngine(self)
 
@@ -152,12 +149,16 @@ class CppAnalyzer:
             query_engine=self.query_engine,
             cache_manager=self.cache_manager,
             cache_orchestrator=self.cache_orchestrator,
-            compilation_env=self.compilation_env,
             concurrency=self.concurrency,
             execution=self.execution,
             cancellation=self.cancellation,
             progress_reporter=self.progress_reporter,
         )
+
+        # Initialize compilation environment after the context so it can depend on
+        # the context rather than the full CppAnalyzer.
+        self.compilation_env = CompilationEnvironment(self.context)
+        self.context.compilation_env = self.compilation_env
 
         # Task submitter (extracted helper for submitting work to the executor)
         self.task_submitter = IndexingTaskSubmitter(

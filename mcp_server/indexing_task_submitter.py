@@ -32,6 +32,7 @@ class IndexingTaskSubmitter:
         self.project_root = context.project_root
         self.project_identity = context.project_identity
         self.execution = context.execution
+        assert context.compilation_env is not None
         self.compilation_env = context.compilation_env
         self.index_file = index_file
 

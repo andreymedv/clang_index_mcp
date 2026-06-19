@@ -8,6 +8,7 @@ no behavior lives here except trivial delegations to the owned components.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from clang.cindex import Index
 
@@ -52,15 +53,18 @@ class ProjectContext:
     call_graph_service: CallGraphService
     query_engine: QueryEngine
 
-    # Caching and compilation environment
+    # Caching
     cache_manager: CacheManager
     cache_orchestrator: CacheOrchestrator
-    compilation_env: CompilationEnvironment
 
     # Execution and concurrency
     concurrency: ConcurrencyContext
     execution: ExecutionConfig
     cancellation: CancellationCoordinator
+
+    # Compilation environment (created after the context due to a circular
+    # dependency during the one-by-one migration; always set by CppAnalyzer).
+    compilation_env: Optional[CompilationEnvironment] = None
 
     # Progress reporting (lightweight helper, safe to share)
     progress_reporter: IndexingProgressReporter = field(default_factory=IndexingProgressReporter)
@@ -68,6 +72,8 @@ class ProjectContext:
     @property
     def compile_commands_manager(self):
         """Convenience accessor for the compile commands manager."""
+        if self.compilation_env is None:
+            return None
         return self.compilation_env.compile_commands_manager
 
     @property
