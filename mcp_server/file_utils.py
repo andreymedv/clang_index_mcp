@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from typing import List
 
 
 def hash_file(file_path: str | Path, chunk_size: int = 8192) -> str:
@@ -35,3 +36,37 @@ def hash_file(file_path: str | Path, chunk_size: int = 8192) -> str:
         return ""
 
     return hash_md5.hexdigest()
+
+
+def hash_compile_args(args: List[str], normalize_order: bool = True) -> str:
+    """
+    Hash compilation arguments for change detection.
+
+    Creates a stable hash of the argument list that can be used to detect
+    changes in compilation flags.
+
+    Args:
+        args: List of compilation arguments
+        normalize_order: If True, sort args before hashing (for cache validation).
+                        If False, preserve order (for detecting flag order changes).
+
+    Returns:
+        SHA-256 hex digest (full length)
+
+    Rationale:
+        - SHA-256 over MD5 for better collision resistance
+        - Pipe separator avoids ambiguity (e.g., "-I /foo" vs "-I/foo")
+        - normalize_order=True makes cache validation order-independent
+          (most compilation flags are order-independent)
+        - normalize_order=False detects when flag order changes
+          (matters for some flags like -I include paths)
+
+    Example:
+        >>> hash_compile_args(["-std=c++17", "-O2"], normalize_order=True)
+        "a1b2c3d4..."
+        >>> hash_compile_args(["-I/usr/include", "-I/opt/include"], normalize_order=False)
+        "e5f6g7h8..."
+    """
+    normalized = sorted(args) if normalize_order else args
+    args_str = "|".join(normalized)
+    return hashlib.sha256(args_str.encode("utf-8")).hexdigest()

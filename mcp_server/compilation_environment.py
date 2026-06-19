@@ -5,7 +5,6 @@ Handles file discovery, compile commands, file scanning,
 and compilation argument resolution.
 """
 
-import hashlib
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -76,10 +75,10 @@ class CompilationEnvironment:
         return self.file_scanner.is_project_file(file_path)
 
     def _compute_compile_args_hash(self, args: List[str]) -> str:
-        """Compute hash of compilation arguments for cache validation"""
-        # Sort and join args to create a consistent hash
-        args_str = " ".join(sorted(args))
-        return hashlib.md5(args_str.encode()).hexdigest()
+        """Compute hash of compilation arguments for cache validation."""
+        from .file_utils import hash_compile_args
+
+        return hash_compile_args(args, normalize_order=True)
 
     def _should_skip_file(self, file_path: str) -> bool:
         """Check if file should be skipped"""
