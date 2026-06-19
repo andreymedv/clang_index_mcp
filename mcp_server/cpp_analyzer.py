@@ -26,6 +26,7 @@ from .clang_parser import ClangParser
 from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
 from .cpp_analyzer_config import CppAnalyzerConfig
+from .execution_config import ExecutionConfig
 from .project_identity import ProjectIdentity
 from .query_engine import QueryEngine
 from .state_manager import IndexingProgress
@@ -35,7 +36,7 @@ from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
 )
-from .worker_pool import WorkerPoolManager, _process_file_worker
+from .worker_pool import _process_file_worker
 
 # Handle both package and script imports
 try:
@@ -126,25 +127,8 @@ class CppAnalyzer:
         # Cancellation support
         self.cancellation = CancellationCoordinator()
 
-        cpu_count = os.cpu_count() or 1
-
-        # Determine max_workers from config or default to cpu_count
-        # User can limit workers to reduce memory usage (~1.2 GB per worker on large projects)
-        config_max_workers = self.config.get_max_workers()
-        if config_max_workers is not None:
-            self.max_workers = min(config_max_workers, cpu_count)
-            diagnostics.info(
-                f"Using max_workers={self.max_workers} from config (cpu_count={cpu_count})"
-            )
-        else:
-            self.max_workers = cpu_count
-
-        # Use ProcessPoolExecutor by default to bypass Python's GIL
-        # Can be overridden via environment variable
-        self.use_processes = os.environ.get("CPP_ANALYZER_USE_THREADS", "").lower() != "true"
-
-        # Initialize worker pool manager
-        self.worker_pool = WorkerPoolManager(self.max_workers, self.use_processes)
+        # Execution configuration (worker pool strategy)
+        self.execution = ExecutionConfig(config_max_workers=self.config.get_max_workers())
 
         # Initialize helper components (Phase 2 refactor)
         self.clang_parser = ClangParser(self)
@@ -194,7 +178,7 @@ class CppAnalyzer:
 
         diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
         diagnostics.debug(
-            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.use_processes else 'ThreadPool'} with {self.max_workers} workers"
+            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.execution.use_processes else 'ThreadPool'} with {self.max_workers} workers"
         )
 
         # Print compile commands configuration status
@@ -393,6 +377,21 @@ class CppAnalyzer:
     def _last_fallback(self, value):
         """Allow setting _last_fallback."""
         self.query_engine._last_fallback = value
+
+    @property
+    def max_workers(self):
+        """Backward-compatible access to max_workers."""
+        return self.execution.max_workers
+
+    @property
+    def use_processes(self):
+        """Backward-compatible access to use_processes."""
+        return self.execution.use_processes
+
+    @property
+    def worker_pool(self):
+        """Backward-compatible access to worker_pool."""
+        return self.execution.worker_pool
 
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection (delegates to cache_orchestrator)."""
@@ -1064,7 +1063,7 @@ class CppAnalyzer:
         self, executor: Executor, files: List[str], force: bool, include_dependencies: bool
     ) -> Dict:
         """Submit indexing tasks to executor."""
-        if self.use_processes:
+        if self.execution.use_processes:
             config_file_str = (
                 str(self.project_identity.config_file_path)
                 if self.project_identity.config_file_path
@@ -1136,7 +1135,7 @@ class CppAnalyzer:
         """Get result from future and merge into indexes."""
         try:
             result = future.result()
-            if self.use_processes:
+            if self.execution.use_processes:
                 # ProcessPoolExecutor: result is 6-tuple
                 self._merge_worker_result(result, file_path)
                 return bool(result[1]), bool(result[2])  # success, was_cached
@@ -1220,7 +1219,7 @@ class CppAnalyzer:
         indexed_count, cache_hits, failed_count = 0, 0, 0
         last_report_time = start_time
 
-        executor = self.worker_pool.setup()
+        executor = self.execution.worker_pool.setup()
 
         try:
             future_to_file = self._submit_indexing_tasks(
@@ -1256,10 +1255,10 @@ class CppAnalyzer:
 
         except KeyboardInterrupt:
             diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
-            self.worker_pool.shutdown(name="Indexing")
+            self.execution.worker_pool.shutdown(name="Indexing")
             raise
         finally:
-            self.worker_pool.shutdown_nowait(name="Indexing")
+            self.execution.worker_pool.shutdown_nowait(name="Indexing")
 
         return self._finalize_indexing(
             indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
@@ -1315,7 +1314,7 @@ class CppAnalyzer:
     ) -> Dict[Future, str]:
         """Submit indexing tasks for modified and new files."""
         future_to_file = {}
-        if self.use_processes:
+        if self.execution.use_processes:
             project_root = str(self.project_root)
             config_file_str = (
                 str(self.project_identity.config_file_path)
@@ -1375,9 +1374,9 @@ class CppAnalyzer:
 
     def _process_refresh_result(self, file_path: str, res: Any) -> bool:
         """Process result from indexing worker during refresh. Returns True if successful."""
-        success = res[1] if self.use_processes else res[0]
+        success = res[1] if self.execution.use_processes else res[0]
         if success:
-            if self.use_processes:
+            if self.execution.use_processes:
                 self._merge_worker_result(res, file_path)
             return True
         return False
@@ -1467,10 +1466,10 @@ class CppAnalyzer:
             return 0
 
         diagnostics.debug(f"Refresh: {len(modified_files)} modified, {len(new_files)} new files")
-        if self.use_processes:
+        if self.execution.use_processes:
             self.cache_manager.ensure_schema_current()
 
-        executor = self.worker_pool.setup()
+        executor = self.execution.worker_pool.setup()
         try:
             refreshed, failed = self._run_refresh_loop(
                 executor,
@@ -1483,10 +1482,10 @@ class CppAnalyzer:
             )
         except KeyboardInterrupt:
             diagnostics.info("\nRefresh interrupted by user (Ctrl-C)")
-            self.worker_pool.shutdown(name="Refresh")
+            self.execution.worker_pool.shutdown(name="Refresh")
             raise
         finally:
-            self.worker_pool.shutdown_nowait(name="Refresh")
+            self.execution.worker_pool.shutdown_nowait(name="Refresh")
 
         self._finalize_refresh(refreshed, deleted)
         return refreshed
