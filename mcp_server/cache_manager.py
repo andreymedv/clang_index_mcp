@@ -1,6 +1,5 @@
 """Cache management for C++ analyzer."""
 
-import hashlib
 import json
 import sqlite3
 import sys
@@ -284,12 +283,10 @@ class CacheManager:
             return None
 
     def get_file_hash(self, file_path: str) -> str:
-        """Calculate hash of a file"""
-        try:
-            with open(file_path, "rb") as f:
-                return hashlib.md5(f.read()).hexdigest()
-        except Exception:
-            return ""
+        """Calculate hash of a file using chunked reads."""
+        from .file_utils import hash_file
+
+        return hash_file(file_path)
 
     def save_cache(
         self,
