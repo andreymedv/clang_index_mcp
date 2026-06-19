@@ -10,50 +10,51 @@ from unittest.mock import Mock
 import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.symbol_extractor import SymbolExtractor
 
 
 class TestExtractParamsFromTypeSpelling:
     """Test the static helper that extracts params from C type notation."""
 
     def test_simple_params(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("void (int, double)") == "int, double"
+        assert SymbolExtractor._extract_params_from_type_spelling("void (int, double)") == "int, double"
 
     def test_no_params(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("void ()") == ""
+        assert SymbolExtractor._extract_params_from_type_spelling("void ()") == ""
 
     def test_single_param(self):
         assert (
-            CppAnalyzer._extract_params_from_type_spelling("int (const char *)") == "const char *"
+            SymbolExtractor._extract_params_from_type_spelling("int (const char *)") == "const char *"
         )
 
     def test_reference_param(self):
-        result = CppAnalyzer._extract_params_from_type_spelling("void (const std::string &)")
+        result = SymbolExtractor._extract_params_from_type_spelling("void (const std::string &)")
         assert result == "const std::string &"
 
     def test_function_pointer_param(self):
         """Nested parens from function pointer params should be handled."""
-        result = CppAnalyzer._extract_params_from_type_spelling("void (void (*)(int), int)")
+        result = SymbolExtractor._extract_params_from_type_spelling("void (void (*)(int), int)")
         assert result == "void (*)(int), int"
 
     def test_empty_string(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("") == ""
+        assert SymbolExtractor._extract_params_from_type_spelling("") == ""
 
     def test_none_input(self):
-        assert CppAnalyzer._extract_params_from_type_spelling(None) == ""
+        assert SymbolExtractor._extract_params_from_type_spelling(None) == ""
 
     def test_no_parens(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("int") == ""
+        assert SymbolExtractor._extract_params_from_type_spelling("int") == ""
 
     def test_template_params(self):
         """Template angle brackets in params should be preserved."""
-        result = CppAnalyzer._extract_params_from_type_spelling(
+        result = SymbolExtractor._extract_params_from_type_spelling(
             "void (std::map<int, int>, std::vector<std::string>)"
         )
         assert result == "std::map<int, int>, std::vector<std::string>"
 
     def test_const_method_type(self):
         """Const qualifier after closing paren should not be included in params."""
-        result = CppAnalyzer._extract_params_from_type_spelling("void (int) const")
+        result = SymbolExtractor._extract_params_from_type_spelling("void (int) const")
         assert result == "int"
 
 
@@ -61,27 +62,27 @@ class TestExtractTrailingQualifiers:
     """Test the static helper that extracts const/noexcept/etc. qualifiers."""
 
     def test_const_qualifier(self):
-        result = CppAnalyzer._extract_trailing_qualifiers("void (int) const")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (int) const")
         assert result.strip() == "const"
 
     def test_no_qualifier(self):
-        result = CppAnalyzer._extract_trailing_qualifiers("void (int)")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (int)")
         assert result == ""
 
     def test_const_noexcept(self):
-        result = CppAnalyzer._extract_trailing_qualifiers("void (int) const noexcept")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (int) const noexcept")
         assert "const" in result
         assert "noexcept" in result
 
     def test_empty_string(self):
-        assert CppAnalyzer._extract_trailing_qualifiers("") == ""
+        assert SymbolExtractor._extract_trailing_qualifiers("") == ""
 
     def test_none_input(self):
-        assert CppAnalyzer._extract_trailing_qualifiers(None) == ""
+        assert SymbolExtractor._extract_trailing_qualifiers(None) == ""
 
     def test_nested_parens_only_checks_outermost(self):
         """Qualifier extraction should use the last top-level close paren."""
-        result = CppAnalyzer._extract_trailing_qualifiers("void (void (*)(int)) const")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (void (*)(int)) const")
         assert result.strip() == "const"
 
 
