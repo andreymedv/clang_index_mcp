@@ -132,15 +132,9 @@ class CompileCommandsManager:
 
     def _get_file_hash(self, file_path: Path) -> str:
         """Get MD5 hash of a file for cache validation."""
-        if not file_path.exists():
-            return ""
+        from .file_utils import hash_file
 
-        hash_md5 = hashlib.md5()
-        # For large files, read in chunks
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+        return hash_file(file_path)
 
     def _load_from_cache(self, compile_commands_file: Path) -> bool:
         """Try to load parsed commands from cache.
