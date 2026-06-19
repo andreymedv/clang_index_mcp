@@ -103,8 +103,19 @@ class IncrementalAnalyzer:
         """
         Perform incremental analysis of changed files.
 
-        This is the main entry point that orchestrates the entire
-        incremental analysis workflow.
+        This is the sophisticated incremental update path used by the MCP
+        refresh_project tool with mode="incremental". It provides:
+        - Header dependency cascade via DependencyGraphBuilder
+        - Per-file compile_commands diffing via CompileCommandsDiffer
+        - Detailed change categorization (added/modified/deleted)
+
+        For simple cache-based startup refresh, use CppAnalyzer.refresh_if_needed.
+        Both paths use shared primitives from file_utils:
+        - hash_file() for consistent file content hashing
+        - hash_compile_args() for consistent argument hashing
+
+        This ensures both paths agree on whether files or arguments have
+        changed, even though they process changes differently.
 
         Algorithm:
             1. Scan for all changes
@@ -114,13 +125,14 @@ class IncrementalAnalyzer:
                - Files affected by header changes (via dependency graph)
                - Modified source files
                - New files
-            4. Remove deleted files from cache
+            4. Remove deleted files from cache and indexes
             5. Re-analyze the minimal set
             6. Return detailed results
 
         Args:
             progress_callback: Optional callback for progress updates.
                              Called with IndexingProgress object during analysis.
+            wait_for_tools_callback: Optional callback to wait for tool availability.
 
         Returns:
             AnalysisResult with statistics and details

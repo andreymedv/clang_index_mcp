@@ -1431,7 +1431,31 @@ class CppAnalyzer:
         progress_callback: Optional[Callable] = None,
         wait_for_tools_callback: Optional[Callable[[], None]] = None,
     ) -> int:
-        """Refresh index for changed files and remove deleted files."""
+        """
+        Refresh index for changed files and remove deleted files.
+
+        This is the legacy refresh path used during initial cache loading.
+        It performs simple hash-based change detection without dependency
+        graph analysis or header cascade.
+
+        For more sophisticated incremental updates (with header dependency
+        tracking and compile_commands diffing), use IncrementalAnalyzer
+        via the MCP refresh_project tool with mode="incremental".
+
+        Both paths now use shared primitives from file_utils:
+        - hash_file() for consistent file content hashing
+        - hash_compile_args() for consistent argument hashing
+
+        This ensures both paths agree on whether files or arguments have
+        changed, even though they process changes differently.
+
+        Args:
+            progress_callback: Optional callback for progress updates
+            wait_for_tools_callback: Optional callback to wait for tool availability
+
+        Returns:
+            Number of files refreshed
+        """
         refreshed, deleted, start_time = 0, 0, time.time()
 
         if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
