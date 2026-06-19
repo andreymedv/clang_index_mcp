@@ -1263,7 +1263,7 @@ class CppAnalyzer:
             self.worker_pool.shutdown(name="Indexing")
             raise
         finally:
-            self.worker_pool.shutdown(name="Indexing")
+            self.worker_pool.shutdown_nowait(name="Indexing")
 
         return self._finalize_indexing(
             indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
@@ -1450,7 +1450,8 @@ class CppAnalyzer:
         if self.use_processes:
             self.cache_manager.ensure_schema_current()
 
-        with self.worker_pool as executor:
+        executor = self.worker_pool.setup()
+        try:
             refreshed, failed = self._run_refresh_loop(
                 executor,
                 modified_files,
@@ -1460,6 +1461,12 @@ class CppAnalyzer:
                 progress_callback,
                 wait_for_tools_callback,
             )
+        except KeyboardInterrupt:
+            diagnostics.info("\nRefresh interrupted by user (Ctrl-C)")
+            self.worker_pool.shutdown(name="Refresh")
+            raise
+        finally:
+            self.worker_pool.shutdown_nowait(name="Refresh")
 
         self._finalize_refresh(refreshed, deleted)
         return refreshed
