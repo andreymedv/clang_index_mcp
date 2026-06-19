@@ -8,6 +8,8 @@ and file-based symbol lookup.
 
 import json
 import re
+from fnmatch import fnmatch
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .search_engine import SearchEngine
@@ -375,3 +377,171 @@ class QueryEngine:
             "is_ambiguous": False,
             "aliases": aliases,
         }
+
+    def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
+        """Search for symbols within a specific file or files matching a glob pattern."""
+        glob_chars = set("*?[]")
+        is_glob = any(c in file_path for c in glob_chars)
+
+        if is_glob:
+            return self._find_in_files_glob(file_path, pattern)
+        else:
+            return self._find_in_file_exact(file_path, pattern)
+
+    def _matches_glob(self, indexed_file: str, glob_pattern: str) -> bool:
+        """Check if an indexed file matches a glob pattern using multiple strategies."""
+        if fnmatch(indexed_file, glob_pattern):
+            return True
+        if fnmatch(indexed_file, "**/" + glob_pattern):
+            return True
+        if self.analyzer.project_root:
+            try:
+                rel_path = str(Path(indexed_file).relative_to(self.analyzer.project_root))
+                return fnmatch(rel_path, glob_pattern)
+            except ValueError:
+                pass
+        return False
+
+    def _filter_results_by_files(
+        self, items: List[Dict[str, Any]], matched_files: set
+    ) -> List[Dict[str, Any]]:
+        """Filter search results to only include items from specified files."""
+        results = []
+        for item in items:
+            _item_loc = item.get("definition") or item.get("declaration") or {}
+            item_file = _item_loc.get("file") or item.get("file", "")
+            if item_file in matched_files:
+                results.append(item)
+        return results
+
+    def _find_in_files_glob(self, glob_pattern: str, symbol_pattern: str) -> Dict[str, Any]:
+        """Search for symbols in files matching a glob pattern."""
+        matched_files = [
+            f for f in self.analyzer.file_index.keys() if self._matches_glob(f, glob_pattern)
+        ]
+
+        if not matched_files:
+            return {
+                "results": [],
+                "matched_files": [],
+                "suggestions": self._get_path_suggestions(glob_pattern),
+                "message": f"No files found matching glob pattern '{glob_pattern}'",
+            }
+
+        all_classes = self.search_engine.search_classes(
+            symbol_pattern, project_only=False, max_results=None
+        )
+        if isinstance(all_classes, tuple):
+            all_classes = all_classes[0]
+
+        all_functions = self.search_engine.search_functions(
+            symbol_pattern, project_only=False, max_results=None
+        )
+        if isinstance(all_functions, tuple):
+            all_functions = all_functions[0]
+
+        matched_files_set = set(matched_files)
+        results = self._filter_results_by_files(all_classes + all_functions, matched_files_set)
+
+        return {
+            "results": results,
+            "matched_files": sorted(matched_files),
+            "message": f"Found {len(results)} symbols in {len(matched_files)} files matching '{glob_pattern}'",
+        }
+
+    def _resolve_file_path(self, file_path: str) -> Optional[str]:
+        """Resolve a file path to absolute path for matching."""
+        if Path(file_path).is_absolute():
+            return str(Path(file_path).resolve())
+        if self.analyzer.project_root:
+            potential_path = Path(self.analyzer.project_root) / file_path
+            if potential_path.exists():
+                return str(potential_path.resolve())
+        return None
+
+    def _match_item_to_file(
+        self, item: Dict[str, Any], file_path: str, abs_file_path: Optional[str]
+    ) -> bool:
+        """Check if a search result item belongs to the given file."""
+        _item_loc = item.get("definition") or item.get("declaration") or {}
+        item_file = _item_loc.get("file") or item.get("file", "")
+        if not item_file:
+            return False
+
+        item_abs = str(Path(item_file).resolve()) if item_file else ""
+
+        if abs_file_path and item_abs == abs_file_path:
+            return True
+        if item_file.endswith(file_path) or item_abs.endswith(file_path):
+            return True
+        return False
+
+    def _find_in_file_exact(self, file_path: str, pattern: str) -> Dict[str, Any]:
+        """Search for symbols in a specific file (exact or suffix match)."""
+        results = []
+        matched_file = None
+
+        all_classes = self.search_engine.search_classes(
+            pattern, project_only=False, max_results=None
+        )
+        if isinstance(all_classes, tuple):
+            all_classes = all_classes[0]
+
+        all_functions = self.search_engine.search_functions(
+            pattern, project_only=False, max_results=None
+        )
+        if isinstance(all_functions, tuple):
+            all_functions = all_functions[0]
+
+        abs_file_path = self._resolve_file_path(file_path)
+
+        for item in all_classes + all_functions:
+            if self._match_item_to_file(item, file_path, abs_file_path):
+                results.append(item)
+                _item_loc = item.get("definition") or item.get("declaration") or {}
+                matched_file = _item_loc.get("file") or item.get("file", "")
+
+        if results:
+            return {
+                "results": results,
+                "matched_files": [matched_file] if matched_file else [],
+                "message": f"Found {len(results)} symbols in '{file_path}'",
+            }
+        else:
+            suggestions = self._get_path_suggestions(file_path)
+            return {
+                "results": [],
+                "matched_files": [],
+                "suggestions": suggestions,
+                "message": f"No file found matching '{file_path}'. See suggestions for similar paths.",
+            }
+
+    def _get_path_suggestions(self, partial_path: str, max_suggestions: int = 5) -> List[str]:
+        """Get suggestions for similar file paths based on partial input."""
+        suggestions = []
+        partial_lower = partial_path.lower()
+        partial_basename = Path(partial_path).name.lower()
+        path_parts = [p.lower() for p in Path(partial_path).parts if p]
+
+        for indexed_file in self.analyzer.file_index.keys():
+            indexed_lower = indexed_file.lower()
+            indexed_basename = Path(indexed_file).name.lower()
+
+            score = 0
+
+            if indexed_basename == partial_basename:
+                score += 100
+            elif partial_basename in indexed_basename:
+                score += 50
+            elif partial_lower in indexed_lower:
+                score += 30
+
+            for part in path_parts:
+                if part in indexed_lower:
+                    score += 10
+
+            if score > 0:
+                suggestions.append((score, indexed_file))
+
+        suggestions.sort(key=lambda x: (-x[0], x[1]))
+        return [path for _, path in suggestions[:max_suggestions]]
