@@ -13,7 +13,6 @@ from concurrent.futures import (
     Future,
     as_completed,
 )
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -27,9 +26,9 @@ from .compile_commands_manager import CompileCommandsManager
 from .concurrency_context import ConcurrencyContext
 from .cpp_analyzer_config import CppAnalyzerConfig
 from .execution_config import ExecutionConfig
+from .indexing_progress_reporter import IndexingProgressReporter
 from .project_identity import ProjectIdentity
 from .query_engine import QueryEngine
-from .state_manager import IndexingProgress
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
 from .symbol_info import (
@@ -114,6 +113,9 @@ class CppAnalyzer:
 
         # Execution configuration (worker pool strategy)
         self.execution = ExecutionConfig(config_max_workers=self.config.get_max_workers())
+
+        # Progress reporter (extracted helper for indexing/refresh progress)
+        self.progress_reporter = IndexingProgressReporter()
 
         # Initialize cache manager with project identity
         # Pass skip_schema_recreation for worker processes to avoid race conditions
@@ -798,15 +800,6 @@ class CppAnalyzer:
                 file_path, e, current_hash, compile_args_hash, retry_count
             )
 
-    def _is_terminal(self) -> bool:
-        """Check if stderr is a terminal for progress reporting."""
-        return (
-            hasattr(sys.stderr, "isatty")
-            and sys.stderr.isatty()
-            and not os.environ.get("MCP_SESSION_ID")
-            and not os.environ.get("CLAUDE_CODE_SESSION")
-        )
-
     def _prepare_indexing_files(self, include_dependencies: bool) -> List[str]:
         """Find C++ files to index and log compilation environment."""
         diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
@@ -842,74 +835,6 @@ class CppAnalyzer:
 
             file_hash = self._get_file_hash(file_path)
             self.file_hashes[file_path] = file_hash
-
-    def _should_report_progress(
-        self,
-        processed: int,
-        total: int,
-        current_time: float,
-        last_report_time: float,
-        is_terminal: bool,
-    ) -> bool:
-        """Determine if progress should be reported based on interval and environment."""
-        if is_terminal:
-            return (
-                (processed <= 5)
-                or (processed % 5 == 0)
-                or ((current_time - last_report_time) > 2.0)
-                or (processed == total)
-            )
-        return (
-            (processed % 50 == 0)
-            or ((current_time - last_report_time) > 5.0)
-            or (processed == total)
-        )
-
-    def _report_indexing_progress(
-        self,
-        processed: int,
-        total: int,
-        indexed_count: int,
-        failed_count: int,
-        cache_hits: int,
-        start_time: float,
-        is_terminal: bool,
-        progress_callback: Optional[Callable],
-        file_path: str,
-    ):
-        """Log progress and invoke callback."""
-        current_time = time.time()
-        elapsed = current_time - start_time
-        rate = processed / elapsed if elapsed > 0 else 0
-        eta = (total - processed) / rate if rate > 0 else 0
-        cache_rate = (cache_hits * 100 // processed) if processed > 0 else 0
-
-        progress_str = (
-            f"Progress: {processed}/{total} files ({100 * processed // total}%) - "
-            f"Success: {indexed_count} - Failed: {failed_count} - "
-            f"Cache: {cache_hits} ({cache_rate}%) - {rate:.1f} files/sec - ETA: {eta:.0f}s"
-        )
-
-        if is_terminal:
-            print(f"\033[2K\r{progress_str}", end="", file=sys.stderr, flush=True)
-        else:
-            print(progress_str, file=sys.stderr, flush=True)
-
-        if progress_callback:
-            try:
-                estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-                progress = IndexingProgress(
-                    total_files=total,
-                    indexed_files=indexed_count,
-                    failed_files=failed_count,
-                    cache_hits=cache_hits,
-                    current_file=file_path if processed < total else None,
-                    start_time=datetime.fromtimestamp(start_time),
-                    estimated_completion=estimated_completion,
-                )
-                progress_callback(progress)
-            except Exception as e:
-                diagnostics.debug(f"Progress callback failed: {e}")
 
     def _submit_indexing_tasks(
         self, executor: Executor, files: List[str], force: bool, include_dependencies: bool
@@ -1005,37 +930,6 @@ class CppAnalyzer:
             return 1, 1 if was_cached else 0, 0
         return 0, 0, 1
 
-    def _maybe_report_indexing_progress(
-        self,
-        processed: int,
-        total: int,
-        indexed_count: int,
-        failed_count: int,
-        cache_hits: int,
-        start_time: float,
-        last_report_time: float,
-        is_terminal: bool,
-        progress_callback: Optional[Callable],
-        file_path: str,
-    ) -> float:
-        """Report progress if enough time has passed; return updated last_report_time."""
-        if self._should_report_progress(
-            processed, total, time.time(), last_report_time, is_terminal
-        ):
-            self._report_indexing_progress(
-                processed,
-                total,
-                indexed_count,
-                failed_count,
-                cache_hits,
-                start_time,
-                is_terminal,
-                progress_callback,
-                file_path,
-            )
-            return time.time()
-        return last_report_time
-
     def index_project(
         self,
         force: bool = False,
@@ -1067,7 +961,7 @@ class CppAnalyzer:
             return 0
 
         self.cancellation.reset()
-        is_terminal = self._is_terminal()
+        is_terminal = self.progress_reporter.is_terminal()
         indexed_count, cache_hits, failed_count = 0, 0, 0
         last_report_time = start_time
 
@@ -1092,7 +986,7 @@ class CppAnalyzer:
                 cache_hits += cache_d
                 failed_count += fail_d
 
-                last_report_time = self._maybe_report_indexing_progress(
+                last_report_time = self.progress_reporter.maybe_report_indexing_progress(
                     i + 1,
                     len(files),
                     indexed_count,
@@ -1268,7 +1162,7 @@ class CppAnalyzer:
                 diagnostics.error(f"Error refreshing {file_path}: {e}")
 
             if progress_callback and ((i + 1) % 10 == 0 or (i + 1) == total_to_check):
-                self._report_refresh_progress(
+                self.progress_reporter.report_refresh_progress(
                     progress_callback, total_to_check, refreshed, failed, file_path, start_time
                 )
         return refreshed, failed
@@ -1341,52 +1235,6 @@ class CppAnalyzer:
 
         self._finalize_refresh(refreshed, deleted)
         return refreshed
-
-    def _report_refresh_progress(
-        self,
-        progress_callback: Callable,
-        total_files: int,
-        refreshed: int,
-        failed: int,
-        current_file: str,
-        start_time: float,
-    ):
-        """
-        Report refresh progress via callback.
-
-        Args:
-            progress_callback: Callback to invoke with progress
-            total_files: Total number of files to process
-            refreshed: Number of files successfully refreshed so far
-            failed: Number of files that failed
-            current_file: Currently processing file
-            start_time: Unix timestamp when refresh started
-        """
-        try:
-            # Import IndexingProgress here to avoid circular dependency
-            from .state_manager import IndexingProgress
-
-            processed = refreshed + failed
-            elapsed = time.time() - start_time
-            rate = processed / elapsed if elapsed > 0 else 0
-            eta = (total_files - processed) / rate if rate > 0 else 0
-
-            estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-
-            progress = IndexingProgress(
-                total_files=total_files,
-                indexed_files=refreshed,
-                failed_files=failed,
-                cache_hits=0,  # Not tracked during refresh
-                current_file=current_file if processed < total_files else None,
-                start_time=datetime.fromtimestamp(start_time),
-                estimated_completion=estimated_completion,
-            )
-
-            progress_callback(progress)
-        except Exception as e:
-            # Don't fail refresh if progress callback fails
-            diagnostics.debug(f"Progress callback failed: {e}")
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific class (delegates to query_engine)."""
