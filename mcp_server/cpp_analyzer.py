@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .cache_manager import CacheManager
 from .cache_orchestrator import CacheOrchestrator
 from .call_graph_service import CallGraphService
+from .cancellation_coordinator import CancellationCoordinator
 from .clang_parser import ClangParser
 from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
@@ -123,8 +124,7 @@ class CppAnalyzer:
         self._thread_local = threading.local()
 
         # Cancellation support
-        self._interrupted = False
-        self._interrupt_lock = threading.Lock()
+        self.cancellation = CancellationCoordinator()
 
         cpu_count = os.cpu_count() or 1
 
@@ -222,14 +222,11 @@ class CppAnalyzer:
         Interrupt any ongoing indexing operations.
         Sets the interrupted flag which is checked by indexing loops.
         """
-        with self._interrupt_lock:
-            self._interrupted = True
-        diagnostics.info("Indexing interrupt requested")
+        self.cancellation.interrupt()
 
     def _is_interrupted(self) -> bool:
         """Check if indexing has been interrupted."""
-        with self._interrupt_lock:
-            return self._interrupted
+        return self.cancellation.is_interrupted()
 
     def close(self):
         """
@@ -1218,8 +1215,7 @@ class CppAnalyzer:
         if not files:
             return 0
 
-        with self._interrupt_lock:
-            self._interrupted = False
+        self.cancellation.reset()
         is_terminal = self._is_terminal()
         indexed_count, cache_hits, failed_count = 0, 0, 0
         last_report_time = start_time
