@@ -114,7 +114,7 @@ class CppAnalyzer:
         # Break circular dependency: CallGraphService needs symbol_store/query_engine.
         self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
 
-        self.cache_orchestrator = CacheOrchestrator(self)
+        self.cache_orchestrator = CacheOrchestrator(self.context)
         self.context.cache_orchestrator = self.cache_orchestrator
 
         # Wire call graph service to SQLite cache backend.
@@ -150,6 +150,7 @@ class CppAnalyzer:
         self.refresh_pipeline = RefreshPipeline(
             self.context, self.task_submitter, self.worker_result_merger
         )
+        self.context.refresh_pipeline = self.refresh_pipeline
         self.indexing_orchestrator = ProjectIndexingOrchestrator(
             self.context, self.task_submitter, self.worker_result_merger
         )

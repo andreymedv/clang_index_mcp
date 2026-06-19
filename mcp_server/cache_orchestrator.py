@@ -13,20 +13,34 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from .header_tracker import HeaderProcessingTracker
 
 if TYPE_CHECKING:
-    from .cpp_analyzer import CppAnalyzer
+    from .project_context import ProjectContext
 
 
 class CacheOrchestrator:
     """Manages cache operations and header tracking state."""
 
-    def __init__(self, analyzer: "CppAnalyzer"):
+    def __init__(self, context: "ProjectContext"):
         """
         Initialize cache orchestrator.
 
         Args:
-            analyzer: Reference to the CppAnalyzer instance
+            context: Shared project context with cache, config, and symbol services.
         """
-        self.analyzer = analyzer
+        self.context = context
+        assert context.cache_manager is not None
+        self.cache_manager = context.cache_manager
+        assert context.config is not None
+        self.config = context.config
+        assert context.project_root is not None
+        self.project_root = context.project_root
+        self.cache_dir = context.cache_manager.cache_dir
+        assert context.symbol_store is not None
+        self.symbol_store = context.symbol_store
+        assert context.compilation_env is not None
+        self.compilation_env = context.compilation_env
+        assert context.call_graph_service is not None
+        self.call_graph_service = context.call_graph_service
+
         self.cache_loaded = False
         self.last_index_time = 0.0
         self.compile_commands_hash = ""
@@ -34,7 +48,7 @@ class CacheOrchestrator:
 
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
-        return self.analyzer.cache_manager.get_file_hash(file_path)
+        return self.cache_manager.get_file_hash(file_path)
 
     def _calculate_compile_commands_hash(self):
         """
@@ -54,15 +68,15 @@ class CacheOrchestrator:
 
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
         if (
-            self.analyzer.compile_commands_manager is None
-            or not self.analyzer.compile_commands_manager.enabled
+            self.compilation_env.compile_commands_manager is None
+            or not self.compilation_env.compile_commands_manager.enabled
         ):
             self.compile_commands_hash = ""
             return
 
         # Get compile_commands.json path from configuration
-        compile_commands_config = self.analyzer.config.get_compile_commands_config()
-        cc_path = self.analyzer.project_root / compile_commands_config["compile_commands_path"]
+        compile_commands_config = self.config.get_compile_commands_config()
+        cc_path = self.project_root / compile_commands_config["compile_commands_path"]
 
         if not cc_path.exists():
             self.compile_commands_hash = ""
@@ -91,7 +105,7 @@ class CacheOrchestrator:
         """
         from . import diagnostics
 
-        tracker_cache_path = self.analyzer.cache_dir / "header_tracker.json"
+        tracker_cache_path = self.cache_dir / "header_tracker.json"
 
         if not tracker_cache_path.exists():
             # No cache file - start fresh
@@ -150,7 +164,7 @@ class CacheOrchestrator:
         """
         from . import diagnostics
 
-        tracker_cache_path = self.analyzer.cache_dir / "header_tracker.json"
+        tracker_cache_path = self.cache_dir / "header_tracker.json"
 
         try:
             # Get current processed headers from tracker
@@ -189,7 +203,7 @@ class CacheOrchestrator:
         retry_count: int = 0,
     ):
         """Save parsed symbols for a single file to cache"""
-        self.analyzer.cache_manager.save_file_cache(
+        self.cache_manager.save_file_cache(
             file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
         )
 
@@ -201,9 +215,7 @@ class CacheOrchestrator:
         Returns:
             Dict with 'symbols', 'success', 'error_message', 'retry_count' or None
         """
-        return self.analyzer.cache_manager.load_file_cache(
-            file_path, current_hash, compile_args_hash
-        )
+        return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
 
     def _try_load_cached_index(
         self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
@@ -220,7 +232,7 @@ class CacheOrchestrator:
 
         if not cache_data["success"]:
             retry_count = cache_data["retry_count"]
-            if retry_count >= self.analyzer.max_parse_retries:
+            if retry_count >= self.compilation_env.max_parse_retries:
                 diagnostics.debug(
                     f"Skipping {file_path} - failed {retry_count} times "
                     f"(last error: {cache_data['error_message']})"
@@ -228,9 +240,7 @@ class CacheOrchestrator:
                 return (False, True)
             return None
 
-        self.analyzer.symbol_store._apply_cached_symbols(
-            file_path, cache_data["symbols"], current_hash
-        )
+        self.symbol_store._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
         return (True, True)
 
     def _handle_cache_initial_index(self, force: bool) -> Optional[int]:
@@ -238,12 +248,16 @@ class CacheOrchestrator:
         from . import diagnostics
 
         if not force and self._load_cache():
-            refreshed = self.analyzer.refresh_if_needed()
+            assert self.context.refresh_pipeline is not None
+            refreshed = self.context.refresh_pipeline.refresh_if_needed(
+                include_dependencies=self.compilation_env.include_dependencies,
+                compile_commands_manager=self.compilation_env.compile_commands_manager,
+            )
             if refreshed > 0:
                 diagnostics.debug(f"Using cached index (updated {refreshed} files)")
             else:
                 diagnostics.debug("Using cached index")
-            return int(self.analyzer.indexed_file_count)  # type: ignore[no-any-return]
+            return int(self.symbol_store.indexed_file_count)  # type: ignore[no-any-return]
         return None
 
     def _save_cache(self):
@@ -251,27 +265,27 @@ class CacheOrchestrator:
         from . import diagnostics
 
         # Get current config file info
-        config_path = self.analyzer.config.config_path
+        config_path = self.config.config_path
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
 
         # Get current compile_commands.json info
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.analyzer.compile_commands_manager is not None:
+        if self.compilation_env.compile_commands_manager is not None:
             cc_path = (
-                self.analyzer.project_root
-                / self.analyzer.compile_commands_manager.compile_commands_path
+                self.project_root
+                / self.compilation_env.compile_commands_manager.compile_commands_path
             )
             cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
         else:
             cc_path = None
             cc_mtime = None
 
-        self.analyzer.cache_manager.save_cache(
-            self.analyzer.class_index,
-            self.analyzer.function_index,
-            self.analyzer.file_hashes,
-            self.analyzer.indexed_file_count,
-            self.analyzer.include_dependencies,
+        self.cache_manager.save_cache(
+            self.symbol_store.class_index,
+            self.symbol_store.function_index,
+            self.symbol_store.file_hashes,
+            self.symbol_store.indexed_file_count,
+            self.compilation_env.include_dependencies,
             config_file_path=config_path,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
@@ -283,12 +297,12 @@ class CacheOrchestrator:
         # as they arrive from workers (Phase 4 optimization), so this set is empty.
         # In ThreadPoolExecutor mode: call_sites are accumulated in memory, so we need
         # to save them here. This is still needed for backwards compatibility.
-        call_sites = self.analyzer.call_graph_analyzer.get_all_call_sites()
+        call_sites = self.call_graph_service.call_graph_analyzer.get_all_call_sites()
         if call_sites:
             diagnostics.debug(
                 f"Saving {len(call_sites)} call sites to database (ThreadPoolExecutor mode)"
             )
-            saved_count = self.analyzer.cache_manager.backend.save_call_sites_batch(call_sites)
+            saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
             if saved_count != len(call_sites):
                 diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
 
@@ -297,23 +311,23 @@ class CacheOrchestrator:
         from . import diagnostics
 
         # Get current config file info
-        config_path = self.analyzer.config.config_path
+        config_path = self.config.config_path
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
 
         # Get current compile_commands.json info
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.analyzer.compile_commands_manager is not None:
+        if self.compilation_env.compile_commands_manager is not None:
             cc_path = (
-                self.analyzer.project_root
-                / self.analyzer.compile_commands_manager.compile_commands_path
+                self.project_root
+                / self.compilation_env.compile_commands_manager.compile_commands_path
             )
             cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
         else:
             cc_path = None
             cc_mtime = None
 
-        cache_data = self.analyzer.cache_manager.load_cache(
-            self.analyzer.include_dependencies,
+        cache_data = self.cache_manager.load_cache(
+            self.compilation_env.include_dependencies,
             config_file_path=config_path,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
@@ -324,16 +338,16 @@ class CacheOrchestrator:
             return False
 
         try:
-            self.analyzer.symbol_store._populate_indexes_from_cache(cache_data)
-            self.analyzer.symbol_store._rebuild_auxiliary_structures()
+            self.symbol_store._populate_indexes_from_cache(cache_data)
+            self.symbol_store._rebuild_auxiliary_structures()
 
             # Memory optimization: call sites are now loaded LAZILY on-demand
             # instead of loading all at startup (saves ~150-200 MB for large projects)
             # The call_graph_analyzer.cache_backend handles lazy loading via SQLite queries
 
             diagnostics.debug(
-                f"Loaded cache with {len(self.analyzer.class_index)} classes, "
-                f"{len(self.analyzer.function_index)} functions"
+                f"Loaded cache with {len(self.symbol_store.class_index)} classes, "
+                f"{len(self.symbol_store.function_index)} functions"
             )
             self.cache_loaded = True
             return True
@@ -349,10 +363,10 @@ class CacheOrchestrator:
         """Save a summary of indexing progress"""
         status = "complete" if indexed_count + failed_count == total_files else "interrupted"
         # Count total symbols (not just unique names)
-        class_count = sum(len(infos) for infos in self.analyzer.class_index.values())
-        function_count = sum(len(infos) for infos in self.analyzer.function_index.values())
+        class_count = sum(len(infos) for infos in self.symbol_store.class_index.values())
+        function_count = sum(len(infos) for infos in self.symbol_store.function_index.values())
 
-        self.analyzer.cache_manager.save_progress(
+        self.cache_manager.save_progress(
             total_files,
             indexed_count,
             failed_count,
