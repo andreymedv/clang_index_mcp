@@ -1556,9 +1556,6 @@ class CppAnalyzer:
         """Parse template arguments from a string (delegates to query_engine)."""
         return self.query_engine._parse_template_args(args_str)
 
-    def _resolve_base_key(self, raw: str) -> str:
-        """Resolve a raw base-class name to a canonical key (qualified name)."""
-
     def get_class_hierarchy(
         self,
         class_name: str,
