@@ -122,8 +122,8 @@ class CompileCommandsDiffer:
             If file_metadata doesn't exist for a file, creates it.
         """
         if not hasattr(self.cache, "conn"):
-            # JSON backend doesn't support this yet
-            diagnostics.debug("Compile commands storage not supported for JSON backend")
+            # Compile commands storage requires SQLite backend
+            diagnostics.debug("Compile commands storage not supported without SQLite backend")
             return 0
 
         stored = 0

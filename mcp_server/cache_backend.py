@@ -12,8 +12,7 @@ class CacheBackend(Protocol):
     """
     Protocol defining the interface for cache backends.
 
-    Both JSON and SQLite backends implement this interface,
-    allowing seamless switching between storage mechanisms.
+    Currently only the SQLite backend implements this interface.
     """
 
     def save_cache(
