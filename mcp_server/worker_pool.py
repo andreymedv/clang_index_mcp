@@ -173,6 +173,18 @@ class WorkerPoolManager:
 
         self.executor = None
 
+    def shutdown_nowait(self, name: str = "Indexing"):
+        """Fast, non-blocking shutdown used for normal completion paths."""
+        if self.executor is None:
+            return
+        try:
+            self.executor.shutdown(wait=False)
+            diagnostics.debug(f"{name} shutdown: requested non-blocking executor shutdown")
+        except Exception as e:
+            diagnostics.debug(f"Error during {name} executor shutdown: {e}")
+        finally:
+            self.executor = None
+
     def _cancel_executor_futures(self) -> None:
         """Cancel pending futures in the executor if possible."""
         if self.executor is None:
