@@ -130,12 +130,12 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         self.assertNotEqual(hash1, hash2)
 
     def test_hash_args_length(self):
-        """Test that hash has expected length."""
+        """Test that hash has expected length (full SHA-256)."""
         args = ["-std=c++17"]
         hash_value = self.differ._hash_args(args)
 
-        # Should be 16 characters
-        self.assertEqual(len(hash_value), 16)
+        # Should be 64 characters (full SHA-256 hex digest)
+        self.assertEqual(len(hash_value), 64)
 
     def test_store_current_commands(self):
         """Test storing compilation commands."""
@@ -157,10 +157,10 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         results = cursor.fetchall()
         self.assertEqual(len(results), 2)
 
-        # Verify hashes are not empty
+        # Verify hashes are not empty and have full SHA-256 length
         for file_path, args_hash in results:
             self.assertTrue(args_hash)
-            self.assertEqual(len(args_hash), 16)
+            self.assertEqual(len(args_hash), 64)
 
     def test_get_stored_commands_hash(self):
         """Test retrieving stored command hash."""
