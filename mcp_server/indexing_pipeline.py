@@ -27,13 +27,19 @@ class SingleFileIndexingPipeline:
             context: Shared project context with all required services.
         """
         self.context = context
+        assert context.clang_parser is not None
         self.clang_parser = context.clang_parser
+        assert context.symbol_extractor is not None
         self.symbol_extractor = context.symbol_extractor
         assert context.compilation_env is not None
         self.compilation_env = context.compilation_env
+        assert context.cache_orchestrator is not None
         self.cache_orchestrator = context.cache_orchestrator
+        assert context.cache_manager is not None
         self.cache_manager = context.cache_manager
+        assert context.concurrency is not None
         self.concurrency = context.concurrency
+        assert context.symbol_store is not None
         self.symbol_store = context.symbol_store
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:

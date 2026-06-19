@@ -26,9 +26,13 @@ class WorkerResultMerger:
                      graph service, and cache orchestrator.
         """
         self.context = context
+        assert context.concurrency is not None
         self.concurrency = context.concurrency
+        assert context.symbol_store is not None
         self.symbol_store = context.symbol_store
+        assert context.call_graph_service is not None
         self.call_graph_service = context.call_graph_service
+        assert context.cache_orchestrator is not None
         self.cache_orchestrator = context.cache_orchestrator
 
     def merge_worker_result(self, result: Tuple, file_path: str):
