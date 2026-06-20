@@ -45,11 +45,7 @@ class QueryEngine:
         self.call_graph_service = context.call_graph_service
         self.project_root = context.project_root
         self.search_engine = SearchEngine(
-            self.symbol_store.class_index,
-            self.symbol_store.function_index,
-            self.symbol_store.file_index,
-            self.symbol_store.usr_index,
-            self.concurrency.index_lock,
+            symbol_store=self.symbol_store,
             cache_manager=self.cache_manager,
         )
         self.smart_fallback = SmartFallback()
@@ -93,9 +89,7 @@ class QueryEngine:
                 self._last_fallback = self.smart_fallback.analyze_empty_result(
                     pattern=pattern,
                     tool_name="search_classes",
-                    class_index=self.symbol_store.class_index,
-                    function_index=self.symbol_store.function_index,
-                    file_index=self.symbol_store.file_index,
+                    symbol_store=self.symbol_store,
                     file_name=file_name,
                     namespace=namespace,
                 )
@@ -136,9 +130,7 @@ class QueryEngine:
                 self._last_fallback = self.smart_fallback.analyze_empty_result(
                     pattern=pattern,
                     tool_name="search_functions",
-                    class_index=self.symbol_store.class_index,
-                    function_index=self.symbol_store.function_index,
-                    file_index=self.symbol_store.file_index,
+                    symbol_store=self.symbol_store,
                     file_name=file_name,
                     namespace=namespace,
                     class_name=class_name,
@@ -216,9 +208,7 @@ class QueryEngine:
                 self._last_fallback = self.smart_fallback.analyze_empty_result(
                     pattern=pattern,
                     tool_name="search_symbols",
-                    class_index=self.symbol_store.class_index,
-                    function_index=self.symbol_store.function_index,
-                    file_index=self.symbol_store.file_index,
+                    symbol_store=self.symbol_store,
                     namespace=namespace,
                 )
             return results
