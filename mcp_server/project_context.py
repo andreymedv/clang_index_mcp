@@ -104,12 +104,6 @@ class ProjectContext:
         return self.cache_manager.cache_dir
 
     @property
-    def header_tracker(self):
-        """Convenience accessor for the header tracker."""
-        assert self.cache_orchestrator is not None
-        return self.cache_orchestrator.header_tracker
-
-    @property
     def file_scanner(self):
         """Convenience accessor for the file scanner."""
         assert self.compilation_env is not None

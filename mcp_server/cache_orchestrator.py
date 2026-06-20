@@ -47,6 +47,41 @@ class CacheOrchestrator:
         self.compile_commands_hash = ""
         self.header_tracker = HeaderProcessingTracker()
 
+    # ------------------------------------------------------------------
+    # Header tracker facade
+    # ------------------------------------------------------------------
+    def try_claim_header(self, header_path: str, current_file_hash: str) -> bool:
+        """Try to claim a header for processing (first-win strategy)."""
+        return self.header_tracker.try_claim_header(header_path, current_file_hash)
+
+    def mark_header_completed(self, header_path: str, file_hash: str) -> None:
+        """Mark a header as fully processed."""
+        self.header_tracker.mark_completed(header_path, file_hash)
+
+    def invalidate_header(self, header_path: str) -> None:
+        """Invalidate a header, forcing re-processing on next access."""
+        self.header_tracker.invalidate_header(header_path)
+
+    def clear_header_tracker(self) -> None:
+        """Clear all header tracking state."""
+        self.header_tracker.clear_all()
+
+    def is_header_processed(self, header_path: str, file_hash: str) -> bool:
+        """Check if a header has been processed with the given hash."""
+        return self.header_tracker.is_processed(header_path, file_hash)
+
+    def get_processed_header_count(self) -> int:
+        """Return the number of headers currently tracked as processed."""
+        return self.header_tracker.get_processed_count()
+
+    def get_processed_headers(self) -> Dict[str, str]:
+        """Return a snapshot of all processed headers and their file hashes."""
+        return self.header_tracker.get_processed_headers()
+
+    def restore_processed_headers(self, processed_headers: Dict[str, str]) -> None:
+        """Restore processed headers from a previously saved snapshot."""
+        self.header_tracker.restore_processed_headers(processed_headers)
+
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
@@ -118,12 +153,12 @@ class CacheOrchestrator:
             if cached_cc_hash == self.compile_commands_hash:
                 # Hash matches - restore header tracking state
                 processed_headers = cache_data.get("processed_headers", {})
-                self.header_tracker.restore_processed_headers(processed_headers)
+                self.restore_processed_headers(processed_headers)
                 diagnostics.debug(f"Restored {len(processed_headers)} processed headers from cache")
             else:
                 # Hash mismatch - compile_commands.json changed
                 diagnostics.debug("compile_commands.json changed - resetting header tracking")
-                self.header_tracker.clear_all()
+                self.clear_header_tracker()
 
         except (json.JSONDecodeError, IOError, OSError) as e:
             # JSON corruption or file access errors - this can happen with concurrent writes
@@ -137,11 +172,11 @@ class CacheOrchestrator:
             except Exception:
                 pass
             # Start fresh
-            self.header_tracker.clear_all()
+            self.clear_header_tracker()
         except Exception as e:
             diagnostics.warning(f"Unexpected error restoring header tracking from cache: {e}")
             # On error, start fresh
-            self.header_tracker.clear_all()
+            self.clear_header_tracker()
 
     def _save_header_tracking(self):
         """
@@ -166,7 +201,7 @@ class CacheOrchestrator:
 
         try:
             # Get current processed headers from tracker
-            processed_headers = self.header_tracker.get_processed_headers()
+            processed_headers = self.get_processed_headers()
 
             # Build cache data
             cache_data = {

@@ -256,9 +256,8 @@ class IncrementalAnalyzer:
 
         # Invalidate ALL headers (args changed might affect preprocessing)
         # This is conservative but safe
-        if self.analyzer.context.cache_orchestrator.header_tracker:
-            self.analyzer.context.cache_orchestrator.header_tracker.clear_all()
-            diagnostics.info("Invalidated all header tracking due to compile commands change")
+        self.analyzer.context.cache_orchestrator.clear_header_tracker()
+        diagnostics.info("Invalidated all header tracking due to compile commands change")
 
         return files_to_analyze
 
@@ -291,8 +290,7 @@ class IncrementalAnalyzer:
             dependents = set()
 
         # Invalidate header in tracker
-        if self.analyzer.context.cache_orchestrator.header_tracker:
-            self.analyzer.context.cache_orchestrator.header_tracker.invalidate_header(header_path)
+        self.analyzer.context.cache_orchestrator.invalidate_header(header_path)
 
         result: Set[str] = dependents
         return result
@@ -357,11 +355,9 @@ class IncrementalAnalyzer:
         """Remove file from header tracker if it's a header."""
         from .file_scanner import FileScanner
 
-        if self.analyzer.context.cache_orchestrator.header_tracker and file_path.endswith(
-            tuple(FileScanner.HEADER_EXTENSIONS)
-        ):
+        if file_path.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
             try:
-                self.analyzer.context.cache_orchestrator.header_tracker.invalidate_header(file_path)
+                self.analyzer.context.cache_orchestrator.invalidate_header(file_path)
             except Exception as e:
                 diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
 
@@ -499,7 +495,7 @@ class IncrementalAnalyzer:
             # Merge header tracking
             if processed_headers:
                 for header_path, header_hash in processed_headers.items():
-                    self.analyzer.context.cache_orchestrator.header_tracker.mark_completed(
+                    self.analyzer.context.cache_orchestrator.mark_header_completed(
                         header_path, header_hash
                     )
 
