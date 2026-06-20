@@ -334,21 +334,26 @@ class SymbolIndexStore:
 
         return added_count
 
+    def remove_file(self, file_path: str) -> None:
+        """Remove all symbols and metadata for a deleted file from the in-memory indexes."""
+        with self.context.concurrency.index_lock:
+            self._remove_file_from_indexes(file_path)
+            self.file_hashes.pop(file_path, None)
+
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
-        with self.context.concurrency.index_lock:
-            # Get all symbols that were in this file
-            symbols_to_remove = self.file_index.get(file_path, []).copy()
-            if symbols_to_remove:
-                diagnostics.debug(f"Removing {len(symbols_to_remove)} symbols for file {file_path}")
+        # Get all symbols that were in this file
+        symbols_to_remove = self.file_index.get(file_path, []).copy()
+        if symbols_to_remove:
+            diagnostics.debug(f"Removing {len(symbols_to_remove)} symbols for file {file_path}")
 
-            for symbol in symbols_to_remove:
-                self._remove_symbol_from_indexes(symbol)
+        for symbol in symbols_to_remove:
+            self._remove_symbol_from_indexes(symbol)
 
-            # Finally remove from file_index
-            if file_path in self.file_index:
-                del self.file_index[file_path]
-                diagnostics.debug(f"Removed file {file_path} from file_index")
+        # Finally remove from file_index
+        if file_path in self.file_index:
+            del self.file_index[file_path]
+            diagnostics.debug(f"Removed file {file_path} from file_index")
 
     @staticmethod
     def extract_template_base_name_from_usr(usr: str) -> Optional[str]:

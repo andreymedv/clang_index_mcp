@@ -9,6 +9,7 @@ import json
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from . import diagnostics
 from .cache_validation_context import CacheValidationContext
 from .header_tracker import HeaderProcessingTracker
 
@@ -80,6 +81,51 @@ class CacheOrchestrator:
     def restore_processed_headers(self, processed_headers: Dict[str, str]) -> None:
         """Restore processed headers from a previously saved snapshot."""
         self.header_tracker.restore_processed_headers(processed_headers)
+
+    def remove_deleted_file(self, file_path: str) -> None:
+        """
+        Remove a deleted file from all indexes, cache, dependency graph, and header tracker.
+
+        This is the single coordination point for deleted-file cleanup.
+        """
+        self._remove_deleted_file_from_indexes(file_path)
+        self._remove_deleted_file_from_cache(file_path)
+        self._remove_deleted_file_from_dependency_graph(file_path)
+        self._remove_deleted_file_from_header_tracker(file_path)
+
+    def _remove_deleted_file_from_indexes(self, file_path: str) -> None:
+        """Remove a deleted file from the in-memory symbol indexes."""
+        try:
+            self.symbol_store.remove_file(file_path)
+        except Exception as e:
+            diagnostics.warning(f"Failed to remove {file_path} from indexes: {e}")
+
+    def _remove_deleted_file_from_cache(self, file_path: str) -> None:
+        """Remove a deleted file from the persistent cache."""
+        try:
+            self.cache_manager.remove_file_cache(file_path)
+        except Exception as e:
+            diagnostics.warning(f"Failed to remove {file_path} from cache: {e}")
+
+    def _remove_deleted_file_from_dependency_graph(self, file_path: str) -> None:
+        """Remove a deleted file from the dependency graph."""
+        if not self.call_graph_service.dependency_graph:
+            return
+        try:
+            self.call_graph_service.dependency_graph.remove_file_dependencies(file_path)
+        except Exception as e:
+            diagnostics.warning(f"Failed to remove {file_path} from dependency graph: {e}")
+
+    def _remove_deleted_file_from_header_tracker(self, file_path: str) -> None:
+        """Remove a deleted header from the header tracker."""
+        from .file_scanner import FileScanner
+
+        if not file_path.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
+            return
+        try:
+            self.invalidate_header(file_path)
+        except Exception as e:
+            diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
 
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""

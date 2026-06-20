@@ -202,7 +202,7 @@ class CompilationEnvironment:
             )
 
     def _handle_deleted_files(self, current_files: Set[str]) -> int:
-        """Find and remove deleted files from indexes."""
+        """Find and remove deleted files from indexes and cache."""
         tracked_files = set(self.symbol_store.file_hashes.keys())
         deleted_files = set()
         for tracked_file in tracked_files:
@@ -217,10 +217,8 @@ class CompilationEnvironment:
 
         deleted_count = 0
         for file_path in deleted_files:
-            self.symbol_store._remove_file_from_indexes(file_path)
-            if file_path in self.symbol_store.file_hashes:
-                del self.symbol_store.file_hashes[file_path]
-            self.cache_manager.remove_file_cache(file_path)
+            assert self.context.cache_orchestrator is not None
+            self.context.cache_orchestrator.remove_deleted_file(file_path)
             deleted_count += 1
         return deleted_count
 

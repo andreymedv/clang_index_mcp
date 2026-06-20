@@ -313,45 +313,10 @@ class IncrementalAnalyzer:
             file_path: Path to deleted file
         """
         diagnostics.info(f"Removing deleted file: {file_path}")
-
-        self._remove_from_indexes(file_path)
-        self._remove_from_cache(file_path)
-        self._remove_from_dependency_graph(file_path)
-        self._remove_from_header_tracker(file_path)
-
-    def _remove_from_indexes(self, file_path: str):
-        """Remove file from in-memory indexes (class, function, file, usr indexes)."""
         try:
-            self.analyzer.symbol_store._remove_file_from_indexes(file_path)
+            self.analyzer.context.cache_orchestrator.remove_deleted_file(file_path)
         except Exception as e:
-            diagnostics.warning(f"Failed to remove {file_path} from indexes: {e}")
-
-    def _remove_from_cache(self, file_path: str):
-        """Remove file from cache."""
-        try:
-            self.analyzer.cache_manager.backend.remove_file_cache(file_path)
-        except Exception as e:
-            diagnostics.warning(f"Failed to remove {file_path} from cache: {e}")
-
-    def _remove_from_dependency_graph(self, file_path: str):
-        """Remove file from dependency graph."""
-        if self.analyzer.context.call_graph_service.dependency_graph:
-            try:
-                self.analyzer.context.call_graph_service.dependency_graph.remove_file_dependencies(
-                    file_path
-                )
-            except Exception as e:
-                diagnostics.warning(f"Failed to remove {file_path} from dependency graph: {e}")
-
-    def _remove_from_header_tracker(self, file_path: str):
-        """Remove file from header tracker if it's a header."""
-        from .file_scanner import FileScanner
-
-        if file_path.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
-            try:
-                self.analyzer.context.cache_orchestrator.invalidate_header(file_path)
-            except Exception as e:
-                diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
+            diagnostics.warning(f"Failed to remove deleted file {file_path}: {e}")
 
     def _remove_symbol_from_index(self, symbol: Any) -> None:
         """Remove a symbol from the appropriate index (class or function)."""
