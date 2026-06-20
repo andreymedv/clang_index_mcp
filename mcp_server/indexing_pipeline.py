@@ -171,10 +171,10 @@ class SingleFileIndexingPipeline:
             )
 
         with self.concurrency.get_lock():
-            collected_symbols = self.symbol_store.file_index.get(file_path, []).copy()
+            collected_symbols = self.symbol_store.get_symbols_in_file(file_path).copy()
             del tu
 
-            self.symbol_store.file_hashes[file_path] = current_hash
+            self.symbol_store.set_file_hash(file_path, current_hash)
 
         self.cache_orchestrator._save_file_cache(
             file_path,

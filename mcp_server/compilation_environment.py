@@ -203,7 +203,7 @@ class CompilationEnvironment:
 
     def _handle_deleted_files(self, current_files: Set[str]) -> int:
         """Find and remove deleted files from indexes and cache."""
-        tracked_files = set(self.symbol_store.file_hashes.keys())
+        tracked_files = set(self.symbol_store.iter_file_paths())
         deleted_files = set()
         for tracked_file in tracked_files:
             if tracked_file in current_files:
@@ -224,13 +224,13 @@ class CompilationEnvironment:
 
     def _identify_refresh_files(self, current_files: Set[str]) -> Tuple[List[str], List[str]]:
         """Identify modified and new files needing refresh."""
-        tracked_files = set(self.symbol_store.file_hashes.keys())
+        tracked_files = set(self.symbol_store.iter_file_paths())
         new_files = list(current_files - tracked_files)
         modified_files = []
-        for file_path in self.symbol_store.file_hashes:
+        for file_path in self.symbol_store.iter_file_paths():
             if not os.path.exists(file_path):
                 continue
-            if self.cache_manager.get_file_hash(file_path) != self.symbol_store.file_hashes.get(
+            if self.cache_manager.get_file_hash(file_path) != self.symbol_store.get_file_hash(
                 file_path
             ):
                 modified_files.append(file_path)

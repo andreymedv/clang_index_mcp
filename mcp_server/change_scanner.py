@@ -250,8 +250,8 @@ class ChangeScanner:
         except Exception as e:
             diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
 
-        if file_path in self.analyzer.context.symbol_store.file_hashes:
-            return str(self.analyzer.context.symbol_store.file_hashes[file_path])
+        if self.analyzer.context.symbol_store.has_file_hash(file_path):
+            return str(self.analyzer.context.symbol_store.get_file_hash(file_path))
 
         return None
 

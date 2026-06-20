@@ -143,13 +143,9 @@ class QueryEngine:
     def get_stats(self) -> Dict[str, Any]:
         """Get indexer statistics"""
         with self.concurrency.index_lock:
-            # Count total symbols (not just unique names)
-            class_count = sum(len(infos) for infos in self.symbol_store.class_index.values())
-            function_count = sum(len(infos) for infos in self.symbol_store.function_index.values())
-
             stats: Dict[str, Any] = {
-                "class_count": class_count,
-                "function_count": function_count,
+                "class_count": self.symbol_store.total_class_symbols(),
+                "function_count": self.symbol_store.total_function_symbols(),
                 "file_count": self.symbol_store.indexed_file_count,
             }
 
@@ -228,7 +224,7 @@ class QueryEngine:
         """Search class index for matching types and return list of matches."""
         matches = []
         with self.concurrency.index_lock:
-            for name, infos in self.symbol_store.class_index.items():
+            for name, infos in self.symbol_store.iter_class_items():
                 for info in infos:
                     qualified_name = info.qualified_name if info.qualified_name else info.name
                     if SearchEngine.matches_qualified_pattern(qualified_name, type_name):
@@ -352,7 +348,7 @@ class QueryEngine:
     def _find_in_files_glob(self, glob_pattern: str, symbol_pattern: str) -> Dict[str, Any]:
         """Search for symbols in files matching a glob pattern."""
         matched_files = [
-            f for f in self.symbol_store.file_index.keys() if self._matches_glob(f, glob_pattern)
+            f for f in self.symbol_store.iter_file_paths() if self._matches_glob(f, glob_pattern)
         ]
 
         if not matched_files:
@@ -454,7 +450,7 @@ class QueryEngine:
         partial_basename = Path(partial_path).name.lower()
         path_parts = [p.lower() for p in Path(partial_path).parts if p]
 
-        for indexed_file in self.symbol_store.file_index.keys():
+        for indexed_file in self.symbol_store.iter_file_paths():
             indexed_lower = indexed_file.lower()
             indexed_basename = Path(indexed_file).name.lower()
 
@@ -520,7 +516,7 @@ class QueryEngine:
     ) -> Optional[str]:
         """Find files where the class is defined and return its kind."""
         if symbol_kind in (None, "class"):
-            for info in self.symbol_store.class_index.get(simple_name, []):
+            for info in self.symbol_store.get_classes_by_name(simple_name):
                 if SearchEngine.matches_qualified_pattern(
                     info.qualified_name or info.name, symbol_name
                 ):
@@ -542,7 +538,7 @@ class QueryEngine:
         """Find files where the function/method is defined and return its kind."""
         kind = None
         if symbol_kind in (None, "function", "method"):
-            for info in self.symbol_store.function_index.get(simple_name, []):
+            for info in self.symbol_store.get_functions_by_name(simple_name):
                 if SearchEngine.matches_qualified_pattern(
                     info.qualified_name or info.name, symbol_name
                 ):
@@ -594,7 +590,7 @@ class QueryEngine:
                 )
 
             target_usrs = set()
-            for info in self.symbol_store.function_index.get(simple_name, []):
+            for info in self.symbol_store.get_functions_by_name(simple_name):
                 if _name_matches(info) and info.usr:
                     if not project_only or info.is_project:
                         target_usrs.add(info.usr)
@@ -602,8 +598,9 @@ class QueryEngine:
             for usr in target_usrs:
                 callers = self.call_graph_service.call_graph_analyzer.find_incoming_calls(usr)
                 for caller_usr in callers:
-                    if caller_usr in self.symbol_store.usr_index:
-                        caller_info = self.symbol_store.usr_index[caller_usr]
+                    if self.symbol_store.contains_usr(caller_usr):
+                        caller_info = self.symbol_store.get_symbol_by_usr(caller_usr)
+                        assert caller_info is not None
                         if not project_only or caller_info.is_project:
                             files.add(caller_info.file)
                             total_refs += 1
@@ -619,7 +616,7 @@ class QueryEngine:
     ) -> None:
         """Find files that reference a class and add them to the set."""
         if kind in ("class", "struct") or (not kind and symbol_kind in (None, "class")):
-            for file_path, symbols in self.symbol_store.file_index.items():
+            for file_path, symbols in self.symbol_store.iter_file_items():
                 if not project_only or self.compilation_env._is_project_file(file_path):
                     for symbol in symbols:
                         sym_qname = symbol.qualified_name or symbol.name
@@ -717,7 +714,7 @@ class QueryEngine:
 
         param_indices = []
         with self.concurrency.index_lock:
-            infos = self.symbol_store.class_index.get(simple_name, [])
+            infos = self.symbol_store.get_classes_by_name(simple_name)
             for info in infos:
                 if info.kind != "class_template":
                     continue
@@ -813,8 +810,8 @@ class QueryEngine:
         template_patterns = []
         with self.concurrency.index_lock:
             # Check if class_name exists in class_index (use simple_name for lookup)
-            if simple_name in self.symbol_store.class_index:
-                for symbol in self.symbol_store.class_index[simple_name]:
+            if self.symbol_store.has_class_name(simple_name):
+                for symbol in self.symbol_store.get_classes_by_name(simple_name):
                     # If any symbol is a template, get all specializations
                     if symbol.kind in ("class_template", "partial_specialization"):
                         # Build patterns to match in base_classes
@@ -904,7 +901,7 @@ class QueryEngine:
         template_patterns = self._get_template_patterns(simple_name)
 
         with self.concurrency.index_lock:
-            for name, infos in self.symbol_store.class_index.items():
+            for name, infos in self.symbol_store.iter_class_items():
                 for info in infos:
                     if not project_only or info.is_project:
                         if self._is_derived_from(info, template_patterns, simple_name):
@@ -934,7 +931,7 @@ class QueryEngine:
         is_qual = "::" in lookup
         simple = SearchEngine._extract_simple_name(lookup)
         with self.concurrency.index_lock:
-            infos = self.symbol_store.class_index.get(simple, [])
+            infos = self.symbol_store.get_classes_by_name(simple)
             for info in infos:
                 if is_qual:
                     info_qn = info.qualified_name if info.qualified_name else info.name
@@ -951,7 +948,7 @@ class QueryEngine:
         is_qual = "::" in lookup
         simple = SearchEngine._extract_simple_name(lookup)
         with self.concurrency.index_lock:
-            infos = list(self.symbol_store.class_index.get(simple, []))
+            infos = list(self.symbol_store.get_classes_by_name(simple))
         if is_qual:
             infos = [
                 i

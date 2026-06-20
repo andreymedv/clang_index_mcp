@@ -320,22 +320,7 @@ class IncrementalAnalyzer:
 
     def _remove_symbol_from_index(self, symbol: Any) -> None:
         """Remove a symbol from the appropriate index (class or function)."""
-        if symbol.kind in ("class", "struct"):
-            if symbol.name in self.analyzer.context.symbol_store.class_index:
-                try:
-                    self.analyzer.context.symbol_store.class_index[symbol.name].remove(symbol)
-                    if not self.analyzer.context.symbol_store.class_index[symbol.name]:
-                        del self.analyzer.context.symbol_store.class_index[symbol.name]
-                except ValueError:
-                    pass
-        else:
-            if symbol.name in self.analyzer.context.symbol_store.function_index:
-                try:
-                    self.analyzer.context.symbol_store.function_index[symbol.name].remove(symbol)
-                    if not self.analyzer.context.symbol_store.function_index[symbol.name]:
-                        del self.analyzer.context.symbol_store.function_index[symbol.name]
-                except ValueError:
-                    pass
+        self.analyzer.context.symbol_store.remove_symbol_from_indexes(symbol)
 
     def _handle_definition_wins(self, symbol: Any, existing: Any) -> bool:
         """Apply 'definition wins' rule for duplicate symbols. Returns True if symbol should be skipped."""
@@ -349,31 +334,7 @@ class IncrementalAnalyzer:
 
     def _add_symbol_to_indices(self, symbol: Any) -> None:
         """Add a symbol to the analyzer's indices."""
-        # Add to appropriate index
-        if symbol.kind in ("class", "struct"):
-            self.analyzer.context.symbol_store.class_index[symbol.name].append(symbol)
-        else:
-            self.analyzer.context.symbol_store.function_index[symbol.name].append(symbol)
-
-        # Add to USR index
-        if symbol.usr:
-            self.analyzer.context.symbol_store.usr_index[symbol.usr] = symbol
-
-        # Add to file index (with deduplication)
-        if symbol.file:
-            if symbol.file not in self.analyzer.context.symbol_store.file_index:
-                self.analyzer.context.symbol_store.file_index[symbol.file] = []
-
-            # Check for duplicates in file_index
-            already_in_file_index = False
-            if symbol.usr:
-                for existing in self.analyzer.context.symbol_store.file_index[symbol.file]:
-                    if existing.usr == symbol.usr:
-                        already_in_file_index = True
-                        break
-
-            if not already_in_file_index:
-                self.analyzer.context.symbol_store.file_index[symbol.file].append(symbol)
+        self.analyzer.context.symbol_store.add_symbol_to_indexes(symbol)
 
     def _merge_symbols(self, symbols: List[Any]) -> None:
         """Merge symbols from a worker process into the main analyzer index."""
@@ -382,8 +343,10 @@ class IncrementalAnalyzer:
                 # Apply same deduplication logic as index_project
                 skip_symbol = False
 
-                if symbol.usr and symbol.usr in self.analyzer.context.symbol_store.usr_index:
-                    existing = self.analyzer.context.symbol_store.usr_index[symbol.usr]
+                store = self.analyzer.context.symbol_store
+                if symbol.usr and store.contains_usr(symbol.usr):
+                    existing = store.get_symbol_by_usr(symbol.usr)
+                    assert existing is not None
                     skip_symbol = self._handle_definition_wins(symbol, existing)
 
                 if not skip_symbol:
@@ -458,7 +421,7 @@ class IncrementalAnalyzer:
 
             # Update file hash tracking
             file_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
-            self.analyzer.context.symbol_store.file_hashes[file_path] = file_hash
+            self.analyzer.context.symbol_store.set_file_hash(file_path, file_hash)
         else:
             # ThreadPoolExecutor returns (success, was_cached)
             success, was_cached = result

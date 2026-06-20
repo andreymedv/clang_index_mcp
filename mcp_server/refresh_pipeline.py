@@ -162,4 +162,4 @@ class RefreshPipeline:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
             if refreshed > 0:
                 self.cache_manager.backend.rebuild_fts()
-        self.symbol_store.indexed_file_count = len(self.symbol_store.file_hashes)
+        self.symbol_store.indexed_file_count = len(list(self.symbol_store.iter_file_paths()))

@@ -52,7 +52,7 @@ class SymbolIndexStore:
 
         # Track indexed files and hashes
         self.file_hashes: Dict[str, str] = {}
-        self.indexed_file_count = 0
+        self._indexed_file_count = 0
 
     def _remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
         """Remove a single symbol from class/function/USR indexes and call graph."""
@@ -257,7 +257,7 @@ class SymbolIndexStore:
                     self.file_index[symbol.file].append(symbol)
 
         self.file_hashes = cache_data.get("file_hashes", {})
-        self.indexed_file_count = cache_data.get("indexed_file_count", 0)
+        self._indexed_file_count = cache_data.get("indexed_file_count", 0)
 
     def _rebuild_auxiliary_structures(self) -> None:
         """Rebuild USR index and call graph from loaded symbols."""
@@ -349,6 +349,137 @@ class SymbolIndexStore:
     def contains_usr(self, usr: str) -> bool:
         """Return True if the given USR is present in the in-memory index."""
         return usr in self.usr_index
+
+    # ------------------------------------------------------------------
+    # file_hashes accessors
+    # ------------------------------------------------------------------
+
+    def get_file_hash(self, file_path: str) -> Optional[str]:
+        """Return the stored hash for a file, or None if not tracked."""
+        return self.file_hashes.get(file_path)
+
+    def has_file_hash(self, file_path: str) -> bool:
+        """Return True if a file hash is tracked."""
+        return file_path in self.file_hashes
+
+    def set_file_hash(self, file_path: str, file_hash: str) -> None:
+        """Store or update the hash for a file."""
+        self.file_hashes[file_path] = file_hash
+
+    def pop_file_hash(self, file_path: str) -> None:
+        """Remove a file hash entry if it exists."""
+        self.file_hashes.pop(file_path, None)
+
+    def iter_file_paths(self):
+        """Return an iterable of all tracked file paths."""
+        return self.file_hashes.keys()
+
+    # ------------------------------------------------------------------
+    # indexed_file_count property
+    # ------------------------------------------------------------------
+
+    @property
+    def indexed_file_count(self) -> int:
+        """Number of files that have been indexed."""
+        return self._indexed_file_count
+
+    @indexed_file_count.setter
+    def indexed_file_count(self, value: int) -> None:
+        self._indexed_file_count = value
+
+    # ------------------------------------------------------------------
+    # Bulk mutation methods
+    # ------------------------------------------------------------------
+
+    def clear_all_indexes(self) -> List[SymbolInfo]:
+        """Clear all in-memory indexes and file hashes.
+
+        Returns the list of symbols that were in file_index (used by workers
+        to persist their results before clearing).
+        """
+        symbols = list(self.file_index.values())
+        flat: List[SymbolInfo] = []
+        for batch in symbols:
+            flat.extend(batch)
+        self.file_index.clear()
+        self.class_index.clear()
+        self.function_index.clear()
+        self.usr_index.clear()
+        self.file_hashes.clear()
+        return flat
+
+    def add_symbol_to_indexes(self, symbol: SymbolInfo) -> None:
+        """Add a symbol to all in-memory indexes (class/function/usr/file).
+
+        Delegates to the internal merge logic with deduplication.
+        Used by incremental analyzer for individual symbol additions.
+        """
+        with self.context.concurrency.index_lock:
+            self._merge_symbol_into_indexes(symbol)
+
+    def remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
+        """Remove a symbol from all in-memory indexes.
+
+        Used by incremental analyzer for individual symbol removals.
+        """
+        with self.context.concurrency.index_lock:
+            self._remove_symbol_from_indexes(symbol)
+
+    # ------------------------------------------------------------------
+    # Read accessors
+    # ------------------------------------------------------------------
+
+    def get_classes_by_name(self, name: str) -> List[SymbolInfo]:
+        """Return all class symbols with the given simple name."""
+        return self.class_index.get(name, [])
+
+    def get_functions_by_name(self, name: str) -> List[SymbolInfo]:
+        """Return all function symbols with the given simple name."""
+        return self.function_index.get(name, [])
+
+    def get_symbols_in_file(self, file_path: str) -> List[SymbolInfo]:
+        """Return all symbols in a given file."""
+        return self.file_index.get(file_path, [])
+
+    def has_class_name(self, name: str) -> bool:
+        """Return True if the class index contains the given name."""
+        return name in self.class_index
+
+    def has_function_name(self, name: str) -> bool:
+        """Return True if the function index contains the given name."""
+        return name in self.function_index
+
+    def iter_class_items(self):
+        """Iterate over (name, symbols) pairs in the class index."""
+        return self.class_index.items()
+
+    def iter_function_items(self):
+        """Iterate over (name, symbols) pairs in the function index."""
+        return self.function_index.items()
+
+    def iter_file_items(self):
+        """Iterate over (file_path, symbols) pairs in the file index."""
+        return self.file_index.items()
+
+    def class_name_count(self) -> int:
+        """Return the number of unique class names."""
+        return len(self.class_index)
+
+    def function_name_count(self) -> int:
+        """Return the number of unique function names."""
+        return len(self.function_index)
+
+    def file_index_count(self) -> int:
+        """Return the number of indexed files in the file index."""
+        return len(self.file_index)
+
+    def total_class_symbols(self) -> int:
+        """Return total number of class symbols (including duplicates by name)."""
+        return sum(len(v) for v in self.class_index.values())
+
+    def total_function_symbols(self) -> int:
+        """Return total number of function symbols (including duplicates by name)."""
+        return sum(len(v) for v in self.function_index.values())
 
     def get_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
         """

@@ -87,7 +87,7 @@ def _process_file_worker(spec: IndexingTaskSpec):
     call_sites: List[Any] = []
     processed_headers: Dict[str, str] = {}
     if success:
-        for fpath, file_symbols in context.symbol_store.file_index.items():
+        for fpath, file_symbols in context.symbol_store.iter_file_items():
             symbols.extend(file_symbols)
 
         # Extract call sites collected during this file's parsing
@@ -97,11 +97,7 @@ def _process_file_worker(spec: IndexingTaskSpec):
         processed_headers = context.cache_orchestrator.get_processed_headers()
 
     # Clean up worker indexes to prevent memory leaks (Issue #14)
-    context.symbol_store.file_index.clear()
-    context.symbol_store.class_index.clear()
-    context.symbol_store.function_index.clear()
-    context.symbol_store.usr_index.clear()
-    context.symbol_store.file_hashes.clear()
+    context.symbol_store.clear_all_indexes()
 
     # Force garbage collection to free TranslationUnit objects
     gc.collect()

@@ -167,8 +167,8 @@ class ProjectIndexingOrchestrator:
             print("", file=sys.stderr)
 
         with self.concurrency.index_lock:
-            class_count = sum(len(infos) for infos in self.symbol_store.class_index.values())
-            function_count = sum(len(infos) for infos in self.symbol_store.function_index.values())
+            class_count = self.symbol_store.total_class_symbols()
+            function_count = self.symbol_store.total_function_symbols()
 
         diagnostics.info(f"Indexing complete in {self.cache_orchestrator.last_index_time:.2f}s")
         diagnostics.info(

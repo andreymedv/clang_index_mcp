@@ -288,12 +288,13 @@ class CallGraphService:
     def _collect_target_usrs(self, target_functions: List[Dict[str, Any]]) -> Set[str]:
         """Collect USRs for target functions by matching file/line metadata."""
         target_usrs = set()
-        function_index = self.symbol_store.function_index
         for func in target_functions:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in function_index.get(func["qualified_name"].split("::")[-1], []):
+            for symbol in self.symbol_store.get_functions_by_name(
+                func["qualified_name"].split("::")[-1]
+            ):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     target_usrs.add(symbol.usr)
         return target_usrs
@@ -437,12 +438,13 @@ class CallGraphService:
     def _get_usrs_for_functions(self, funcs: List[Dict[str, Any]]) -> set:
         """Resolve a list of function search results to a set of USRs."""
         usrs = set()
-        function_index = self.symbol_store.function_index
         for func in funcs:
             _loc = func.get("definition") or func.get("declaration") or {}
             _func_file = _loc.get("file")
             _func_line = _loc.get("line")
-            for symbol in function_index.get(func["qualified_name"].split("::")[-1], []):
+            for symbol in self.symbol_store.get_functions_by_name(
+                func["qualified_name"].split("::")[-1]
+            ):
                 if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
                     usrs.add(symbol.usr)
         return usrs
