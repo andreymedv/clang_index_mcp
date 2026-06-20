@@ -64,6 +64,10 @@ def _make_analyzer():
             SimpleNamespace(name="processData", qualified_name="ns::processData"),
         ],
     }
+    symbol_store.get_classes_by_name = lambda name: symbol_store.class_index.get(name, [])
+    symbol_store.get_functions_by_name = lambda name: symbol_store.function_index.get(name, [])
+    symbol_store.iter_class_items = lambda: symbol_store.class_index.items()
+    symbol_store.iter_function_items = lambda: symbol_store.function_index.items()
     analyzer.context = SimpleNamespace(symbol_store=symbol_store)
     return analyzer
 
