@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.indexing_callbacks import IndexingCallbacks
 from mcp_server.state_manager import (
     AnalyzerState,
     AnalyzerStateManager,
@@ -87,7 +88,7 @@ async def test_progress_callback_invoked(simple_cpp_project):
 
     # Index with progress callback
     indexed_count = analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=progress_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=progress_callback)
     )
 
     # Verify callback was invoked
@@ -109,7 +110,7 @@ async def test_progress_data_accuracy(simple_cpp_project):
         progress_updates.append(progress)
 
     indexed_count = analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=progress_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=progress_callback)
     )
 
     # Check that we got progress updates
@@ -143,7 +144,7 @@ async def test_progress_increases_monotonically(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=progress_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=progress_callback)
     )
 
     # Check that indexed count never decreases
@@ -184,7 +185,7 @@ async def test_progress_completion_percentage(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=progress_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=progress_callback)
     )
 
     # Verify completion percentage is correct
@@ -209,7 +210,7 @@ async def test_progress_callback_exception_handling(simple_cpp_project):
 
     # Indexing should complete despite callback failures
     indexed_count = analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=failing_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=failing_callback)
     )
 
     # Verify indexing completed successfully
@@ -228,7 +229,7 @@ async def test_progress_is_complete_flag(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=progress_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=progress_callback)
     )
 
     # Check that early updates show incomplete
@@ -253,7 +254,7 @@ async def test_progress_to_dict_serialization(simple_cpp_project):
         progress_updates.append(progress)
 
     analyzer.index_project(
-        force=True, include_dependencies=False, progress_callback=progress_callback
+        force=True, include_dependencies=False, callbacks=IndexingCallbacks(progress=progress_callback)
     )
 
     assert len(progress_updates) > 0, "Should have progress updates"

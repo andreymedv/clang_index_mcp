@@ -248,7 +248,6 @@ class CacheOrchestrator:
             assert self.context.refresh_pipeline is not None
             refreshed = self.context.refresh_pipeline.refresh_if_needed(
                 include_dependencies=self.compilation_env.include_dependencies,
-                compile_commands_manager=self.compilation_env.compile_commands_manager,
             )
             if refreshed > 0:
                 diagnostics.debug(f"Using cached index (updated {refreshed} files)")

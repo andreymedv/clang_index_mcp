@@ -6,9 +6,10 @@ and re-indexes them incrementally.
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from . import diagnostics
+from .indexing_callbacks import IndexingCallbacks
 
 if TYPE_CHECKING:
     from concurrent.futures import Executor
@@ -55,9 +56,7 @@ class RefreshPipeline:
     def refresh_if_needed(
         self,
         include_dependencies: bool,
-        compile_commands_manager: Any,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """
         Refresh index for changed files and remove deleted files.
@@ -94,8 +93,7 @@ class RefreshPipeline:
                 total_to_check,
                 start_time,
                 include_dependencies,
-                progress_callback,
-                wait_for_tools_callback,
+                callbacks,
             )
         except KeyboardInterrupt:
             diagnostics.info("\nRefresh interrupted by user (Ctrl-C)")
@@ -122,8 +120,7 @@ class RefreshPipeline:
         total_to_check: int,
         start_time: float,
         include_dependencies: bool,
-        progress_callback: Optional[Callable],
-        wait_for_tools_callback: Optional[Callable[[], None]],
+        callbacks: Optional[IndexingCallbacks],
     ) -> Tuple[int, int]:
         """Run the parallel refresh loop and return (refreshed_count, failed_count)."""
         from concurrent.futures import as_completed
@@ -133,8 +130,8 @@ class RefreshPipeline:
             executor, modified_files, new_files, include_dependencies
         )
         for i, future in enumerate(as_completed(future_to_file)):
-            if wait_for_tools_callback:
-                wait_for_tools_callback()
+            if callbacks and callbacks.wait_for_tools:
+                callbacks.wait_for_tools()
 
             file_path = future_to_file[future]
             try:
@@ -148,6 +145,7 @@ class RefreshPipeline:
                 failed += 1
                 diagnostics.error(f"Error refreshing {file_path}: {e}")
 
+            progress_callback = callbacks.progress if callbacks else None
             if progress_callback and ((i + 1) % 10 == 0 or (i + 1) == total_to_check):
                 self.progress_reporter.report_refresh_progress(
                     progress_callback, total_to_check, refreshed, failed, file_path, start_time

@@ -27,6 +27,7 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from mcp_server.tool_registry import ToolRegistry
+from mcp_server.indexing_callbacks import IndexingCallbacks
 import mcp_server.consolidated_tools  # noqa: F401
 
 try:
@@ -695,8 +696,9 @@ async def _run_background_refresh(refresh_mode: str):
         else:
             diagnostics.info("Starting full refresh...")
 
+        callbacks = IndexingCallbacks(progress=progress_callback, wait_for_tools=wait_for_tools)
         modified_count = await loop.run_in_executor(
-            None, lambda: analyzer.refresh_if_needed(progress_callback, wait_for_tools)
+            None, lambda: analyzer.refresh_if_needed(callbacks)
         )
         diagnostics.info(f"Refresh complete: re-analyzed {modified_count} files")
         state_manager.transition_to(AnalyzerState.INDEXED)

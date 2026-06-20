@@ -6,13 +6,14 @@ It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .cache_orchestrator import CacheOrchestrator
 from .call_graph_service import CallGraphService
 from .clang_parser import ClangParser
 from .compilation_environment import CompilationEnvironment
 from .compile_commands_manager import CompileCommandsManager
+from .indexing_callbacks import IndexingCallbacks
 from .indexing_orchestrator import ProjectIndexingOrchestrator
 from .indexing_pipeline import SingleFileIndexingPipeline
 from .indexing_task_submitter import IndexingTaskSubmitter
@@ -235,8 +236,7 @@ class CppAnalyzer:
         self,
         force: bool = False,
         include_dependencies: bool = True,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """
         Index all C++ files in the project.
@@ -244,8 +244,7 @@ class CppAnalyzer:
         Args:
             force: Force re-indexing even if cache exists
             include_dependencies: Include dependency files in indexing
-            progress_callback: Optional callback for progress updates
-            wait_for_tools_callback: Optional callback to wait for tool availability
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks
 
         Returns:
             Number of files indexed
@@ -254,8 +253,7 @@ class CppAnalyzer:
         return self.indexing_orchestrator.index_project(
             include_dependencies,
             force=force,
-            progress_callback=progress_callback,
-            wait_for_tools_callback=wait_for_tools_callback,
+            callbacks=callbacks,
         )
 
     def pop_last_fallback(self):
@@ -305,24 +303,20 @@ class CppAnalyzer:
 
     def refresh_if_needed(
         self,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """
         Refresh index for changed files and remove deleted files.
 
         Args:
-            progress_callback: Optional callback for progress updates
-            wait_for_tools_callback: Optional callback to wait for tool availability
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks
 
         Returns:
             Number of files refreshed
         """
         return self.refresh_pipeline.refresh_if_needed(
             self.compilation_env.include_dependencies,
-            self.compilation_env.compile_commands_manager,
-            progress_callback,
-            wait_for_tools_callback,
+            callbacks=callbacks,
         )
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
