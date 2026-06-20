@@ -67,7 +67,9 @@ class RefreshPipeline:
         """
         refreshed, deleted, start_time = 0, 0, time.time()
 
-        if compile_commands_manager is not None and compile_commands_manager.enabled:
+        if self.context.is_compile_commands_enabled():
+            compile_commands_manager = self.context.compile_commands_manager
+            assert compile_commands_manager is not None
             if compile_commands_manager.refresh_if_needed():
                 diagnostics.debug("Compile commands refreshed")
 

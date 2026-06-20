@@ -81,6 +81,25 @@ class CompilationEnvironment:
         # Use FileScanner's logic to check if it's a project file
         return self.file_scanner.is_project_file(file_path)
 
+    def has_active_compile_commands(self) -> bool:
+        """Return True when a compile-commands manager is initialized and enabled."""
+        return self.compile_commands_manager is not None and self.compile_commands_manager.enabled
+
+    def add_vcpkg_fallback_includes(self, args: List[str]) -> None:
+        """Append vcpkg fallback include paths when compile_commands.json does not cover a file."""
+        vcpkg_include = self.context.project_root / "vcpkg_installed" / "x64-windows" / "include"
+        if vcpkg_include.exists():
+            args.append(f"-I{vcpkg_include}")
+
+        vcpkg_paths = [
+            "C:/vcpkg/installed/x64-windows/include",
+            "C:/dev/vcpkg/installed/x64-windows/include",
+        ]
+        for path in vcpkg_paths:
+            if Path(path).exists():
+                args.append(f"-I{path}")
+                break
+
     def _compute_compile_args_hash(self, args: List[str]) -> str:
         """Compute hash of compilation arguments for cache validation."""
         from .file_utils import hash_compile_args
@@ -101,7 +120,8 @@ class CompilationEnvironment:
         """
         # If compile_commands.json is loaded and has entries, use only those files
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compile_commands_manager is not None and self.compile_commands_manager.enabled:
+        if self.has_active_compile_commands():
+            assert self.compile_commands_manager is not None
             compile_commands_files = self.compile_commands_manager.get_all_files()
             if compile_commands_files:
                 diagnostics.debug(
@@ -114,7 +134,7 @@ class CompilationEnvironment:
         self.file_scanner.include_dependencies = include_dependencies
         return self.file_scanner.find_cpp_files()
 
-    def _get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
+    def get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
         """Get compilation arguments for a file, handling worker and fallback modes."""
         if self._provided_compile_args is not None:
             # Worker mode: use compile args provided by main process
@@ -126,54 +146,30 @@ class CompilationEnvironment:
 
         # If compile commands are not available and we're using fallback, add vcpkg includes
         if not self.compile_commands_manager.is_file_supported(file_path_obj):
-            # Add vcpkg includes if available
-            vcpkg_include = (
-                self.context.project_root / "vcpkg_installed" / "x64-windows" / "include"
-            )
-            if vcpkg_include.exists():
-                args.append(f"-I{vcpkg_include}")
-
-            # Add common vcpkg paths
-            vcpkg_paths = [
-                "C:/vcpkg/installed/x64-windows/include",
-                "C:/dev/vcpkg/installed/x64-windows/include",
-            ]
-            for path in vcpkg_paths:
-                if Path(path).exists():
-                    args.append(f"-I{path}")
-                    break
+            self.add_vcpkg_fallback_includes(args)
         return args
 
     def _prepare_worker_compile_args(self, files: List[str]) -> Dict[str, List[str]]:
         """Pre-calculate compile arguments for each file to save worker memory."""
         file_compile_args = {}
         assert self.compile_commands_manager is not None
-        vcpkg_include = self.context.project_root / "vcpkg_installed" / "x64-windows" / "include"
-        vcpkg_paths = [
-            "C:/vcpkg/installed/x64-windows/include",
-            "C:/dev/vcpkg/installed/x64-windows/include",
-        ]
 
         for file_path in files:
             file_path_obj = Path(file_path)
             args = self.compile_commands_manager.get_compile_args_with_fallback(file_path_obj)
 
             if not self.compile_commands_manager.is_file_supported(file_path_obj):
-                if vcpkg_include.exists():
-                    args.append(f"-I{vcpkg_include}")
-                for path in vcpkg_paths:
-                    if Path(path).exists():
-                        args.append(f"-I{path}")
-                        break
+                self.add_vcpkg_fallback_includes(args)
             file_compile_args[file_path] = args
         return file_compile_args
 
     def get_compile_commands_stats(self) -> Dict[str, Any]:
         """Get compile commands statistics"""
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compile_commands_manager is None or not self.compile_commands_manager.enabled:
+        if not self.has_active_compile_commands():
             return {"enabled": False}
 
+        assert self.compile_commands_manager is not None
         return self.compile_commands_manager.get_stats()
 
     def _log_compilation_environment(self, files: List[str]) -> None:
@@ -249,5 +245,5 @@ class CompilationEnvironment:
         file_compile_args = {}
         for file_path in all_files_to_process:
             file_path_obj = Path(file_path)
-            file_compile_args[file_path] = self._get_compile_args_for_file(file_path_obj)
+            file_compile_args[file_path] = self.get_compile_args_for_file(file_path_obj)
         return file_compile_args

@@ -67,10 +67,7 @@ class CacheOrchestrator:
         from . import diagnostics
 
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if (
-            self.compilation_env.compile_commands_manager is None
-            or not self.compilation_env.compile_commands_manager.enabled
-        ):
+        if not self.compilation_env.has_active_compile_commands():
             self.compile_commands_hash = ""
             return
 

@@ -92,6 +92,12 @@ class ProjectContext:
             return None
         return self.compilation_env.compile_commands_manager
 
+    def is_compile_commands_enabled(self) -> bool:
+        """Return True when compile commands integration is active."""
+        return (
+            self.compilation_env is not None and self.compilation_env.has_active_compile_commands()
+        )
+
     @property
     def cache_dir(self) -> Path:
         """Convenience accessor for the cache directory."""

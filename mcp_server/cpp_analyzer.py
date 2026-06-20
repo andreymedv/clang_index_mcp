@@ -159,23 +159,22 @@ class CppAnalyzer:
 
         # Print compile commands configuration status
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compilation_env.compile_commands_manager is not None:
-            if self.compilation_env.compile_commands_manager.enabled:
-                compile_commands_config = self.config.get_compile_commands_config()
-                cc_path = self.project_root / compile_commands_config.compile_commands_path
-                if cc_path.exists():
-                    # This message will be followed by actual load message from CompileCommandsManager
-                    diagnostics.debug(
-                        f"Compile commands enabled: using {compile_commands_config.compile_commands_path}"
-                    )
-                else:
-                    diagnostics.debug(
-                        f"Compile commands enabled: {compile_commands_config.compile_commands_path} not found, will use fallback args"
-                    )
+        if self.compilation_env.has_active_compile_commands():
+            compile_commands_config = self.config.get_compile_commands_config()
+            cc_path = self.project_root / compile_commands_config.compile_commands_path
+            if cc_path.exists():
+                # This message will be followed by actual load message from CompileCommandsManager
+                diagnostics.debug(
+                    f"Compile commands enabled: using {compile_commands_config.compile_commands_path}"
+                )
             else:
-                diagnostics.debug("Compile commands disabled in configuration")
-        else:
+                diagnostics.debug(
+                    f"Compile commands enabled: {compile_commands_config.compile_commands_path} not found, will use fallback args"
+                )
+        elif self.compilation_env.compile_commands_manager is None:
             diagnostics.debug("Worker mode: using precomputed compile args from main process")
+        else:
+            diagnostics.debug("Compile commands disabled in configuration")
 
     def interrupt(self):
         """
