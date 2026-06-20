@@ -59,7 +59,7 @@ int main() {
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Verify compile commands are enabled
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats.get("enabled", False), "Compile commands should be enabled"
         assert stats.get("compile_commands_count", 0) > 0, "Should have loaded compile commands"
 
@@ -154,12 +154,12 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Verify compile commands are loaded
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats.get("enabled", False), "Compile commands should be enabled"
         assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # CRITICAL TEST: Verify that _find_cpp_files returns ONLY files from compile_commands.json
-        files_to_index = analyzer._find_cpp_files(include_dependencies=True)
+        files_to_index = analyzer.context.compilation_env._find_cpp_files(include_dependencies=True)
         assert (
             len(files_to_index) == 1
         ), f"Should find exactly 1 file from compile_commands.json, found {len(files_to_index)}"
@@ -179,10 +179,10 @@ public:
         extra_cpp_str = str(extra_cpp.resolve())
 
         assert (
-            header_file_str not in analyzer.file_hashes
+            header_file_str not in analyzer.context.symbol_store.file_hashes
         ), "extra.h should NOT be attempted (not in compile_commands.json)"
         assert (
-            extra_cpp_str not in analyzer.file_hashes
+            extra_cpp_str not in analyzer.context.symbol_store.file_hashes
         ), "extra.cpp should NOT be attempted (not in compile_commands.json)"
 
         # If main.cpp was successfully parsed, verify no symbols from other files
@@ -231,12 +231,12 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Verify compile commands are loaded
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats.get("enabled", False), "Compile commands should be enabled"
         assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # Get the parsed arguments for the file
-        args = analyzer.compile_commands_manager.get_compile_args(src_file)
+        args = analyzer.context.compile_commands_manager.get_compile_args(src_file)
 
         # Verify the compiler path was stripped
         assert args is not None, "Should have extracted arguments"

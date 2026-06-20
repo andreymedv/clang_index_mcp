@@ -43,8 +43,8 @@ class Parser;  // Line 3
         analyzer.index_file(str(fwd2_h))
 
         # Should store first forward declaration
-        assert "Parser" in analyzer.class_index
-        parser_symbols = analyzer.class_index["Parser"]
+        assert "Parser" in analyzer.context.symbol_store.class_index
+        parser_symbols = analyzer.context.symbol_store.class_index["Parser"]
         assert len(parser_symbols) == 1
 
         parser_info = parser_symbols[0]
@@ -80,8 +80,8 @@ class QString {  // Lines 3-5
         analyzer.index_file(str(forward_h))
 
         # Verify forward declaration is initially stored
-        assert "QString" in analyzer.class_index
-        qstring_symbols = analyzer.class_index["QString"]
+        assert "QString" in analyzer.context.symbol_store.class_index
+        qstring_symbols = analyzer.context.symbol_store.class_index["QString"]
         assert len(qstring_symbols) == 1
         initial_info = qstring_symbols[0]
         assert "forward.h" in initial_info.file
@@ -93,7 +93,7 @@ class QString {  // Lines 3-5
         analyzer.index_file(str(qstring_h))
 
         # Definition should replace forward declaration
-        qstring_symbols = analyzer.class_index["QString"]
+        qstring_symbols = analyzer.context.symbol_store.class_index["QString"]
         assert len(qstring_symbols) == 1  # Still only one symbol
 
         replaced_info = qstring_symbols[0]
@@ -125,7 +125,7 @@ class QString;  // Line 3
         analyzer.index_file(str(qstring_h))
 
         # Verify definition is stored
-        qstring_symbols = analyzer.class_index["QString"]
+        qstring_symbols = analyzer.context.symbol_store.class_index["QString"]
         assert len(qstring_symbols) == 1
         initial_info = qstring_symbols[0]
         assert "QString.h" in initial_info.file
@@ -135,7 +135,7 @@ class QString;  // Line 3
         analyzer.index_file(str(forward_h))
 
         # Definition should be kept (forward decl ignored)
-        qstring_symbols = analyzer.class_index["QString"]
+        qstring_symbols = analyzer.context.symbol_store.class_index["QString"]
         assert len(qstring_symbols) == 1
 
         kept_info = qstring_symbols[0]
@@ -180,8 +180,8 @@ void processData(int x) {  // Lines 3-5
         analyzer.index_file(str(util_cpp))
 
         # Definition should win
-        assert "processData" in analyzer.function_index
-        func_symbols = analyzer.function_index["processData"]
+        assert "processData" in analyzer.context.symbol_store.function_index
+        func_symbols = analyzer.context.symbol_store.function_index["processData"]
         assert len(func_symbols) == 1
 
         func_info = func_symbols[0]
@@ -213,8 +213,8 @@ int calculate(int a, int b) {  // Lines 3-5
         analyzer.index_file(str(api_h))
 
         # Check that declaration is initially stored
-        assert "calculate" in analyzer.function_index
-        func_symbols = analyzer.function_index["calculate"]
+        assert "calculate" in analyzer.context.symbol_store.function_index
+        func_symbols = analyzer.context.symbol_store.function_index["calculate"]
         assert len(func_symbols) == 1
         initial_info = func_symbols[0]
         assert "api.h" in initial_info.file
@@ -226,7 +226,7 @@ int calculate(int a, int b) {  // Lines 3-5
         analyzer.index_file(str(api_cpp))
 
         # Definition should replace declaration
-        func_symbols = analyzer.function_index["calculate"]
+        func_symbols = analyzer.context.symbol_store.function_index["calculate"]
         assert len(func_symbols) == 1
 
         replaced_info = func_symbols[0]
@@ -262,7 +262,7 @@ class Data {  // Lines 3-5
         analyzer1.index_file(str(fwd_h))
         analyzer1.index_file(str(data_h))
 
-        data_symbols1 = analyzer1.class_index["Data"]
+        data_symbols1 = analyzer1.context.symbol_store.class_index["Data"]
         assert len(data_symbols1) == 1
         data_info1 = data_symbols1[0]
 
@@ -271,7 +271,7 @@ class Data {  // Lines 3-5
         analyzer2.index_file(str(data_h))
         analyzer2.index_file(str(fwd_h))
 
-        data_symbols2 = analyzer2.class_index["Data"]
+        data_symbols2 = analyzer2.context.symbol_store.class_index["Data"]
         assert len(data_symbols2) == 1
         data_info2 = data_symbols2[0]
 
@@ -328,7 +328,7 @@ public:
         analyzer.index_file(str(qstring_h))
 
         # Real class definition should win
-        qstring_symbols = analyzer.class_index["QString"]
+        qstring_symbols = analyzer.context.symbol_store.class_index["QString"]
         assert len(qstring_symbols) == 1
 
         qstring_info = qstring_symbols[0]

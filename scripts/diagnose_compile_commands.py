@@ -29,7 +29,7 @@ def show_compile_command_sample(project_root: Path, sample_count: int = 3):
     """Show sample entries from compile_commands.json"""
     config = CppAnalyzerConfig(project_root)
     cc_config = config.get_compile_commands_config()
-    cc_path = project_root / cc_config.get("compile_commands_path", "compile_commands.json")
+    cc_path = project_root / cc_config.compile_commands_path
 
     if not cc_path.exists():
         print(f"[ERROR] compile_commands.json not found at: {cc_path}")

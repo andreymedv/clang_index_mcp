@@ -3,9 +3,10 @@
 import json
 import re
 import threading
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from .regex_validator import RegexValidator
+from .search_criteria import SearchCriteria
 from .symbol_info import (
     SymbolInfo,
     build_location_objects,
@@ -13,6 +14,9 @@ from .symbol_info import (
     is_richer_definition,
     omit_empty,
 )
+
+if TYPE_CHECKING:
+    from .symbol_index_store import SymbolIndexStore
 
 
 def _build_function_prototype(info: SymbolInfo) -> Optional[str]:
@@ -131,20 +135,37 @@ def _build_attributes(info: SymbolInfo) -> Optional[List[str]]:
 class SearchEngine:
     """Handles searching for C++ symbols."""
 
+    symbol_store: Optional["SymbolIndexStore"]
+
     def __init__(
         self,
-        class_index: Dict[str, List[SymbolInfo]],
-        function_index: Dict[str, List[SymbolInfo]],
-        file_index: Dict[str, List[SymbolInfo]],
-        usr_index: Dict[str, SymbolInfo],
-        index_lock: threading.RLock,
+        class_index: Optional[Dict[str, List[SymbolInfo]]] = None,
+        function_index: Optional[Dict[str, List[SymbolInfo]]] = None,
+        file_index: Optional[Dict[str, List[SymbolInfo]]] = None,
+        usr_index: Optional[Dict[str, SymbolInfo]] = None,
+        index_lock: Optional[threading.RLock] = None,
         cache_manager=None,  # Phase 1.3: Type Alias Tracking support
+        symbol_store: Optional["SymbolIndexStore"] = None,
     ):
-        self.class_index = class_index
-        self.function_index = function_index
-        self.file_index = file_index
-        self.usr_index = usr_index
-        self.index_lock = index_lock
+        if symbol_store is not None:
+            self.symbol_store = symbol_store
+            self.class_index = symbol_store.class_index
+            self.function_index = symbol_store.function_index
+            self.file_index = symbol_store.file_index
+            self.usr_index = symbol_store.usr_index
+            self.index_lock = index_lock or symbol_store.context.concurrency.index_lock
+        else:
+            assert class_index is not None
+            assert function_index is not None
+            assert file_index is not None
+            assert usr_index is not None
+            assert index_lock is not None
+            self.symbol_store = None
+            self.class_index = class_index
+            self.function_index = function_index
+            self.file_index = file_index
+            self.usr_index = usr_index
+            self.index_lock = index_lock
         self.cache_manager = cache_manager  # Phase 1.3: For alias lookups
 
     def _resolve_specialization_of(self, primary_template_usr: Optional[str]) -> Optional[str]:
@@ -164,9 +185,12 @@ class SearchEngine:
             return None
 
         with self.index_lock:
-            primary_info = self.usr_index.get(primary_template_usr)
+            if self.symbol_store is not None:
+                primary_info = self.symbol_store.get_symbol_by_usr(primary_template_usr)
+            else:
+                primary_info = self.usr_index.get(primary_template_usr)
             if primary_info:
-                return primary_info.qualified_name or primary_info.name
+                return cast(str, primary_info.qualified_name or primary_info.name)
         return None
 
     @staticmethod
@@ -512,12 +536,7 @@ class SearchEngine:
 
     def search_classes(
         self,
-        pattern: str,
-        project_only: bool = True,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        include_base_classes: bool = True,
+        criteria: SearchCriteria,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for classes matching a pattern.
 
@@ -531,20 +550,7 @@ class SearchEngine:
         - Regex ("app::.*::View") uses regex fullmatch semantics
 
         Args:
-            pattern: Search pattern (qualified, unqualified, or regex)
-            project_only: Only return symbols from project files
-            file_name: Optional file name filter
-            namespace: Optional namespace filter with partial matching support.
-                      Supports suffix matching at :: boundaries (case-sensitive).
-                      Examples:
-                        - "builders" matches "myapp::builders" (suffix)
-                        - "myapp::builders" matches "TopLevel::myapp::builders" (suffix)
-                        - "" (empty string) matches only global namespace
-            max_results: Optional maximum number of results to return. When specified,
-                        returns tuple (results, total_count) for truncation tracking.
-            include_base_classes: When True (default), include base_classes list in each result.
-                                  Set to False to reduce token usage for large searches where
-                                  inheritance info is not needed.
+            criteria: SearchCriteria with pattern, filters, and result options.
 
         Returns:
             If max_results is None: List of matching class dictionaries
@@ -552,6 +558,7 @@ class SearchEngine:
 
         Task: T2.2.1 (Qualified Names Phase 2)
         """
+        pattern = criteria.pattern
         pattern_type = self._detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
@@ -562,11 +569,17 @@ class SearchEngine:
             for name, infos in self.class_index.items():
                 for info in infos:
                     if self._matches_class_criteria(
-                        info, pattern, project_only, file_name, namespace
+                        info,
+                        pattern,
+                        criteria.project_only,
+                        criteria.file_name,
+                        criteria.namespace,
                     ):
-                        results.append(self._create_class_result(info, include_base_classes))
+                        results.append(
+                            self._create_class_result(info, criteria.include_base_classes)
+                        )
 
-        return self._apply_max_results(results, max_results)
+        return self._apply_max_results(results, criteria.max_results)
 
     def _matches_function_criteria(
         self,
@@ -706,14 +719,7 @@ class SearchEngine:
 
     def search_functions(
         self,
-        pattern: str,
-        project_only: bool = True,
-        class_name: Optional[str] = None,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        signature_pattern: Optional[str] = None,
-        include_attributes: bool = False,
+        criteria: SearchCriteria,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching a pattern.
 
@@ -728,22 +734,7 @@ class SearchEngine:
         - Regex ("ns::.*") uses regex fullmatch semantics
 
         Args:
-            pattern: Search pattern (qualified, unqualified, or regex)
-            project_only: Only return symbols from project files
-            class_name: Optional class name filter (for methods)
-            file_name: Optional file name filter
-            namespace: Optional namespace filter with partial matching support.
-                      Supports suffix matching at :: boundaries (case-sensitive).
-                      For methods, matches the namespace + class (e.g., "app::Database").
-                      Examples:
-                        - "builders" matches "myapp::builders" (suffix)
-                        - "Handler" matches "app::Handler" (suffix)
-                        - "" (empty string) matches only global namespace
-            max_results: Optional maximum number of results to return. When specified,
-                        returns tuple (results, total_count) for truncation tracking.
-            include_attributes: When True, include machine-filterable 'attributes' list
-                        (e.g. ['virtual', 'const', 'definition']). Default False because
-                        the 'prototype' field already encodes this information visually.
+            criteria: SearchCriteria with pattern, filters, and result options.
 
         Returns:
             If max_results is None: List of matching function dictionaries
@@ -751,46 +742,42 @@ class SearchEngine:
 
         Task: T2.2.2 (Qualified Names Phase 2)
         """
+        pattern = criteria.pattern
         pattern_type = self._detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
+        class_name = criteria.class_name
         if class_name:
             class_name = self._extract_simple_name(class_name)
 
-        if file_name:
+        if criteria.file_name:
             results = self._search_functions_in_file_index(
                 pattern,
                 pattern_type,
-                project_only,
+                criteria.project_only,
                 class_name,
-                namespace,
-                signature_pattern,
-                file_name,
-                include_attributes,
+                criteria.namespace,
+                criteria.signature_pattern,
+                criteria.file_name,
+                criteria.include_attributes,
             )
         else:
             results = self._search_functions_in_function_index(
                 pattern,
                 pattern_type,
-                project_only,
+                criteria.project_only,
                 class_name,
-                namespace,
-                signature_pattern,
-                include_attributes,
+                criteria.namespace,
+                criteria.signature_pattern,
+                criteria.include_attributes,
             )
 
-        return self._apply_max_results(results, max_results)
+        return self._apply_max_results(results, criteria.max_results)
 
     def search_symbols(
         self,
-        pattern: str,
-        project_only: bool = True,
-        symbol_types: Optional[List[str]] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        signature_pattern: Optional[str] = None,
-        include_attributes: bool = False,
+        criteria: SearchCriteria,
     ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for any symbols matching a pattern.
 
@@ -804,16 +791,7 @@ class SearchEngine:
         - Regex ("app::.*::View") uses regex fullmatch semantics
 
         Args:
-            pattern: Search pattern (qualified, unqualified, or regex)
-            project_only: Only return symbols from project files
-            symbol_types: Optional list of symbol types to filter (e.g., ["class", "function"])
-            namespace: Optional namespace filter with partial matching support.
-                      Supports suffix matching at :: boundaries (case-sensitive).
-                      Examples:
-                        - "builders" matches "myapp::builders" (suffix)
-                        - "" (empty string) matches only global namespace
-            max_results: Optional maximum number of results to return (across all types).
-                        When specified, returns tuple (results, total_count) for truncation tracking.
+            criteria: SearchCriteria with pattern, filters, and result options.
 
         Returns:
             If max_results is None: Dictionary with "classes" and "functions" keys
@@ -827,6 +805,7 @@ class SearchEngine:
         """
         results: Dict[str, List[Dict[str, Any]]] = {"classes": [], "functions": []}
 
+        symbol_types = criteria.symbol_types
         # Filter symbol types
         search_classes = not symbol_types or any(t in ["class", "struct"] for t in symbol_types)
         search_functions = not symbol_types or any(
@@ -834,24 +813,31 @@ class SearchEngine:
         )
 
         if search_classes:
+            class_criteria = SearchCriteria(
+                pattern=criteria.pattern,
+                project_only=criteria.project_only,
+                namespace=criteria.namespace,
+            )
             results["classes"] = cast(
                 List[Dict[str, Any]],
-                self.search_classes(pattern, project_only, namespace=namespace),
+                self.search_classes(class_criteria),
             )
 
         if search_functions:
+            function_criteria = SearchCriteria(
+                pattern=criteria.pattern,
+                project_only=criteria.project_only,
+                namespace=criteria.namespace,
+                signature_pattern=criteria.signature_pattern,
+                include_attributes=criteria.include_attributes,
+            )
             results["functions"] = cast(
                 List[Dict[str, Any]],
-                self.search_functions(
-                    pattern,
-                    project_only,
-                    namespace=namespace,
-                    signature_pattern=signature_pattern,
-                    include_attributes=include_attributes,
-                ),
+                self.search_functions(function_criteria),
             )
 
         # Handle max_results truncation (truncate combined results)
+        max_results = criteria.max_results
         if max_results is not None:
             total_count = len(results["classes"]) + len(results["functions"])
             # Truncate each list proportionally, keeping classes first

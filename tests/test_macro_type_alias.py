@@ -161,7 +161,7 @@ class TestMacroTypeAliasDebug:
 
     def test_debug_indexed_files(self, analyzer):
         """Debug: Print all indexed files."""
-        files = list(analyzer.file_index.keys())
+        files = list(analyzer.context.symbol_store.file_index.keys())
         print(f"\n=== All indexed files ({len(files)}) ===")
         for f in sorted(files):
             print(f"  {f}")

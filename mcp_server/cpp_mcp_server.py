@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 # Import diagnostics early
 try:
@@ -25,6 +25,10 @@ except ImportError:
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
+
+from mcp_server.tool_registry import ToolRegistry
+from mcp_server.indexing_callbacks import IndexingCallbacks
+import mcp_server.consolidated_tools  # noqa: F401
 
 try:
     from mcp_server.libclang_setup import configure_libclang, get_libclang_runtime_info
@@ -125,9 +129,7 @@ server = Server("cpp-analyzer")
 
 @server.list_tools()
 async def list_tools() -> List[Tool]:
-    from mcp_server.consolidated_tools import list_tools_b
-
-    return list_tools_b()
+    return cast(List[Tool], ToolRegistry.call_tool("list_tools_b"))
 
 
 def _parse_query_policy(policy_str: str) -> QueryBehaviorPolicy:
@@ -312,9 +314,9 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
 
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    from mcp_server.consolidated_tools import handle_tool_call_b
-
-    result = await handle_tool_call_b(name, arguments)
+    result = cast(
+        List[TextContent], await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
+    )
     _try_log_tool_call(name, arguments, result)
     return result
 
@@ -409,13 +411,16 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
             # FAST PATH: Check if cache exists and is valid
             # If so, load directly without calling index_project
             loop = asyncio.get_event_loop()
-            cache_valid = await loop.run_in_executor(None, analyzer._load_cache)
+            cache_valid = await loop.run_in_executor(
+                None, analyzer.context.cache_orchestrator._load_cache
+            )
 
             if cache_valid:
                 # Cache loaded successfully - skip indexing
                 diagnostics.info(
-                    f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
-                    f"{len(analyzer.function_index)} functions indexed"
+                    f"Cache loaded successfully: "
+                    f"{analyzer.context.symbol_store.class_name_count()} classes, "
+                    f"{analyzer.context.symbol_store.function_name_count()} functions indexed"
                 )
 
                 # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
@@ -425,7 +430,7 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
                 from .state_manager import IndexingProgress
 
                 # Create progress object from cached data
-                total_files = len(analyzer.file_index)
+                total_files = analyzer.context.symbol_store.file_index_count()
                 progress = IndexingProgress(
                     total_files=total_files,
                     indexed_files=total_files,  # All files loaded from cache
@@ -687,52 +692,17 @@ async def _run_background_refresh(refresh_mode: str):
             state_manager.wait_for_tools_to_finish()
 
         if refresh_mode == "incremental":
-            try:
-                from mcp_server.incremental_analyzer import IncrementalAnalyzer
-
-                diagnostics.info("Starting incremental refresh...")
-                incremental_analyzer = IncrementalAnalyzer(analyzer)
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: incremental_analyzer.perform_incremental_analysis(
-                        progress_callback, wait_for_tools
-                    ),
-                )
-
-                if result and result.changes and result.changes.is_empty():
-                    diagnostics.info("Incremental refresh complete: no changes detected")
-                elif result:
-                    diagnostics.info(
-                        f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
-                        f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
-                    )
-
-                state_manager.transition_to(AnalyzerState.INDEXED)
-                return
-
-            except Exception as e:
-                diagnostics.error(f"Incremental analysis failed: {e}")
-                diagnostics.info("Falling back to full refresh...")
-                # Fallback to full refresh
-                modified_count = await loop.run_in_executor(
-                    None,
-                    lambda: analyzer.refresh_if_needed(progress_callback, wait_for_tools),
-                )
-                diagnostics.info(
-                    f"Fallback full refresh complete: re-analyzed {modified_count} files"
-                )
-                state_manager.transition_to(AnalyzerState.INDEXED)
-                return
-
+            diagnostics.info("Starting incremental refresh...")
         else:
-            # Full refresh
             diagnostics.info("Starting full refresh...")
-            modified_count = await loop.run_in_executor(
-                None, lambda: analyzer.refresh_if_needed(progress_callback)
-            )
-            diagnostics.info(f"Full refresh complete: re-analyzed {modified_count} files")
-            state_manager.transition_to(AnalyzerState.INDEXED)
-            return
+
+        callbacks = IndexingCallbacks(progress=progress_callback, wait_for_tools=wait_for_tools)
+        modified_count = await loop.run_in_executor(
+            None, lambda: analyzer.refresh_if_needed(callbacks)
+        )
+        diagnostics.info(f"Refresh complete: re-analyzed {modified_count} files")
+        state_manager.transition_to(AnalyzerState.INDEXED)
+        return
 
     except Exception as e:
         diagnostics.error(f"Background refresh failed: {e}")
@@ -786,16 +756,18 @@ async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextCon
     if analyzer is None:
         return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
-    ccm = analyzer.compile_commands_manager
-    total_classes = sum(len(infos) for infos in analyzer.class_index.values())
-    total_functions = sum(len(infos) for infos in analyzer.function_index.values())
+    ccm = analyzer.context.compile_commands_manager
+    symbol_store = analyzer.context.symbol_store
+    assert symbol_store is not None
+    total_classes = symbol_store.total_class_symbols()
+    total_functions = symbol_store.total_function_symbols()
 
     status_dict.update(
         {
             "call_graph_enabled": True,
             "compile_commands_enabled": ccm.enabled if ccm else False,
             "compile_commands_path": ccm.compile_commands_path if ccm else None,
-            "parsed_files": len(analyzer.file_index),
+            "parsed_files": symbol_store.file_index_count(),
             "indexed_classes": total_classes,
             "indexed_functions": total_functions,
         }
@@ -1163,6 +1135,9 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
         ]
 
 
+ToolRegistry.register("_handle_tool_call", _handle_tool_call)
+
+
 def _create_argument_parser():
     """Create and configure the argument parser for the MCP server."""
     import argparse
@@ -1227,11 +1202,11 @@ def _try_resume_session(saved_session):
         new_analyzer = CppAnalyzer(project_path, config_file=config_file)
         new_background_indexer = BackgroundIndexer(new_analyzer, state_manager)
 
-        cache_loaded = new_analyzer._load_cache()
+        cache_loaded = new_analyzer.context.cache_orchestrator._load_cache()
         if cache_loaded:
             diagnostics.info(
-                f"Session restored from cache: {len(new_analyzer.class_index)} classes, "
-                f"{len(new_analyzer.function_index)} functions"
+                f"Session restored from cache: {new_analyzer.context.symbol_store.class_name_count()} classes, "
+                f"{new_analyzer.context.symbol_store.function_name_count()} functions"
             )
             state_manager.transition_to(AnalyzerState.INDEXED)
             return new_analyzer, new_background_indexer, True

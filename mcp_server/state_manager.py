@@ -11,6 +11,8 @@ from enum import Enum
 from threading import Event, Lock
 from typing import Any, List, Optional
 
+from .indexing_callbacks import IndexingCallbacks
+
 
 class AnalyzerState(Enum):
     """Analyzer lifecycle states"""
@@ -258,14 +260,18 @@ class BackgroundIndexer:
             """Callback to update progress in state manager"""
             self.state_manager.update_progress(progress)
 
+        callbacks = IndexingCallbacks(
+            progress=progress_callback,
+            wait_for_tools=self.state_manager.wait_for_tools_to_finish,
+        )
+
         try:
             indexed_count = await loop.run_in_executor(
                 None,  # Use default executor
                 lambda: self.analyzer.index_project(
                     force=force,
                     include_dependencies=include_dependencies,
-                    progress_callback=progress_callback,
-                    wait_for_tools_callback=self.state_manager.wait_for_tools_to_finish,
+                    callbacks=callbacks,
                 ),
             )
 

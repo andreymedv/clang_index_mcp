@@ -6,7 +6,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .symbol_info import SymbolInfo
 
@@ -410,6 +410,15 @@ class SqliteCacheBackend:
             self._connect()
 
         self._last_access = time.time()
+
+    def get_connection(self) -> Optional[sqlite3.Connection]:
+        """Return the raw SQLite connection.
+
+        This is a transitional method for components like DependencyGraphBuilder
+        that inherently require raw SQL access.
+        """
+        self._ensure_connected()
+        return self.conn
 
     def _close(self):
         """Close database connection."""
@@ -2437,6 +2446,195 @@ class SqliteCacheBackend:
         except Exception as e:
             diagnostics.error(f"Failed to get canonical type for alias '{alias_name}': {e}")
             return None
+
+    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get high-level info for a known alias from the type_aliases table.
+
+        Returns:
+            Dict with canonical_type, qualified_name, namespace, file, line and
+            a list of alias details, or None if type_name is not a known alias.
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self._conn.execute(
+                """
+                SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
+                       is_template_alias, template_params
+                FROM type_aliases
+                WHERE alias_name = ? OR qualified_name = ?
+                LIMIT 1
+                """,
+                (type_name, type_name),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            alias_names = self.get_aliases_for_canonical(row["canonical_type"])
+            aliases = self.get_type_alias_details(alias_names)
+
+            return {
+                "canonical_type": row["canonical_type"],
+                "qualified_name": row["qualified_name"],
+                "namespace": row["namespace"],
+                "file": row["file"],
+                "line": row["line"],
+                "input_was_alias": True,
+                "is_ambiguous": False,
+                "aliases": aliases,
+            }
+        except Exception as e:
+            diagnostics.warning(f"Error querying type_aliases for '{type_name}': {e}")
+            return None
+
+    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get detailed records from the type_aliases table for a list of alias names.
+
+        Returns:
+            List of alias detail dicts with name, qualified_name, file, line and
+            optional template information.
+        """
+        unique_aliases: Dict[str, Dict[str, Any]] = {}
+        try:
+            self._ensure_connected()
+
+            for alias_name in alias_names:
+                cursor = self._conn.execute(
+                    """
+                    SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
+                           is_template_alias, template_params
+                    FROM type_aliases
+                    WHERE alias_name = ? OR qualified_name = ?
+                    """,
+                    (alias_name, alias_name),
+                )
+                row = cursor.fetchone()
+                if row:
+                    qualified_alias = row["qualified_name"]
+                    if qualified_alias not in unique_aliases:
+                        alias_dict = {
+                            "name": row["alias_name"],
+                            "qualified_name": qualified_alias,
+                            "file": row["file"],
+                            "line": row["line"],
+                        }
+                        if row["is_template_alias"]:
+                            alias_dict["is_template_alias"] = True
+                            if row["template_params"]:
+                                alias_dict["template_params"] = json.loads(row["template_params"])
+                        unique_aliases[qualified_alias] = alias_dict
+        except Exception as e:
+            diagnostics.debug(f"Failed to get alias details: {e}")
+        return list(unique_aliases.values())
+
+    def get_all_cached_file_paths(self) -> Set[str]:
+        """
+        Return all file paths stored in file_metadata table.
+
+        Used by ChangeScanner to identify cached files for diff analysis.
+
+        Returns:
+            Set of file paths
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute("SELECT file_path FROM file_metadata")
+            return {row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            diagnostics.warning(f"Failed to get cached file paths: {e}")
+            return set()
+
+    def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
+        """
+        Store or update the compile arguments hash for a file.
+
+        Phase 1.4: Compile Commands Integration
+
+        Args:
+            file_path: Source file path
+            args_hash: Hash of the compile arguments
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute(
+                """
+                UPDATE file_metadata
+                SET compile_args_hash = ?
+                WHERE file_path = ?
+                """,
+                (args_hash, file_path),
+            )
+            if cursor.rowcount == 0:
+                self._conn.execute(
+                    """
+                    INSERT OR IGNORE INTO file_metadata
+                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (file_path, "", args_hash, time.time(), 0),
+                )
+            self._conn.commit()
+            return True
+        except Exception as e:
+            diagnostics.warning(f"Failed to set compile args hash for {file_path}: {e}")
+            self._conn.rollback()
+            return False
+
+    def get_compile_args_hash(self, file_path: str) -> Optional[str]:
+        """
+        Return the stored compile arguments hash for a file.
+
+        Phase 1.4: Compile Commands Integration
+
+        Args:
+            file_path: Source file path
+
+        Returns:
+            Args hash string or None if not found
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute(
+                """
+                SELECT compile_args_hash FROM file_metadata
+                WHERE file_path = ?
+                """,
+                (file_path,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            diagnostics.warning(f"Failed to get compile args hash for {file_path}: {e}")
+            return None
+
+    def clear_compile_args_hashes(self) -> int:
+        """
+        Clear all stored compile arguments hashes from file_metadata.
+
+        Phase 1.4: Compile Commands Integration
+
+        Returns:
+            Number of rows cleared
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute("""
+                UPDATE file_metadata
+                SET compile_args_hash = NULL
+                """)
+            cleared = cursor.rowcount or 0
+            self._conn.commit()
+            return cleared
+        except Exception as e:
+            diagnostics.warning(f"Failed to clear compile args hashes: {e}")
+            self._conn.rollback()
+            return 0
 
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """

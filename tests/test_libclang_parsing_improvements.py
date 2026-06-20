@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from mcp_server.clang_parser import ClangParser
 from mcp_server.compile_commands_manager import CompileCommandsManager
 from mcp_server.cpp_analyzer import CppAnalyzer
 
@@ -23,77 +24,63 @@ class TestSystemHeaderDiagnosticFiltering:
 
     def test_is_system_header_diagnostic_clang_builtins(self, temp_project):
         """Test detection of diagnostics from clang built-in headers."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic from clang built-in header (ARM intrinsics)
         diag = Mock()
         diag.location.file = (
             "/Library/Developer/CommandLineTools/usr/lib/clang/17/include/arm_acle.h"
         )
 
-        assert analyzer._is_system_header_diagnostic(diag) is True
+        assert ClangParser._is_system_header_diagnostic(diag) is True
 
     def test_is_system_header_diagnostic_sdk_headers(self, temp_project):
         """Test detection of diagnostics from SDK headers."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic from macOS SDK header
         diag = Mock()
         diag.location.file = (
             "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk/usr/include/stdio.h"
         )
 
-        assert analyzer._is_system_header_diagnostic(diag) is True
+        assert ClangParser._is_system_header_diagnostic(diag) is True
 
     def test_is_system_header_diagnostic_system_includes(self, temp_project):
         """Test detection of diagnostics from system include directories."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic from /usr/include
         diag = Mock()
         diag.location.file = "/usr/include/stdlib.h"
 
-        assert analyzer._is_system_header_diagnostic(diag) is True
+        assert ClangParser._is_system_header_diagnostic(diag) is True
 
     def test_is_system_header_diagnostic_homebrew(self, temp_project):
         """Test detection of diagnostics from Homebrew headers."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic from Homebrew
         diag = Mock()
         diag.location.file = "/opt/homebrew/include/boost/config.hpp"
 
-        assert analyzer._is_system_header_diagnostic(diag) is True
+        assert ClangParser._is_system_header_diagnostic(diag) is True
 
     def test_is_system_header_diagnostic_windows_system(self, temp_project):
         """Test detection of diagnostics from Windows system headers."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic from Windows Program Files
         diag = Mock()
         diag.location.file = r"C:\Program Files\LLVM\include\stdio.h"
 
-        assert analyzer._is_system_header_diagnostic(diag) is True
+        assert ClangParser._is_system_header_diagnostic(diag) is True
 
     def test_is_system_header_diagnostic_project_file(self, temp_project):
         """Test that project files are NOT detected as system headers."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic from project file
         diag = Mock()
         diag.location.file = f"{temp_project}/src/MyClass.h"
 
-        assert analyzer._is_system_header_diagnostic(diag) is False
+        assert ClangParser._is_system_header_diagnostic(diag) is False
 
     def test_is_system_header_diagnostic_no_location(self, temp_project):
         """Test handling of diagnostics without file location."""
-        analyzer = CppAnalyzer(temp_project)
-
         # Mock diagnostic without file location
         diag = Mock()
         diag.location.file = None
 
-        assert analyzer._is_system_header_diagnostic(diag) is False
+        assert ClangParser._is_system_header_diagnostic(diag) is False
 
     def test_extract_diagnostics_filters_system_header_errors(self, temp_project):
         """Test that system header errors are filtered and downgraded to warnings."""
@@ -121,7 +108,7 @@ class TestSystemHeaderDiagnosticFiltering:
 
         tu.diagnostics = [system_diag, project_diag, warning_diag]
 
-        errors, warnings = analyzer._extract_diagnostics(tu)
+        errors, warnings = analyzer.context.clang_parser._extract_diagnostics(tu)
 
         # Only project error should be in errors
         assert len(errors) == 1
@@ -160,7 +147,7 @@ class TestSystemHeaderDiagnosticFiltering:
 
         tu.diagnostics = [arm_acle_diag, arm_neon_diag]
 
-        errors, warnings = analyzer._extract_diagnostics(tu)
+        errors, warnings = analyzer.context.clang_parser._extract_diagnostics(tu)
 
         # No errors should be reported (all filtered as system header errors)
         assert len(errors) == 0
@@ -189,7 +176,7 @@ class TestUnknownCursorKindHandling:
 
         # Should not raise exception - the ValueError should be caught internally
         # and processing should continue with children
-        analyzer._process_cursor(cursor)
+        analyzer.context.symbol_extractor._process_cursor(cursor)
 
         # Verify get_children was called (to process children after error)
         cursor.get_children.assert_called()
@@ -244,7 +231,7 @@ class TestUnknownCursorKindHandling:
         parent_cursor.get_children = Mock(return_value=[child_cursor])
 
         # Processing should handle parent gracefully and still process children
-        analyzer._process_cursor(parent_cursor)
+        analyzer.context.symbol_extractor._process_cursor(parent_cursor)
 
         # Verify that children were requested (parent error was handled)
         parent_cursor.get_children.assert_called()

@@ -246,12 +246,13 @@ class SmartFallback:
         self,
         pattern: str,
         tool_name: str,
-        class_index: Dict[str, List[Any]],
-        function_index: Dict[str, List[Any]],
+        class_index: Optional[Dict[str, List[Any]]] = None,
+        function_index: Optional[Dict[str, List[Any]]] = None,
         file_index: Optional[Dict[str, List[Any]]] = None,
         file_name: Optional[str] = None,
         namespace: Optional[str] = None,
         class_name: Optional[str] = None,
+        symbol_store=None,
     ) -> Optional[FallbackResult]:
         """Run fallback cascade and return first useful suggestion.
 
@@ -264,10 +265,19 @@ class SmartFallback:
             file_name: Original file_name filter (if any)
             namespace: Original namespace filter (if any)
             class_name: Original class_name filter (search_functions only)
+            symbol_store: Optional SymbolIndexStore to source indexes from
 
         Returns:
             FallbackResult if a useful suggestion was generated, None otherwise.
         """
+        if symbol_store is not None:
+            class_index = symbol_store.class_index
+            function_index = symbol_store.function_index
+            file_index = symbol_store.file_index
+
+        assert class_index is not None
+        assert function_index is not None
+
         if not pattern:
             return None
 

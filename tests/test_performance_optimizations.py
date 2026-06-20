@@ -55,9 +55,9 @@ class TestWorkerCountOptimization(unittest.TestCase):
 
             # Verify worker count equals cpu_count
             self.assertEqual(
-                analyzer.max_workers,
+                analyzer.context.max_workers,
                 cpu_count,
-                f"Worker count should be {cpu_count}, not {analyzer.max_workers}",
+                f"Worker count should be {cpu_count}, not {analyzer.context.max_workers}",
             )
 
     def test_worker_count_minimum_one(self):
@@ -66,7 +66,7 @@ class TestWorkerCountOptimization(unittest.TestCase):
             with patch("os.cpu_count", return_value=None):
                 analyzer = CppAnalyzer(tmpdir)
                 self.assertGreaterEqual(
-                    analyzer.max_workers, 1, "Worker count should be at least 1"
+                    analyzer.context.max_workers, 1, "Worker count should be at least 1"
                 )
 
 
@@ -84,7 +84,7 @@ class TestProcessPoolExecutor(unittest.TestCase):
 
             try:
                 analyzer = CppAnalyzer(tmpdir)
-                self.assertTrue(analyzer.use_processes, "Should use ProcessPoolExecutor by default")
+                self.assertTrue(analyzer.context.use_processes, "Should use ProcessPoolExecutor by default")
             finally:
                 if env_backup is not None:
                     os.environ["CPP_ANALYZER_USE_THREADS"] = env_backup
@@ -96,7 +96,7 @@ class TestProcessPoolExecutor(unittest.TestCase):
             try:
                 analyzer = CppAnalyzer(tmpdir)
                 self.assertFalse(
-                    analyzer.use_processes, "Should use ThreadPoolExecutor when env var set"
+                    analyzer.context.use_processes, "Should use ThreadPoolExecutor when env var set"
                 )
             finally:
                 if "CPP_ANALYZER_USE_THREADS" in os.environ:
@@ -109,7 +109,7 @@ class TestProcessPoolExecutor(unittest.TestCase):
                 os.environ["CPP_ANALYZER_USE_THREADS"] = value
                 try:
                     analyzer = CppAnalyzer(tmpdir)
-                    self.assertFalse(analyzer.use_processes, f"Should recognize '{value}' as true")
+                    self.assertFalse(analyzer.context.use_processes, f"Should recognize '{value}' as true")
                 finally:
                     if "CPP_ANALYZER_USE_THREADS" in os.environ:
                         del os.environ["CPP_ANALYZER_USE_THREADS"]
@@ -125,10 +125,10 @@ class TestBulkSymbolWrites(unittest.TestCase):
             analyzer = CppAnalyzer(tmpdir)
 
             # Initialize buffers
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Check buffers exist and are empty
-            symbols, calls, aliases = analyzer._get_thread_local_buffers()
+            symbols, calls, aliases = analyzer.context.concurrency.get_thread_local_buffers()
             self.assertIsInstance(symbols, list)
             self.assertIsInstance(calls, list)
             self.assertIsInstance(aliases, list)
@@ -140,16 +140,16 @@ class TestBulkSymbolWrites(unittest.TestCase):
         """Bulk write with empty buffers should return 0"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
-            result = analyzer._bulk_write_symbols()
+            result = analyzer.context.symbol_store._bulk_write_symbols()
             self.assertEqual(result, 0, "Should return 0 for empty buffers")
 
     def test_bulk_write_adds_symbols(self):
         """Bulk write should add symbols to indexes"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Create test symbols
             test_symbol = SymbolInfo(
@@ -163,22 +163,22 @@ class TestBulkSymbolWrites(unittest.TestCase):
             )
 
             # Add to buffer
-            symbols, _, _ = analyzer._get_thread_local_buffers()
+            symbols, _, _ = analyzer.context.concurrency.get_thread_local_buffers()
             symbols.append(test_symbol)
 
             # Bulk write
-            added = analyzer._bulk_write_symbols()
+            added = analyzer.context.symbol_store._bulk_write_symbols()
 
             # Verify
             self.assertEqual(added, 1, "Should add 1 symbol")
-            self.assertIn("TestClass", analyzer.class_index)
-            self.assertIn("c:@S@TestClass", analyzer.usr_index)
+            self.assertIn("TestClass", analyzer.context.symbol_store.class_index)
+            self.assertIn("c:@S@TestClass", analyzer.context.symbol_store.usr_index)
 
     def test_bulk_write_deduplicates(self):
         """Bulk write should deduplicate symbols with same USR"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Create duplicate symbols
             symbol1 = SymbolInfo(
@@ -202,16 +202,16 @@ class TestBulkSymbolWrites(unittest.TestCase):
             )
 
             # Add both to buffer
-            symbols, _, _ = analyzer._get_thread_local_buffers()
+            symbols, _, _ = analyzer.context.concurrency.get_thread_local_buffers()
             symbols.append(symbol1)
             symbols.append(symbol2)
 
             # Bulk write
-            added = analyzer._bulk_write_symbols()
+            added = analyzer.context.symbol_store._bulk_write_symbols()
 
             # Should only add first symbol, deduplicate second
             self.assertEqual(added, 1, "Should deduplicate and add only 1 symbol")
-            self.assertEqual(len(analyzer.class_index["TestClass"]), 1)
+            self.assertEqual(len(analyzer.context.symbol_store.class_index["TestClass"]), 1)
 
 
 @unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")
@@ -372,8 +372,8 @@ class TestThreadLocalBuffers(unittest.TestCase):
             results = {}
 
             def worker(thread_id):
-                analyzer._init_thread_local_buffers()
-                symbols, calls, aliases = analyzer._get_thread_local_buffers()
+                analyzer.context.concurrency.init_thread_local_buffers()
+                symbols, calls, aliases = analyzer.context.concurrency.get_thread_local_buffers()
                 # Add unique symbol to this thread's buffer
                 symbols.append(
                     SymbolInfo(

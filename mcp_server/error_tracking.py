@@ -137,14 +137,14 @@ class ErrorTracker:
 
     def _trigger_fallback(self, reason: str):
         """
-        Trigger fallback to JSON backend.
+        Trigger fallback mode due to high error rate.
 
         Args:
             reason: Reason for fallback
         """
         self.fallback_triggered = True
         self.fallback_reason = reason
-        diagnostics.error(f"Triggering fallback to JSON backend: {reason}")
+        diagnostics.error(f"Triggering fallback mode: {reason}")
 
     def get_error_rate(self) -> float:
         """

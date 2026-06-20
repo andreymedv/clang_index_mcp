@@ -174,7 +174,7 @@ class TestGetClassInfoVirtualMethods:
 
     def test_interface_methods_marked_pure_virtual(self, virtual_analyzer):
         """Test that interface methods are marked as pure virtual in get_class_info."""
-        info = virtual_analyzer.search_engine.get_class_info("IHandler")
+        info = virtual_analyzer.context.query_engine.search_engine.get_class_info("IHandler")
 
         assert info is not None, "Should find IHandler class"
         methods = info.get("methods", [])

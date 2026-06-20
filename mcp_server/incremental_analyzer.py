@@ -35,11 +35,13 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 try:
     from . import diagnostics
     from .change_scanner import ChangeScanner, ChangeSet
-    from .compile_commands_differ import CompileCommandsDiffer
+    from .indexing_callbacks import IndexingCallbacks
+    from .indexing_task_spec import IndexingTaskSpec
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
     from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
-    from compile_commands_differ import CompileCommandsDiffer  # type: ignore[no-redef]
+    from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
+    from indexing_task_spec import IndexingTaskSpec  # type: ignore[no-redef]
 
 
 @dataclass
@@ -97,14 +99,24 @@ class IncrementalAnalyzer:
 
     def perform_incremental_analysis(
         self,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> AnalysisResult:
         """
         Perform incremental analysis of changed files.
 
-        This is the main entry point that orchestrates the entire
-        incremental analysis workflow.
+        This is the sophisticated incremental update path used by the MCP
+        refresh_project tool with mode="incremental". It provides:
+        - Header dependency cascade via DependencyGraphBuilder
+        - Per-file compile_commands diffing via CompileCommandsDiffer
+        - Detailed change categorization (added/modified/deleted)
+
+        For simple cache-based startup refresh, use CppAnalyzer.refresh_if_needed.
+        Both paths use shared primitives from file_utils:
+        - hash_file() for consistent file content hashing
+        - hash_compile_args() for consistent argument hashing
+
+        This ensures both paths agree on whether files or arguments have
+        changed, even though they process changes differently.
 
         Algorithm:
             1. Scan for all changes
@@ -114,13 +126,12 @@ class IncrementalAnalyzer:
                - Files affected by header changes (via dependency graph)
                - Modified source files
                - New files
-            4. Remove deleted files from cache
+            4. Remove deleted files from cache and indexes
             5. Re-analyze the minimal set
             6. Return detailed results
 
         Args:
-            progress_callback: Optional callback for progress updates.
-                             Called with IndexingProgress object during analysis.
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks.
 
         Returns:
             AnalysisResult with statistics and details
@@ -169,9 +180,7 @@ class IncrementalAnalyzer:
         # 4. Re-analyze files
         if files_to_analyze:
             diagnostics.info(f"Re-analyzing {len(files_to_analyze)} files...")
-            analyzed_count = self._reanalyze_files(
-                files_to_analyze, start_time, progress_callback, wait_for_tools_callback
-            )
+            analyzed_count = self._reanalyze_files(files_to_analyze, start_time, callbacks)
         else:
             analyzed_count = 0
 
@@ -203,7 +212,8 @@ class IncrementalAnalyzer:
         diagnostics.info("Handling compile_commands.json change...")
 
         # Get compile commands manager
-        cc_manager = self.analyzer.compile_commands_manager
+        cc_manager = self.analyzer.context.compile_commands_manager
+        assert cc_manager is not None
 
         # Get old commands (from current state)
         old_commands = cc_manager.file_to_command_map.copy()
@@ -213,11 +223,29 @@ class IncrementalAnalyzer:
         new_commands = cc_manager.file_to_command_map
 
         # Compute diff
-        if self.analyzer.cache_manager.backend and hasattr(
-            self.analyzer.cache_manager.backend, "conn"
+        files_to_analyze: Set[str]
+        if cc_manager.cache_backend is not None and hasattr(
+            cc_manager.cache_backend, "set_compile_args_hash"
         ):
-            differ = CompileCommandsDiffer(self.analyzer.cache_manager.backend)
-            added, removed, changed = differ.compute_diff(old_commands, new_commands)
+            # Extract argument lists from command dicts if needed
+            def _extract_args(commands):
+                result = {}
+                for fp, cmd in commands.items():
+                    if cmd and isinstance(cmd[0], dict):
+                        result[fp] = cmd[0].get("arguments", [])
+                    else:
+                        result[fp] = cmd
+                return result
+
+            try:
+                old_args = _extract_args(old_commands)
+                new_args = _extract_args(new_commands)
+            except (AttributeError, TypeError, IndexError):
+                # If extraction fails (e.g., mock objects), pass through as-is
+                old_args = old_commands
+                new_args = new_commands
+
+            added, removed, changed = cc_manager.compute_commands_diff(old_args, new_args)
 
             diagnostics.info(
                 f"Compile commands diff: +{len(added)} -{len(removed)} ~{len(changed)}"
@@ -227,27 +255,21 @@ class IncrementalAnalyzer:
             files_to_analyze = added | changed
 
             # Store new commands
-            differ.store_current_commands(new_commands)
+            cc_manager.store_command_hashes(new_args)
         else:
             # No SQLite backend, re-analyze all files from new commands
             files_to_analyze = set(new_commands.keys())
             diagnostics.warning("No SQLite backend, re-analyzing all compile_commands files")
 
         # Update compile_commands_hash
-        cc_path = (
-            self.analyzer.project_root
-            / self.analyzer.config.get_compile_commands_config().get(
-                "compile_commands_path", "compile_commands.json"
-            )
+        self.analyzer.context.cache_orchestrator.compile_commands_hash = (
+            cc_manager.get_compile_commands_hash()
         )
-        if cc_path.exists():
-            self.analyzer.compile_commands_hash = self.analyzer._get_file_hash(str(cc_path))
 
         # Invalidate ALL headers (args changed might affect preprocessing)
         # This is conservative but safe
-        if self.analyzer.header_tracker:
-            self.analyzer.header_tracker.clear_all()
-            diagnostics.info("Invalidated all header tracking due to compile commands change")
+        self.analyzer.context.cache_orchestrator.clear_header_tracker()
+        diagnostics.info("Invalidated all header tracking due to compile commands change")
 
         return files_to_analyze
 
@@ -269,8 +291,10 @@ class IncrementalAnalyzer:
         diagnostics.info(f"Handling header change: {header_path}")
 
         # Find dependents via dependency graph
-        if self.analyzer.dependency_graph:
-            dependents = self.analyzer.dependency_graph.find_transitive_dependents(header_path)
+        if self.analyzer.context.call_graph_service.dependency_graph:
+            dependents = self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents(
+                header_path
+            )
             diagnostics.info(f"Header {header_path} affects {len(dependents)} files")
         else:
             # No dependency graph, conservative: re-analyze everything
@@ -278,8 +302,7 @@ class IncrementalAnalyzer:
             dependents = set()
 
         # Invalidate header in tracker
-        if self.analyzer.header_tracker:
-            self.analyzer.header_tracker.invalidate_header(header_path)
+        self.analyzer.context.cache_orchestrator.invalidate_header(header_path)
 
         result: Set[str] = dependents
         return result
@@ -304,51 +327,20 @@ class IncrementalAnalyzer:
 
     def _remove_file(self, file_path: str):
         """
-        Remove file from cache and dependency graph.
+        Remove file from cache, indexes, and dependency graph.
 
         Args:
             file_path: Path to deleted file
         """
         diagnostics.info(f"Removing deleted file: {file_path}")
-
-        # Remove from cache
         try:
-            self.analyzer.cache_manager.backend.remove_file_cache(file_path)
+            self.analyzer.context.cache_orchestrator.remove_deleted_file(file_path)
         except Exception as e:
-            diagnostics.warning(f"Failed to remove {file_path} from cache: {e}")
-
-        # Remove from dependency graph
-        if self.analyzer.dependency_graph:
-            try:
-                self.analyzer.dependency_graph.remove_file_dependencies(file_path)
-            except Exception as e:
-                diagnostics.warning(f"Failed to remove {file_path} from dependency graph: {e}")
-
-        # Remove from header tracker if it's a header
-        if self.analyzer.header_tracker and file_path.endswith((".h", ".hpp", ".hxx", ".h++")):
-            try:
-                self.analyzer.header_tracker.invalidate_header(file_path)
-            except Exception as e:
-                diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
+            diagnostics.warning(f"Failed to remove deleted file {file_path}: {e}")
 
     def _remove_symbol_from_index(self, symbol: Any) -> None:
         """Remove a symbol from the appropriate index (class or function)."""
-        if symbol.kind in ("class", "struct"):
-            if symbol.name in self.analyzer.class_index:
-                try:
-                    self.analyzer.class_index[symbol.name].remove(symbol)
-                    if not self.analyzer.class_index[symbol.name]:
-                        del self.analyzer.class_index[symbol.name]
-                except ValueError:
-                    pass
-        else:
-            if symbol.name in self.analyzer.function_index:
-                try:
-                    self.analyzer.function_index[symbol.name].remove(symbol)
-                    if not self.analyzer.function_index[symbol.name]:
-                        del self.analyzer.function_index[symbol.name]
-                except ValueError:
-                    pass
+        self.analyzer.context.symbol_store.remove_symbol_from_indexes(symbol)
 
     def _handle_definition_wins(self, symbol: Any, existing: Any) -> bool:
         """Apply 'definition wins' rule for duplicate symbols. Returns True if symbol should be skipped."""
@@ -362,41 +354,19 @@ class IncrementalAnalyzer:
 
     def _add_symbol_to_indices(self, symbol: Any) -> None:
         """Add a symbol to the analyzer's indices."""
-        # Add to appropriate index
-        if symbol.kind in ("class", "struct"):
-            self.analyzer.class_index[symbol.name].append(symbol)
-        else:
-            self.analyzer.function_index[symbol.name].append(symbol)
-
-        # Add to USR index
-        if symbol.usr:
-            self.analyzer.usr_index[symbol.usr] = symbol
-
-        # Add to file index (with deduplication)
-        if symbol.file:
-            if symbol.file not in self.analyzer.file_index:
-                self.analyzer.file_index[symbol.file] = []
-
-            # Check for duplicates in file_index
-            already_in_file_index = False
-            if symbol.usr:
-                for existing in self.analyzer.file_index[symbol.file]:
-                    if existing.usr == symbol.usr:
-                        already_in_file_index = True
-                        break
-
-            if not already_in_file_index:
-                self.analyzer.file_index[symbol.file].append(symbol)
+        self.analyzer.context.symbol_store.add_symbol_to_indexes(symbol)
 
     def _merge_symbols(self, symbols: List[Any]) -> None:
         """Merge symbols from a worker process into the main analyzer index."""
-        with self.analyzer.index_lock:
+        with self.analyzer.context.concurrency.index_lock:
             for symbol in symbols:
                 # Apply same deduplication logic as index_project
                 skip_symbol = False
 
-                if symbol.usr and symbol.usr in self.analyzer.usr_index:
-                    existing = self.analyzer.usr_index[symbol.usr]
+                store = self.analyzer.context.symbol_store
+                if symbol.usr and store.contains_usr(symbol.usr):
+                    existing = store.get_symbol_by_usr(symbol.usr)
+                    assert existing is not None
                     skip_symbol = self._handle_definition_wins(symbol, existing)
 
                 if not skip_symbol:
@@ -409,29 +379,7 @@ class IncrementalAnalyzer:
 
         for file_path in file_list:
             file_path_obj = Path(file_path)
-            args = self.analyzer.compile_commands_manager.get_compile_args_with_fallback(
-                file_path_obj
-            )
-
-            # If compile commands are not available and we're using fallback, add vcpkg includes
-            if not self.analyzer.compile_commands_manager.is_file_supported(file_path_obj):
-                # Add vcpkg includes if available
-                vcpkg_include = (
-                    self.analyzer.project_root / "vcpkg_installed" / "x64-windows" / "include"
-                )
-                if vcpkg_include.exists():
-                    args.append(f"-I{vcpkg_include}")
-
-                # Add common vcpkg paths
-                vcpkg_paths = [
-                    "C:/vcpkg/installed/x64-windows/include",
-                    "C:/dev/vcpkg/installed/x64-windows/include",
-                ]
-                for path in vcpkg_paths:
-                    if Path(path).exists():
-                        args.append(f"-I{path}")
-                        break
-
+            args = self.analyzer.context.compilation_env.get_compile_args_for_file(file_path_obj)
             file_compile_args[file_path] = args
         return file_compile_args
 
@@ -476,7 +424,7 @@ class IncrementalAnalyzer:
             # Restore call sites
             if call_sites:
                 for cs_dict in call_sites:
-                    self.analyzer.call_graph_analyzer.add_call(
+                    self.analyzer.context.call_graph_service.call_graph_analyzer.add_call(
                         cs_dict["caller_usr"],
                         cs_dict["callee_usr"],
                         cs_dict["file"],
@@ -487,11 +435,13 @@ class IncrementalAnalyzer:
             # Merge header tracking
             if processed_headers:
                 for header_path, header_hash in processed_headers.items():
-                    self.analyzer.header_tracker.mark_completed(header_path, header_hash)
+                    self.analyzer.context.cache_orchestrator.mark_header_completed(
+                        header_path, header_hash
+                    )
 
             # Update file hash tracking
-            file_hash = self.analyzer._get_file_hash(file_path)
-            self.analyzer.file_hashes[file_path] = file_hash
+            file_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
+            self.analyzer.context.symbol_store.set_file_hash(file_path, file_hash)
         else:
             # ThreadPoolExecutor returns (success, was_cached)
             success, was_cached = result
@@ -546,7 +496,7 @@ class IncrementalAnalyzer:
         """Submit re-analysis tasks to the executor."""
         if use_processes:
             # ProcessPoolExecutor: use worker function (same as index_project)
-            from mcp_server.cpp_analyzer import _process_file_worker
+            from mcp_server.worker_pool import _process_file_worker
 
             # Get project configuration for workers
             project_root = str(self.analyzer.project_root)
@@ -555,7 +505,7 @@ class IncrementalAnalyzer:
                 if self.analyzer.project_identity.config_file_path
                 else None
             )
-            include_dependencies = self.analyzer.include_dependencies
+            include_dependencies = self.analyzer.context.compilation_env.include_dependencies
 
             # Task 3.2: Prepare compile args for all files in main process
             # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
@@ -565,13 +515,13 @@ class IncrementalAnalyzer:
             return {
                 executor.submit(
                     _process_file_worker,
-                    (
-                        project_root,
-                        config_file_str,
-                        os.path.abspath(file_path),
-                        True,  # force=True for refresh
-                        include_dependencies,
-                        file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
+                    IndexingTaskSpec(
+                        project_root=project_root,
+                        config_file=config_file_str,
+                        file_path=os.path.abspath(file_path),
+                        force=True,  # force=True for refresh
+                        include_dependencies=include_dependencies,
+                        compile_args=file_compile_args[file_path],  # Task 3.2: precomputed args
                     ),
                 ): file_path
                 for file_path in file_list
@@ -590,8 +540,7 @@ class IncrementalAnalyzer:
         use_processes: bool,
         start_time: float,
         total: int,
-        progress_callback: Optional[Callable],
-        wait_for_tools_callback: Optional[Callable[[], None]],
+        callbacks: Optional[IndexingCallbacks],
     ) -> Tuple[int, int]:
         """Process results from futures in a loop."""
         analyzed = 0
@@ -606,8 +555,8 @@ class IncrementalAnalyzer:
                 diagnostics.info("Incremental refresh interrupted by request")
                 raise KeyboardInterrupt("Incremental refresh interrupted by request")
 
-            if wait_for_tools_callback:
-                wait_for_tools_callback()
+            if callbacks and callbacks.wait_for_tools:
+                callbacks.wait_for_tools()
 
             file_path = future_to_file[future]
             try:
@@ -626,6 +575,7 @@ class IncrementalAnalyzer:
                 diagnostics.error(f"Error re-analyzing {file_path}: {e}")
 
             # Report progress periodically
+            progress_callback = callbacks.progress if callbacks else None
             if progress_callback:
                 self._report_progress(
                     progress_callback, i, total, analyzed, failed, start_time, file_path
@@ -637,8 +587,7 @@ class IncrementalAnalyzer:
         self,
         files: Set[str],
         start_time: float,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """
         Re-analyze a set of files using parallel processing.
@@ -650,7 +599,7 @@ class IncrementalAnalyzer:
         Args:
             files: Set of file paths to re-analyze
             start_time: Unix timestamp when analysis started (for ETA calculation)
-            progress_callback: Optional callback for progress updates
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks
 
         Returns:
             Number of files successfully analyzed
@@ -701,8 +650,7 @@ class IncrementalAnalyzer:
                 use_processes,
                 start_time,
                 total,
-                progress_callback,
-                wait_for_tools_callback,
+                callbacks,
             )
         except KeyboardInterrupt:
             # Gracefully handle Ctrl-C or requested interruption

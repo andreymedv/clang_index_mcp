@@ -576,7 +576,7 @@ class TestMCPServerToolsAdditional:
         analyzer.index_project()
 
         # Get compile commands stats
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats is not None
         assert isinstance(stats, dict)
         # Should have information about compile commands usage
