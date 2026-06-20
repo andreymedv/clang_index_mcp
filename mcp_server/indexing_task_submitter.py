@@ -8,6 +8,7 @@ items to the execution pool (process or thread based).
 import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, List
 
+from .indexing_task_spec import IndexingTaskSpec
 from .worker_pool import _process_file_worker
 
 if TYPE_CHECKING:
@@ -52,13 +53,13 @@ class IndexingTaskSubmitter:
             return {
                 executor.submit(
                     _process_file_worker,
-                    (
-                        str(self.project_root),
-                        config_file_str,
-                        os.path.abspath(f),
-                        force,
-                        include_dependencies,
-                        file_compile_args[f],
+                    IndexingTaskSpec(
+                        project_root=str(self.project_root),
+                        config_file=config_file_str,
+                        file_path=os.path.abspath(f),
+                        force=force,
+                        include_dependencies=include_dependencies,
+                        compile_args=file_compile_args[f],
                     ),
                 ): os.path.abspath(f)
                 for f in files
@@ -94,26 +95,26 @@ class IndexingTaskSubmitter:
             for f in modified_files:
                 future = executor.submit(
                     _process_file_worker,
-                    (
-                        project_root,
-                        config_file_str,
-                        os.path.abspath(f),
-                        True,
-                        include_dependencies,
-                        file_compile_args[f],
+                    IndexingTaskSpec(
+                        project_root=project_root,
+                        config_file=config_file_str,
+                        file_path=os.path.abspath(f),
+                        force=True,
+                        include_dependencies=include_dependencies,
+                        compile_args=file_compile_args[f],
                     ),
                 )
                 future_to_file[future] = f
             for f in new_files:
                 future = executor.submit(
                     _process_file_worker,
-                    (
-                        project_root,
-                        config_file_str,
-                        os.path.abspath(f),
-                        False,
-                        include_dependencies,
-                        file_compile_args[f],
+                    IndexingTaskSpec(
+                        project_root=project_root,
+                        config_file=config_file_str,
+                        file_path=os.path.abspath(f),
+                        force=False,
+                        include_dependencies=include_dependencies,
+                        compile_args=file_compile_args[f],
                     ),
                 )
                 future_to_file[future] = f

@@ -13,13 +13,15 @@ from concurrent.futures import (
     ProcessPoolExecutor,
     ThreadPoolExecutor,
 )
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 # Handle both package and script imports
 try:
     from . import diagnostics
+    from .indexing_task_spec import IndexingTaskSpec
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
+    from indexing_task_spec import IndexingTaskSpec  # type: ignore[no-redef]
 
 # Global analyzer instance for each worker process
 # This is a process-local global, NOT shared between processes
@@ -34,14 +36,13 @@ def _cleanup_worker_analyzer():
         _worker_analyzer = None
 
 
-def _process_file_worker(args_tuple):
+def _process_file_worker(spec: IndexingTaskSpec):
     """
     Worker function for ProcessPoolExecutor-based parallel parsing.
 
     This is a module-level function (required for pickling) that uses
     a shared, process-local CppAnalyzer instance to parse a single file.
     """
-    project_root, config_file, file_path, force, include_dependencies, compile_args = args_tuple
     global _worker_analyzer
 
     # Lazy import to avoid circular dependency at module level
@@ -52,57 +53,60 @@ def _process_file_worker(args_tuple):
     if _worker_analyzer is None:
         diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
         _worker_analyzer = CppAnalyzer(
-            project_root,
-            config_file,
+            spec.project_root,
+            spec.config_file,
             skip_schema_recreation=True,
             use_compile_commands_manager=False,
         )
         # Ensure cleanup is called when the worker process exits
         atexit.register(_cleanup_worker_analyzer)
 
+    assert _worker_analyzer is not None
+    context = _worker_analyzer.context
+    assert context.compilation_env is not None
+    assert context.call_graph_service is not None
+    assert context.symbol_store is not None
+    assert context.cache_orchestrator is not None
+
     # Set per-call parameters
-    _worker_analyzer.context.compilation_env.include_dependencies = include_dependencies
+    context.compilation_env.include_dependencies = spec.include_dependencies
     # Reset stateful components to prevent data leakage between files
-    _worker_analyzer.context.call_graph_service.call_graph_analyzer = CallGraphAnalyzer()
+    context.call_graph_service.call_graph_analyzer = CallGraphAnalyzer()
 
     # Mark this instance as isolated (no shared memory, locks not needed)
-    _worker_analyzer.context.concurrency._needs_locking = False
+    context.concurrency._needs_locking = False
 
     # Set precomputed compile args
-    _worker_analyzer.context.compilation_env._provided_compile_args = compile_args
+    context.compilation_env._provided_compile_args = spec.compile_args
 
     # Parse the file
-    success, was_cached = _worker_analyzer.index_file(file_path, force)
+    success, was_cached = _worker_analyzer.index_file(spec.file_path, spec.force)
 
     # Extract symbols from this file
-    symbols = []
-    call_sites = []
-    processed_headers = {}
+    symbols: List[Any] = []
+    call_sites: List[Any] = []
+    processed_headers: Dict[str, str] = {}
     if success:
-        for fpath, file_symbols in _worker_analyzer.context.symbol_store.file_index.items():
+        for fpath, file_symbols in context.symbol_store.file_index.items():
             symbols.extend(file_symbols)
 
         # Extract call sites collected during this file's parsing
-        call_sites = (
-            _worker_analyzer.context.call_graph_service.call_graph_analyzer.get_all_call_sites()
-        )
+        call_sites = context.call_graph_service.call_graph_analyzer.get_all_call_sites()
 
         # Extract header tracking information
-        processed_headers = (
-            _worker_analyzer.context.cache_orchestrator.header_tracker.get_processed_headers()
-        )
+        processed_headers = context.cache_orchestrator.header_tracker.get_processed_headers()
 
     # Clean up worker indexes to prevent memory leaks (Issue #14)
-    _worker_analyzer.context.symbol_store.file_index.clear()
-    _worker_analyzer.context.symbol_store.class_index.clear()
-    _worker_analyzer.context.symbol_store.function_index.clear()
-    _worker_analyzer.context.symbol_store.usr_index.clear()
-    _worker_analyzer.context.symbol_store.file_hashes.clear()
+    context.symbol_store.file_index.clear()
+    context.symbol_store.class_index.clear()
+    context.symbol_store.function_index.clear()
+    context.symbol_store.usr_index.clear()
+    context.symbol_store.file_hashes.clear()
 
     # Force garbage collection to free TranslationUnit objects
     gc.collect()
 
-    return (file_path, success, was_cached, symbols, call_sites, processed_headers)
+    return (spec.file_path, success, was_cached, symbols, call_sites, processed_headers)
 
 
 class WorkerPoolManager:
