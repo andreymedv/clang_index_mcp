@@ -2438,6 +2438,89 @@ class SqliteCacheBackend:
             diagnostics.error(f"Failed to get canonical type for alias '{alias_name}': {e}")
             return None
 
+    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get high-level info for a known alias from the type_aliases table.
+
+        Returns:
+            Dict with canonical_type, qualified_name, namespace, file, line and
+            a list of alias details, or None if type_name is not a known alias.
+        """
+        try:
+            self._ensure_connected()
+
+            cursor = self._conn.execute(
+                """
+                SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
+                       is_template_alias, template_params
+                FROM type_aliases
+                WHERE alias_name = ? OR qualified_name = ?
+                LIMIT 1
+                """,
+                (type_name, type_name),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            alias_names = self.get_aliases_for_canonical(row["canonical_type"])
+            aliases = self.get_type_alias_details(alias_names)
+
+            return {
+                "canonical_type": row["canonical_type"],
+                "qualified_name": row["qualified_name"],
+                "namespace": row["namespace"],
+                "file": row["file"],
+                "line": row["line"],
+                "input_was_alias": True,
+                "is_ambiguous": False,
+                "aliases": aliases,
+            }
+        except Exception as e:
+            diagnostics.warning(f"Error querying type_aliases for '{type_name}': {e}")
+            return None
+
+    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get detailed records from the type_aliases table for a list of alias names.
+
+        Returns:
+            List of alias detail dicts with name, qualified_name, file, line and
+            optional template information.
+        """
+        unique_aliases: Dict[str, Dict[str, Any]] = {}
+        try:
+            self._ensure_connected()
+
+            for alias_name in alias_names:
+                cursor = self._conn.execute(
+                    """
+                    SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
+                           is_template_alias, template_params
+                    FROM type_aliases
+                    WHERE alias_name = ? OR qualified_name = ?
+                    """,
+                    (alias_name, alias_name),
+                )
+                row = cursor.fetchone()
+                if row:
+                    qualified_alias = row["qualified_name"]
+                    if qualified_alias not in unique_aliases:
+                        alias_dict = {
+                            "name": row["alias_name"],
+                            "qualified_name": qualified_alias,
+                            "file": row["file"],
+                            "line": row["line"],
+                        }
+                        if row["is_template_alias"]:
+                            alias_dict["is_template_alias"] = True
+                            if row["template_params"]:
+                                alias_dict["template_params"] = json.loads(row["template_params"])
+                        unique_aliases[qualified_alias] = alias_dict
+        except Exception as e:
+            diagnostics.debug(f"Failed to get alias details: {e}")
+        return list(unique_aliases.values())
+
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """
         Get all alias → canonical mappings.

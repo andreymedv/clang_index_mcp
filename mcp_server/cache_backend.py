@@ -80,6 +80,14 @@ class CacheBackend(Protocol):
         """Get all alias -> canonical mappings."""
         ...
 
+    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+        """Get high-level information for a known type alias."""
+        ...
+
+    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+        """Get detailed records for a list of alias names."""
+        ...
+
     def delete_call_sites_by_file(self, file_path: str) -> int:
         """Delete all call sites from a specific file."""
         ...

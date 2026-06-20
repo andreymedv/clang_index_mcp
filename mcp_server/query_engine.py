@@ -227,79 +227,12 @@ class QueryEngine:
             return {"classes": [], "functions": []}
 
     def _get_alias_details_from_db(self, alias_names: List[str]) -> List[Dict[str, Any]]:
-        """Query type_aliases table for detailed information about a set of aliases."""
-        unique_aliases: Dict[str, Dict[str, Any]] = {}
-        try:
-            self.cache_manager.backend._ensure_connected()
-            conn = self.cache_manager.backend.conn
-            assert conn is not None
-
-            for alias_name in alias_names:
-                cursor = conn.execute(
-                    """
-                    SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
-                           is_template_alias, template_params
-                    FROM type_aliases
-                    WHERE alias_name = ? OR qualified_name = ?
-                    """,
-                    (alias_name, alias_name),
-                )
-                row = cursor.fetchone()
-                if row:
-                    qualified_alias = row["qualified_name"]
-                    if qualified_alias not in unique_aliases:
-                        alias_dict = {
-                            "name": row["alias_name"],
-                            "qualified_name": qualified_alias,
-                            "file": row["file"],
-                            "line": row["line"],
-                        }
-                        if row["is_template_alias"]:
-                            alias_dict["is_template_alias"] = True
-                            if row["template_params"]:
-                                alias_dict["template_params"] = json.loads(row["template_params"])
-                        unique_aliases[qualified_alias] = alias_dict
-        except Exception as e:
-            from . import diagnostics
-
-            diagnostics.debug(f"Failed to get alias details: {e}")
-        return list(unique_aliases.values())
+        """Query the cache backend for detailed information about a set of aliases."""
+        return self.cache_manager.get_type_alias_details(alias_names)
 
     def _get_info_for_known_alias(self, type_name: str) -> Optional[Dict[str, Any]]:
-        """Attempt to get type alias info from the database if type_name is a known alias."""
-        try:
-            self.cache_manager.backend._ensure_connected()
-            conn = self.cache_manager.backend.conn
-            assert conn is not None
-            cursor = conn.execute(
-                """
-                SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
-                       is_template_alias, template_params
-                FROM type_aliases
-                WHERE alias_name = ? OR qualified_name = ?
-                """,
-                (type_name, type_name),
-            )
-            row = cursor.fetchone()
-            if row:
-                alias_names = self.cache_manager.get_aliases_for_canonical(row["canonical_type"])
-                aliases = self._get_alias_details_from_db(alias_names)
-
-                return {
-                    "canonical_type": row["canonical_type"],
-                    "qualified_name": row["qualified_name"],
-                    "namespace": row["namespace"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "input_was_alias": True,
-                    "is_ambiguous": False,
-                    "aliases": aliases,
-                }
-        except Exception as e:
-            from . import diagnostics
-
-            diagnostics.warning(f"Error querying type_aliases for '{type_name}': {e}")
-        return None
+        """Attempt to get type alias info from the cache if type_name is a known alias."""
+        return self.cache_manager.get_type_alias_info(type_name)
 
     def _find_type_matches(self, type_name: str) -> List[SymbolInfo]:
         """Search class index for matching types and return list of matches."""
