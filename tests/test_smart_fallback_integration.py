@@ -7,6 +7,7 @@ and that fallback suggestions flow through the full pipeline.
 import threading
 import unittest
 
+from mcp_server.search_criteria import SearchCriteria
 from mcp_server.search_engine import SearchEngine
 from mcp_server.smart_fallback import SmartFallback
 from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager, EnhancedQueryResult
@@ -126,14 +127,23 @@ class TestSmartFallbackWithSearchEngine(unittest.TestCase):
         """Run search and generate fallback if empty."""
         if tool_name == "search_classes":
             results = self.search_engine.search_classes(
-                pattern, file_name=file_name, namespace=namespace
+                SearchCriteria(
+                    pattern=pattern,
+                    file_name=file_name,
+                    namespace=namespace,
+                )
             )
         elif tool_name == "search_functions":
             results = self.search_engine.search_functions(
-                pattern, file_name=file_name, namespace=namespace, class_name=class_name
+                SearchCriteria(
+                    pattern=pattern,
+                    file_name=file_name,
+                    namespace=namespace,
+                    class_name=class_name,
+                )
             )
         else:
-            results = self.search_engine.search_symbols(pattern, namespace=namespace)
+            results = self.search_engine.search_symbols(SearchCriteria(pattern=pattern, namespace=namespace))
 
         if not results or (
             isinstance(results, dict) and not any(results.get(k) for k in ["classes", "functions"])
