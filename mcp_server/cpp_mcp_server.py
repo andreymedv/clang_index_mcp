@@ -688,52 +688,16 @@ async def _run_background_refresh(refresh_mode: str):
             state_manager.wait_for_tools_to_finish()
 
         if refresh_mode == "incremental":
-            try:
-                from mcp_server.incremental_analyzer import IncrementalAnalyzer
-
-                diagnostics.info("Starting incremental refresh...")
-                incremental_analyzer = IncrementalAnalyzer(analyzer)
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: incremental_analyzer.perform_incremental_analysis(
-                        progress_callback, wait_for_tools
-                    ),
-                )
-
-                if result and result.changes and result.changes.is_empty():
-                    diagnostics.info("Incremental refresh complete: no changes detected")
-                elif result:
-                    diagnostics.info(
-                        f"Incremental refresh complete: re-analyzed {result.files_analyzed} files, "
-                        f"removed {result.files_removed} files in {result.elapsed_seconds:.2f}s"
-                    )
-
-                state_manager.transition_to(AnalyzerState.INDEXED)
-                return
-
-            except Exception as e:
-                diagnostics.error(f"Incremental analysis failed: {e}")
-                diagnostics.info("Falling back to full refresh...")
-                # Fallback to full refresh
-                modified_count = await loop.run_in_executor(
-                    None,
-                    lambda: analyzer.refresh_if_needed(progress_callback, wait_for_tools),
-                )
-                diagnostics.info(
-                    f"Fallback full refresh complete: re-analyzed {modified_count} files"
-                )
-                state_manager.transition_to(AnalyzerState.INDEXED)
-                return
-
+            diagnostics.info("Starting incremental refresh...")
         else:
-            # Full refresh
             diagnostics.info("Starting full refresh...")
-            modified_count = await loop.run_in_executor(
-                None, lambda: analyzer.refresh_if_needed(progress_callback)
-            )
-            diagnostics.info(f"Full refresh complete: re-analyzed {modified_count} files")
-            state_manager.transition_to(AnalyzerState.INDEXED)
-            return
+
+        modified_count = await loop.run_in_executor(
+            None, lambda: analyzer.refresh_if_needed(progress_callback, wait_for_tools)
+        )
+        diagnostics.info(f"Refresh complete: re-analyzed {modified_count} files")
+        state_manager.transition_to(AnalyzerState.INDEXED)
+        return
 
     except Exception as e:
         diagnostics.error(f"Background refresh failed: {e}")
