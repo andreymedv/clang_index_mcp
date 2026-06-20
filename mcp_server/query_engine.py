@@ -13,6 +13,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Set
 
+from .search_criteria import SearchCriteria
 from .search_engine import SearchEngine
 from .smart_fallback import FallbackResult, SmartFallback
 from .symbol_info import SymbolInfo, build_location_objects, omit_empty
@@ -78,9 +79,15 @@ class QueryEngine:
 
         self._last_fallback = None
         try:
-            results = self.search_engine.search_classes(
-                pattern, project_only, file_name, namespace, max_results, include_base_classes
+            criteria = SearchCriteria(
+                pattern=pattern,
+                project_only=project_only,
+                file_name=file_name,
+                namespace=namespace,
+                max_results=max_results,
+                include_base_classes=include_base_classes,
             )
+            results = self.search_engine.search_classes(criteria)
             actual = results[0] if isinstance(results, tuple) else results
             if not actual:
                 self._last_fallback = self.smart_fallback.analyze_empty_result(
@@ -113,16 +120,17 @@ class QueryEngine:
 
         self._last_fallback = None
         try:
-            results = self.search_engine.search_functions(
-                pattern,
-                project_only,
-                class_name,
-                file_name,
-                namespace,
-                max_results,
-                signature_pattern,
-                include_attributes,
+            criteria = SearchCriteria(
+                pattern=pattern,
+                project_only=project_only,
+                class_name=class_name,
+                file_name=file_name,
+                namespace=namespace,
+                max_results=max_results,
+                signature_pattern=signature_pattern,
+                include_attributes=include_attributes,
             )
+            results = self.search_engine.search_functions(criteria)
             actual = results[0] if isinstance(results, tuple) else results
             if not actual:
                 self._last_fallback = self.smart_fallback.analyze_empty_result(
@@ -190,14 +198,15 @@ class QueryEngine:
 
         self._last_fallback = None
         try:
-            results = self.search_engine.search_symbols(
-                pattern,
-                project_only,
-                symbol_types,
-                namespace,
-                max_results,
-                signature_pattern,
+            criteria = SearchCriteria(
+                pattern=pattern,
+                project_only=project_only,
+                symbol_types=symbol_types,
+                namespace=namespace,
+                max_results=max_results,
+                signature_pattern=signature_pattern,
             )
+            results = self.search_engine.search_symbols(criteria)
             actual = results[0] if isinstance(results, tuple) else results
             if isinstance(actual, dict):
                 count = sum(len(v) for v in actual.values() if isinstance(v, list))
@@ -431,15 +440,13 @@ class QueryEngine:
                 "message": f"No files found matching glob pattern '{glob_pattern}'",
             }
 
-        all_classes = self.search_engine.search_classes(
-            symbol_pattern, project_only=False, max_results=None
-        )
+        class_criteria = SearchCriteria(pattern=symbol_pattern, project_only=False)
+        all_classes = self.search_engine.search_classes(class_criteria)
         if isinstance(all_classes, tuple):
             all_classes = all_classes[0]
 
-        all_functions = self.search_engine.search_functions(
-            symbol_pattern, project_only=False, max_results=None
-        )
+        function_criteria = SearchCriteria(pattern=symbol_pattern, project_only=False)
+        all_functions = self.search_engine.search_functions(function_criteria)
         if isinstance(all_functions, tuple):
             all_functions = all_functions[0]
 
@@ -484,15 +491,13 @@ class QueryEngine:
         results = []
         matched_file = None
 
-        all_classes = self.search_engine.search_classes(
-            pattern, project_only=False, max_results=None
-        )
+        class_criteria = SearchCriteria(pattern=pattern, project_only=False)
+        all_classes = self.search_engine.search_classes(class_criteria)
         if isinstance(all_classes, tuple):
             all_classes = all_classes[0]
 
-        all_functions = self.search_engine.search_functions(
-            pattern, project_only=False, max_results=None
-        )
+        function_criteria = SearchCriteria(pattern=pattern, project_only=False)
+        all_functions = self.search_engine.search_functions(function_criteria)
         if isinstance(all_functions, tuple):
             all_functions = all_functions[0]
 
