@@ -30,7 +30,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.compile_commands_manager import CompileCommandsManager
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 # Import test helpers

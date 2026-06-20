@@ -51,7 +51,7 @@ def get_cache_directory():
 
 def find_project_cache(project_path):
     """Find cache directory for a specific project"""
-    from mcp_server.project_identity import ProjectIdentity
+    from mcp_server._persistence.project_identity import ProjectIdentity
 
     project_path = os.path.abspath(project_path)
 

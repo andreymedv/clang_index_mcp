@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.symbol_info import SymbolInfo, is_richer_definition
+from mcp_server._persistence.symbol_info import SymbolInfo, is_richer_definition
 
 
 @pytest.fixture

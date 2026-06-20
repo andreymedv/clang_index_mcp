@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.symbol_extractor import SymbolExtractor
+from mcp_server._symbols.symbol_extractor import SymbolExtractor
 
 
 class TestExtractParamsFromTypeSpelling:

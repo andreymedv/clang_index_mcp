@@ -6,7 +6,7 @@ human-readable qualified names, preserving template arguments.
 
 import pytest
 
-from mcp_server.symbol_extractor import (
+from mcp_server._symbols.symbol_extractor import (
     _decode_class_ref,
     _decode_template_args,
     _decode_usr_type,

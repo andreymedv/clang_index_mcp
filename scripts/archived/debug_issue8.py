@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Enable debug logging
 import logging
 
-from mcp_server import diagnostics
+from mcp_server._core import diagnostics
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")

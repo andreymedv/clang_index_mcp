@@ -7,7 +7,7 @@ the old project_only boolean in the MCP tool interface.
 
 import pytest
 
-from mcp_server.cpp_mcp_server import _VALID_SEARCH_SCOPES, _parse_search_scope
+from mcp_server._mcp.cpp_mcp_server import _VALID_SEARCH_SCOPES, _parse_search_scope
 
 
 class TestParseSearchScope:

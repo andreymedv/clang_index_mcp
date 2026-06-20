@@ -37,7 +37,7 @@ public:
 """)
 
         # Mock the cache save to raise OSError (disk full)
-        from mcp_server.cache_manager import CacheManager
+        from mcp_server._persistence.cache_manager import CacheManager
 
         original_save = CacheManager.save_cache
 
