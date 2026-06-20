@@ -36,10 +36,12 @@ try:
     from . import diagnostics
     from .change_scanner import ChangeScanner, ChangeSet
     from .compile_commands_differ import CompileCommandsDiffer
+    from .indexing_callbacks import IndexingCallbacks
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
     from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
     from compile_commands_differ import CompileCommandsDiffer  # type: ignore[no-redef]
+    from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
 
 
 @dataclass
@@ -97,8 +99,7 @@ class IncrementalAnalyzer:
 
     def perform_incremental_analysis(
         self,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> AnalysisResult:
         """
         Perform incremental analysis of changed files.
@@ -130,9 +131,7 @@ class IncrementalAnalyzer:
             6. Return detailed results
 
         Args:
-            progress_callback: Optional callback for progress updates.
-                             Called with IndexingProgress object during analysis.
-            wait_for_tools_callback: Optional callback to wait for tool availability.
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks.
 
         Returns:
             AnalysisResult with statistics and details
@@ -181,9 +180,7 @@ class IncrementalAnalyzer:
         # 4. Re-analyze files
         if files_to_analyze:
             diagnostics.info(f"Re-analyzing {len(files_to_analyze)} files...")
-            analyzed_count = self._reanalyze_files(
-                files_to_analyze, start_time, progress_callback, wait_for_tools_callback
-            )
+            analyzed_count = self._reanalyze_files(files_to_analyze, start_time, callbacks)
         else:
             analyzed_count = 0
 
@@ -605,8 +602,7 @@ class IncrementalAnalyzer:
         use_processes: bool,
         start_time: float,
         total: int,
-        progress_callback: Optional[Callable],
-        wait_for_tools_callback: Optional[Callable[[], None]],
+        callbacks: Optional[IndexingCallbacks],
     ) -> Tuple[int, int]:
         """Process results from futures in a loop."""
         analyzed = 0
@@ -621,8 +617,8 @@ class IncrementalAnalyzer:
                 diagnostics.info("Incremental refresh interrupted by request")
                 raise KeyboardInterrupt("Incremental refresh interrupted by request")
 
-            if wait_for_tools_callback:
-                wait_for_tools_callback()
+            if callbacks and callbacks.wait_for_tools:
+                callbacks.wait_for_tools()
 
             file_path = future_to_file[future]
             try:
@@ -641,6 +637,7 @@ class IncrementalAnalyzer:
                 diagnostics.error(f"Error re-analyzing {file_path}: {e}")
 
             # Report progress periodically
+            progress_callback = callbacks.progress if callbacks else None
             if progress_callback:
                 self._report_progress(
                     progress_callback, i, total, analyzed, failed, start_time, file_path
@@ -652,8 +649,7 @@ class IncrementalAnalyzer:
         self,
         files: Set[str],
         start_time: float,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """
         Re-analyze a set of files using parallel processing.
@@ -665,7 +661,7 @@ class IncrementalAnalyzer:
         Args:
             files: Set of file paths to re-analyze
             start_time: Unix timestamp when analysis started (for ETA calculation)
-            progress_callback: Optional callback for progress updates
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks
 
         Returns:
             Number of files successfully analyzed
@@ -716,8 +712,7 @@ class IncrementalAnalyzer:
                 use_processes,
                 start_time,
                 total,
-                progress_callback,
-                wait_for_tools_callback,
+                callbacks,
             )
         except KeyboardInterrupt:
             # Gracefully handle Ctrl-C or requested interruption

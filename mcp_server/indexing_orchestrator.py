@@ -9,9 +9,10 @@ reporting, and finalization.
 import sys
 import time
 from concurrent.futures import as_completed
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from . import diagnostics
+from .indexing_callbacks import IndexingCallbacks
 
 if TYPE_CHECKING:
     from .project_context import ProjectContext
@@ -61,8 +62,7 @@ class ProjectIndexingOrchestrator:
         self,
         include_dependencies: bool,
         force: bool = False,
-        progress_callback: Optional[Callable] = None,
-        wait_for_tools_callback: Optional[Callable[[], None]] = None,
+        callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """
         Index all C++ files in the project.
@@ -70,8 +70,7 @@ class ProjectIndexingOrchestrator:
         Args:
             include_dependencies: Include dependency files in indexing
             force: Force re-indexing even if cache exists
-            progress_callback: Optional callback for progress updates
-            wait_for_tools_callback: Optional callback to wait for tool availability
+            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks
 
         Returns:
             Number of files indexed
@@ -101,8 +100,8 @@ class ProjectIndexingOrchestrator:
             for i, future in enumerate(as_completed(future_to_file)):
                 if self.cancellation.is_interrupted():
                     raise KeyboardInterrupt("Indexing interrupted by request")
-                if wait_for_tools_callback:
-                    wait_for_tools_callback()
+                if callbacks and callbacks.wait_for_tools:
+                    callbacks.wait_for_tools()
 
                 file_path = future_to_file[future]
                 success, was_cached = self.worker_result_merger.get_worker_result(
@@ -123,7 +122,7 @@ class ProjectIndexingOrchestrator:
                     start_time,
                     last_report_time,
                     is_terminal,
-                    progress_callback,
+                    callbacks.progress if callbacks else None,
                     file_path,
                 )
 
