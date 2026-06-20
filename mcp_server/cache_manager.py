@@ -660,6 +660,30 @@ class CacheManager:
         )
         return result
 
+    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get high-level information for a known type alias from the cache.
+
+        Returns:
+            Dict with canonical_type, aliases, and metadata, or None if not found.
+        """
+        result: Optional[Dict[str, Any]] = self._safe_backend_call(
+            "get_type_alias_info", lambda: self.backend.get_type_alias_info(type_name)
+        )
+        return result
+
+    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get detailed records for a list of alias names from the cache.
+
+        Returns:
+            List of alias detail dicts.
+        """
+        result: List[Dict[str, Any]] = self._safe_backend_call(
+            "get_type_alias_details", lambda: self.backend.get_type_alias_details(alias_names)
+        )
+        return result
+
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """
         Get all alias → canonical type mappings.
