@@ -50,7 +50,7 @@ class CompilationEnvironment:
         self.max_parse_retries = context.config.config.get("max_parse_retries", 2)
 
         # Precomputed compile args for worker mode
-        self._provided_compile_args = None
+        self._provided_compile_args: Optional[List[str]] = None
 
     def _is_project_file(self, file_path: str) -> bool:
         """

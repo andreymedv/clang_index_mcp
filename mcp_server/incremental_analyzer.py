@@ -37,11 +37,13 @@ try:
     from .change_scanner import ChangeScanner, ChangeSet
     from .compile_commands_differ import CompileCommandsDiffer
     from .indexing_callbacks import IndexingCallbacks
+    from .indexing_task_spec import IndexingTaskSpec
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
     from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
     from compile_commands_differ import CompileCommandsDiffer  # type: ignore[no-redef]
     from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
+    from indexing_task_spec import IndexingTaskSpec  # type: ignore[no-redef]
 
 
 @dataclass
@@ -577,13 +579,13 @@ class IncrementalAnalyzer:
             return {
                 executor.submit(
                     _process_file_worker,
-                    (
-                        project_root,
-                        config_file_str,
-                        os.path.abspath(file_path),
-                        True,  # force=True for refresh
-                        include_dependencies,
-                        file_compile_args[file_path],  # Task 3.2: Pass precomputed compile args
+                    IndexingTaskSpec(
+                        project_root=project_root,
+                        config_file=config_file_str,
+                        file_path=os.path.abspath(file_path),
+                        force=True,  # force=True for refresh
+                        include_dependencies=include_dependencies,
+                        compile_args=file_compile_args[file_path],  # Task 3.2: precomputed args
                     ),
                 ): file_path
                 for file_path in file_list
