@@ -1,4 +1,4 @@
-"""Unit tests for CompileCommandsDiffer."""
+"""Unit tests for compile-commands diff/hash helpers on CompileCommandsManager."""
 
 import shutil
 import sqlite3
@@ -6,11 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_server.compile_commands_differ import CompileCommandsDiffer
+from mcp_server.compile_commands_manager import CompileCommandsManager
+from mcp_server.cpp_analyzer_config import CompileCommandsConfig
 
 
 class TestCompileCommandsDiffer(unittest.TestCase):
-    """Test cases for CompileCommandsDiffer class."""
+    """Test cases for compile-commands diff and hash helpers."""
 
     def setUp(self):
         """Set up test fixtures."""
@@ -36,7 +37,11 @@ class TestCompileCommandsDiffer(unittest.TestCase):
                 self.conn = conn
 
         self.backend = MockBackend(self.conn)
-        self.differ = CompileCommandsDiffer(self.backend)
+        self.manager = CompileCommandsManager(
+            self.test_dir,
+            CompileCommandsConfig(compile_commands_enabled=False, fallback_to_hardcoded=False),
+            cache_backend=self.backend,
+        )
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -47,7 +52,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test diff when no changes."""
         commands = {"main.cpp": ["-std=c++17", "-O2"], "utils.cpp": ["-std=c++17"]}
 
-        added, removed, changed = self.differ.compute_diff(commands, commands)
+        added, removed, changed = CompileCommandsManager.compute_commands_diff(commands, commands)
 
         self.assertEqual(len(added), 0)
         self.assertEqual(len(removed), 0)
@@ -59,7 +64,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
         new_commands = {"main.cpp": ["-std=c++17"], "new.cpp": ["-std=c++17"]}
 
-        added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
+        added, removed, changed = CompileCommandsManager.compute_commands_diff(
+            old_commands, new_commands
+        )
 
         self.assertEqual(added, {"new.cpp"})
         self.assertEqual(len(removed), 0)
@@ -71,7 +78,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
         new_commands = {"main.cpp": ["-std=c++17"]}
 
-        added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
+        added, removed, changed = CompileCommandsManager.compute_commands_diff(
+            old_commands, new_commands
+        )
 
         self.assertEqual(len(added), 0)
         self.assertEqual(removed, {"old.cpp"})
@@ -83,7 +92,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
 
         new_commands = {"main.cpp": ["-std=c++20", "-O3"]}
 
-        added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
+        added, removed, changed = CompileCommandsManager.compute_commands_diff(
+            old_commands, new_commands
+        )
 
         self.assertEqual(len(added), 0)
         self.assertEqual(len(removed), 0)
@@ -104,7 +115,9 @@ class TestCompileCommandsDiffer(unittest.TestCase):
             # old.cpp removed
         }
 
-        added, removed, changed = self.differ.compute_diff(old_commands, new_commands)
+        added, removed, changed = CompileCommandsManager.compute_commands_diff(
+            old_commands, new_commands
+        )
 
         self.assertEqual(added, {"new.cpp"})
         self.assertEqual(removed, {"old.cpp"})
@@ -114,8 +127,8 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test that argument hashing is stable."""
         args = ["-std=c++17", "-O2", "-Wall"]
 
-        hash1 = self.differ._hash_args(args)
-        hash2 = self.differ._hash_args(args)
+        hash1 = self.manager._hash_args(args)
+        hash2 = self.manager._hash_args(args)
 
         self.assertEqual(hash1, hash2)
 
@@ -124,15 +137,15 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         args1 = ["-std=c++17", "-O2"]
         args2 = ["-O2", "-std=c++17"]
 
-        hash1 = self.differ._hash_args(args1)
-        hash2 = self.differ._hash_args(args2)
+        hash1 = self.manager._hash_args(args1)
+        hash2 = self.manager._hash_args(args2)
 
         self.assertNotEqual(hash1, hash2)
 
     def test_hash_args_length(self):
         """Test that hash has expected length (full SHA-256)."""
         args = ["-std=c++17"]
-        hash_value = self.differ._hash_args(args)
+        hash_value = self.manager._hash_args(args)
 
         # Should be 64 characters (full SHA-256 hex digest)
         self.assertEqual(len(hash_value), 64)
@@ -141,7 +154,7 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test storing compilation commands."""
         commands = {"main.cpp": ["-std=c++17", "-O2"], "utils.cpp": ["-std=c++17"]}
 
-        stored = self.differ.store_current_commands(commands)
+        stored = self.manager.store_command_hashes(commands)
 
         self.assertEqual(stored, 2)
 
@@ -166,18 +179,18 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test retrieving stored command hash."""
         commands = {"main.cpp": ["-std=c++17", "-O2"]}
 
-        self.differ.store_current_commands(commands)
+        self.manager.store_command_hashes(commands)
 
         # Get stored hash
-        stored_hash = self.differ.get_stored_commands_hash("main.cpp")
+        stored_hash = self.manager.get_stored_args_hash("main.cpp")
 
         # Should match what we expect
-        expected_hash = self.differ._hash_args(["-std=c++17", "-O2"])
+        expected_hash = self.manager._hash_args(["-std=c++17", "-O2"])
         self.assertEqual(stored_hash, expected_hash)
 
     def test_get_stored_commands_hash_nonexistent(self):
         """Test getting hash for file not in cache."""
-        hash_value = self.differ.get_stored_commands_hash("nonexistent.cpp")
+        hash_value = self.manager.get_stored_args_hash("nonexistent.cpp")
 
         self.assertEqual(hash_value, "")
 
@@ -185,10 +198,10 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test has_args_changed with same args."""
         # Store initial commands
         commands = {"main.cpp": ["-std=c++17", "-O2"]}
-        self.differ.store_current_commands(commands)
+        self.manager.store_command_hashes(commands)
 
         # Check if changed (should be False)
-        changed = self.differ.has_args_changed("main.cpp", ["-std=c++17", "-O2"])
+        changed = self.manager.has_args_changed("main.cpp", ["-std=c++17", "-O2"])
 
         self.assertFalse(changed)
 
@@ -196,17 +209,17 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test has_args_changed with different args."""
         # Store initial commands
         commands = {"main.cpp": ["-std=c++17", "-O2"]}
-        self.differ.store_current_commands(commands)
+        self.manager.store_command_hashes(commands)
 
         # Check with different args (should be True)
-        changed = self.differ.has_args_changed("main.cpp", ["-std=c++20", "-O3"])
+        changed = self.manager.has_args_changed("main.cpp", ["-std=c++20", "-O3"])
 
         self.assertTrue(changed)
 
     def test_has_args_changed_new_file(self):
         """Test has_args_changed for file not in cache."""
         # Conservative: should return True for new files
-        changed = self.differ.has_args_changed("new.cpp", ["-std=c++17"])
+        changed = self.manager.has_args_changed("new.cpp", ["-std=c++17"])
 
         self.assertTrue(changed)
 
@@ -214,10 +227,10 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """Test clearing all stored commands."""
         # Store commands
         commands = {"main.cpp": ["-std=c++17"], "utils.cpp": ["-std=c++17"]}
-        self.differ.store_current_commands(commands)
+        self.manager.store_command_hashes(commands)
 
         # Clear
-        cleared = self.differ.clear_stored_commands()
+        cleared = self.manager.clear_stored_command_hashes()
 
         self.assertEqual(cleared, 2)
 

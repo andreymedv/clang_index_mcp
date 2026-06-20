@@ -54,6 +54,13 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.context.cache_orchestrator.mark_header_completed = Mock()
         self.analyzer.context.call_graph_service.dependency_graph = Mock()
         self.analyzer.context.compile_commands_manager = Mock()
+        self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
+            return_value=(set(), set(), set())
+        )
+        self.analyzer.context.compile_commands_manager.store_command_hashes = Mock(return_value=0)
+        self.analyzer.context.compile_commands_manager.get_compile_commands_hash = Mock(
+            return_value=""
+        )
         self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
 
         # Mock config
@@ -202,23 +209,22 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
         self.analyzer.context.compile_commands_manager.file_to_command_map = mock_command_map
         self.analyzer.context.compile_commands_manager._load_compile_commands = Mock()
+        self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
+            return_value=({file3}, {file2}, {file1})
+        )
+        self.analyzer.context.compile_commands_manager.store_command_hashes = Mock()
+        self.analyzer.context.compile_commands_manager.get_compile_commands_hash = Mock(
+            return_value=""
+        )
 
-        # Mock the differ
-        with patch("mcp_server.incremental_analyzer.CompileCommandsDiffer") as mock_differ_class:
-            mock_differ = Mock()
-            mock_differ_class.return_value = mock_differ
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
+            mock_scan.return_value = changeset
 
-            # Differ returns: added={file3}, removed={file2}, changed={file1}
-            mock_differ.compute_diff.return_value = ({file3}, {file2}, {file1})
+            result = self.incremental.perform_incremental_analysis()
 
-            with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
-                mock_scan.return_value = changeset
-
-                result = self.incremental.perform_incremental_analysis()
-
-            # Should re-analyze file1 (changed) and file3 (added)
-            # Note: file2 is removed, not re-analyzed
-            self.assertEqual(result.files_analyzed, 2)
+        # Should re-analyze file1 (changed) and file3 (added)
+        # Note: file2 is removed, not re-analyzed
+        self.assertEqual(result.files_analyzed, 2)
 
     def test_multiple_changes_combined(self):
         """Test analysis with multiple types of changes."""
@@ -340,22 +346,21 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
         # Mock empty commands
         self.analyzer.context.compile_commands_manager.file_to_command_map = {}
+        self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
+            return_value=(set(), set(), set())
+        )
+        self.analyzer.context.compile_commands_manager.store_command_hashes = Mock()
+        self.analyzer.context.compile_commands_manager.get_compile_commands_hash = Mock(
+            return_value="new_hash"
+        )
 
-        # Mock _get_file_hash
-        self.analyzer.context.cache_orchestrator._get_file_hash = Mock(return_value="new_hash")
+        with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
+            mock_scan.return_value = changeset
 
-        with patch("mcp_server.incremental_analyzer.CompileCommandsDiffer") as mock_differ_class:
-            mock_differ = Mock()
-            mock_differ_class.return_value = mock_differ
-            mock_differ.compute_diff.return_value = (set(), set(), set())
+            self.incremental.perform_incremental_analysis()
 
-            with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
-                mock_scan.return_value = changeset
-
-                self.incremental.perform_incremental_analysis()
-
-                # Verify hash was updated
-                self.assertEqual(self.analyzer.context.cache_orchestrator.compile_commands_hash, "new_hash")
+            # Verify hash was updated
+            self.assertEqual(self.analyzer.context.cache_orchestrator.compile_commands_hash, "new_hash")
 
 
 if __name__ == "__main__":
