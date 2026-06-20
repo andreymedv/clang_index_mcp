@@ -174,7 +174,7 @@ class TestSearchClassesToGetClassInfo:
         assert "::" in qualified_name, "qualified_name should include namespace"
 
         # Step 2: Use qualified_name from search as input to get_class_info
-        class_info = analyzer.search_engine.get_class_info(qualified_name)
+        class_info = analyzer.context.query_engine.search_engine.get_class_info(qualified_name)
         assert (
             class_info is not None
         ), f"get_class_info failed for qualified name '{qualified_name}'"
@@ -192,7 +192,7 @@ class TestSearchClassesToGetClassInfo:
 
         for cls in all_classes:
             qualified_name = cls["qualified_name"]
-            class_info = analyzer.search_engine.get_class_info(qualified_name)
+            class_info = analyzer.context.query_engine.search_engine.get_class_info(qualified_name)
             assert (
                 class_info is not None
             ), f"get_class_info failed for '{qualified_name}' from search_classes"
@@ -321,7 +321,7 @@ class TestSearchFunctionsToGetSignature:
 
             # Step 2: Get signature using qualified name (if available)
             if "::" in qualified_name:
-                signature = analyzer.search_engine.get_function_signature(qualified_name)
+                signature = analyzer.context.query_engine.search_engine.get_function_signature(qualified_name)
                 # Should not return None for qualified names
                 assert (
                     signature is not None
@@ -344,7 +344,7 @@ class TestGetInfoToGetHierarchy:
         analyzer = namespaced_project
 
         # Step 1: Get class info
-        class_info = analyzer.search_engine.get_class_info("Derived")
+        class_info = analyzer.context.query_engine.search_engine.get_class_info("Derived")
         assert class_info is not None
 
         qualified_name = class_info.get("qualified_name", "Derived")
@@ -377,7 +377,7 @@ class TestPartialQualifiedNames:
         analyzer = namespaced_project
 
         # Partial qualified name
-        class_info = analyzer.search_engine.get_class_info("inner::Base")
+        class_info = analyzer.context.query_engine.search_engine.get_class_info("inner::Base")
         assert (
             class_info is not None
         ), "get_class_info should accept partial qualified name 'inner::Base'"
@@ -431,7 +431,7 @@ class TestTemplateWorkflows:
 
         if container_results:
             qualified_name = container_results[0]["qualified_name"]
-            class_info = analyzer.search_engine.get_class_info(qualified_name)
+            class_info = analyzer.context.query_engine.search_engine.get_class_info(qualified_name)
             assert (
                 class_info is not None
             ), f"get_class_info failed for template class '{qualified_name}'"
@@ -484,7 +484,7 @@ class TestCompleteChains:
         assert base is not None, "Step 1 failed: search_classes"
 
         # Step 2: Get info using search result
-        class_info = analyzer.search_engine.get_class_info(base["qualified_name"])
+        class_info = analyzer.context.query_engine.search_engine.get_class_info(base["qualified_name"])
         assert (
             class_info is not None
         ), f"Step 2 failed: get_class_info for '{base['qualified_name']}'"
@@ -514,7 +514,7 @@ class TestCompleteChains:
         )
         assert helper is not None
 
-        class_info = analyzer.search_engine.get_class_info(helper["qualified_name"])
+        class_info = analyzer.context.query_engine.search_engine.get_class_info(helper["qualified_name"])
         assert class_info is not None
 
         # Check methods have qualified names

@@ -10,50 +10,51 @@ from unittest.mock import Mock
 import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
+from mcp_server.symbol_extractor import SymbolExtractor
 
 
 class TestExtractParamsFromTypeSpelling:
     """Test the static helper that extracts params from C type notation."""
 
     def test_simple_params(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("void (int, double)") == "int, double"
+        assert SymbolExtractor._extract_params_from_type_spelling("void (int, double)") == "int, double"
 
     def test_no_params(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("void ()") == ""
+        assert SymbolExtractor._extract_params_from_type_spelling("void ()") == ""
 
     def test_single_param(self):
         assert (
-            CppAnalyzer._extract_params_from_type_spelling("int (const char *)") == "const char *"
+            SymbolExtractor._extract_params_from_type_spelling("int (const char *)") == "const char *"
         )
 
     def test_reference_param(self):
-        result = CppAnalyzer._extract_params_from_type_spelling("void (const std::string &)")
+        result = SymbolExtractor._extract_params_from_type_spelling("void (const std::string &)")
         assert result == "const std::string &"
 
     def test_function_pointer_param(self):
         """Nested parens from function pointer params should be handled."""
-        result = CppAnalyzer._extract_params_from_type_spelling("void (void (*)(int), int)")
+        result = SymbolExtractor._extract_params_from_type_spelling("void (void (*)(int), int)")
         assert result == "void (*)(int), int"
 
     def test_empty_string(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("") == ""
+        assert SymbolExtractor._extract_params_from_type_spelling("") == ""
 
     def test_none_input(self):
-        assert CppAnalyzer._extract_params_from_type_spelling(None) == ""
+        assert SymbolExtractor._extract_params_from_type_spelling(None) == ""
 
     def test_no_parens(self):
-        assert CppAnalyzer._extract_params_from_type_spelling("int") == ""
+        assert SymbolExtractor._extract_params_from_type_spelling("int") == ""
 
     def test_template_params(self):
         """Template angle brackets in params should be preserved."""
-        result = CppAnalyzer._extract_params_from_type_spelling(
+        result = SymbolExtractor._extract_params_from_type_spelling(
             "void (std::map<int, int>, std::vector<std::string>)"
         )
         assert result == "std::map<int, int>, std::vector<std::string>"
 
     def test_const_method_type(self):
         """Const qualifier after closing paren should not be included in params."""
-        result = CppAnalyzer._extract_params_from_type_spelling("void (int) const")
+        result = SymbolExtractor._extract_params_from_type_spelling("void (int) const")
         assert result == "int"
 
 
@@ -61,27 +62,27 @@ class TestExtractTrailingQualifiers:
     """Test the static helper that extracts const/noexcept/etc. qualifiers."""
 
     def test_const_qualifier(self):
-        result = CppAnalyzer._extract_trailing_qualifiers("void (int) const")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (int) const")
         assert result.strip() == "const"
 
     def test_no_qualifier(self):
-        result = CppAnalyzer._extract_trailing_qualifiers("void (int)")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (int)")
         assert result == ""
 
     def test_const_noexcept(self):
-        result = CppAnalyzer._extract_trailing_qualifiers("void (int) const noexcept")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (int) const noexcept")
         assert "const" in result
         assert "noexcept" in result
 
     def test_empty_string(self):
-        assert CppAnalyzer._extract_trailing_qualifiers("") == ""
+        assert SymbolExtractor._extract_trailing_qualifiers("") == ""
 
     def test_none_input(self):
-        assert CppAnalyzer._extract_trailing_qualifiers(None) == ""
+        assert SymbolExtractor._extract_trailing_qualifiers(None) == ""
 
     def test_nested_parens_only_checks_outermost(self):
         """Qualifier extraction should use the last top-level close paren."""
-        result = CppAnalyzer._extract_trailing_qualifiers("void (void (*)(int)) const")
+        result = SymbolExtractor._extract_trailing_qualifiers("void (void (*)(int)) const")
         assert result.strip() == "const"
 
 
@@ -127,7 +128,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[("int", "x"), ("const std::string &", "y")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void processData(int x, const std::string & y)"
 
     def test_zero_arg_function(self, analyzer):
@@ -137,7 +138,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void doSomething()"
 
     def test_const_method(self, analyzer):
@@ -147,7 +148,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="int",
             args=[],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "int getValue() const"
 
     def test_template_function_fallback(self, analyzer):
@@ -158,7 +159,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[],  # Templates often return empty args
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void convert(int, double)"
 
     def test_function_pointer_param(self, analyzer):
@@ -169,7 +170,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[("void (*)(int)", "callback"), ("int", "priority")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void registerCallback(void (*)(int) callback, int priority)"
 
     def test_unnamed_params(self, analyzer):
@@ -180,7 +181,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[("int", ""), ("double", "")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void process(int, double)"
 
     def test_no_cursor_type(self, analyzer):
@@ -188,7 +189,7 @@ class TestBuildHumanReadableSignature:
         cursor = Mock()
         cursor.spelling = "testFunc"
         cursor.type = None
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == ""
 
     def test_reference_and_pointer_params(self, analyzer):
@@ -198,7 +199,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="bool",
             args=[("int *", "data"), ("const std::string &", "name")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "bool transfer(int * data, const std::string & name)"
 
     def test_no_return_type(self, analyzer):
@@ -211,7 +212,7 @@ class TestBuildHumanReadableSignature:
         )
         # When result_type is empty string, we still get "void" prefix
         # because result_type_spelling returns "" which is falsy
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "MyClass(int value)"
 
     def test_get_arguments_raises_exception(self, analyzer):
@@ -222,7 +223,7 @@ class TestBuildHumanReadableSignature:
         cursor.result_type.spelling = "void"
         cursor.get_arguments = Mock(side_effect=Exception("not available"))
 
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void testFunc(int, double)"
 
 

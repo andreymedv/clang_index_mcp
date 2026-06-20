@@ -12,6 +12,7 @@ import unittest
 # Add the mcp_server directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from mcp_server.search_criteria import SearchCriteria
 from mcp_server.search_engine import SearchEngine
 from mcp_server.symbol_info import SymbolInfo
 
@@ -225,7 +226,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
     def test_search_classes_exact_match(self):
         """Test that search_classes returns only exact match by default."""
-        results = self.search_engine.search_classes("View")
+        results = self.search_engine.search_classes(SearchCriteria(pattern="View"))
 
         # Should return only "View", not "ViewManager", "ListView", etc.
         self.assertEqual(
@@ -238,7 +239,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
     def test_search_classes_pattern_any(self):
         """Test pattern matching for any class."""
         # .* or .+ should match all classes
-        results = self.search_engine.search_classes(".*")
+        results = self.search_engine.search_classes(SearchCriteria(pattern=".*"))
 
         # Should return all classes
         names = {r["qualified_name"].split("::")[-1] for r in results}
@@ -247,7 +248,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
     def test_search_classes_pattern_prefix(self):
         """Test that search_classes supports prefix pattern matching."""
-        results = self.search_engine.search_classes("View.*")
+        results = self.search_engine.search_classes(SearchCriteria(pattern="View.*"))
 
         # Should return classes starting with "View"
         names = {r["qualified_name"].split("::")[-1] for r in results}
@@ -256,7 +257,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
     def test_search_classes_pattern_suffix(self):
         """Test that search_classes supports suffix pattern matching."""
-        results = self.search_engine.search_classes(".*View")
+        results = self.search_engine.search_classes(SearchCriteria(pattern=".*View"))
 
         # Should return classes ending with "View"
         names = {r["qualified_name"].split("::")[-1] for r in results}
@@ -265,7 +266,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
     def test_search_functions_exact_match(self):
         """Test that search_functions returns only exact match by default."""
-        results = self.search_engine.search_functions("getValue")
+        results = self.search_engine.search_functions(SearchCriteria(pattern="getValue"))
 
         # Should return only "getValue", not "getWidth"
         self.assertEqual(len(results), 1)
@@ -273,7 +274,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
     def test_search_functions_pattern_prefix(self):
         """Test that search_functions supports prefix pattern matching."""
-        results = self.search_engine.search_functions("get.*")
+        results = self.search_engine.search_functions(SearchCriteria(pattern="get.*"))
 
         # Should return all functions starting with "get"
         names = {r["qualified_name"].split("::")[-1] for r in results}
@@ -286,14 +287,14 @@ class TestSearchEngineIntegration(unittest.TestCase):
         test_cases = ["View", "view", "VIEW", "vIeW"]
         for pattern in test_cases:
             with self.subTest(pattern=pattern):
-                results = self.search_engine.search_classes(pattern)
+                results = self.search_engine.search_classes(SearchCriteria(pattern=pattern))
                 self.assertEqual(len(results), 1)
                 self.assertEqual(results[0]["qualified_name"].split("::")[-1], "View")
 
     def test_no_false_positives_exact_match(self):
         """Test that exact match doesn't return substring matches."""
         # Searching for "View" should not return "ViewManager", "ListView", etc.
-        results = self.search_engine.search_classes("View")
+        results = self.search_engine.search_classes(SearchCriteria(pattern="View"))
 
         # Verify no false positives
         names = {r["qualified_name"].split("::")[-1] for r in results}
@@ -314,7 +315,7 @@ class TestSearchEngineIntegration(unittest.TestCase):
 
         for pattern, expected_count in test_cases:
             with self.subTest(pattern=pattern):
-                results = self.search_engine.search_classes(pattern)
+                results = self.search_engine.search_classes(SearchCriteria(pattern=pattern))
                 self.assertEqual(
                     len(results),
                     expected_count,

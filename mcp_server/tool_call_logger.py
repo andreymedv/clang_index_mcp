@@ -174,8 +174,9 @@ class ToolCallLogger:
     def _add_fallback_counts(self, entry: Dict[str, Any], analyzer: Any, clean_name: str) -> None:
         """Add simple_name_fallback and case_insensitive_fallback counts."""
         # Simple name lookup in class_index and function_index
-        class_hits = analyzer.class_index.get(clean_name, [])
-        func_hits = analyzer.function_index.get(clean_name, [])
+        symbol_store = analyzer.context.symbol_store
+        class_hits = symbol_store.get_classes_by_name(clean_name)
+        func_hits = symbol_store.get_functions_by_name(clean_name)
         all_hits = list(class_hits) + list(func_hits)
         entry["simple_name_fallback_count"] = len(all_hits)
         entry["simple_name_fallback_top3"] = [
@@ -185,12 +186,12 @@ class ToolCallLogger:
         # Case-insensitive scan
         lower_name = clean_name.lower()
         ci_count = 0
-        for key in analyzer.class_index:
+        for key, symbols in symbol_store.iter_class_items():
             if key.lower() == lower_name:
-                ci_count += len(analyzer.class_index[key])
-        for key in analyzer.function_index:
+                ci_count += len(symbols)
+        for key, symbols in symbol_store.iter_function_items():
             if key.lower() == lower_name:
-                ci_count += len(analyzer.function_index[key])
+                ci_count += len(symbols)
         entry["case_insensitive_fallback_count"] = ci_count
 
     def _extract_filters(self, arguments: Dict[str, Any]) -> List[str]:

@@ -8,7 +8,7 @@ from mcp_server.symbol_info import SymbolInfo
 
 def test_dict_size_changed_race():
     analyzer = CppAnalyzer("/tmp/dummy")
-    analyzer.class_index["MyClass"] = [
+    analyzer.context.symbol_store.class_index["MyClass"] = [
         SymbolInfo("MyClass", "class", "dummy.cpp", 1, 1, qualified_name="MyClass")
     ]
 
@@ -18,8 +18,8 @@ def test_dict_size_changed_race():
     def background_indexer():
         i = 0
         while not stop_event.is_set():
-            with analyzer.index_lock:
-                analyzer.class_index[f"Class_{i}"] = [
+            with analyzer.context.concurrency.index_lock:
+                analyzer.context.symbol_store.class_index[f"Class_{i}"] = [
                     SymbolInfo(f"Class_{i}", "class", "dummy.cpp", 1, 1)
                 ]
             i += 1

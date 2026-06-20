@@ -184,5 +184,5 @@ public:
         assert count > 0, "Should work with vcpkg and compile_commands.json"
 
         # Verify compile commands stats
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats is not None

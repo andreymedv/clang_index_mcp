@@ -12,8 +12,7 @@ class CacheBackend(Protocol):
     """
     Protocol defining the interface for cache backends.
 
-    Both JSON and SQLite backends implement this interface,
-    allowing seamless switching between storage mechanisms.
+    Currently only the SQLite backend implements this interface.
     """
 
     def save_cache(
@@ -81,6 +80,30 @@ class CacheBackend(Protocol):
         """Get all alias -> canonical mappings."""
         ...
 
+    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+        """Get high-level information for a known type alias."""
+        ...
+
+    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+        """Get detailed records for a list of alias names."""
+        ...
+
+    def get_all_cached_file_paths(self):
+        """Return all file paths stored in file_metadata table."""
+        ...
+
+    def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
+        """Store or update the compile arguments hash for a file."""
+        ...
+
+    def get_compile_args_hash(self, file_path: str) -> Optional[str]:
+        """Return the stored compile arguments hash for a file."""
+        ...
+
+    def clear_compile_args_hashes(self) -> int:
+        """Clear all stored compile arguments hashes from file_metadata."""
+        ...
+
     def delete_call_sites_by_file(self, file_path: str) -> int:
         """Delete all call sites from a specific file."""
         ...
@@ -95,6 +118,15 @@ class CacheBackend(Protocol):
 
     def _ensure_connected(self) -> None:
         """Ensure connection is active, reconnect if needed."""
+        ...
+
+    def get_connection(self) -> Optional[sqlite3.Connection]:
+        """Return the raw SQLite connection for components that need direct access.
+
+        This is a transitional method for components like DependencyGraphBuilder
+        that inherently require raw SQL access. New code should use protocol
+        methods instead of direct connection access.
+        """
         ...
 
     conn: Optional[sqlite3.Connection]

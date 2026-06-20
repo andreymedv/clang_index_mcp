@@ -1,6 +1,5 @@
 """Cache management for C++ analyzer."""
 
-import hashlib
 import json
 import sqlite3
 import sys
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from .cache_backend import CacheBackend
+from .cache_validation_context import CacheValidationContext
 from .error_tracking import ErrorTracker, RecoveryManager
 from .project_identity import ProjectIdentity
 from .symbol_info import SymbolInfo
@@ -284,12 +284,10 @@ class CacheManager:
             return None
 
     def get_file_hash(self, file_path: str) -> str:
-        """Calculate hash of a file"""
-        try:
-            with open(file_path, "rb") as f:
-                return hashlib.md5(f.read()).hexdigest()
-        except Exception:
-            return ""
+        """Calculate hash of a file using chunked reads."""
+        from .file_utils import hash_file
+
+        return hash_file(file_path)
 
     def save_cache(
         self,
@@ -302,8 +300,14 @@ class CacheManager:
         config_file_mtime: Optional[float] = None,
         compile_commands_path: Optional[Path] = None,
         compile_commands_mtime: Optional[float] = None,
+        validation_context: Optional[CacheValidationContext] = None,
     ) -> bool:
         """Save indexes to cache file with configuration metadata"""
+        if validation_context is not None:
+            config_file_path = validation_context.config_file_path
+            config_file_mtime = validation_context.config_file_mtime
+            compile_commands_path = validation_context.compile_commands_path
+            compile_commands_mtime = validation_context.compile_commands_mtime
         result = self._safe_backend_call(
             "save_cache",
             self.backend.save_cache,
@@ -326,8 +330,14 @@ class CacheManager:
         config_file_mtime: Optional[float] = None,
         compile_commands_path: Optional[Path] = None,
         compile_commands_mtime: Optional[float] = None,
+        validation_context: Optional[CacheValidationContext] = None,
     ) -> Optional[Dict[str, Any]]:
         """Load cache if it exists and is valid, checking for configuration changes"""
+        if validation_context is not None:
+            config_file_path = validation_context.config_file_path
+            config_file_mtime = validation_context.config_file_mtime
+            compile_commands_path = validation_context.compile_commands_path
+            compile_commands_mtime = validation_context.compile_commands_mtime
         result: Optional[Dict[str, Any]] = self._safe_backend_call(
             "load_cache",
             self.backend.load_cache,
@@ -647,6 +657,30 @@ class CacheManager:
         """
         result: Optional[str] = self._safe_backend_call(
             "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
+        )
+        return result
+
+    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get high-level information for a known type alias from the cache.
+
+        Returns:
+            Dict with canonical_type, aliases, and metadata, or None if not found.
+        """
+        result: Optional[Dict[str, Any]] = self._safe_backend_call(
+            "get_type_alias_info", lambda: self.backend.get_type_alias_info(type_name)
+        )
+        return result
+
+    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get detailed records for a list of alias names from the cache.
+
+        Returns:
+            List of alias detail dicts.
+        """
+        result: List[Dict[str, Any]] = self._safe_backend_call(
+            "get_type_alias_details", lambda: self.backend.get_type_alias_details(alias_names)
         )
         return result
 

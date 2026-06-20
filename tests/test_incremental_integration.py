@@ -176,7 +176,7 @@ int multiply(int a, int b) {
         analyzer.index_project()
 
         # Verify dependency graph was built
-        self.assertIsNotNone(analyzer.dependency_graph)
+        self.assertIsNotNone(analyzer.context.call_graph_service.dependency_graph)
 
         # Modify utils.h
         self.utils_h.write_text("""
@@ -230,7 +230,7 @@ int divide(int a, int b) {
         self.cc_file.write_text(json.dumps(cc_data, indent=2))
 
         # Reload compile commands in analyzer
-        analyzer.compile_commands_manager._load_compile_commands()
+        analyzer.context.compile_commands_manager._load_compile_commands()
 
         # Create incremental analyzer
         incremental = IncrementalAnalyzer(analyzer)
