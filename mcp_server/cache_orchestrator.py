@@ -10,6 +10,7 @@ import json
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from .cache_validation_context import CacheValidationContext
 from .header_tracker import HeaderProcessingTracker
 
 if TYPE_CHECKING:
@@ -276,16 +277,19 @@ class CacheOrchestrator:
             cc_path = None
             cc_mtime = None
 
+        validation_context = CacheValidationContext(
+            config_file_path=config_path,
+            config_file_mtime=config_mtime,
+            compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
+            compile_commands_mtime=cc_mtime,
+        )
         self.cache_manager.save_cache(
             self.symbol_store.class_index,
             self.symbol_store.function_index,
             self.symbol_store.file_hashes,
             self.symbol_store.indexed_file_count,
             self.compilation_env.include_dependencies,
-            config_file_path=config_path,
-            config_file_mtime=config_mtime,
-            compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
-            compile_commands_mtime=cc_mtime,
+            validation_context=validation_context,
         )
 
         # Phase 3/4: Save call sites to database
@@ -322,12 +326,15 @@ class CacheOrchestrator:
             cc_path = None
             cc_mtime = None
 
-        cache_data = self.cache_manager.load_cache(
-            self.compilation_env.include_dependencies,
+        validation_context = CacheValidationContext(
             config_file_path=config_path,
             config_file_mtime=config_mtime,
             compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
             compile_commands_mtime=cc_mtime,
+        )
+        cache_data = self.cache_manager.load_cache(
+            self.compilation_env.include_dependencies,
+            validation_context=validation_context,
         )
         if not cache_data:
             self.cache_loaded = False

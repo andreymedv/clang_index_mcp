@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from .cache_backend import CacheBackend
+from .cache_validation_context import CacheValidationContext
 from .error_tracking import ErrorTracker, RecoveryManager
 from .project_identity import ProjectIdentity
 from .symbol_info import SymbolInfo
@@ -299,8 +300,14 @@ class CacheManager:
         config_file_mtime: Optional[float] = None,
         compile_commands_path: Optional[Path] = None,
         compile_commands_mtime: Optional[float] = None,
+        validation_context: Optional[CacheValidationContext] = None,
     ) -> bool:
         """Save indexes to cache file with configuration metadata"""
+        if validation_context is not None:
+            config_file_path = validation_context.config_file_path
+            config_file_mtime = validation_context.config_file_mtime
+            compile_commands_path = validation_context.compile_commands_path
+            compile_commands_mtime = validation_context.compile_commands_mtime
         result = self._safe_backend_call(
             "save_cache",
             self.backend.save_cache,
@@ -323,8 +330,14 @@ class CacheManager:
         config_file_mtime: Optional[float] = None,
         compile_commands_path: Optional[Path] = None,
         compile_commands_mtime: Optional[float] = None,
+        validation_context: Optional[CacheValidationContext] = None,
     ) -> Optional[Dict[str, Any]]:
         """Load cache if it exists and is valid, checking for configuration changes"""
+        if validation_context is not None:
+            config_file_path = validation_context.config_file_path
+            config_file_mtime = validation_context.config_file_mtime
+            compile_commands_path = validation_context.compile_commands_path
+            compile_commands_mtime = validation_context.compile_commands_mtime
         result: Optional[Dict[str, Any]] = self._safe_backend_call(
             "load_cache",
             self.backend.load_cache,
