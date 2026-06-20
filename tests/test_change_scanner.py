@@ -73,6 +73,8 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.context.cache_orchestrator.get_processed_headers = Mock(return_value={})
         self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
         self.analyzer.context.symbol_store.file_hashes = {}  # FIX: Add file_hashes for fallback checking
+        self.analyzer.context.symbol_store.has_file_hash = Mock(return_value=False)
+        self.analyzer.context.symbol_store.get_file_hash = Mock(return_value="")
 
         # Mock config
         self.analyzer.config.get_compile_commands_config.return_value = CompileCommandsConfig(
