@@ -58,7 +58,7 @@ class SingleFileIndexingPipeline:
             return (False, False)
 
         current_hash = self.cache_orchestrator._get_file_hash(file_path)
-        args = self.compilation_env._get_compile_args_for_file(Path(file_path))
+        args = self.compilation_env.get_compile_args_for_file(Path(file_path))
         compile_args_hash = self.compilation_env._compute_compile_args_hash(args)
 
         cached = self.cache_orchestrator._try_load_cached_index(

@@ -155,10 +155,7 @@ class QueryEngine:
 
             # Add compile commands statistics if enabled
             # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-            if (
-                self.context.compile_commands_manager is not None
-                and self.context.compile_commands_manager.enabled
-            ):
+            if self.context.is_compile_commands_enabled():
                 stats["compile_commands_stats"] = self.compilation_env.get_compile_commands_stats()
 
             return stats
