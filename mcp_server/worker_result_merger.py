@@ -53,7 +53,7 @@ class WorkerResultMerger:
 
             if processed_headers:
                 for header_path, header_hash in processed_headers.items():
-                    self.cache_orchestrator.header_tracker.mark_completed(header_path, header_hash)
+                    self.cache_orchestrator.mark_header_completed(header_path, header_hash)
 
             file_hash = self.cache_orchestrator._get_file_hash(file_path)
             self.symbol_store.file_hashes[file_path] = file_hash

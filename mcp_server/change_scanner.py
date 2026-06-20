@@ -205,12 +205,7 @@ class ChangeScanner:
 
     def _scan_tracked_headers(self, changeset: ChangeSet) -> None:
         """Detect modified or deleted tracked headers."""
-        if not self.analyzer.context.cache_orchestrator.header_tracker:
-            return
-
-        tracked_headers = (
-            self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers()
-        )
+        tracked_headers = self.analyzer.context.cache_orchestrator.get_processed_headers()
         for header_path, tracked_hash in tracked_headers.items():
             normalized_header = os.path.realpath(header_path)
 

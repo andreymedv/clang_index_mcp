@@ -49,7 +49,9 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.config = Mock()
         self.analyzer.cache_manager = Mock()
         self.analyzer.context.file_scanner = Mock()
-        self.analyzer.context.cache_orchestrator.header_tracker = Mock()
+        self.analyzer.context.cache_orchestrator.invalidate_header = Mock()
+        self.analyzer.context.cache_orchestrator.clear_header_tracker = Mock()
+        self.analyzer.context.cache_orchestrator.mark_header_completed = Mock()
         self.analyzer.context.call_graph_service.dependency_graph = Mock()
         self.analyzer.context.compile_commands_manager = Mock()
         self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
@@ -325,7 +327,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             self.incremental.perform_incremental_analysis()
 
             # Verify header tracker was invalidated
-            self.analyzer.context.cache_orchestrator.header_tracker.invalidate_header.assert_called_once_with(header_file)
+            self.analyzer.context.cache_orchestrator.invalidate_header.assert_called_once_with(header_file)
 
     def test_compile_commands_hash_updated(self):
         """Test compile_commands_hash is updated after change."""

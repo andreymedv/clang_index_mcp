@@ -94,7 +94,7 @@ def _process_file_worker(spec: IndexingTaskSpec):
         call_sites = context.call_graph_service.call_graph_analyzer.get_all_call_sites()
 
         # Extract header tracking information
-        processed_headers = context.cache_orchestrator.header_tracker.get_processed_headers()
+        processed_headers = context.cache_orchestrator.get_processed_headers()
 
     # Clean up worker indexes to prevent memory leaks (Issue #14)
     context.symbol_store.file_index.clear()

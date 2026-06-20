@@ -310,10 +310,6 @@ class SymbolExtractor:
         return self.symbol_store.usr_index
 
     @property
-    def header_tracker(self):
-        return self.cache_orchestrator.header_tracker
-
-    @property
     def dependency_graph(self):
         return self.call_graph_service.dependency_graph
 
@@ -1541,7 +1537,7 @@ class SymbolExtractor:
 
         try:
             file_hash = self._get_file_hash(file_path)
-            return bool(self.header_tracker.try_claim_header(file_path, file_hash))
+            return bool(self.cache_orchestrator.try_claim_header(file_path, file_hash))
         except Exception as e:
             diagnostics.warning(f"Error checking header {file_path}: {e}")
             return False
@@ -1551,7 +1547,7 @@ class SymbolExtractor:
         for header in headers_to_extract:
             try:
                 file_hash = self._get_file_hash(header)
-                self.header_tracker.mark_completed(header, file_hash)
+                self.cache_orchestrator.mark_header_completed(header, file_hash)
             except Exception as e:
                 diagnostics.warning(f"Error marking header {header} as completed: {e}")
 
