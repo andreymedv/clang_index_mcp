@@ -20,7 +20,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.regex_validator import RegexValidationError, RegexValidator
+from mcp_server._core.regex_validator import RegexValidationError, RegexValidator
 
 
 @pytest.mark.security

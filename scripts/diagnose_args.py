@@ -5,10 +5,10 @@ import os
 import sys
 from pathlib import Path
 
-# Add the mcp_server directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "mcp_server"))
+# Add project root to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from compile_commands_manager import CompileCommandsManager  # noqa: E402
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager  # noqa: E402
 
 
 def diagnose_file_args(project_root: str, file_path: str):

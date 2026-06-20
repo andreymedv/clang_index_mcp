@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.symbol_info import SymbolInfo, get_template_param_base_indices
+from mcp_server._persistence.symbol_info import SymbolInfo, get_template_param_base_indices
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mcp_server.smart_fallback import (
+from mcp_server._search.smart_fallback import (
     FallbackResult,
     SmartFallback,
     _extract_identifier_from_signature,

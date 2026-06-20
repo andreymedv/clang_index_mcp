@@ -3,7 +3,7 @@
 import json
 import pytest
 
-from mcp_server.hierarchy_format import (
+from mcp_server._search.hierarchy_format import (
     convert_hierarchy_format,
     format_hierarchy_error,
 )

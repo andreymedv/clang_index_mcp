@@ -15,9 +15,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mcp_server"))
-
-from compile_commands_manager import CompileCommandsManager
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
 
 
 class TestCompileCommandsManager(unittest.TestCase):

@@ -113,11 +113,11 @@ check: format-check lint type-check ## Run all checks (format, lint, type)
 
 run: ## Run the MCP server
 	@echo "$(BLUE)Starting MCP server...$(NC)"
-	$(PYTHON) -m mcp_server.cpp_mcp_server
+	$(PYTHON) -m mcp_server._mcp.cpp_mcp_server
 
 dev: ## Run in development mode with debug output
 	@echo "$(BLUE)Starting MCP server in development mode...$(NC)"
-	MCP_DEBUG=1 PYTHONUNBUFFERED=1 $(PYTHON) -m mcp_server.cpp_mcp_server
+	MCP_DEBUG=1 PYTHONUNBUFFERED=1 $(PYTHON) -m mcp_server._mcp.cpp_mcp_server
 
 build: ## Build wheel package
 	@echo "$(BLUE)Building wheel package...$(NC)"

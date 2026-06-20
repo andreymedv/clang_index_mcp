@@ -8,12 +8,12 @@ from typing import Any, Dict, List, Optional
 
 # Handle both package and script imports
 try:
-    from .file_scanner import FileScanner
+    from ._core.file_scanner import FileScanner
 except ImportError:
     from file_scanner import FileScanner  # type: ignore[no-redef]
 
 try:
-    from . import diagnostics
+    from ._core import diagnostics
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
 

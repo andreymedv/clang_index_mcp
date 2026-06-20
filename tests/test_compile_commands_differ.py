@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_server.compile_commands_manager import CompileCommandsManager
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
 from mcp_server.cpp_analyzer_config import CompileCommandsConfig
 
 

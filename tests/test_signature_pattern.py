@@ -13,9 +13,9 @@ import unittest
 # Add the mcp_server directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from mcp_server.search_criteria import SearchCriteria
-from mcp_server.search_engine import SearchEngine
-from mcp_server.symbol_info import SymbolInfo
+from mcp_server._search.search_criteria import SearchCriteria
+from mcp_server._search.search_engine import SearchEngine
+from mcp_server._persistence.symbol_info import SymbolInfo
 
 
 class TestSignaturePattern(unittest.TestCase):
