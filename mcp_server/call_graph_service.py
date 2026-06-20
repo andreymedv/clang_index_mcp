@@ -254,11 +254,10 @@ class CallGraphService:
 
         source_usrs = self._collect_target_usrs(source_functions)
 
-        usr_index = self.symbol_store.usr_index
         for usr in source_usrs:
             call_sites = self.call_graph_analyzer.get_call_sites_for_caller(usr)
             for call_site in call_sites:
-                if call_site.callee_usr in usr_index:
+                if self.symbol_store.contains_usr(call_site.callee_usr):
                     call_sites_list.append(self._build_call_site_entry(call_site))
                 else:
                     self._add_external_call_site(call_site, call_sites_list)
@@ -303,9 +302,8 @@ class CallGraphService:
         self, caller_usr: str, callers_list: List[Dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single caller to the callers list, respecting project_only filter."""
-        usr_index = self.symbol_store.usr_index
-        if caller_usr in usr_index:
-            caller_info = usr_index[caller_usr]
+        caller_info = self.symbol_store.get_symbol_by_usr(caller_usr)
+        if caller_info is not None:
             callers_list.append(
                 omit_empty(
                     {
@@ -319,7 +317,7 @@ class CallGraphService:
                 )
             )
         elif not project_only:
-            rich = self._lookup_symbol_info(caller_usr)
+            rich = self.symbol_store.resolve_symbol_info(caller_usr)
             if rich is not None:
                 callers_list.append(rich)
             else:
@@ -334,9 +332,8 @@ class CallGraphService:
         self, call_site, call_sites_list: List[Dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single call site to the call sites list, respecting project_only filter."""
-        usr_index = self.symbol_store.usr_index
-        if call_site.caller_usr in usr_index:
-            caller_info = usr_index[call_site.caller_usr]
+        caller_info = self.symbol_store.get_symbol_by_usr(call_site.caller_usr)
+        if caller_info is not None:
             call_sites_list.append(
                 {
                     "file": call_site.file,
@@ -359,8 +356,8 @@ class CallGraphService:
 
     def _build_call_site_entry(self, call_site: Any) -> Dict[str, Any]:
         """Build a call site entry for a callee that exists in the project index."""
-        usr_index = self.symbol_store.usr_index
-        target_info = usr_index[call_site.callee_usr]
+        target_info = self.symbol_store.get_symbol_by_usr(call_site.callee_usr)
+        assert target_info is not None
         entry: Dict[str, Any] = {
             "target": target_info.name,
             "target_signature": target_info.signature,
@@ -404,9 +401,8 @@ class CallGraphService:
         target_usrs: Set[str],
     ) -> None:
         """Add a single callee to the callees list, respecting project_only filter."""
-        usr_index = self.symbol_store.usr_index
-        if callee_usr in usr_index:
-            callee_info = usr_index[callee_usr]
+        callee_info = self.symbol_store.get_symbol_by_usr(callee_usr)
+        if callee_info is not None:
             callees_list.append(
                 omit_empty(
                     {
@@ -427,7 +423,7 @@ class CallGraphService:
             return
 
         if not project_only:
-            rich = self._lookup_symbol_info(callee_usr)
+            rich = self.symbol_store.resolve_symbol_info(callee_usr)
             if rich is not None:
                 callees_list.append(rich)
             else:
@@ -454,7 +450,6 @@ class CallGraphService:
     def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> List[List[str]]:
         """Perform BFS to find paths between sets of USRs."""
         paths = []
-        usr_index = self.symbol_store.usr_index
         for from_usr in from_usrs:
             queue = [(from_usr, [from_usr])]
             visited = {from_usr}
@@ -466,8 +461,8 @@ class CallGraphService:
                     if current_usr in to_usrs:
                         name_path = []
                         for usr in path:
-                            if usr in usr_index:
-                                info = usr_index[usr]
+                            info = self.symbol_store.get_symbol_by_usr(usr)
+                            if info is not None:
                                 name_path.append(
                                     f"{info.parent_class}::{info.name}"
                                     if info.parent_class
@@ -485,41 +480,6 @@ class CallGraphService:
                 depth += 1
 
         return paths
-
-    def _lookup_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
-        """Return a rich symbol dict for *usr*, querying SQLite when not in usr_index.
-
-        Used by find_incoming_calls/find_callees to avoid returning opaque USR strings for
-        external symbols.  Returns None when the symbol cannot be found at all.
-        """
-        usr_index = self.symbol_store.usr_index
-        if usr in usr_index:
-            info = usr_index[usr]
-            return omit_empty(
-                {
-                    "qualified_name": info.qualified_name or info.name,
-                    "kind": info.kind,
-                    "signature": info.signature,
-                    "parent_class": info.parent_class or None,
-                    "is_project": info.is_project,
-                    **build_location_objects(info),
-                }
-            )
-        backend = getattr(self.cache_manager, "backend", None)
-        if backend is not None and hasattr(backend, "load_symbol_by_usr"):
-            info = backend.load_symbol_by_usr(usr)
-            if info is not None:
-                return omit_empty(
-                    {
-                        "qualified_name": info.qualified_name or info.name,
-                        "kind": info.kind,
-                        "signature": info.signature,
-                        "parent_class": info.parent_class or None,
-                        "is_project": False,
-                        **build_location_objects(info),
-                    }
-                )
-        return None
 
     def _get_template_mediated_info(
         self, target_usrs: set, callee_usr: str

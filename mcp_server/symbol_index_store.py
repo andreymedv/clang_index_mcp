@@ -11,7 +11,13 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from . import diagnostics
-from .symbol_info import CLASS_KINDS, SymbolInfo, is_richer_definition
+from .symbol_info import (
+    CLASS_KINDS,
+    SymbolInfo,
+    build_location_objects,
+    is_richer_definition,
+    omit_empty,
+)
 
 if TYPE_CHECKING:
     from .project_context import ProjectContext
@@ -339,6 +345,50 @@ class SymbolIndexStore:
         with self.context.concurrency.index_lock:
             self._remove_file_from_indexes(file_path)
             self.file_hashes.pop(file_path, None)
+
+    def contains_usr(self, usr: str) -> bool:
+        """Return True if the given USR is present in the in-memory index."""
+        return usr in self.usr_index
+
+    def get_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
+        """
+        Resolve a USR to a SymbolInfo.
+
+        First checks the in-memory USR index, then falls back to the SQLite backend
+        for symbols that are not currently loaded.
+        """
+        if usr in self.usr_index:
+            return self.usr_index[usr]
+        backend = getattr(self.context.cache_manager, "backend", None)
+        if backend is not None and hasattr(backend, "load_symbol_by_usr"):
+            try:
+                info: Optional[SymbolInfo] = backend.load_symbol_by_usr(usr)
+                return info
+            except Exception as e:
+                diagnostics.warning(f"Failed to load symbol by USR {usr}: {e}")
+        return None
+
+    def resolve_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
+        """
+        Return a rich symbol dict for a USR, using the backend fallback if needed.
+
+        Returns None when the symbol cannot be found at all.
+        """
+        info = self.get_symbol_by_usr(usr)
+        if info is None:
+            return None
+
+        is_project = info.is_project if usr in self.usr_index else False
+        return omit_empty(
+            {
+                "qualified_name": info.qualified_name or info.name,
+                "kind": info.kind,
+                "signature": info.signature,
+                "parent_class": info.parent_class or None,
+                "is_project": is_project,
+                **build_location_objects(info),
+            }
+        )
 
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
