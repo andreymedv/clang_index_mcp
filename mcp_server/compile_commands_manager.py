@@ -24,6 +24,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from clang.cindex import CompilationDatabase
 
+# Handle both package and script imports
+try:
+    from .file_scanner import FileScanner
+except ImportError:
+    from file_scanner import FileScanner  # type: ignore[no-redef]
+
 # Try to import orjson for faster JSON parsing (optional)
 HAS_ORJSON = False
 try:
@@ -64,10 +70,7 @@ class CompileCommandsManager:
         self.fallback_to_hardcoded = self.config.get("fallback_to_hardcoded", True)
         self.cache_expiry_seconds = self.config.get("cache_expiry_seconds", 300)
         self.supported_extensions = set(
-            self.config.get(
-                "supported_extensions",
-                [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
-            )
+            self.config.get("supported_extensions", list(FileScanner.CPP_EXTENSIONS))
         )
         self.exclude_patterns = self.config.get("exclude_patterns", [])
 
