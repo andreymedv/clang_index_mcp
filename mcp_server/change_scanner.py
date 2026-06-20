@@ -343,7 +343,7 @@ class ChangeScanner:
                 cached_files = {row[0] for row in cursor.fetchall()}
                 return cached_files
             else:
-                # Non-SQLite backend: cannot query cached files
+                # Cached file list requires SQLite backend
                 # Return empty set (will trigger full re-analysis)
                 diagnostics.debug("Unable to get cached file list without SQLite backend")
                 return set()

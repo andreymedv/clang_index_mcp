@@ -46,7 +46,7 @@ class CompileCommandsDiffer:
         Initialize compile commands differ.
 
         Args:
-            cache_backend: CacheBackend instance (SQLite or JSON) for storing hashes
+            cache_backend: CacheBackend instance (SQLite) for storing hashes
         """
         self.cache = cache_backend
 
