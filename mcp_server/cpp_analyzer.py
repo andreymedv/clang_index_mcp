@@ -1,8 +1,28 @@
 """
-Pure Python C++ Analyzer using libclang
+C++ Analyzer — Thin Orchestrator Shell
 
-This module provides C++ code analysis functionality using libclang bindings.
-It's slower than the C++ implementation but more reliable and easier to debug.
+This module provides the CppAnalyzer class, which serves as a thin orchestration
+layer over focused, independently-testable components. CppAnalyzer wires together:
+
+- ProjectContext: project identity, config, and shared references
+- SymbolIndexStore: in-memory symbol indexes (class_index, function_index, etc.)
+- CacheManager: SQLite-backed persistence and error tracking
+- CacheOrchestrator: header tracking, cache validation, and index lifecycle
+- CompilationEnvironment: compile commands and compilation arguments
+- QueryEngine: symbol search and retrieval
+- CallGraphService: call graph queries and dependency tracking
+- IndexingOrchestrator: project-level indexing coordination
+- IndexingPipeline: single-file parsing and symbol extraction
+- RefreshPipeline: incremental refresh and change detection
+
+CppAnalyzer itself contains only:
+- __init__: component wiring
+- Lifecycle: close, __enter__, __exit__, __del__
+- Interrupt handling: interrupt, _is_interrupted
+- Thin public wrappers that delegate to the appropriate component
+
+External code should access components via analyzer.X (e.g. analyzer.cache_manager)
+or through the public wrapper methods (e.g. analyzer.search_classes()).
 """
 
 import sys
