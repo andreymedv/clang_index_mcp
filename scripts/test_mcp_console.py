@@ -24,7 +24,7 @@ def test_mcp_server(project_path: str, config_file: str = None):
     """Test the MCP server with a real codebase"""
 
     # Configure libclang exactly like production MCP server
-    from mcp_server.libclang_setup import configure_libclang, get_libclang_runtime_info
+    from mcp_server._core.libclang_setup import configure_libclang, get_libclang_runtime_info
 
     if not configure_libclang():
         print("Error: Could not find libclang library")

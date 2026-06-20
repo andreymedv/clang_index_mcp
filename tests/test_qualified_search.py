@@ -10,7 +10,7 @@ This file tests the qualified name pattern matching capabilities added in Phase 
 
 import pytest
 
-from mcp_server.search_engine import SearchEngine
+from mcp_server._search.search_engine import SearchEngine
 
 
 class TestPatternTypeDetection:

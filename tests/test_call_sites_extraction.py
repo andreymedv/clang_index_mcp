@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-import mcp_server.cpp_mcp_server as cpp_mcp_server_module
-from mcp_server.call_graph import CallSite
+import mcp_server._mcp.cpp_mcp_server as cpp_mcp_server_module
+from mcp_server._search.call_graph import CallSite
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager
+from mcp_server._mcp.state_manager import AnalyzerState, AnalyzerStateManager
 
 
 @pytest.fixture

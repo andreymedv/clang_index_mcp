@@ -19,7 +19,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.regex_validator import RegexValidationError
+from mcp_server._core.regex_validator import RegexValidationError
 
 
 @pytest.mark.integration
@@ -588,7 +588,7 @@ class TestMCPServerToolsAdditional:
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        from mcp_server.regex_validator import RegexValidationError
+        from mcp_server._core.regex_validator import RegexValidationError
 
         # Test various dangerous patterns
         dangerous_patterns = [

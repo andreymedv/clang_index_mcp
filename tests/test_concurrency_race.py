@@ -2,8 +2,8 @@ import threading
 import time
 import pytest
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.state_manager import AnalyzerStateManager
-from mcp_server.symbol_info import SymbolInfo
+from mcp_server._mcp.state_manager import AnalyzerStateManager
+from mcp_server._persistence.symbol_info import SymbolInfo
 
 
 def test_dict_size_changed_race():

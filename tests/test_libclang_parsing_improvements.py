@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from mcp_server.clang_parser import ClangParser
-from mcp_server.compile_commands_manager import CompileCommandsManager
+from mcp_server._compilation.clang_parser import ClangParser
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
 from mcp_server.cpp_analyzer import CppAnalyzer
 
 

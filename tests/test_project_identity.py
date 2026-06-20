@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_server.project_identity import ProjectIdentity
+from mcp_server._persistence.project_identity import ProjectIdentity
 
 
 class TestProjectIdentity(unittest.TestCase):

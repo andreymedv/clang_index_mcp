@@ -18,10 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Add mcp_server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mcp_server"))
-
-from compile_commands_manager import CompileCommandsManager
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
 
 
 class TestArgumentSanitization:

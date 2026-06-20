@@ -4,17 +4,17 @@ import os
 import json
 import pytest
 from unittest.mock import MagicMock, patch
-from mcp_server import cpp_mcp_server
-from mcp_server.state_manager import AnalyzerState
+from mcp_server._mcp import cpp_mcp_server
+from mcp_server._mcp.state_manager import AnalyzerState
 
 @pytest.mark.asyncio
 async def test_sync_project_after_failed_resume():
     # 1. Setup mock session and analyzer
     mock_session = {"config_file": "/tmp/mock_config.json"}
     
-    with patch("mcp_server.session_manager.SessionManager.load_session", return_value=mock_session), \
-         patch("mcp_server.cpp_mcp_server._try_resume_session") as mock_resume, \
-         patch("mcp_server.cpp_mcp_server.state_manager") as mock_state_manager:
+    with patch("mcp_server._core.session_manager.SessionManager.load_session", return_value=mock_session), \
+         patch("mcp_server._mcp.cpp_mcp_server._try_resume_session") as mock_resume, \
+         patch("mcp_server._mcp.cpp_mcp_server.state_manager") as mock_state_manager:
         
         # Mock resume failure (returns analyzer but state is UNINITIALIZED)
         mock_analyzer = MagicMock()
@@ -29,7 +29,7 @@ async def test_sync_project_after_failed_resume():
         mock_state_manager.is_ready_for_queries.return_value = False
         
         # 2. Call sync_project with refresh_mode="full"
-        from mcp_server.consolidated_tools import handle_tool_call_b
+        from mcp_server._mcp.consolidated_tools import handle_tool_call_b
         
         arguments = {"refresh_mode": "full"}
         result = await handle_tool_call_b("sync_project", arguments)
@@ -54,9 +54,9 @@ async def test_sync_project_auto_resumes_when_none():
     # 1. Setup mock session (analyzer starts as None)
     mock_session = {"config_file": "/tmp/mock_config.json"}
     
-    with patch("mcp_server.session_manager.SessionManager.load_session", return_value=mock_session), \
-         patch("mcp_server.cpp_mcp_server._try_resume_session") as mock_resume, \
-         patch("mcp_server.cpp_mcp_server.state_manager") as mock_state_manager:
+    with patch("mcp_server._core.session_manager.SessionManager.load_session", return_value=mock_session), \
+         patch("mcp_server._mcp.cpp_mcp_server._try_resume_session") as mock_resume, \
+         patch("mcp_server._mcp.cpp_mcp_server.state_manager") as mock_state_manager:
         
         # Mock resume success
         mock_analyzer = MagicMock()
@@ -67,7 +67,7 @@ async def test_sync_project_auto_resumes_when_none():
         cpp_mcp_server.analyzer = None
         
         # 2. Call sync_project with refresh_mode="full"
-        from mcp_server.consolidated_tools import handle_tool_call_b
+        from mcp_server._mcp.consolidated_tools import handle_tool_call_b
         
         arguments = {"refresh_mode": "full"}
         result = await handle_tool_call_b("sync_project", arguments)
@@ -83,11 +83,11 @@ async def test_sync_project_auto_resumes_when_none():
 @pytest.mark.asyncio
 async def test_sync_project_status_works_when_none():
     # Reset state_manager and ensure analyzer is None
-    from mcp_server.cpp_mcp_server import state_manager
+    from mcp_server._mcp.cpp_mcp_server import state_manager
     state_manager.transition_to(AnalyzerState.UNINITIALIZED)
     cpp_mcp_server.analyzer = None
     
-    from mcp_server.consolidated_tools import handle_tool_call_b
+    from mcp_server._mcp.consolidated_tools import handle_tool_call_b
     
     # sync_project with no args returns status
     result = await handle_tool_call_b("sync_project", {})

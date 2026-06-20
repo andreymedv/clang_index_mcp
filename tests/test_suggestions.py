@@ -2,8 +2,8 @@
 Unit tests for mcp_server/suggestions.py — conditional next-step suggestions.
 """
 
-from mcp_server import suggestions
-from mcp_server.state_manager import EnhancedQueryResult
+from mcp_server._core import suggestions
+from mcp_server._mcp.state_manager import EnhancedQueryResult
 
 # ---------------------------------------------------------------------------
 # for_get_class_info

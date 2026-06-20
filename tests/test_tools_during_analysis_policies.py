@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager, QueryBehaviorPolicy
+from mcp_server._mcp.state_manager import AnalyzerState, AnalyzerStateManager, QueryBehaviorPolicy
 
 
 @pytest.fixture

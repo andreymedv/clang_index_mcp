@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from mcp_server import cpp_mcp_server
+from mcp_server._mcp import cpp_mcp_server
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.state_manager import AnalyzerState, AnalyzerStateManager, BackgroundIndexer
+from mcp_server._mcp.state_manager import AnalyzerState, AnalyzerStateManager, BackgroundIndexer
 
 
 @pytest.fixture

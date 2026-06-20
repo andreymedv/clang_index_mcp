@@ -32,11 +32,13 @@ dependencies = [
 ]
 
 [project.scripts]
-clang-index-mcp = "mcp_server.cpp_mcp_server:main"
+clang-index-mcp = "mcp_server._mcp.cpp_mcp_server:main"
 
 [tool.setuptools]
-packages = ["mcp_server"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["mcp_server*"]
 
 [tool.setuptools.package-data]
 mcp_server = ["py.typed"]

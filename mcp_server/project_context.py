@@ -11,23 +11,23 @@ from typing import TYPE_CHECKING, Optional
 
 from clang.cindex import Index
 
-from .cache_manager import CacheManager
-from .cache_orchestrator import CacheOrchestrator
-from .call_graph_service import CallGraphService
-from .cancellation_coordinator import CancellationCoordinator
-from .clang_parser import ClangParser
-from .compilation_environment import CompilationEnvironment
-from .concurrency_context import ConcurrencyContext
+from ._persistence.cache_manager import CacheManager
+from ._persistence.cache_orchestrator import CacheOrchestrator
+from ._search.call_graph_service import CallGraphService
+from ._core.cancellation_coordinator import CancellationCoordinator
+from ._compilation.clang_parser import ClangParser
+from ._compilation.compilation_environment import CompilationEnvironment
+from ._core.concurrency_context import ConcurrencyContext
 from .cpp_analyzer_config import CppAnalyzerConfig
-from .execution_config import ExecutionConfig
-from .indexing_progress_reporter import IndexingProgressReporter
-from .project_identity import ProjectIdentity
-from .query_engine import QueryEngine
-from .symbol_extractor import SymbolExtractor
-from .symbol_index_store import SymbolIndexStore
+from ._indexing.execution_config import ExecutionConfig
+from ._indexing.indexing_progress_reporter import IndexingProgressReporter
+from ._persistence.project_identity import ProjectIdentity
+from ._search.query_engine import QueryEngine
+from ._symbols.symbol_extractor import SymbolExtractor
+from ._symbols.symbol_index_store import SymbolIndexStore
 
 if TYPE_CHECKING:
-    from .refresh_pipeline import RefreshPipeline
+    from ._indexing.refresh_pipeline import RefreshPipeline
 
 
 class ProjectContext:
