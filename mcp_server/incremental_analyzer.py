@@ -248,9 +248,7 @@ class IncrementalAnalyzer:
         # Update compile_commands_hash
         cc_path = (
             self.analyzer.project_root
-            / self.analyzer.config.get_compile_commands_config().get(
-                "compile_commands_path", "compile_commands.json"
-            )
+            / self.analyzer.config.get_compile_commands_config().compile_commands_path
         )
         if cc_path.exists():
             self.analyzer.context.cache_orchestrator.compile_commands_hash = (

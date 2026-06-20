@@ -20,15 +20,17 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from clang.cindex import CompilationDatabase
 
 # Handle both package and script imports
 try:
+    from .cpp_analyzer_config import CompileCommandsConfig
     from .file_scanner import FileScanner
 except ImportError:
-    from file_scanner import FileScanner  # type: ignore[no-redef]
+    from cpp_analyzer_config import CompileCommandsConfig  # type: ignore[no-redef]
+    from file_scanner import FileScanner  # type: ignore[no-redef]  # noqa: F401
 
 # Try to import orjson for faster JSON parsing (optional)
 HAS_ORJSON = False
@@ -54,25 +56,25 @@ class CompileCommandsManager:
     def __init__(
         self,
         project_root: Path,
-        config: Optional[Dict[str, Any]] = None,
+        config: Optional[Union[Dict[str, Any], CompileCommandsConfig]] = None,
         cache_dir: Optional[Path] = None,
     ):
         self.project_root = project_root
-        self.config = config or {}
+        self._config = (
+            config
+            if isinstance(config, CompileCommandsConfig)
+            else CompileCommandsConfig.from_dict(config)
+        )
         self.cache_dir = cache_dir  # Optional cache directory from CacheManager
 
         # Configuration settings
-        self.enabled = self.config.get("compile_commands_enabled", True)
-        self.compile_commands_path = self.config.get(
-            "compile_commands_path", "compile_commands.json"
-        )
-        self.cache_enabled = self.config.get("compile_commands_cache_enabled", True)
-        self.fallback_to_hardcoded = self.config.get("fallback_to_hardcoded", True)
-        self.cache_expiry_seconds = self.config.get("cache_expiry_seconds", 300)
-        self.supported_extensions = set(
-            self.config.get("supported_extensions", list(FileScanner.CPP_EXTENSIONS))
-        )
-        self.exclude_patterns = self.config.get("exclude_patterns", [])
+        self.enabled = self._config.compile_commands_enabled
+        self.compile_commands_path = self._config.compile_commands_path
+        self.cache_enabled = self._config.compile_commands_cache_enabled
+        self.fallback_to_hardcoded = self._config.fallback_to_hardcoded
+        self.cache_expiry_seconds = self._config.cache_expiry_seconds
+        self.supported_extensions = set(self._config.supported_extensions)
+        self.exclude_patterns = list(self._config.exclude_patterns)
 
         # Cache data
         self.compile_commands: Dict[str, Any] = {}
@@ -81,7 +83,7 @@ class CompileCommandsManager:
         self.cache_lock = threading.Lock()
 
         # Initialize argument sanitizer with optional custom rules
-        custom_rules_file = self.config.get("sanitization_rules_file")
+        custom_rules_file = self._config.sanitization_rules_file
         custom_rules_path = None
         if custom_rules_file:
             custom_rules_path = Path(custom_rules_file)
