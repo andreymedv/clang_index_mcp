@@ -224,8 +224,28 @@ class IncrementalAnalyzer:
 
         # Compute diff
         files_to_analyze: Set[str]
-        if cc_manager.cache_backend is not None and hasattr(cc_manager.cache_backend, "conn"):
-            added, removed, changed = cc_manager.compute_commands_diff(old_commands, new_commands)
+        if cc_manager.cache_backend is not None and hasattr(
+            cc_manager.cache_backend, "set_compile_args_hash"
+        ):
+            # Extract argument lists from command dicts if needed
+            def _extract_args(commands):
+                result = {}
+                for fp, cmd in commands.items():
+                    if cmd and isinstance(cmd[0], dict):
+                        result[fp] = cmd[0].get("arguments", [])
+                    else:
+                        result[fp] = cmd
+                return result
+
+            try:
+                old_args = _extract_args(old_commands)
+                new_args = _extract_args(new_commands)
+            except (AttributeError, TypeError, IndexError):
+                # If extraction fails (e.g., mock objects), pass through as-is
+                old_args = old_commands
+                new_args = new_commands
+
+            added, removed, changed = cc_manager.compute_commands_diff(old_args, new_args)
 
             diagnostics.info(
                 f"Compile commands diff: +{len(added)} -{len(removed)} ~{len(changed)}"
@@ -235,7 +255,7 @@ class IncrementalAnalyzer:
             files_to_analyze = added | changed
 
             # Store new commands
-            cc_manager.store_command_hashes(new_commands)
+            cc_manager.store_command_hashes(new_args)
         else:
             # No SQLite backend, re-analyze all files from new commands
             files_to_analyze = set(new_commands.keys())

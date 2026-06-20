@@ -24,7 +24,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional, Set, cast
 
 from .file_scanner import FileScanner
 
@@ -332,13 +332,10 @@ class ChangeScanner:
         """
         try:
             # Query all files from file_metadata table
-            if hasattr(self.analyzer.cache_manager.backend, "conn"):
-                cursor = self.analyzer.cache_manager.backend.conn.execute("""
-                    SELECT file_path FROM file_metadata
-                """)
-
-                cached_files = {row[0] for row in cursor.fetchall()}
-                return cached_files
+            if hasattr(self.analyzer.cache_manager.backend, "get_all_cached_file_paths"):
+                return cast(
+                    Set[str], self.analyzer.cache_manager.backend.get_all_cached_file_paths()
+                )
             else:
                 # Cached file list requires SQLite backend
                 # Return empty set (will trigger full re-analysis)

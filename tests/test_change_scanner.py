@@ -95,8 +95,7 @@ class TestChangeScanner(unittest.TestCase):
 
         # Mock backend to return empty cached files
         backend_mock = Mock()
-        backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = []
+        backend_mock.get_all_cached_file_paths.return_value = set()
         self.analyzer.cache_manager.backend = backend_mock
 
         changes = self.scanner.scan_for_changes()
@@ -116,8 +115,7 @@ class TestChangeScanner(unittest.TestCase):
         # Create backend mock
         backend_mock = Mock()
         backend_mock.get_file_metadata = Mock(return_value=None)  # File not in cache
-        backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = []
+        backend_mock.get_all_cached_file_paths.return_value = set()
         self.analyzer.cache_manager.backend = backend_mock
 
         changes = self.scanner.scan_for_changes()
@@ -142,8 +140,7 @@ class TestChangeScanner(unittest.TestCase):
         # Create backend mock with old hash
         backend_mock = Mock()
         backend_mock.get_file_metadata = Mock(return_value={"file_hash": "old_hash"})
-        backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = []
+        backend_mock.get_all_cached_file_paths.return_value = set()
         self.analyzer.cache_manager.backend = backend_mock
 
         changes = self.scanner.scan_for_changes()
@@ -170,8 +167,7 @@ class TestChangeScanner(unittest.TestCase):
 
         # Mock empty cached files
         backend_mock = Mock()
-        backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = []
+        backend_mock.get_all_cached_file_paths.return_value = set()
         self.analyzer.cache_manager.backend = backend_mock
 
         changes = self.scanner.scan_for_changes()
@@ -189,8 +185,7 @@ class TestChangeScanner(unittest.TestCase):
 
         # Mock cached files to include deleted file
         backend_mock = Mock()
-        backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = [(deleted_file,)]
+        backend_mock.get_all_cached_file_paths.return_value = {deleted_file}
         self.analyzer.cache_manager.backend = backend_mock
 
         # Mock empty headers
@@ -217,8 +212,7 @@ class TestChangeScanner(unittest.TestCase):
         # Mock empty headers and cached files
         self.analyzer.context.cache_orchestrator.get_processed_headers.return_value = {}
         backend_mock = Mock()
-        backend_mock.conn = Mock()
-        backend_mock.conn.execute.return_value.fetchall.return_value = []
+        backend_mock.get_all_cached_file_paths.return_value = set()
         self.analyzer.cache_manager.backend = backend_mock
 
         changes = self.scanner.scan_for_changes()

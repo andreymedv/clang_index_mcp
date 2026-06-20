@@ -178,61 +178,25 @@ class CompileCommandsManager:
 
     def store_command_hashes(self, commands: Dict[str, List[str]]) -> int:
         """Store argument hashes for the given compile commands in SQLite."""
-        if self.cache_backend is None or not hasattr(self.cache_backend, "conn"):
-            diagnostics.debug("Compile commands storage not supported without SQLite backend")
+        if self.cache_backend is None:
             return 0
 
         stored = 0
-        try:
-            for file_path, args in commands.items():
-                args_hash = self._hash_args(args)
-                cursor = self.cache_backend.conn.execute(
-                    """
-                    UPDATE file_metadata
-                    SET compile_args_hash = ?
-                    WHERE file_path = ?
-                """,
-                    (args_hash, file_path),
-                )
-
-                if cursor.rowcount == 0:
-                    self.cache_backend.conn.execute(
-                        """
-                        INSERT OR IGNORE INTO file_metadata
-                        (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
-                        VALUES (?, ?, ?, ?, ?)
-                    """,
-                        (file_path, "", args_hash, time.time(), 0),
-                    )
-
+        for file_path, args in commands.items():
+            args_hash = self._hash_args(args)
+            if self.cache_backend.set_compile_args_hash(file_path, args_hash):
                 stored += 1
 
-            self.cache_backend.conn.commit()
+        if stored > 0:
             diagnostics.debug(f"Stored {stored} compile command hashes")
-            return stored
-        except Exception as e:
-            diagnostics.error(f"Failed to store compile commands: {e}")
-            self.cache_backend.conn.rollback()
-            return 0
+        return stored
 
     def get_stored_args_hash(self, file_path: str) -> str:
         """Return the stored argument hash for a file, or empty string."""
-        if self.cache_backend is None or not hasattr(self.cache_backend, "conn"):
+        if self.cache_backend is None:
             return ""
-
-        try:
-            cursor = self.cache_backend.conn.execute(
-                """
-                SELECT compile_args_hash FROM file_metadata
-                WHERE file_path = ?
-            """,
-                (file_path,),
-            )
-            row = cursor.fetchone()
-            return row[0] or "" if row else ""
-        except Exception as e:
-            diagnostics.warning(f"Error getting stored commands hash: {e}")
-            return ""
+        result = self.cache_backend.get_compile_args_hash(file_path)
+        return result or ""
 
     def has_args_changed(self, file_path: str, current_args: List[str]) -> bool:
         """Return True if the stored argument hash differs from the current args."""
@@ -243,22 +207,12 @@ class CompileCommandsManager:
 
     def clear_stored_command_hashes(self) -> int:
         """Clear all stored compilation argument hashes."""
-        if self.cache_backend is None or not hasattr(self.cache_backend, "conn"):
+        if self.cache_backend is None:
             return 0
-
-        try:
-            cursor = self.cache_backend.conn.execute("""
-                UPDATE file_metadata
-                SET compile_args_hash = NULL
-            """)
-            cleared: int = cursor.rowcount or 0
-            self.cache_backend.conn.commit()
+        cleared = int(self.cache_backend.clear_compile_args_hashes() or 0)
+        if cleared > 0:
             diagnostics.info(f"Cleared {cleared} stored command hashes")
-            return cleared
-        except Exception as e:
-            diagnostics.error(f"Failed to clear command hashes: {e}")
-            self.cache_backend.conn.rollback()
-            return 0
+        return cleared
 
     def get_compile_commands_hash(self) -> str:
         """Return the MD5 hash of compile_commands.json, or empty if unavailable."""
