@@ -415,8 +415,9 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
             if cache_valid:
                 # Cache loaded successfully - skip indexing
                 diagnostics.info(
-                    f"Cache loaded successfully: {len(analyzer.class_index)} classes, "
-                    f"{len(analyzer.function_index)} functions indexed"
+                    f"Cache loaded successfully: "
+                    f"{len(analyzer.context.symbol_store.class_index)} classes, "
+                    f"{len(analyzer.context.symbol_store.function_index)} functions indexed"
                 )
 
                 # CRITICAL FIX FOR ISSUE #15: Initialize progress with cache data
@@ -426,7 +427,7 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
                 from .state_manager import IndexingProgress
 
                 # Create progress object from cached data
-                total_files = len(analyzer.file_index)
+                total_files = len(analyzer.context.symbol_store.file_index)
                 progress = IndexingProgress(
                     total_files=total_files,
                     indexed_files=total_files,  # All files loaded from cache
@@ -751,16 +752,18 @@ async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextCon
     if analyzer is None:
         return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
-    ccm = analyzer.compile_commands_manager
-    total_classes = sum(len(infos) for infos in analyzer.class_index.values())
-    total_functions = sum(len(infos) for infos in analyzer.function_index.values())
+    ccm = analyzer.context.compile_commands_manager
+    symbol_store = analyzer.context.symbol_store
+    assert symbol_store is not None
+    total_classes = sum(len(infos) for infos in symbol_store.class_index.values())
+    total_functions = sum(len(infos) for infos in symbol_store.function_index.values())
 
     status_dict.update(
         {
             "call_graph_enabled": True,
             "compile_commands_enabled": ccm.enabled if ccm else False,
             "compile_commands_path": ccm.compile_commands_path if ccm else None,
-            "parsed_files": len(analyzer.file_index),
+            "parsed_files": len(symbol_store.file_index),
             "indexed_classes": total_classes,
             "indexed_functions": total_functions,
         }
@@ -1198,8 +1201,8 @@ def _try_resume_session(saved_session):
         cache_loaded = new_analyzer._load_cache()
         if cache_loaded:
             diagnostics.info(
-                f"Session restored from cache: {len(new_analyzer.class_index)} classes, "
-                f"{len(new_analyzer.function_index)} functions"
+                f"Session restored from cache: {len(new_analyzer.context.symbol_store.class_index)} classes, "
+                f"{len(new_analyzer.context.symbol_store.function_index)} functions"
             )
             state_manager.transition_to(AnalyzerState.INDEXED)
             return new_analyzer, new_background_indexer, True

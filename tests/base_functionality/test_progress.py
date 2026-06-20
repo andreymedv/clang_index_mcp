@@ -61,10 +61,10 @@ void function{i}() {{}}
         assert stats["file_count"] >= 5, "Should have at least 5 files"
 
         # Verify last_index_time is tracked
-        assert analyzer.last_index_time > 0, "Should track indexing time"
+        assert analyzer.context.cache_orchestrator.last_index_time > 0, "Should track indexing time"
 
         # Verify indexed_file_count matches
-        assert analyzer.indexed_file_count >= 5, "Should track indexed file count"
+        assert analyzer.context.symbol_store.indexed_file_count >= 5, "Should track indexed file count"
 
     def test_progress_with_cache(self, temp_project_dir):
         """Test progress tracking with cache hits"""

@@ -175,7 +175,7 @@ def analyzer(temp_project_dir):
                 "int main() { return 0; }"
             )
             analyzer.index_project()
-            assert len(analyzer.function_index) > 0
+            assert len(analyzer.context.symbol_store.function_index) > 0
     """
     analyzer_instance = CppAnalyzer(str(temp_project_dir))
     yield analyzer_instance

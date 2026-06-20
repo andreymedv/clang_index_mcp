@@ -73,20 +73,20 @@ def test_multiple_builds():
 
         # Get cache paths
         debug_cc_path = (
-            debug_analyzer.compile_commands_manager.project_root
-            / debug_analyzer.compile_commands_manager.compile_commands_path
+            debug_analyzer.context.compile_commands_manager.project_root
+            / debug_analyzer.context.compile_commands_manager.compile_commands_path
         )
         release_cc_path = (
-            release_analyzer.compile_commands_manager.project_root
-            / release_analyzer.compile_commands_manager.compile_commands_path
+            release_analyzer.context.compile_commands_manager.project_root
+            / release_analyzer.context.compile_commands_manager.compile_commands_path
         )
 
         print(f"\nDebug compile_commands.json:   {debug_cc_path}")
         print(f"Release compile_commands.json: {release_cc_path}")
 
-        debug_cc_cache = debug_analyzer.compile_commands_manager._get_compile_commands_cache_path()
+        debug_cc_cache = debug_analyzer.context.compile_commands_manager._get_compile_commands_cache_path()
         release_cc_cache = (
-            release_analyzer.compile_commands_manager._get_compile_commands_cache_path()
+            release_analyzer.context.compile_commands_manager._get_compile_commands_cache_path()
         )
 
         print(f"\nDebug cache:   {debug_cc_cache}")

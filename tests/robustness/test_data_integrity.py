@@ -37,7 +37,7 @@ class TestAtomicCacheWrites:
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        cache_file = Path(analyzer.cache_dir) / "symbols.db"
+        cache_file = Path(analyzer.context.cache_dir) / "symbols.db"
         assert cache_file.exists(), "SQLite cache file should exist"
 
         # Cache file should be complete (not empty)
@@ -55,7 +55,7 @@ class TestAtomicCacheWrites:
         analyzer.index_project()
 
         # Verify cache is consistent
-        cache_file = Path(analyzer.cache_dir) / "symbols.db"
+        cache_file = Path(analyzer.context.cache_dir) / "symbols.db"
         assert cache_file.exists(), "Cache should exist"
 
         # Load cache again - should work

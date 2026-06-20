@@ -68,10 +68,10 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.project_root = self.test_dir
         self.analyzer.config = Mock()
         self.analyzer.cache_manager = Mock()
-        self.analyzer.file_scanner = Mock()
-        self.analyzer.header_tracker = Mock()
-        self.analyzer.compile_commands_hash = ""
-        self.analyzer.file_hashes = {}  # FIX: Add file_hashes for fallback checking
+        self.analyzer.context.file_scanner = Mock()
+        self.analyzer.context.cache_orchestrator.header_tracker = Mock()
+        self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
+        self.analyzer.context.symbol_store.file_hashes = {}  # FIX: Add file_hashes for fallback checking
 
         # Mock config
         self.analyzer.config.get_compile_commands_config.return_value = {
@@ -88,8 +88,8 @@ class TestChangeScanner(unittest.TestCase):
     def test_scan_empty_project(self):
         """Test scanning a project with no files."""
         # Mock empty file list
-        self.analyzer.file_scanner.find_cpp_files.return_value = []
-        self.analyzer.header_tracker.get_processed_headers.return_value = {}
+        self.analyzer.context.file_scanner.find_cpp_files.return_value = []
+        self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers.return_value = {}
         self.analyzer.cache_manager.backend.get_file_metadata.return_value = None
 
         # Mock backend to return empty cached files
@@ -107,10 +107,10 @@ class TestChangeScanner(unittest.TestCase):
         new_file = str(self.test_dir / "new.cpp")
 
         # Mock file scanner to return new file
-        self.analyzer.file_scanner.find_cpp_files.return_value = [new_file]
+        self.analyzer.context.file_scanner.find_cpp_files.return_value = [new_file]
 
         # Mock empty headers
-        self.analyzer.header_tracker.get_processed_headers.return_value = {}
+        self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers.return_value = {}
 
         # Create backend mock
         backend_mock = Mock()
@@ -130,13 +130,13 @@ class TestChangeScanner(unittest.TestCase):
         modified_file = str(self.test_dir / "modified.cpp")
 
         # Mock file scanner
-        self.analyzer.file_scanner.find_cpp_files.return_value = [modified_file]
+        self.analyzer.context.file_scanner.find_cpp_files.return_value = [modified_file]
 
         # Mock file hash to indicate change
         self.analyzer._get_file_hash.return_value = "new_hash"
 
         # Mock empty headers
-        self.analyzer.header_tracker.get_processed_headers.return_value = {}
+        self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers.return_value = {}
 
         # Create backend mock with old hash
         backend_mock = Mock()
@@ -159,10 +159,10 @@ class TestChangeScanner(unittest.TestCase):
         Path(header_file).write_text("#pragma once\n")
 
         # Mock file scanner (no source files)
-        self.analyzer.file_scanner.find_cpp_files.return_value = []
+        self.analyzer.context.file_scanner.find_cpp_files.return_value = []
 
         # Mock header tracker with old hash
-        self.analyzer.header_tracker.get_processed_headers.return_value = {header_file: "old_hash"}
+        self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers.return_value = {header_file: "old_hash"}
 
         # Mock file hash to indicate change
         self.analyzer._get_file_hash.return_value = "new_hash"
@@ -184,7 +184,7 @@ class TestChangeScanner(unittest.TestCase):
         deleted_file = str(self.test_dir / "deleted.cpp")
 
         # Mock file scanner (no files)
-        self.analyzer.file_scanner.find_cpp_files.return_value = []
+        self.analyzer.context.file_scanner.find_cpp_files.return_value = []
 
         # Mock cached files to include deleted file
         backend_mock = Mock()
@@ -193,7 +193,7 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.cache_manager.backend = backend_mock
 
         # Mock empty headers
-        self.analyzer.header_tracker.get_processed_headers.return_value = {}
+        self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers.return_value = {}
 
         changes = self.scanner.scan_for_changes()
 
@@ -207,14 +207,14 @@ class TestChangeScanner(unittest.TestCase):
         cc_file.write_text("[]")
 
         # Mock file scanner
-        self.analyzer.file_scanner.find_cpp_files.return_value = []
+        self.analyzer.context.file_scanner.find_cpp_files.return_value = []
 
         # Mock compile_commands_hash to indicate change
-        self.analyzer.compile_commands_hash = "old_hash"
+        self.analyzer.context.cache_orchestrator.compile_commands_hash = "old_hash"
         self.analyzer._get_file_hash.return_value = "new_hash"
 
         # Mock empty headers and cached files
-        self.analyzer.header_tracker.get_processed_headers.return_value = {}
+        self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers.return_value = {}
         backend_mock = Mock()
         backend_mock.conn = Mock()
         backend_mock.conn.execute.return_value.fetchall.return_value = []

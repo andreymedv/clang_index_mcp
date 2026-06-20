@@ -179,10 +179,10 @@ public:
         extra_cpp_str = str(extra_cpp.resolve())
 
         assert (
-            header_file_str not in analyzer.file_hashes
+            header_file_str not in analyzer.context.symbol_store.file_hashes
         ), "extra.h should NOT be attempted (not in compile_commands.json)"
         assert (
-            extra_cpp_str not in analyzer.file_hashes
+            extra_cpp_str not in analyzer.context.symbol_store.file_hashes
         ), "extra.cpp should NOT be attempted (not in compile_commands.json)"
 
         # If main.cpp was successfully parsed, verify no symbols from other files
@@ -236,7 +236,7 @@ public:
         assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # Get the parsed arguments for the file
-        args = analyzer.compile_commands_manager.get_compile_args(src_file)
+        args = analyzer.context.compile_commands_manager.get_compile_args(src_file)
 
         # Verify the compiler path was stripped
         assert args is not None, "Should have extracted arguments"

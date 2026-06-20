@@ -185,7 +185,7 @@ class ChangeScanner:
 
     def _scan_source_files(self, changeset: ChangeSet) -> None:
         """Detect added and modified source files, excluding headers."""
-        all_cpp_files = self.analyzer.file_scanner.find_cpp_files()
+        all_cpp_files = self.analyzer.context.file_scanner.find_cpp_files()
         current_source_files = set()
         for file_path in all_cpp_files:
             if file_path.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
@@ -205,10 +205,12 @@ class ChangeScanner:
 
     def _scan_tracked_headers(self, changeset: ChangeSet) -> None:
         """Detect modified or deleted tracked headers."""
-        if not self.analyzer.header_tracker:
+        if not self.analyzer.context.cache_orchestrator.header_tracker:
             return
 
-        tracked_headers = self.analyzer.header_tracker.get_processed_headers()
+        tracked_headers = (
+            self.analyzer.context.cache_orchestrator.header_tracker.get_processed_headers()
+        )
         for header_path, tracked_hash in tracked_headers.items():
             normalized_header = os.path.realpath(header_path)
 
@@ -251,8 +253,8 @@ class ChangeScanner:
         except Exception as e:
             diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
 
-        if file_path in self.analyzer.file_hashes:
-            return str(self.analyzer.file_hashes[file_path])
+        if file_path in self.analyzer.context.symbol_store.file_hashes:
+            return str(self.analyzer.context.symbol_store.file_hashes[file_path])
 
         return None
 
@@ -307,14 +309,14 @@ class ChangeScanner:
         if not cc_path.exists():
             # If file doesn't exist, check if it existed before
             # (stored hash is non-empty means it existed)
-            return bool(self.analyzer.compile_commands_hash)
+            return bool(self.analyzer.context.cache_orchestrator.compile_commands_hash)
 
         # Calculate current hash
         try:
             current_hash = self.analyzer._get_file_hash(str(cc_path))
 
             # Compare with stored hash
-            if current_hash != self.analyzer.compile_commands_hash:
+            if current_hash != self.analyzer.context.cache_orchestrator.compile_commands_hash:
                 return True
 
             return False

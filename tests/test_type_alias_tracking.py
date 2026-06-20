@@ -543,7 +543,7 @@ using WidgetAlias = Widget;
         analyzer.index_project()
 
         # Expand alias name
-        expanded = analyzer.search_engine.expand_type_name("WidgetAlias")
+        expanded = analyzer.context.query_engine.search_engine.expand_type_name("WidgetAlias")
         assert "WidgetAlias" in expanded  # Original
         assert "Widget" in expanded  # Canonical
 
@@ -572,7 +572,7 @@ typedef Widget WidgetType;
         analyzer.index_project()
 
         # Expand canonical type
-        expanded = analyzer.search_engine.expand_type_name("Widget")
+        expanded = analyzer.context.query_engine.search_engine.expand_type_name("Widget")
         assert "Widget" in expanded  # Original
         # Should include at least one alias
         assert "WidgetAlias" in expanded or "WidgetType" in expanded
@@ -600,7 +600,7 @@ class Widget {};
         analyzer.index_project()
 
         # Expand type with no aliases
-        expanded = analyzer.search_engine.expand_type_name("Widget")
+        expanded = analyzer.context.query_engine.search_engine.expand_type_name("Widget")
         assert expanded == ["Widget"]
 
 
