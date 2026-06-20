@@ -23,7 +23,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 from mcp.server import Server  # noqa: E402
 from mcp.types import TextContent, Tool  # noqa: E402
 
-from mcp_server.consolidated_tools import list_tools_b  # noqa: E402
+from mcp_server._mcp.consolidated_tools import list_tools_b  # noqa: E402
 from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 
 logger = logging.getLogger("mock_mcp_server")
@@ -84,7 +84,7 @@ def _convert_hierarchy_response(response: dict, output_format: str) -> str:
     # Use the same converter as the real server
     try:
         # Try importing from mcp_server first
-        from mcp_server.hierarchy_format import convert_hierarchy_format
+        from mcp_server._search.hierarchy_format import convert_hierarchy_format
     except ImportError:
         # Fallback to local implementation
         return _mock_convert_hierarchy(hierarchy, output_format)

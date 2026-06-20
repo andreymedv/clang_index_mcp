@@ -19,8 +19,8 @@ from typing import Any, Dict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cache_manager import CacheManager
-from mcp_server.symbol_info import SymbolInfo
+from mcp_server._persistence.cache_manager import CacheManager
+from mcp_server._persistence.symbol_info import SymbolInfo
 
 
 class TestConfigChangeDetection(unittest.TestCase):

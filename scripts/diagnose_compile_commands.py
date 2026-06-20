@@ -20,7 +20,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.compile_commands_manager import CompileCommandsManager  # noqa: E402
+from mcp_server._compilation.compile_commands_manager import CompileCommandsManager  # noqa: E402
 from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig  # noqa: E402
 

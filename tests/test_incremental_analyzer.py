@@ -6,9 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, call, patch
 
-from mcp_server.change_scanner import ChangeSet
+from mcp_server._incremental.change_scanner import ChangeSet
 from mcp_server.cpp_analyzer_config import CompileCommandsConfig
-from mcp_server.incremental_analyzer import AnalysisResult, IncrementalAnalyzer
+from mcp_server._incremental.incremental_analyzer import AnalysisResult, IncrementalAnalyzer
 
 
 class TestAnalysisResult(unittest.TestCase):

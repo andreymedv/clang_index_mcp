@@ -17,8 +17,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend
-from mcp_server.symbol_info import SymbolInfo
+from mcp_server._persistence.sqlite_cache_backend import SqliteCacheBackend
+from mcp_server._persistence.symbol_info import SymbolInfo
 from tests.utils.test_helpers import temp_compile_commands
 
 # ============================================================================

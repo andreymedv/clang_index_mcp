@@ -17,10 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Add mcp_server to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "mcp_server"))
-
-from argument_sanitizer import ArgumentSanitizer
+from mcp_server._core.argument_sanitizer import ArgumentSanitizer
 
 
 class TestRuleLoading:

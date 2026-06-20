@@ -322,7 +322,7 @@ class TestWhitespaceNormalization:
 
     def test_normalize_whitespace_function(self):
         """Test the _normalize_template_whitespace function directly."""
-        from mcp_server.search_engine import SearchEngine
+        from mcp_server._search.search_engine import SearchEngine
 
         # Test pointer types
         assert (
@@ -1674,7 +1674,7 @@ class TestTemplateSpecializationLookup:
 
     def test_extract_simple_name_strips_template_args(self):
         """_extract_simple_name should strip template arguments."""
-        from mcp_server.search_engine import SearchEngine
+        from mcp_server._search.search_engine import SearchEngine
 
         assert SearchEngine._extract_simple_name("Container<int>") == "Container"
         assert SearchEngine._extract_simple_name("ns::Container<int>") == "Container"

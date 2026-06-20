@@ -4,9 +4,9 @@ import json
 import tempfile
 from pathlib import Path
 
-from mcp_server.cache_manager import CacheManager
+from mcp_server._persistence.cache_manager import CacheManager
 from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server.project_identity import ProjectIdentity
+from mcp_server._persistence.project_identity import ProjectIdentity
 
 
 def test_multiple_builds():

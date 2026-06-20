@@ -94,7 +94,7 @@ def main():
     print("=" * 80)
 
     # Find C++ files
-    from mcp_server.file_scanner import FileScanner
+    from mcp_server._core.file_scanner import FileScanner
 
     scanner = FileScanner(project_root)
     all_files = scanner.find_cpp_files()

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-from mcp_server.cpp_mcp_server import _handle_tool_call
+from mcp_server._mcp.cpp_mcp_server import _handle_tool_call
 
 
 @pytest.mark.asyncio
@@ -55,11 +55,11 @@ async def test_hybrid_project_setup():
 
         # 3. Mock dependencies in _handle_tool_call to avoid actual indexing
         with (
-            patch("mcp_server.cpp_mcp_server.CppAnalyzer") as MockAnalyzer,
-            patch("mcp_server.cpp_mcp_server.BackgroundIndexer"),
-            patch("mcp_server.cpp_mcp_server.ToolCallLogger"),
-            patch("mcp_server.cpp_mcp_server.state_manager") as mock_state_manager,
-            patch("mcp_server.cpp_mcp_server.session_manager") as mock_session_manager,
+            patch("mcp_server._mcp.cpp_mcp_server.CppAnalyzer") as MockAnalyzer,
+            patch("mcp_server._mcp.cpp_mcp_server.BackgroundIndexer"),
+            patch("mcp_server._mcp.cpp_mcp_server.ToolCallLogger"),
+            patch("mcp_server._mcp.cpp_mcp_server.state_manager") as mock_state_manager,
+            patch("mcp_server._mcp.cpp_mcp_server.session_manager") as mock_session_manager,
         ):
 
             # Setup mock analyzer
@@ -72,7 +72,7 @@ async def test_hybrid_project_setup():
             # Call set_project_directory with the config file path
             arguments = {"config_file": str(config_file.absolute()), "auto_refresh": True}
 
-            from mcp_server.cpp_mcp_server import _handle_tool_call
+            from mcp_server._mcp.cpp_mcp_server import _handle_tool_call
 
             results = await _handle_tool_call("set_project_directory", arguments)
 

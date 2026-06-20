@@ -19,8 +19,8 @@ from typing import Any, Dict
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.schema_migrations import SchemaMigration  # noqa: E402
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
+from mcp_server._persistence.schema_migrations import SchemaMigration  # noqa: E402
+from mcp_server._persistence.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
 
 
 class CacheDiagnostic:

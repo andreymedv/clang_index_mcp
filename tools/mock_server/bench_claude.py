@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from mcp_server.consolidated_tools import list_tools_b  # noqa: E402
+from mcp_server._mcp.consolidated_tools import list_tools_b  # noqa: E402
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 

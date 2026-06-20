@@ -28,25 +28,25 @@ or through the public wrapper methods (e.g. analyzer.search_classes()).
 import sys
 from typing import Any, Dict, List, Optional
 
-from .cache_orchestrator import CacheOrchestrator
-from .call_graph_service import CallGraphService
-from .clang_parser import ClangParser
-from .compilation_environment import CompilationEnvironment
-from .compile_commands_manager import CompileCommandsManager
-from .indexing_callbacks import IndexingCallbacks
-from .indexing_orchestrator import ProjectIndexingOrchestrator
-from .indexing_pipeline import SingleFileIndexingPipeline
-from .indexing_task_submitter import IndexingTaskSubmitter
+from ._persistence.cache_orchestrator import CacheOrchestrator
+from ._search.call_graph_service import CallGraphService
+from ._compilation.clang_parser import ClangParser
+from ._compilation.compilation_environment import CompilationEnvironment
+from ._compilation.compile_commands_manager import CompileCommandsManager
+from ._symbols.indexing_callbacks import IndexingCallbacks
+from ._indexing.indexing_orchestrator import ProjectIndexingOrchestrator
+from ._indexing.indexing_pipeline import SingleFileIndexingPipeline
+from ._indexing.indexing_task_submitter import IndexingTaskSubmitter
 from .project_context import ProjectContext
-from .worker_result_merger import WorkerResultMerger
-from .query_engine import QueryEngine
-from .refresh_pipeline import RefreshPipeline
-from .symbol_extractor import SymbolExtractor
-from .symbol_index_store import SymbolIndexStore
+from ._indexing.worker_result_merger import WorkerResultMerger
+from ._search.query_engine import QueryEngine
+from ._indexing.refresh_pipeline import RefreshPipeline
+from ._symbols.symbol_extractor import SymbolExtractor
+from ._symbols.symbol_index_store import SymbolIndexStore
 
 # Handle both package and script imports
 try:
-    from . import diagnostics
+    from ._core import diagnostics
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
