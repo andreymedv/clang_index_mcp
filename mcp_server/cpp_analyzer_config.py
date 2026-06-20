@@ -7,6 +7,11 @@ from typing import Any, Dict, List, Optional
 
 # Handle both package and script imports
 try:
+    from .file_scanner import FileScanner
+except ImportError:
+    from file_scanner import FileScanner  # type: ignore[no-redef]
+
+try:
     from . import diagnostics
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
@@ -191,8 +196,7 @@ class CppAnalyzerConfig:
             "fallback_to_hardcoded": compile_commands.get("fallback_to_hardcoded", True),
             "cache_expiry_seconds": compile_commands.get("cache_expiry_seconds", 300),
             "supported_extensions": compile_commands.get(
-                "supported_extensions",
-                [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
+                "supported_extensions", list(FileScanner.CPP_EXTENSIONS)
             ),
             "exclude_patterns": compile_commands.get("exclude_patterns", []),
         }

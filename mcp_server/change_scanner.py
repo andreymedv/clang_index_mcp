@@ -26,6 +26,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Set
 
+from .file_scanner import FileScanner
+
 # Handle both package and script imports
 try:
     from . import diagnostics
@@ -186,7 +188,7 @@ class ChangeScanner:
         all_cpp_files = self.analyzer.file_scanner.find_cpp_files()
         current_source_files = set()
         for file_path in all_cpp_files:
-            if file_path.endswith((".h", ".hpp", ".hxx", ".h++")):
+            if file_path.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
                 continue
             current_source_files.add(file_path)
 

@@ -213,7 +213,7 @@ class CompilationEnvironment:
             if tracked_file in current_files:
                 continue
 
-            if tracked_file.endswith((".h", ".hpp", ".hxx", ".h++")):
+            if tracked_file.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
                 if not os.path.exists(tracked_file):
                     deleted_files.add(tracked_file)
             else:
