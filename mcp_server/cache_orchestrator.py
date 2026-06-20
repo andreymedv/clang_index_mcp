@@ -417,8 +417,8 @@ class CacheOrchestrator:
             # The call_graph_analyzer.cache_backend handles lazy loading via SQLite queries
 
             diagnostics.debug(
-                f"Loaded cache with {len(self.symbol_store.class_index)} classes, "
-                f"{len(self.symbol_store.function_index)} functions"
+                f"Loaded cache with {self.symbol_store.class_name_count()} classes, "
+                f"{self.symbol_store.function_name_count()} functions"
             )
             self.cache_loaded = True
             return True
@@ -434,8 +434,8 @@ class CacheOrchestrator:
         """Save a summary of indexing progress"""
         status = "complete" if indexed_count + failed_count == total_files else "interrupted"
         # Count total symbols (not just unique names)
-        class_count = sum(len(infos) for infos in self.symbol_store.class_index.values())
-        function_count = sum(len(infos) for infos in self.symbol_store.function_index.values())
+        class_count = self.symbol_store.total_class_symbols()
+        function_count = self.symbol_store.total_function_symbols()
 
         self.cache_manager.save_progress(
             total_files,

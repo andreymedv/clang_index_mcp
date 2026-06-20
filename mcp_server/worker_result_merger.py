@@ -56,7 +56,7 @@ class WorkerResultMerger:
                     self.cache_orchestrator.mark_header_completed(header_path, header_hash)
 
             file_hash = self.cache_orchestrator._get_file_hash(file_path)
-            self.symbol_store.file_hashes[file_path] = file_hash
+            self.symbol_store.set_file_hash(file_path, file_hash)
 
     def get_worker_result(self, future, file_path: str, use_processes: bool) -> Tuple[bool, bool]:
         """Get result from future and merge into indexes."""
