@@ -2,6 +2,7 @@
 
 import json
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,38 @@ try:
     from . import diagnostics
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
+
+
+@dataclass
+class CompileCommandsConfig:
+    """Typed compile-commands configuration."""
+
+    compile_commands_enabled: bool = True
+    compile_commands_path: str = "compile_commands.json"
+    compile_commands_cache_enabled: bool = True
+    fallback_to_hardcoded: bool = True
+    cache_expiry_seconds: int = 300
+    supported_extensions: List[str] = field(
+        default_factory=lambda: list(FileScanner.CPP_EXTENSIONS)
+    )
+    exclude_patterns: List[str] = field(default_factory=list)
+    sanitization_rules_file: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "CompileCommandsConfig":
+        """Build a CompileCommandsConfig from a legacy dictionary."""
+        if data is None:
+            return cls()
+        return cls(
+            compile_commands_enabled=data.get("compile_commands_enabled", True),
+            compile_commands_path=data.get("compile_commands_path", "compile_commands.json"),
+            compile_commands_cache_enabled=data.get("compile_commands_cache_enabled", True),
+            fallback_to_hardcoded=data.get("fallback_to_hardcoded", True),
+            cache_expiry_seconds=data.get("cache_expiry_seconds", 300),
+            supported_extensions=data.get("supported_extensions", list(FileScanner.CPP_EXTENSIONS)),
+            exclude_patterns=data.get("exclude_patterns", []),
+            sanitization_rules_file=data.get("sanitization_rules_file"),
+        )
 
 
 class CppAnalyzerConfig:
@@ -182,24 +215,25 @@ class CppAnalyzerConfig:
         result: str = policy
         return result
 
-    def get_compile_commands_config(self) -> Dict[str, Any]:
+    def get_compile_commands_config(self) -> CompileCommandsConfig:
         """Get compile commands configuration.
 
-        Returns a dictionary with compile commands settings for CompileCommandsManager.
+        Returns a typed CompileCommandsConfig for CompileCommandsManager.
         """
         compile_commands = self.config.get("compile_commands", {})
 
-        return {
-            "compile_commands_enabled": compile_commands.get("enabled", True),
-            "compile_commands_path": compile_commands.get("path", "compile_commands.json"),
-            "compile_commands_cache_enabled": compile_commands.get("cache_enabled", True),
-            "fallback_to_hardcoded": compile_commands.get("fallback_to_hardcoded", True),
-            "cache_expiry_seconds": compile_commands.get("cache_expiry_seconds", 300),
-            "supported_extensions": compile_commands.get(
+        return CompileCommandsConfig(
+            compile_commands_enabled=compile_commands.get("enabled", True),
+            compile_commands_path=compile_commands.get("path", "compile_commands.json"),
+            compile_commands_cache_enabled=compile_commands.get("cache_enabled", True),
+            fallback_to_hardcoded=compile_commands.get("fallback_to_hardcoded", True),
+            cache_expiry_seconds=compile_commands.get("cache_expiry_seconds", 300),
+            supported_extensions=compile_commands.get(
                 "supported_extensions", list(FileScanner.CPP_EXTENSIONS)
             ),
-            "exclude_patterns": compile_commands.get("exclude_patterns", []),
-        }
+            exclude_patterns=compile_commands.get("exclude_patterns", []),
+            sanitization_rules_file=self.config.get("sanitization_rules_file"),
+        )
 
     def create_example_config(self, target_path: Path) -> Path:
         """Create an example configuration file at the specified path.

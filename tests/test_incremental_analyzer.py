@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, call, patch
 
 from mcp_server.change_scanner import ChangeSet
+from mcp_server.cpp_analyzer_config import CompileCommandsConfig
 from mcp_server.incremental_analyzer import AnalysisResult, IncrementalAnalyzer
 
 
@@ -54,9 +55,9 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
 
         # Mock config
-        self.analyzer.config.get_compile_commands_config.return_value = {
-            "compile_commands_path": "compile_commands.json"
-        }
+        self.analyzer.config.get_compile_commands_config.return_value = CompileCommandsConfig(
+            compile_commands_path="compile_commands.json"
+        )
 
         # Mock cache backend
         backend_mock = Mock()

@@ -76,7 +76,7 @@ class CacheOrchestrator:
 
         # Get compile_commands.json path from configuration
         compile_commands_config = self.config.get_compile_commands_config()
-        cc_path = self.project_root / compile_commands_config["compile_commands_path"]
+        cc_path = self.project_root / compile_commands_config.compile_commands_path
 
         if not cc_path.exists():
             self.compile_commands_hash = ""

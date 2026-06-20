@@ -304,9 +304,7 @@ class ChangeScanner:
             True if changed, False if unchanged or doesn't exist
         """
         compile_commands_config = self.analyzer.config.get_compile_commands_config()
-        cc_path = self.analyzer.project_root / compile_commands_config.get(
-            "compile_commands_path", "compile_commands.json"
-        )
+        cc_path = self.analyzer.project_root / compile_commands_config.compile_commands_path
 
         if not cc_path.exists():
             # If file doesn't exist, check if it existed before

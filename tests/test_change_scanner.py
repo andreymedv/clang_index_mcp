@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
 from mcp_server.change_scanner import ChangeScanner, ChangeSet, ChangeType
+from mcp_server.cpp_analyzer_config import CompileCommandsConfig
 
 
 class TestChangeSet(unittest.TestCase):
@@ -74,9 +75,9 @@ class TestChangeScanner(unittest.TestCase):
         self.analyzer.context.symbol_store.file_hashes = {}  # FIX: Add file_hashes for fallback checking
 
         # Mock config
-        self.analyzer.config.get_compile_commands_config.return_value = {
-            "compile_commands_path": "compile_commands.json"
-        }
+        self.analyzer.config.get_compile_commands_config.return_value = CompileCommandsConfig(
+            compile_commands_path="compile_commands.json"
+        )
 
         # Create scanner
         self.scanner = ChangeScanner(self.analyzer)
