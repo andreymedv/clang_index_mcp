@@ -35,13 +35,11 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 try:
     from . import diagnostics
     from .change_scanner import ChangeScanner, ChangeSet
-    from .compile_commands_differ import CompileCommandsDiffer
     from .indexing_callbacks import IndexingCallbacks
     from .indexing_task_spec import IndexingTaskSpec
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
     from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
-    from compile_commands_differ import CompileCommandsDiffer  # type: ignore[no-redef]
     from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
     from indexing_task_spec import IndexingTaskSpec  # type: ignore[no-redef]
 
@@ -215,6 +213,7 @@ class IncrementalAnalyzer:
 
         # Get compile commands manager
         cc_manager = self.analyzer.context.compile_commands_manager
+        assert cc_manager is not None
 
         # Get old commands (from current state)
         old_commands = cc_manager.file_to_command_map.copy()
@@ -224,11 +223,9 @@ class IncrementalAnalyzer:
         new_commands = cc_manager.file_to_command_map
 
         # Compute diff
-        if self.analyzer.cache_manager.backend and hasattr(
-            self.analyzer.cache_manager.backend, "conn"
-        ):
-            differ = CompileCommandsDiffer(self.analyzer.cache_manager.backend)
-            added, removed, changed = differ.compute_diff(old_commands, new_commands)
+        files_to_analyze: Set[str]
+        if cc_manager.cache_backend is not None and hasattr(cc_manager.cache_backend, "conn"):
+            added, removed, changed = cc_manager.compute_commands_diff(old_commands, new_commands)
 
             diagnostics.info(
                 f"Compile commands diff: +{len(added)} -{len(removed)} ~{len(changed)}"
@@ -238,21 +235,16 @@ class IncrementalAnalyzer:
             files_to_analyze = added | changed
 
             # Store new commands
-            differ.store_current_commands(new_commands)
+            cc_manager.store_command_hashes(new_commands)
         else:
             # No SQLite backend, re-analyze all files from new commands
             files_to_analyze = set(new_commands.keys())
             diagnostics.warning("No SQLite backend, re-analyzing all compile_commands files")
 
         # Update compile_commands_hash
-        cc_path = (
-            self.analyzer.project_root
-            / self.analyzer.config.get_compile_commands_config().compile_commands_path
+        self.analyzer.context.cache_orchestrator.compile_commands_hash = (
+            cc_manager.get_compile_commands_hash()
         )
-        if cc_path.exists():
-            self.analyzer.context.cache_orchestrator.compile_commands_hash = (
-                self.analyzer.context.cache_orchestrator._get_file_hash(str(cc_path))
-            )
 
         # Invalidate ALL headers (args changed might affect preprocessing)
         # This is conservative but safe

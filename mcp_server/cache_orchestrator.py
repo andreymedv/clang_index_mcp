@@ -5,7 +5,6 @@ Extracted from CppAnalyzer as part of architecture refactoring.
 Manages cache loading/saving, file caching, header tracking, and progress summaries.
 """
 
-import hashlib
 import json
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -100,27 +99,15 @@ class CacheOrchestrator:
         Implements:
             REQ-10.4.1: Calculate and store hash of compile_commands.json
         """
-        from . import diagnostics
-
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
         if not self.compilation_env.has_active_compile_commands():
             self.compile_commands_hash = ""
             return
 
-        # Get compile_commands.json path from configuration
-        compile_commands_config = self.config.get_compile_commands_config()
-        cc_path = self.project_root / compile_commands_config.compile_commands_path
-
-        if not cc_path.exists():
-            self.compile_commands_hash = ""
-            return
-
-        try:
-            with open(cc_path, "rb") as f:
-                self.compile_commands_hash = hashlib.md5(f.read()).hexdigest()
-        except Exception as e:
-            diagnostics.warning(f"Failed to calculate compile_commands.json hash: {e}")
-            self.compile_commands_hash = ""
+        assert self.compilation_env.compile_commands_manager is not None
+        self.compile_commands_hash = (
+            self.compilation_env.compile_commands_manager.get_compile_commands_hash()
+        )
 
     def _restore_or_reset_header_tracking(self):
         """

@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from clang.cindex import CompilationDatabase
 
@@ -58,6 +58,7 @@ class CompileCommandsManager:
         project_root: Path,
         config: Optional[Union[Dict[str, Any], CompileCommandsConfig]] = None,
         cache_dir: Optional[Path] = None,
+        cache_backend: Optional[Any] = None,
     ):
         self.project_root = project_root
         self._config = (
@@ -66,6 +67,7 @@ class CompileCommandsManager:
             else CompileCommandsConfig.from_dict(config)
         )
         self.cache_dir = cache_dir  # Optional cache directory from CacheManager
+        self.cache_backend = cache_backend  # Optional SQLite cache backend
 
         # Configuration settings
         self.enabled = self._config.compile_commands_enabled
@@ -140,6 +142,139 @@ class CompileCommandsManager:
         from .file_utils import hash_file
 
         return hash_file(file_path)
+
+    # ------------------------------------------------------------------
+    # Compile-commands diff and argument-hash helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def compute_commands_diff(
+        old_commands: Dict[str, List[str]], new_commands: Dict[str, List[str]]
+    ) -> Tuple[Set[str], Set[str], Set[str]]:
+        """
+        Compute difference between two compile-command maps.
+
+        Returns:
+            Tuple of (added_files, removed_files, changed_files).
+        """
+        old_files = set(old_commands.keys())
+        new_files = set(new_commands.keys())
+
+        added = new_files - old_files
+        removed = old_files - new_files
+        changed = {
+            file_path
+            for file_path in old_files & new_files
+            if old_commands[file_path] != new_commands[file_path]
+        }
+
+        diagnostics.debug(f"Compile commands diff: +{len(added)} -{len(removed)} ~{len(changed)}")
+        return added, removed, changed
+
+    def _hash_args(self, args: List[str]) -> str:
+        """Return a stable hash of a compilation argument list."""
+        from .file_utils import hash_compile_args
+
+        return hash_compile_args(args, normalize_order=False)
+
+    def store_command_hashes(self, commands: Dict[str, List[str]]) -> int:
+        """Store argument hashes for the given compile commands in SQLite."""
+        if self.cache_backend is None or not hasattr(self.cache_backend, "conn"):
+            diagnostics.debug("Compile commands storage not supported without SQLite backend")
+            return 0
+
+        stored = 0
+        try:
+            for file_path, args in commands.items():
+                args_hash = self._hash_args(args)
+                cursor = self.cache_backend.conn.execute(
+                    """
+                    UPDATE file_metadata
+                    SET compile_args_hash = ?
+                    WHERE file_path = ?
+                """,
+                    (args_hash, file_path),
+                )
+
+                if cursor.rowcount == 0:
+                    self.cache_backend.conn.execute(
+                        """
+                        INSERT OR IGNORE INTO file_metadata
+                        (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
+                        VALUES (?, ?, ?, ?, ?)
+                    """,
+                        (file_path, "", args_hash, time.time(), 0),
+                    )
+
+                stored += 1
+
+            self.cache_backend.conn.commit()
+            diagnostics.debug(f"Stored {stored} compile command hashes")
+            return stored
+        except Exception as e:
+            diagnostics.error(f"Failed to store compile commands: {e}")
+            self.cache_backend.conn.rollback()
+            return 0
+
+    def get_stored_args_hash(self, file_path: str) -> str:
+        """Return the stored argument hash for a file, or empty string."""
+        if self.cache_backend is None or not hasattr(self.cache_backend, "conn"):
+            return ""
+
+        try:
+            cursor = self.cache_backend.conn.execute(
+                """
+                SELECT compile_args_hash FROM file_metadata
+                WHERE file_path = ?
+            """,
+                (file_path,),
+            )
+            row = cursor.fetchone()
+            return row[0] or "" if row else ""
+        except Exception as e:
+            diagnostics.warning(f"Error getting stored commands hash: {e}")
+            return ""
+
+    def has_args_changed(self, file_path: str, current_args: List[str]) -> bool:
+        """Return True if the stored argument hash differs from the current args."""
+        stored_hash = self.get_stored_args_hash(file_path)
+        if not stored_hash:
+            return True
+        return stored_hash != self._hash_args(current_args)
+
+    def clear_stored_command_hashes(self) -> int:
+        """Clear all stored compilation argument hashes."""
+        if self.cache_backend is None or not hasattr(self.cache_backend, "conn"):
+            return 0
+
+        try:
+            cursor = self.cache_backend.conn.execute("""
+                UPDATE file_metadata
+                SET compile_args_hash = NULL
+            """)
+            cleared: int = cursor.rowcount or 0
+            self.cache_backend.conn.commit()
+            diagnostics.info(f"Cleared {cleared} stored command hashes")
+            return cleared
+        except Exception as e:
+            diagnostics.error(f"Failed to clear command hashes: {e}")
+            self.cache_backend.conn.rollback()
+            return 0
+
+    def get_compile_commands_hash(self) -> str:
+        """Return the MD5 hash of compile_commands.json, or empty if unavailable."""
+        if not self.enabled:
+            return ""
+
+        compile_commands_file = self.project_root / self.compile_commands_path
+        if not compile_commands_file.exists():
+            return ""
+
+        try:
+            with open(compile_commands_file, "rb") as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except Exception as e:
+            diagnostics.warning(f"Failed to calculate compile_commands.json hash: {e}")
+            return ""
 
     def _load_from_cache(self, compile_commands_file: Path) -> bool:
         """Try to load parsed commands from cache.

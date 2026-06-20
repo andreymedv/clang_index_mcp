@@ -125,7 +125,10 @@ class CppAnalyzer:
         if use_compile_commands_manager:
             compile_commands_config = self.config.get_compile_commands_config()
             self.compilation_env.compile_commands_manager = CompileCommandsManager(
-                self.project_root, compile_commands_config, cache_dir=self.cache_manager.cache_dir
+                self.project_root,
+                compile_commands_config,
+                cache_dir=self.cache_manager.cache_dir,
+                cache_backend=self.cache_manager.backend,
             )
 
         # Initialize dependency graph builder and restore header tracking.
