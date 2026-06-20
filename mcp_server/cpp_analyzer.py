@@ -154,13 +154,14 @@ class CppAnalyzer:
 
         diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
         diagnostics.debug(
-            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.execution.use_processes else 'ThreadPool'} with {self.max_workers} workers"
+            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.context.use_processes else 'ThreadPool'} "
+            f"with {self.context.max_workers} workers"
         )
 
         # Print compile commands configuration status
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compile_commands_manager is not None:
-            if self.compile_commands_manager.enabled:
+        if self.compilation_env.compile_commands_manager is not None:
+            if self.compilation_env.compile_commands_manager.enabled:
                 compile_commands_config = self.config.get_compile_commands_config()
                 cc_path = self.project_root / compile_commands_config["compile_commands_path"]
                 if cc_path.exists():
@@ -218,171 +219,6 @@ class CppAnalyzer:
         except (ImportError, AttributeError, TypeError):
             # Suppress errors during shutdown - resources will be cleaned up by OS
             pass
-
-    @property
-    def call_graph_analyzer(self):
-        """Backward-compatible access to the CallGraphAnalyzer instance."""
-        return self.call_graph_service.call_graph_analyzer
-
-    @call_graph_analyzer.setter
-    def call_graph_analyzer(self, value):
-        """Allow resetting the CallGraphAnalyzer (used by worker processes)."""
-        self.call_graph_service.call_graph_analyzer = value
-
-    @property
-    def dependency_graph(self):
-        """Backward-compatible access to the DependencyGraphBuilder."""
-        return self.call_graph_service.dependency_graph
-
-    @property
-    def class_index(self):
-        """Backward-compatible access to the class index."""
-        return self.symbol_store.class_index
-
-    @property
-    def function_index(self):
-        """Backward-compatible access to the function index."""
-        return self.symbol_store.function_index
-
-    @property
-    def file_index(self):
-        """Backward-compatible access to the file index."""
-        return self.symbol_store.file_index
-
-    @property
-    def usr_index(self):
-        """Backward-compatible access to the USR index."""
-        return self.symbol_store.usr_index
-
-    @property
-    def file_hashes(self):
-        """Backward-compatible access to file hashes."""
-        return self.symbol_store.file_hashes
-
-    @property
-    def indexed_file_count(self):
-        """Backward-compatible access to indexed file count."""
-        return self.symbol_store.indexed_file_count
-
-    @indexed_file_count.setter
-    def indexed_file_count(self, value):
-        """Allow setting indexed file count (used by finalize_indexing)."""
-        self.symbol_store.indexed_file_count = value
-
-    @property
-    def compile_commands_manager(self):
-        """Backward-compatible access to the compile commands manager."""
-        return self.compilation_env.compile_commands_manager
-
-    @property
-    def file_scanner(self):
-        """Backward-compatible access to the file scanner."""
-        return self.compilation_env.file_scanner
-
-    @property
-    def include_dependencies(self):
-        """Backward-compatible access to include_dependencies setting."""
-        return self.compilation_env.include_dependencies
-
-    @include_dependencies.setter
-    def include_dependencies(self, value):
-        """Allow setting include_dependencies (used by worker processes)."""
-        self.compilation_env.include_dependencies = value
-
-    @property
-    def max_parse_retries(self):
-        """Backward-compatible access to max_parse_retries setting."""
-        return self.compilation_env.max_parse_retries
-
-    @property
-    def _provided_compile_args(self):
-        """Backward-compatible access to precomputed compile args."""
-        return self.compilation_env._provided_compile_args
-
-    @_provided_compile_args.setter
-    def _provided_compile_args(self, value):
-        """Allow setting precomputed compile args (used by worker processes)."""
-        self.compilation_env._provided_compile_args = value
-
-    @property
-    def cache_loaded(self):
-        """Backward-compatible access to cache_loaded flag."""
-        return self.cache_orchestrator.cache_loaded
-
-    @property
-    def last_index_time(self):
-        """Backward-compatible access to last_index_time."""
-        return self.cache_orchestrator.last_index_time
-
-    @last_index_time.setter
-    def last_index_time(self, value):
-        """Allow setting last_index_time."""
-        self.cache_orchestrator.last_index_time = value
-
-    @property
-    def compile_commands_hash(self):
-        """Backward-compatible access to compile_commands_hash."""
-        return self.cache_orchestrator.compile_commands_hash
-
-    @compile_commands_hash.setter
-    def compile_commands_hash(self, value):
-        """Allow setting compile_commands_hash."""
-        self.cache_orchestrator.compile_commands_hash = value
-
-    @property
-    def header_tracker(self):
-        """Backward-compatible access to header_tracker."""
-        return self.cache_orchestrator.header_tracker
-
-    @property
-    def search_engine(self):
-        """Backward-compatible access to search_engine."""
-        return self.query_engine.search_engine
-
-    @property
-    def smart_fallback(self):
-        """Backward-compatible access to smart_fallback."""
-        return self.query_engine.smart_fallback
-
-    @property
-    def _last_fallback(self):
-        """Backward-compatible access to _last_fallback."""
-        return self.query_engine._last_fallback
-
-    @_last_fallback.setter
-    def _last_fallback(self, value):
-        """Allow setting _last_fallback."""
-        self.query_engine._last_fallback = value
-
-    @property
-    def max_workers(self):
-        """Backward-compatible access to max_workers."""
-        return self.execution.max_workers
-
-    @property
-    def use_processes(self):
-        """Backward-compatible access to use_processes."""
-        return self.execution.use_processes
-
-    @property
-    def worker_pool(self):
-        """Backward-compatible access to worker_pool."""
-        return self.execution.worker_pool
-
-    @property
-    def index_lock(self):
-        """Backward-compatible access to index_lock."""
-        return self.concurrency.index_lock
-
-    @property
-    def _needs_locking(self):
-        """Backward-compatible access to _needs_locking."""
-        return self.concurrency._needs_locking
-
-    @_needs_locking.setter
-    def _needs_locking(self, value):
-        """Allow setting _needs_locking (used by worker processes)."""
-        self.concurrency._needs_locking = value
 
     def _get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection (delegates to cache_orchestrator)."""
@@ -675,8 +511,8 @@ class CppAnalyzer:
             Number of files refreshed
         """
         return self.refresh_pipeline.refresh_if_needed(
-            self.include_dependencies,
-            self.compile_commands_manager,
+            self.compilation_env.include_dependencies,
+            self.compilation_env.compile_commands_manager,
             progress_callback,
             wait_for_tools_callback,
         )

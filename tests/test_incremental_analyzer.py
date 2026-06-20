@@ -47,11 +47,11 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.project_root = self.test_dir
         self.analyzer.config = Mock()
         self.analyzer.cache_manager = Mock()
-        self.analyzer.file_scanner = Mock()
-        self.analyzer.header_tracker = Mock()
-        self.analyzer.dependency_graph = Mock()
-        self.analyzer.compile_commands_manager = Mock()
-        self.analyzer.compile_commands_hash = ""
+        self.analyzer.context.file_scanner = Mock()
+        self.analyzer.context.cache_orchestrator.header_tracker = Mock()
+        self.analyzer.context.call_graph_service.dependency_graph = Mock()
+        self.analyzer.context.compile_commands_manager = Mock()
+        self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
 
         # Mock config
         self.analyzer.config.get_compile_commands_config.return_value = {
@@ -113,7 +113,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # Mock dependency graph to return dependents
         dependent1 = str(self.test_dir / "main.cpp")
         dependent2 = str(self.test_dir / "test.cpp")
-        self.analyzer.dependency_graph.find_transitive_dependents.return_value = {
+        self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.return_value = {
             dependent1,
             dependent2,
         }
@@ -125,7 +125,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
             # Should re-analyze both dependents
             self.assertEqual(result.files_analyzed, 2)
-            self.analyzer.dependency_graph.find_transitive_dependents.assert_called_once_with(
+            self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.assert_called_once_with(
                 header_file
             )
 
@@ -168,7 +168,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             self.analyzer.cache_manager.backend.remove_file_cache.assert_called_once_with(
                 removed_file
             )
-            self.analyzer.dependency_graph.remove_file_dependencies.assert_called_once_with(
+            self.analyzer.context.call_graph_service.dependency_graph.remove_file_dependencies.assert_called_once_with(
                 removed_file
             )
 
@@ -197,8 +197,8 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         mock_command_map.__iter__ = lambda x: iter(new_commands)
         mock_command_map.__getitem__ = lambda x, key: new_commands[key]
 
-        self.analyzer.compile_commands_manager.file_to_command_map = mock_command_map
-        self.analyzer.compile_commands_manager._load_compile_commands = Mock()
+        self.analyzer.context.compile_commands_manager.file_to_command_map = mock_command_map
+        self.analyzer.context.compile_commands_manager._load_compile_commands = Mock()
 
         # Mock the differ
         with patch("mcp_server.incremental_analyzer.CompileCommandsDiffer") as mock_differ_class:
@@ -235,7 +235,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # Mock dependency graph
         dependent1 = str(self.test_dir / "test1.cpp")
         dependent2 = str(self.test_dir / "test2.cpp")
-        self.analyzer.dependency_graph.find_transitive_dependents.return_value = {
+        self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.return_value = {
             dependent1,
             dependent2,
         }
@@ -256,7 +256,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
     def test_handle_header_change_without_dependency_graph(self):
         """Test header change handling when no dependency graph available."""
         # Disable dependency graph
-        self.analyzer.dependency_graph = None
+        self.analyzer.context.call_graph_service.dependency_graph = None
 
         changeset = ChangeSet()
         header_file = str(self.test_dir / "utils.h")
@@ -305,7 +305,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.incremental._remove_file(removed_file)
 
         # Verify it still tried dependency graph removal
-        self.analyzer.dependency_graph.remove_file_dependencies.assert_called_once_with(
+        self.analyzer.context.call_graph_service.dependency_graph.remove_file_dependencies.assert_called_once_with(
             removed_file
         )
 
@@ -316,7 +316,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         changeset.modified_headers = {header_file}
 
         # Mock dependency graph to return empty set
-        self.analyzer.dependency_graph.find_transitive_dependents.return_value = set()
+        self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.return_value = set()
 
         with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
@@ -324,7 +324,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             self.incremental.perform_incremental_analysis()
 
             # Verify header tracker was invalidated
-            self.analyzer.header_tracker.invalidate_header.assert_called_once_with(header_file)
+            self.analyzer.context.cache_orchestrator.header_tracker.invalidate_header.assert_called_once_with(header_file)
 
     def test_compile_commands_hash_updated(self):
         """Test compile_commands_hash is updated after change."""
@@ -336,7 +336,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         cc_file.write_text("[]")
 
         # Mock empty commands
-        self.analyzer.compile_commands_manager.file_to_command_map = {}
+        self.analyzer.context.compile_commands_manager.file_to_command_map = {}
 
         # Mock _get_file_hash
         self.analyzer._get_file_hash = Mock(return_value="new_hash")
@@ -352,7 +352,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
                 self.incremental.perform_incremental_analysis()
 
                 # Verify hash was updated
-                self.assertEqual(self.analyzer.compile_commands_hash, "new_hash")
+                self.assertEqual(self.analyzer.context.cache_orchestrator.compile_commands_hash, "new_hash")
 
 
 if __name__ == "__main__":

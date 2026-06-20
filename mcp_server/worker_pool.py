@@ -61,15 +61,15 @@ def _process_file_worker(args_tuple):
         atexit.register(_cleanup_worker_analyzer)
 
     # Set per-call parameters
-    _worker_analyzer.include_dependencies = include_dependencies
+    _worker_analyzer.context.compilation_env.include_dependencies = include_dependencies
     # Reset stateful components to prevent data leakage between files
-    _worker_analyzer.call_graph_analyzer = CallGraphAnalyzer()
+    _worker_analyzer.context.call_graph_service.call_graph_analyzer = CallGraphAnalyzer()
 
     # Mark this instance as isolated (no shared memory, locks not needed)
-    _worker_analyzer._needs_locking = False
+    _worker_analyzer.context.concurrency._needs_locking = False
 
     # Set precomputed compile args
-    _worker_analyzer._provided_compile_args = compile_args
+    _worker_analyzer.context.compilation_env._provided_compile_args = compile_args
 
     # Parse the file
     success, was_cached = _worker_analyzer.index_file(file_path, force)
@@ -79,21 +79,25 @@ def _process_file_worker(args_tuple):
     call_sites = []
     processed_headers = {}
     if success:
-        for fpath, file_symbols in _worker_analyzer.file_index.items():
+        for fpath, file_symbols in _worker_analyzer.context.symbol_store.file_index.items():
             symbols.extend(file_symbols)
 
         # Extract call sites collected during this file's parsing
-        call_sites = _worker_analyzer.call_graph_analyzer.get_all_call_sites()
+        call_sites = (
+            _worker_analyzer.context.call_graph_service.call_graph_analyzer.get_all_call_sites()
+        )
 
         # Extract header tracking information
-        processed_headers = _worker_analyzer.header_tracker.get_processed_headers()
+        processed_headers = (
+            _worker_analyzer.context.cache_orchestrator.header_tracker.get_processed_headers()
+        )
 
     # Clean up worker indexes to prevent memory leaks (Issue #14)
-    _worker_analyzer.file_index.clear()
-    _worker_analyzer.class_index.clear()
-    _worker_analyzer.function_index.clear()
-    _worker_analyzer.usr_index.clear()
-    _worker_analyzer.file_hashes.clear()
+    _worker_analyzer.context.symbol_store.file_index.clear()
+    _worker_analyzer.context.symbol_store.class_index.clear()
+    _worker_analyzer.context.symbol_store.function_index.clear()
+    _worker_analyzer.context.symbol_store.usr_index.clear()
+    _worker_analyzer.context.symbol_store.file_hashes.clear()
 
     # Force garbage collection to free TranslationUnit objects
     gc.collect()
