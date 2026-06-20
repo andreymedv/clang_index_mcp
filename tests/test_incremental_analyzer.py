@@ -52,6 +52,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.context.cache_orchestrator.invalidate_header = Mock()
         self.analyzer.context.cache_orchestrator.clear_header_tracker = Mock()
         self.analyzer.context.cache_orchestrator.mark_header_completed = Mock()
+        self.analyzer.context.cache_orchestrator.remove_deleted_file = Mock()
         self.analyzer.context.call_graph_service.dependency_graph = Mock()
         self.analyzer.context.compile_commands_manager = Mock()
         self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
@@ -175,10 +176,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
             # Should remove file from cache and dependencies
             self.assertEqual(result.files_removed, 1)
-            self.analyzer.cache_manager.backend.remove_file_cache.assert_called_once_with(
-                removed_file
-            )
-            self.analyzer.context.call_graph_service.dependency_graph.remove_file_dependencies.assert_called_once_with(
+            self.analyzer.context.cache_orchestrator.remove_deleted_file.assert_called_once_with(
                 removed_file
             )
 
@@ -305,16 +303,18 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
     def test_remove_file_handles_exceptions(self):
         """Test _remove_file handles exceptions gracefully."""
-        # Mock remove to raise exception
-        self.analyzer.cache_manager.backend.remove_file_cache.side_effect = Exception("Test error")
+        # Mock orchestrator cleanup to raise exception
+        self.analyzer.context.cache_orchestrator.remove_deleted_file.side_effect = Exception(
+            "Test error"
+        )
 
         removed_file = str(self.test_dir / "deleted.cpp")
 
         # Should not crash
         self.incremental._remove_file(removed_file)
 
-        # Verify it still tried dependency graph removal
-        self.analyzer.context.call_graph_service.dependency_graph.remove_file_dependencies.assert_called_once_with(
+        # Verify the orchestrator was invoked
+        self.analyzer.context.cache_orchestrator.remove_deleted_file.assert_called_once_with(
             removed_file
         )
 
