@@ -125,10 +125,10 @@ class TestBulkSymbolWrites(unittest.TestCase):
             analyzer = CppAnalyzer(tmpdir)
 
             # Initialize buffers
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Check buffers exist and are empty
-            symbols, calls, aliases = analyzer._get_thread_local_buffers()
+            symbols, calls, aliases = analyzer.context.concurrency.get_thread_local_buffers()
             self.assertIsInstance(symbols, list)
             self.assertIsInstance(calls, list)
             self.assertIsInstance(aliases, list)
@@ -140,16 +140,16 @@ class TestBulkSymbolWrites(unittest.TestCase):
         """Bulk write with empty buffers should return 0"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
-            result = analyzer._bulk_write_symbols()
+            result = analyzer.context.symbol_store._bulk_write_symbols()
             self.assertEqual(result, 0, "Should return 0 for empty buffers")
 
     def test_bulk_write_adds_symbols(self):
         """Bulk write should add symbols to indexes"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Create test symbols
             test_symbol = SymbolInfo(
@@ -163,11 +163,11 @@ class TestBulkSymbolWrites(unittest.TestCase):
             )
 
             # Add to buffer
-            symbols, _, _ = analyzer._get_thread_local_buffers()
+            symbols, _, _ = analyzer.context.concurrency.get_thread_local_buffers()
             symbols.append(test_symbol)
 
             # Bulk write
-            added = analyzer._bulk_write_symbols()
+            added = analyzer.context.symbol_store._bulk_write_symbols()
 
             # Verify
             self.assertEqual(added, 1, "Should add 1 symbol")
@@ -178,7 +178,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
         """Bulk write should deduplicate symbols with same USR"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer._init_thread_local_buffers()
+            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Create duplicate symbols
             symbol1 = SymbolInfo(
@@ -202,12 +202,12 @@ class TestBulkSymbolWrites(unittest.TestCase):
             )
 
             # Add both to buffer
-            symbols, _, _ = analyzer._get_thread_local_buffers()
+            symbols, _, _ = analyzer.context.concurrency.get_thread_local_buffers()
             symbols.append(symbol1)
             symbols.append(symbol2)
 
             # Bulk write
-            added = analyzer._bulk_write_symbols()
+            added = analyzer.context.symbol_store._bulk_write_symbols()
 
             # Should only add first symbol, deduplicate second
             self.assertEqual(added, 1, "Should deduplicate and add only 1 symbol")
@@ -372,8 +372,8 @@ class TestThreadLocalBuffers(unittest.TestCase):
             results = {}
 
             def worker(thread_id):
-                analyzer._init_thread_local_buffers()
-                symbols, calls, aliases = analyzer._get_thread_local_buffers()
+                analyzer.context.concurrency.init_thread_local_buffers()
+                symbols, calls, aliases = analyzer.context.concurrency.get_thread_local_buffers()
                 # Add unique symbol to this thread's buffer
                 symbols.append(
                     SymbolInfo(

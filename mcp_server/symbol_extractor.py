@@ -1142,7 +1142,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process template classes (generic and partial specializations)."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        symbols_buffer, _, _ = self.context.concurrency.get_thread_local_buffers()
         kind = cursor.kind
 
         if cursor.spelling and should_extract:
@@ -1207,7 +1207,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process classes and structs."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        symbols_buffer, _, _ = self.context.concurrency.get_thread_local_buffers()
         kind = cursor.kind
 
         if cursor.spelling and should_extract:
@@ -1277,7 +1277,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process template functions."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        symbols_buffer, _, _ = self.context.concurrency.get_thread_local_buffers()
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
             qualified_name = common["qualified_name"]
@@ -1359,7 +1359,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process functions and methods."""
-        symbols_buffer, _, _ = self._get_thread_local_buffers()
+        symbols_buffer, _, _ = self.context.concurrency.get_thread_local_buffers()
         kind = cursor.kind
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
@@ -1448,7 +1448,7 @@ class SymbolExtractor:
         parent_function_usr: str,
     ) -> None:
         """Process type aliases."""
-        _, _, aliases_buffer = self._get_thread_local_buffers()
+        _, _, aliases_buffer = self.context.concurrency.get_thread_local_buffers()
         kind = cursor.kind
         if cursor.spelling and should_extract:
             try:
@@ -1500,7 +1500,7 @@ class SymbolExtractor:
 
     def _handle_call_cursor(self, cursor: Any, parent_function_usr: str) -> None:
         """Process function calls within function bodies."""
-        _, calls_buffer, _ = self._get_thread_local_buffers()
+        _, calls_buffer, _ = self.context.concurrency.get_thread_local_buffers()
         referenced = cursor.referenced
         if referenced and referenced.get_usr():
             called_usr = referenced.get_usr()
@@ -1588,7 +1588,7 @@ class SymbolExtractor:
                 skipped_headers.add(file_path)
                 return False
 
-        self._init_thread_local_buffers()
+        self.context.concurrency.init_thread_local_buffers()
         self._process_cursor(tu.cursor, should_extract_from_file)
         self.symbol_store._bulk_write_symbols()
 

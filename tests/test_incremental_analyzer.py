@@ -339,7 +339,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.analyzer.context.compile_commands_manager.file_to_command_map = {}
 
         # Mock _get_file_hash
-        self.analyzer._get_file_hash = Mock(return_value="new_hash")
+        self.analyzer.context.cache_orchestrator._get_file_hash = Mock(return_value="new_hash")
 
         with patch("mcp_server.incremental_analyzer.CompileCommandsDiffer") as mock_differ_class:
             mock_differ = Mock()

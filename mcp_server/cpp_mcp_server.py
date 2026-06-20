@@ -410,7 +410,9 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
             # FAST PATH: Check if cache exists and is valid
             # If so, load directly without calling index_project
             loop = asyncio.get_event_loop()
-            cache_valid = await loop.run_in_executor(None, analyzer._load_cache)
+            cache_valid = await loop.run_in_executor(
+                None, analyzer.context.cache_orchestrator._load_cache
+            )
 
             if cache_valid:
                 # Cache loaded successfully - skip indexing
@@ -1198,7 +1200,7 @@ def _try_resume_session(saved_session):
         new_analyzer = CppAnalyzer(project_path, config_file=config_file)
         new_background_indexer = BackgroundIndexer(new_analyzer, state_manager)
 
-        cache_loaded = new_analyzer._load_cache()
+        cache_loaded = new_analyzer.context.cache_orchestrator._load_cache()
         if cache_loaded:
             diagnostics.info(
                 f"Session restored from cache: {len(new_analyzer.context.symbol_store.class_index)} classes, "

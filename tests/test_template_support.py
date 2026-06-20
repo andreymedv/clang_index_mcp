@@ -86,7 +86,7 @@ class TestTemplateIndexing:
         assert len(regular_classes) > 0, "Should find explicit specializations"
 
         # Verify we can find the specialization via _find_template_specializations
-        specs = analyzer._find_template_specializations("Container")
+        specs = analyzer.context.symbol_store.find_template_specializations("Container")
         class_specs = [s for s in specs if s.kind == "class"]
         assert len(class_specs) > 0, "Should find explicit specialization"
 
@@ -132,7 +132,7 @@ class TestTemplateSpecializationDiscovery:
 
     def test_find_container_specializations(self, analyzer):
         """Test finding all Container specializations."""
-        specs = analyzer._find_template_specializations("Container")
+        specs = analyzer.context.symbol_store.find_template_specializations("Container")
 
         assert len(specs) >= 3, "Should find template, explicit spec, and partial spec"
 
@@ -144,7 +144,7 @@ class TestTemplateSpecializationDiscovery:
 
     def test_find_pair_specializations(self, analyzer):
         """Test finding Pair template specializations."""
-        specs = analyzer._find_template_specializations("Pair")
+        specs = analyzer.context.symbol_store.find_template_specializations("Pair")
 
         assert len(specs) >= 2, "Should find template and explicit specialization"
 
@@ -154,7 +154,7 @@ class TestTemplateSpecializationDiscovery:
 
     def test_find_base_specializations(self, analyzer):
         """Test finding Base CRTP template specializations."""
-        specs = analyzer._find_template_specializations("Base")
+        specs = analyzer.context.symbol_store.find_template_specializations("Base")
 
         # Base is a template with usage creating implicit specializations
         # but those aren't visible as top-level symbols in libclang
@@ -164,7 +164,7 @@ class TestTemplateSpecializationDiscovery:
 
     def test_find_nonexistent_template(self, analyzer):
         """Test querying non-existent template returns empty list."""
-        specs = analyzer._find_template_specializations("NonExistent")
+        specs = analyzer.context.symbol_store.find_template_specializations("NonExistent")
 
         assert specs == [], "Should return empty list for non-existent template"
 
@@ -251,34 +251,34 @@ class TestUSRPatternExtraction:
     def test_extract_template_usr(self, analyzer):
         """Test extracting name from template USR."""
         usr = "c:@ST>1#T@Container"
-        name = analyzer._extract_template_base_name_from_usr(usr)
+        name = analyzer.context.symbol_store.extract_template_base_name_from_usr(usr)
 
         assert name == "Container", f"Should extract 'Container', got {name}"
 
     def test_extract_specialization_usr(self, analyzer):
         """Test extracting name from specialization USR."""
         usr = "c:@S@Container>#I"
-        name = analyzer._extract_template_base_name_from_usr(usr)
+        name = analyzer.context.symbol_store.extract_template_base_name_from_usr(usr)
 
         assert name == "Container", f"Should extract 'Container', got {name}"
 
     def test_extract_partial_specialization_usr(self, analyzer):
         """Test extracting name from partial specialization USR."""
         usr = "c:@SP>1#T@Container>#*t0.0"
-        name = analyzer._extract_template_base_name_from_usr(usr)
+        name = analyzer.context.symbol_store.extract_template_base_name_from_usr(usr)
 
         assert name == "Container", f"Should extract 'Container', got {name}"
 
     def test_extract_from_invalid_usr(self, analyzer):
         """Test handling of invalid/non-template USR."""
         usr = "invalid"
-        name = analyzer._extract_template_base_name_from_usr(usr)
+        name = analyzer.context.symbol_store.extract_template_base_name_from_usr(usr)
 
         assert name is None, "Should return None for invalid USR"
 
     def test_extract_from_empty_usr(self, analyzer):
         """Test handling of empty USR."""
-        name = analyzer._extract_template_base_name_from_usr("")
+        name = analyzer.context.symbol_store.extract_template_base_name_from_usr("")
 
         assert name is None, "Should return None for empty USR"
 
@@ -1423,7 +1423,7 @@ class TestBaseClassResolutionFromIndex:
         # actually parsing, so we'll test the method directly with edge cases)
 
         # Empty primary_usr should return empty list
-        result = param_inheritance_analyzer._resolve_instantiation_base_classes(
+        result = param_inheritance_analyzer.context.symbol_extractor._resolve_instantiation_base_classes(
             cursor=None, primary_template_usr=None  # Not used when primary_usr is None
         )
         assert result == [], "Should return empty list when primary_usr is None"
