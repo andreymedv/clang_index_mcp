@@ -128,7 +128,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[("int", "x"), ("const std::string &", "y")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void processData(int x, const std::string & y)"
 
     def test_zero_arg_function(self, analyzer):
@@ -138,7 +138,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void doSomething()"
 
     def test_const_method(self, analyzer):
@@ -148,7 +148,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="int",
             args=[],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "int getValue() const"
 
     def test_template_function_fallback(self, analyzer):
@@ -159,7 +159,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[],  # Templates often return empty args
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void convert(int, double)"
 
     def test_function_pointer_param(self, analyzer):
@@ -170,7 +170,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[("void (*)(int)", "callback"), ("int", "priority")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void registerCallback(void (*)(int) callback, int priority)"
 
     def test_unnamed_params(self, analyzer):
@@ -181,7 +181,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="void",
             args=[("int", ""), ("double", "")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void process(int, double)"
 
     def test_no_cursor_type(self, analyzer):
@@ -189,7 +189,7 @@ class TestBuildHumanReadableSignature:
         cursor = Mock()
         cursor.spelling = "testFunc"
         cursor.type = None
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == ""
 
     def test_reference_and_pointer_params(self, analyzer):
@@ -199,7 +199,7 @@ class TestBuildHumanReadableSignature:
             result_type_spelling="bool",
             args=[("int *", "data"), ("const std::string &", "name")],
         )
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "bool transfer(int * data, const std::string & name)"
 
     def test_no_return_type(self, analyzer):
@@ -212,7 +212,7 @@ class TestBuildHumanReadableSignature:
         )
         # When result_type is empty string, we still get "void" prefix
         # because result_type_spelling returns "" which is falsy
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "MyClass(int value)"
 
     def test_get_arguments_raises_exception(self, analyzer):
@@ -223,7 +223,7 @@ class TestBuildHumanReadableSignature:
         cursor.result_type.spelling = "void"
         cursor.get_arguments = Mock(side_effect=Exception("not available"))
 
-        result = analyzer._build_human_readable_signature(cursor)
+        result = analyzer.context.symbol_extractor._build_human_readable_signature(cursor)
         assert result == "void testFunc(int, double)"
 
 

@@ -59,7 +59,7 @@ int main() {
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Verify compile commands are enabled
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats.get("enabled", False), "Compile commands should be enabled"
         assert stats.get("compile_commands_count", 0) > 0, "Should have loaded compile commands"
 
@@ -154,12 +154,12 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Verify compile commands are loaded
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats.get("enabled", False), "Compile commands should be enabled"
         assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # CRITICAL TEST: Verify that _find_cpp_files returns ONLY files from compile_commands.json
-        files_to_index = analyzer._find_cpp_files(include_dependencies=True)
+        files_to_index = analyzer.context.compilation_env._find_cpp_files(include_dependencies=True)
         assert (
             len(files_to_index) == 1
         ), f"Should find exactly 1 file from compile_commands.json, found {len(files_to_index)}"
@@ -231,7 +231,7 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Verify compile commands are loaded
-        stats = analyzer.get_compile_commands_stats()
+        stats = analyzer.context.compilation_env.get_compile_commands_stats()
         assert stats.get("enabled", False), "Compile commands should be enabled"
         assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 

@@ -108,7 +108,7 @@ class TestSystemHeaderDiagnosticFiltering:
 
         tu.diagnostics = [system_diag, project_diag, warning_diag]
 
-        errors, warnings = analyzer._extract_diagnostics(tu)
+        errors, warnings = analyzer.context.clang_parser._extract_diagnostics(tu)
 
         # Only project error should be in errors
         assert len(errors) == 1
@@ -147,7 +147,7 @@ class TestSystemHeaderDiagnosticFiltering:
 
         tu.diagnostics = [arm_acle_diag, arm_neon_diag]
 
-        errors, warnings = analyzer._extract_diagnostics(tu)
+        errors, warnings = analyzer.context.clang_parser._extract_diagnostics(tu)
 
         # No errors should be reported (all filtered as system header errors)
         assert len(errors) == 0
@@ -176,7 +176,7 @@ class TestUnknownCursorKindHandling:
 
         # Should not raise exception - the ValueError should be caught internally
         # and processing should continue with children
-        analyzer._process_cursor(cursor)
+        analyzer.context.symbol_extractor._process_cursor(cursor)
 
         # Verify get_children was called (to process children after error)
         cursor.get_children.assert_called()
@@ -231,7 +231,7 @@ class TestUnknownCursorKindHandling:
         parent_cursor.get_children = Mock(return_value=[child_cursor])
 
         # Processing should handle parent gracefully and still process children
-        analyzer._process_cursor(parent_cursor)
+        analyzer.context.symbol_extractor._process_cursor(parent_cursor)
 
         # Verify that children were requested (parent error was handled)
         parent_cursor.get_children.assert_called()

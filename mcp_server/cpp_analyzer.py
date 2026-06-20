@@ -6,7 +6,7 @@ It's slower than the C++ implementation but more reliable and easier to debug.
 """
 
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from .cache_orchestrator import CacheOrchestrator
 from .call_graph_service import CallGraphService
@@ -22,7 +22,6 @@ from .query_engine import QueryEngine
 from .refresh_pipeline import RefreshPipeline
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
-from .symbol_info import SymbolInfo
 
 # Handle both package and script imports
 try:
@@ -31,7 +30,7 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 try:
-    from clang.cindex import Index
+    from clang.cindex import Index  # noqa: F401
 except ImportError:
     diagnostics.fatal("clang package not found. Install with: pip install libclang")
     sys.exit(1)
@@ -220,199 +219,9 @@ class CppAnalyzer:
             # Suppress errors during shutdown - resources will be cleaned up by OS
             pass
 
-    def _get_file_hash(self, file_path: str) -> str:
-        """Get hash of file contents for change detection (delegates to cache_orchestrator)."""
-        return self.cache_orchestrator._get_file_hash(file_path)
-
-    def _calculate_compile_commands_hash(self):
-        """Calculate and store MD5 hash of compile_commands.json (delegates to cache_orchestrator)."""
-        self.cache_orchestrator._calculate_compile_commands_hash()
-
-    def _restore_or_reset_header_tracking(self):
-        """Restore or reset header tracking (delegates to cache_orchestrator)."""
-        self.cache_orchestrator._restore_or_reset_header_tracking()
-
-    def _save_header_tracking(self):
-        """Save header tracking state (delegates to cache_orchestrator)."""
-        self.cache_orchestrator._save_header_tracking()
-
-    def _save_file_cache(
-        self,
-        file_path: str,
-        symbols: List[SymbolInfo],
-        file_hash: str,
-        compile_args_hash: Optional[str] = None,
-        success: bool = True,
-        error_message: Optional[str] = None,
-        retry_count: int = 0,
-    ):
-        """Save parsed symbols for a single file to cache (delegates to cache_orchestrator)."""
-        self.cache_orchestrator._save_file_cache(
-            file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
-        )
-
-    def _load_file_cache(
-        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Load cached data for a file (delegates to cache_orchestrator)."""
-        return self.cache_orchestrator._load_file_cache(file_path, current_hash, compile_args_hash)
-
-    def _try_load_cached_index(
-        self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
-    ) -> Optional[Tuple[bool, bool]]:
-        """Try to load index from per-file cache (delegates to cache_orchestrator)."""
-        return self.cache_orchestrator._try_load_cached_index(
-            file_path, current_hash, compile_args_hash, force
-        )
-
-    def _handle_cache_initial_index(self, force: bool) -> Optional[int]:
-        """Try to load from cache if not forcing (delegates to cache_orchestrator)."""
-        return self.cache_orchestrator._handle_cache_initial_index(force)
-
-    def _save_cache(self):
-        """Save index to cache file (delegates to cache_orchestrator)."""
-        self.cache_orchestrator._save_cache()
-
-    def _load_cache(self) -> bool:
-        """Load index from cache file (delegates to cache_orchestrator)."""
-        return self.cache_orchestrator._load_cache()
-
-    def _save_progress_summary(
-        self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0
-    ):
-        """Save a summary of indexing progress (delegates to cache_orchestrator)."""
-        self.cache_orchestrator._save_progress_summary(
-            indexed_count, total_files, cache_hits, failed_count
-        )
-
-    def _is_project_file(self, file_path: str) -> bool:
-        """Check if a file is a project file (delegates to compilation_env)."""
-        return self.compilation_env._is_project_file(file_path)
-
-    def _should_skip_file(self, file_path: str) -> bool:
-        """Check if file should be skipped (delegates to compilation_env)."""
-        return self.compilation_env._should_skip_file(file_path)
-
     def get_compile_commands_stats(self) -> Dict[str, Any]:
         """Get compile commands statistics (delegates to compilation_env)."""
         return self.compilation_env.get_compile_commands_stats()
-
-    def _find_cpp_files(self, include_dependencies: bool = False) -> List[str]:
-        """Find all C++ files in the project (delegates to compilation_env)."""
-        return self.compilation_env._find_cpp_files(include_dependencies)
-
-    def _extract_template_call_info(self, referenced, called_usr: str):
-        """Extract display_name and project-type template args from a template call."""
-        return self.symbol_extractor._extract_template_call_info(referenced, called_usr)
-
-    def _get_lock(self):
-        """
-        Return appropriate lock based on execution context.
-
-        Returns:
-            - self.index_lock: When locks are needed (ThreadPoolExecutor or shared instance)
-            - self._no_op_lock: When locks are unnecessary (ProcessPoolExecutor worker)
-
-        Performance optimization:
-        In ProcessPoolExecutor mode, each worker process has isolated memory,
-        so locking is unnecessary overhead. This method returns a no-op lock
-        to skip synchronization in that case while maintaining correctness
-        in ThreadPoolExecutor mode where memory is actually shared.
-        """
-        return self.concurrency.get_lock()
-
-    def _get_thread_index(self) -> Index:
-        """Return a thread-local libclang Index instance."""
-        return self.clang_parser._get_thread_index()
-
-    def _init_thread_local_buffers(self):
-        """Initialize thread-local buffers for collecting symbols during parsing."""
-        self.concurrency.init_thread_local_buffers()
-
-    def _get_thread_local_buffers(self):
-        """Get thread-local buffers, initializing if needed."""
-        return self.concurrency.get_thread_local_buffers()
-
-    def _bulk_write_symbols(self):
-        """
-        Bulk write collected symbols to shared indexes with a single lock acquisition.
-
-        Delegates to SymbolIndexStore; kept as a backward-compatible shim on
-        CppAnalyzer.
-        """
-        return self.symbol_store._bulk_write_symbols()
-
-    def _extract_diagnostics(self, tu: Any) -> Tuple[List[Any], List[Any]]:
-        """Extract diagnostics from translation unit."""
-        return self.clang_parser._extract_diagnostics(tu)
-
-    def _build_human_readable_signature(self, cursor: Any) -> str:
-        """Build human readable signature."""
-        return self.symbol_extractor._build_human_readable_signature(cursor)
-
-    def _get_base_classes(self, cursor: Any) -> List[str]:
-        """Get base classes for a class/struct."""
-        return self.symbol_extractor._get_base_classes(cursor)
-
-    def _extract_documentation(self, cursor: Any) -> dict:
-        """Extract documentation."""
-        return self.symbol_extractor._extract_documentation(cursor)
-
-    def _get_return_type(self, cursor: Any) -> str:
-        """Get return type."""
-        return self.symbol_extractor._get_return_type(cursor)
-
-    def _detect_template_specialization(self, cursor: Any) -> bool:
-        """Detect if cursor is a template specialization."""
-        return self.symbol_extractor._detect_template_specialization(cursor)
-
-    def _extract_alias_info(self, cursor: Any) -> dict:
-        """Extract type alias info."""
-        return self.symbol_extractor._extract_alias_info(cursor)
-
-    def _get_primary_template_usr(self, cursor: Any) -> Optional[str]:
-        """Get primary template USR."""
-        return self.symbol_extractor._get_primary_template_usr(cursor)
-
-    def _resolve_instantiation_base_classes(
-        self, cursor: Any, primary_template_usr: str
-    ) -> List[str]:
-        """Resolve base classes for an instantiation."""
-        return self.symbol_extractor._resolve_instantiation_base_classes(
-            cursor, primary_template_usr
-        )
-
-    def _process_deferred_instantiation(self, info: SymbolInfo) -> bool:
-        """Process a single deferred instantiation and return True if resolved."""
-        return self.symbol_extractor._process_deferred_instantiation(info)
-
-    def _resolve_deferred_instantiation_bases(self) -> int:
-        """Resolve base_classes for template instantiations that couldn't be resolved during parsing."""
-        return self.symbol_extractor._resolve_deferred_instantiation_bases()
-
-    def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
-        """Extract the base template name from a USR (delegates to SymbolIndexStore)."""
-        return SymbolIndexStore.extract_template_base_name_from_usr(usr)
-
-    def _find_template_specializations(self, base_name: str) -> List[SymbolInfo]:
-        """Find all specializations of a template by base name (delegates to SymbolIndexStore)."""
-        return self.symbol_store.find_template_specializations(base_name)
-
-    def _process_cursor(
-        self,
-        cursor: Any,
-        should_extract_from_file: Optional[Callable[[str], bool]] = None,
-        parent_class: str = "",
-        parent_function_usr: str = "",
-    ) -> None:
-        """Process a cursor and its children, extracting symbols based on file filter."""
-        self.symbol_extractor._process_cursor(
-            cursor, should_extract_from_file, parent_class, parent_function_usr
-        )
-
-    def _index_translation_unit(self, tu, source_file: str) -> Dict[str, Any]:
-        """Process translation unit, extracting symbols from source and project headers."""
-        return self.symbol_extractor._index_translation_unit(tu, source_file)
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file.
@@ -442,7 +251,7 @@ class CppAnalyzer:
         Returns:
             Number of files indexed
         """
-        self.include_dependencies = include_dependencies
+        self.compilation_env.include_dependencies = include_dependencies
         return self.indexing_orchestrator.index_project(
             include_dependencies,
             force=force,
@@ -659,7 +468,7 @@ if __name__ == "__main__":
     analyzer = CppAnalyzer(".")
 
     # Try to load from cache first
-    if not analyzer._load_cache():
+    if not analyzer.cache_orchestrator._load_cache():
         analyzer.index_project()
 
     stats = analyzer.get_stats()

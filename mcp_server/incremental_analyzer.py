@@ -254,7 +254,7 @@ class IncrementalAnalyzer:
         )
         if cc_path.exists():
             self.analyzer.context.cache_orchestrator.compile_commands_hash = (
-                self.analyzer._get_file_hash(str(cc_path))
+                self.analyzer.context.cache_orchestrator._get_file_hash(str(cc_path))
             )
 
         # Invalidate ALL headers (args changed might affect preprocessing)
@@ -529,7 +529,7 @@ class IncrementalAnalyzer:
                     )
 
             # Update file hash tracking
-            file_hash = self.analyzer._get_file_hash(file_path)
+            file_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
             self.analyzer.context.symbol_store.file_hashes[file_path] = file_hash
         else:
             # ThreadPoolExecutor returns (success, was_cached)

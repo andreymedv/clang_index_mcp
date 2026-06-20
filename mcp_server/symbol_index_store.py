@@ -159,7 +159,7 @@ class SymbolIndexStore:
                 usr_updates[symbol.usr] = symbol
 
         # Apply all updates with a single lock acquisition
-        with self._get_lock():
+        with self.context.concurrency.get_lock():
             # Clear old entries for this file
             self._clear_file_index_entries(file_path)
 
