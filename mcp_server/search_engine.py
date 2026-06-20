@@ -3,7 +3,7 @@
 import json
 import re
 import threading
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from .regex_validator import RegexValidator
 from .search_criteria import SearchCriteria
@@ -14,6 +14,9 @@ from .symbol_info import (
     is_richer_definition,
     omit_empty,
 )
+
+if TYPE_CHECKING:
+    from .symbol_index_store import SymbolIndexStore
 
 
 def _build_function_prototype(info: SymbolInfo) -> Optional[str]:
@@ -132,20 +135,37 @@ def _build_attributes(info: SymbolInfo) -> Optional[List[str]]:
 class SearchEngine:
     """Handles searching for C++ symbols."""
 
+    symbol_store: Optional["SymbolIndexStore"]
+
     def __init__(
         self,
-        class_index: Dict[str, List[SymbolInfo]],
-        function_index: Dict[str, List[SymbolInfo]],
-        file_index: Dict[str, List[SymbolInfo]],
-        usr_index: Dict[str, SymbolInfo],
-        index_lock: threading.RLock,
+        class_index: Optional[Dict[str, List[SymbolInfo]]] = None,
+        function_index: Optional[Dict[str, List[SymbolInfo]]] = None,
+        file_index: Optional[Dict[str, List[SymbolInfo]]] = None,
+        usr_index: Optional[Dict[str, SymbolInfo]] = None,
+        index_lock: Optional[threading.RLock] = None,
         cache_manager=None,  # Phase 1.3: Type Alias Tracking support
+        symbol_store: Optional["SymbolIndexStore"] = None,
     ):
-        self.class_index = class_index
-        self.function_index = function_index
-        self.file_index = file_index
-        self.usr_index = usr_index
-        self.index_lock = index_lock
+        if symbol_store is not None:
+            self.symbol_store = symbol_store
+            self.class_index = symbol_store.class_index
+            self.function_index = symbol_store.function_index
+            self.file_index = symbol_store.file_index
+            self.usr_index = symbol_store.usr_index
+            self.index_lock = index_lock or symbol_store.context.concurrency.index_lock
+        else:
+            assert class_index is not None
+            assert function_index is not None
+            assert file_index is not None
+            assert usr_index is not None
+            assert index_lock is not None
+            self.symbol_store = None
+            self.class_index = class_index
+            self.function_index = function_index
+            self.file_index = file_index
+            self.usr_index = usr_index
+            self.index_lock = index_lock
         self.cache_manager = cache_manager  # Phase 1.3: For alias lookups
 
     def _resolve_specialization_of(self, primary_template_usr: Optional[str]) -> Optional[str]:
@@ -165,9 +185,12 @@ class SearchEngine:
             return None
 
         with self.index_lock:
-            primary_info = self.usr_index.get(primary_template_usr)
+            if self.symbol_store is not None:
+                primary_info = self.symbol_store.get_symbol_by_usr(primary_template_usr)
+            else:
+                primary_info = self.usr_index.get(primary_template_usr)
             if primary_info:
-                return primary_info.qualified_name or primary_info.name
+                return cast(str, primary_info.qualified_name or primary_info.name)
         return None
 
     @staticmethod
