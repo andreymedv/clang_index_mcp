@@ -31,10 +31,38 @@ class TestCompileCommandsDiffer(unittest.TestCase):
         """)
         self.conn.commit()
 
-        # Create mock backend
+        # Create mock backend implementing CacheBackend protocol
         class MockBackend:
             def __init__(self, conn):
                 self.conn = conn
+
+            def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
+                cursor = self.conn.execute(
+                    "UPDATE file_metadata SET compile_args_hash = ? WHERE file_path = ?",
+                    (args_hash, file_path),
+                )
+                if cursor.rowcount == 0:
+                    self.conn.execute(
+                        "INSERT OR IGNORE INTO file_metadata "
+                        "(file_path, file_hash, compile_args_hash, indexed_at, symbol_count) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (file_path, "", args_hash, 0.0, 0),
+                    )
+                self.conn.commit()
+                return True
+
+            def get_compile_args_hash(self, file_path: str):
+                cursor = self.conn.execute(
+                    "SELECT compile_args_hash FROM file_metadata WHERE file_path = ?",
+                    (file_path,),
+                )
+                row = cursor.fetchone()
+                return row[0] if row else None
+
+            def clear_compile_args_hashes(self) -> int:
+                cursor = self.conn.execute("UPDATE file_metadata SET compile_args_hash = NULL")
+                self.conn.commit()
+                return cursor.rowcount or 0
 
         self.backend = MockBackend(self.conn)
         self.manager = CompileCommandsManager(

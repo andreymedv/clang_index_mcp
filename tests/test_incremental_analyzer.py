@@ -71,7 +71,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
         # Mock cache backend
         backend_mock = Mock()
-        backend_mock.conn = Mock()
+        backend_mock.set_compile_args_hash = Mock(return_value=True)
         backend_mock.remove_file_cache = Mock()
         self.analyzer.cache_manager.backend = backend_mock
 

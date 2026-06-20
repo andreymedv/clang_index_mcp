@@ -6,7 +6,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .symbol_info import SymbolInfo
 
@@ -410,6 +410,15 @@ class SqliteCacheBackend:
             self._connect()
 
         self._last_access = time.time()
+
+    def get_connection(self) -> Optional[sqlite3.Connection]:
+        """Return the raw SQLite connection.
+
+        This is a transitional method for components like DependencyGraphBuilder
+        that inherently require raw SQL access.
+        """
+        self._ensure_connected()
+        return self.conn
 
     def _close(self):
         """Close database connection."""
@@ -2520,6 +2529,112 @@ class SqliteCacheBackend:
         except Exception as e:
             diagnostics.debug(f"Failed to get alias details: {e}")
         return list(unique_aliases.values())
+
+    def get_all_cached_file_paths(self) -> Set[str]:
+        """
+        Return all file paths stored in file_metadata table.
+
+        Used by ChangeScanner to identify cached files for diff analysis.
+
+        Returns:
+            Set of file paths
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute("SELECT file_path FROM file_metadata")
+            return {row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            diagnostics.warning(f"Failed to get cached file paths: {e}")
+            return set()
+
+    def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
+        """
+        Store or update the compile arguments hash for a file.
+
+        Phase 1.4: Compile Commands Integration
+
+        Args:
+            file_path: Source file path
+            args_hash: Hash of the compile arguments
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute(
+                """
+                UPDATE file_metadata
+                SET compile_args_hash = ?
+                WHERE file_path = ?
+                """,
+                (args_hash, file_path),
+            )
+            if cursor.rowcount == 0:
+                self._conn.execute(
+                    """
+                    INSERT OR IGNORE INTO file_metadata
+                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (file_path, "", args_hash, time.time(), 0),
+                )
+            self._conn.commit()
+            return True
+        except Exception as e:
+            diagnostics.warning(f"Failed to set compile args hash for {file_path}: {e}")
+            self._conn.rollback()
+            return False
+
+    def get_compile_args_hash(self, file_path: str) -> Optional[str]:
+        """
+        Return the stored compile arguments hash for a file.
+
+        Phase 1.4: Compile Commands Integration
+
+        Args:
+            file_path: Source file path
+
+        Returns:
+            Args hash string or None if not found
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute(
+                """
+                SELECT compile_args_hash FROM file_metadata
+                WHERE file_path = ?
+                """,
+                (file_path,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            diagnostics.warning(f"Failed to get compile args hash for {file_path}: {e}")
+            return None
+
+    def clear_compile_args_hashes(self) -> int:
+        """
+        Clear all stored compile arguments hashes from file_metadata.
+
+        Phase 1.4: Compile Commands Integration
+
+        Returns:
+            Number of rows cleared
+        """
+        try:
+            self._ensure_connected()
+            cursor = self._conn.execute("""
+                UPDATE file_metadata
+                SET compile_args_hash = NULL
+                """)
+            cleared = cursor.rowcount or 0
+            self._conn.commit()
+            return cleared
+        except Exception as e:
+            diagnostics.warning(f"Failed to clear compile args hashes: {e}")
+            self._conn.rollback()
+            return 0
 
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """

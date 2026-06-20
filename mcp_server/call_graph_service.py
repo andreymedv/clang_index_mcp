@@ -52,8 +52,11 @@ class CallGraphService:
     def init_dependency_graph(self) -> None:
         """Initialize the dependency graph builder after cache_manager is available."""
         cache_manager = self.cache_manager
-        if hasattr(cache_manager.backend, "conn"):
-            self.dependency_graph = DependencyGraphBuilder(lambda: cache_manager.backend.conn)
+        conn = cache_manager.backend.get_connection()
+        if conn is not None:
+            self.dependency_graph = DependencyGraphBuilder(
+                lambda: cache_manager.backend.get_connection()
+            )
             diagnostics.debug("Dependency graph builder initialized with dynamic connection")
         else:
             diagnostics.debug("Dependency graph not available (non-SQLite backend)")
