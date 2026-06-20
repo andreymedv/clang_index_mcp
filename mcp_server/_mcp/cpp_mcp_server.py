@@ -8,6 +8,7 @@ Focused on specific queries rather than bulk data dumps.
 import asyncio
 import json
 import os
+import signal
 import sys
 from typing import Any, Dict, List, Optional, Tuple, cast
 
@@ -1221,31 +1222,80 @@ def _try_resume_session(saved_session):
         return None, None, False
 
 
+def _shutdown_analyzer():
+    """Interrupt and close the analyzer, releasing resources."""
+    global analyzer
+    if analyzer is None:
+        return
+    try:
+        analyzer.interrupt()
+    except Exception:
+        pass
+    try:
+        analyzer.close()
+    except Exception:
+        pass
+    analyzer = None
+
+
 async def _cleanup_resources():
     """Cleanup resources on shutdown."""
     diagnostics.debug("Starting cleanup...")
 
+    _shutdown_analyzer()
+
     if background_indexer and background_indexer.is_indexing():
         diagnostics.debug("Canceling background indexing...")
-        await background_indexer.cancel()
+        try:
+            await background_indexer.cancel()
+        except Exception:
+            pass
 
     loop = asyncio.get_event_loop()
     if hasattr(loop, "_default_executor") and loop._default_executor:
-        diagnostics.debug("Shutting down default executor...")
         loop._default_executor.shutdown(wait=False, cancel_futures=True)
 
     diagnostics.debug("Cleanup complete")
+
+
+def _install_signal_handlers():
+    """Install SIGINT/SIGTERM handlers that trigger graceful asyncio shutdown."""
+    import threading
+
+    loop = asyncio.get_event_loop()
+    _hard_shutdown_armed = False
+
+    def _signal_handler():
+        nonlocal _hard_shutdown_armed
+        if _hard_shutdown_armed:
+            diagnostics.warning("Forced shutdown")
+            os._exit(1)
+        _hard_shutdown_armed = True
+
+        diagnostics.info("Shutdown signal received, stopping server...")
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+
+        # Hard shutdown fallback: force-exit if cleanup blocks for >3s.
+        # Uses a daemon thread since the event loop itself may be stuck.
+        def _hard_shutdown():
+            import time
+
+            time.sleep(3.0)
+            os._exit(0)
+
+        threading.Thread(target=_hard_shutdown, daemon=True).start()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
 
 
 async def _run_stdio_transport():
     """Run the server using stdio transport."""
     from mcp.server.stdio import stdio_server
 
-    try:
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(read_stream, write_stream, server.create_initialization_options())
-    finally:
-        await _cleanup_resources()
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
 async def _run_http_transport(host, port, transport):
@@ -1255,15 +1305,14 @@ async def _run_http_transport(host, port, transport):
     except ImportError:
         from http_server import run_http_server
 
-    try:
-        await run_http_server(server, host, port, transport)
-    finally:
-        await _cleanup_resources()
+    await run_http_server(server, host, port, transport)
 
 
 async def main():
     """Main entry point for the MCP server."""
     global analyzer, analyzer_initialized, background_indexer
+
+    _install_signal_handlers()
 
     disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
     saved_session = None if disable_auto_resume else session_manager.load_session()
@@ -1273,13 +1322,18 @@ async def main():
     parser = _create_argument_parser()
     args = parser.parse_args()
 
-    if args.transport == "stdio":
-        await _run_stdio_transport()
-    elif args.transport in ("http", "sse"):
-        await _run_http_transport(args.host, args.port, args.transport)
-    else:
-        diagnostics.fatal(f"Unknown transport: {args.transport}")
-        sys.exit(1)
+    try:
+        if args.transport == "stdio":
+            await _run_stdio_transport()
+        elif args.transport in ("http", "sse"):
+            await _run_http_transport(args.host, args.port, args.transport)
+        else:
+            diagnostics.fatal(f"Unknown transport: {args.transport}")
+            sys.exit(1)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await _cleanup_resources()
 
 
 if __name__ == "__main__":
@@ -1288,4 +1342,7 @@ if __name__ == "__main__":
     # reimporting and re-running module-level code (which would fail
     # because Config.set_library_file() cannot be called twice).
     sys.modules.setdefault("mcp_server.cpp_mcp_server", sys.modules[__name__])
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
