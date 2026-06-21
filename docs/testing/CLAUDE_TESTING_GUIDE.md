@@ -151,17 +151,17 @@ python scripts/test_mcp_console.py /path/to/cpp/project
 **Basic startup:**
 ```bash
 # From project root
-python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+python -m mcp_server --transport sse --port 8000
 ```
 
 **With debug logging:**
 ```bash
-MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server --transport sse --port 8000
 ```
 
 **In background (for automated testing):**
 ```bash
-python -m mcp_server.cpp_mcp_server --transport sse --port 8000 &
+python -m mcp_server --transport sse --port 8000 &
 SERVER_PID=$!
 
 # Later, to stop:
@@ -183,7 +183,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 curl -s http://localhost:8000/health || echo "Server not running"
 
 # Check process
-ps aux | grep cpp_mcp_server
+ps aux | grep "python -m mcp_server"
 ```
 
 ---
@@ -595,7 +595,7 @@ curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
 **Watch logs in real-time:**
 ```bash
 # Start server with debug logging and watch output
-MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000 2>&1 | tee server.log
+MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server --transport sse --port 8000 2>&1 | tee server.log
 ```
 
 **Grep for specific issues:**
@@ -615,7 +615,7 @@ tail -f server.log | grep -E "\[ERROR\]|\[WARNING\]"
 **Monitor file descriptors (Issue #3):**
 ```bash
 # Get server PID
-SERVER_PID=$(pgrep -f "cpp_mcp_server.*sse.*8000" | head -1)
+SERVER_PID=$(pgrep -f "python -m mcp_server.*sse.*8000" | head -1)
 
 # Monitor FD count (should stay stable at ~10-15)
 watch -n 2 "echo '=== FD Monitor ==='; \
@@ -811,13 +811,13 @@ echo "Headers found after refresh: $AFTER"
 ### Server Management
 ```bash
 # Start server
-python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+python -m mcp_server --transport sse --port 8000
 
 # Start with debug
-MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server --transport sse --port 8000
 
 # Stop server (if running in background)
-pkill -f "cpp_mcp_server.*sse"
+pkill -f "python -m mcp_server.*sse"
 ```
 
 ### Common Tool Calls
@@ -838,10 +838,10 @@ curl -s -X POST http://localhost:8000/mcp/v1/tools/call -H "Content-Type: applic
 ### Monitoring
 ```bash
 # FD count
-lsof -p $(pgrep -f cpp_mcp_server) | wc -l
+lsof -p $(pgrep -f "python -m mcp_server") | wc -l
 
 # Memory usage
-ps -p $(pgrep -f cpp_mcp_server) -o rss=
+ps -p $(pgrep -f "python -m mcp_server") -o rss=
 
 # Watch logs
 tail -f server.log | grep -E "ERROR|WARNING"
@@ -890,7 +890,7 @@ lsof -i :8000
 kill $(lsof -t -i :8000)
 
 # Try different port
-python -m mcp_server.cpp_mcp_server --transport sse --port 8001
+python -m mcp_server --transport sse --port 8001
 ```
 
 ### Tool Call Returns Error
@@ -908,7 +908,7 @@ tail -50 server.log
 ### Timeout During Indexing
 ```bash
 # Check if indexing actually running
-ps aux | grep cpp_mcp_server
+ps aux | grep "python -m mcp_server"
 
 # Check progress
 curl -s -X POST http://localhost:8000/mcp/v1/tools/call \

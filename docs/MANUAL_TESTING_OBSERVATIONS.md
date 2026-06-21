@@ -470,7 +470,7 @@ Root Issue C: Error Reporting
 
 ```bash
 # Start server
-MCP_DEBUG=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+MCP_DEBUG=1 python -m mcp_server --transport sse --port 8000
 
 # Test Obs #2: Qualified names
 curl -s -X POST http://localhost:8000/mcp/v1/tools/call \

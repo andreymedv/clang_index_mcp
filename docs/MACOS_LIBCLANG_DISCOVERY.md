@@ -344,7 +344,7 @@ ls -la /opt/homebrew/Cellar/llvm/*/lib/libclang.dylib
 After implementing solution:
 ```bash
 # Should use system libclang (not bundled)
-python -m mcp_server.cpp_mcp_server --help
+python -m mcp_server --help
 # Check logs for "Discovered libclang: /Library/Developer/..."
 
 # Should not download
