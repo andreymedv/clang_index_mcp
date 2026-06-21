@@ -5,6 +5,7 @@ Provides HTTP and Server-Sent Events transport support for the MCP server.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 from typing import Optional
@@ -102,6 +103,15 @@ class MCPHTTPServer:
     def _create_app(self) -> Starlette:
         """Create and configure the Starlette application."""
 
+        @contextlib.asynccontextmanager
+        async def lifespan(app: Starlette):
+            """Lifespan context that suppresses CancelledError during shutdown."""
+            try:
+                yield
+            except asyncio.CancelledError:
+                # Expected when the server task is cancelled during shutdown.
+                pass
+
         routes = [
             Route("/", self.handle_root, methods=["GET"]),
             Route("/health", self.handle_health, methods=["GET"]),
@@ -110,7 +120,7 @@ class MCPHTTPServer:
         if self.transport_type == "http":
             routes.append(Route("/messages", self.handle_http_message, methods=["POST"]))
 
-        app = Starlette(debug=True, routes=routes)
+        app = Starlette(debug=True, routes=routes, lifespan=lifespan)
 
         # For SSE transport, wrap the app with a middleware that intercepts
         # /sse and /messages paths and delegates to raw ASGI handlers
