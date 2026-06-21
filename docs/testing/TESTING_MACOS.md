@@ -14,7 +14,7 @@ Exception: library file must be set before before using any other functionalitie
 
 The error occurs because:
 
-1. Tests import `mcp_server.cpp_mcp_server` which triggers module-level libclang initialization
+1. Tests import `mcp_server._mcp.cpp_mcp_server` which triggers module-level libclang initialization
 2. The libclang library path detection may fail on macOS if:
    - libclang is not installed
    - It's installed in a non-standard location
@@ -120,7 +120,7 @@ If you see libclang errors even after the fix:
 
 3. **Check which libclang is being used**:
    ```bash
-   python3 -m mcp_server.cpp_mcp_server --help 2>&1 | grep libclang
+   python3 -m mcp_server --help 2>&1 | grep libclang
    ```
 
 ### Server won't start with "library file must be set"

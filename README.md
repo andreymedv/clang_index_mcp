@@ -48,19 +48,19 @@ The server supports multiple transport protocols:
 ### stdio (Default)
 Standard input/output transport for MCP client integration (Claude Desktop, etc.):
 ```bash
-python -m mcp_server.cpp_mcp_server
+python -m mcp_server
 ```
 
 ### HTTP (Streamable HTTP)
 RESTful HTTP transport for API access:
 ```bash
-python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
+python -m mcp_server --transport http --host 127.0.0.1 --port 8000
 ```
 
 ### SSE (Server-Sent Events)
 Real-time streaming transport for event-driven applications:
 ```bash
-python -m mcp_server.cpp_mcp_server --transport sse --host 127.0.0.1 --port 8000
+python -m mcp_server --transport sse --host 127.0.0.1 --port 8000
 ```
 
 For detailed HTTP/SSE usage, see **[HTTP_USAGE.md](docs/HTTP_USAGE.md)**
@@ -127,7 +127,7 @@ To use this with an MCP-compatible CLI Agent, add the server to your configurati
   "mcpServers": {
     "cpp-analyzer": {
       "command": "python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
         "PYTHONPATH": "/absolute/path/to/clang_index_mcp"

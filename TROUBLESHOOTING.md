@@ -253,10 +253,10 @@ xcode-select --install
 **1. Check for running processes:**
 ```bash
 # Linux/macOS
-ps aux | grep cpp_mcp_server
+ps aux | grep "python -m mcp_server"
 
 # Kill stale processes
-pkill -f cpp_mcp_server
+pkill -f "python -m mcp_server"
 ```
 
 **2. Remove stale lock files:**
