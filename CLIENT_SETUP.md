@@ -19,7 +19,7 @@ This guide provides detailed instructions for configuring the C++ Analyzer MCP S
 Before configuring any client, ensure you have:
 
 1. Completed the [Setup](README.md#setup) steps
-2. The MCP server is working (test with `python -m mcp_server.cpp_mcp_server`)
+2. The MCP server is working (test with `python -m mcp_server`)
 3. Note the absolute path to your clang_index_mcp installation directory
 
 ## Claude Desktop
@@ -42,7 +42,7 @@ Claude Desktop is Anthropic's desktop application for conversational AI.
       "command": "python",
       "args": [
         "-m",
-        "mcp_server.cpp_mcp_server"
+        "mcp_server"
       ],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
@@ -59,7 +59,7 @@ Claude Desktop is Anthropic's desktop application for conversational AI.
   "mcpServers": {
     "cpp-analyzer": {
       "command": "C:\\path\\to\\clang_index_mcp\\mcp_env\\Scripts\\python.exe",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "C:\\path\\to\\clang_index_mcp",
       "env": {
         "PYTHONPATH": "C:\\path\\to\\clang_index_mcp"
@@ -93,7 +93,7 @@ Claude Code is the official VS Code extension by Anthropic.
       "command": "python",
       "args": [
         "-m",
-        "mcp_server.cpp_mcp_server"
+        "mcp_server"
       ],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
@@ -117,7 +117,7 @@ If you want to use the project's virtual environment:
   "claude.mcpServers": {
     "cpp-analyzer": {
       "command": "/absolute/path/to/clang_index_mcp/mcp_env/bin/python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/absolute/path/to/clang_index_mcp"
     }
   }
@@ -145,7 +145,7 @@ Cursor is an AI-first IDE built on VS Code.
       "command": "python",
       "args": [
         "-m",
-        "mcp_server.cpp_mcp_server"
+        "mcp_server"
       ],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
@@ -172,7 +172,7 @@ Create a `.cursorrules` or `mcp.json` file in your C++ project root:
   "mcpServers": {
     "cpp-analyzer": {
       "command": "/absolute/path/to/clang_index_mcp/mcp_env/bin/python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/absolute/path/to/clang_index_mcp"
     }
   }
@@ -199,7 +199,7 @@ Cline (formerly Claude Dev) is a VS Code extension for AI-assisted coding.
       "command": "python",
       "args": [
         "-m",
-        "mcp_server.cpp_mcp_server"
+        "mcp_server"
       ],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
@@ -243,7 +243,7 @@ Windsurf is an AI-native IDE for developers.
       "command": "python",
       "args": [
         "-m",
-        "mcp_server.cpp_mcp_server"
+        "mcp_server"
       ],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
@@ -282,7 +282,7 @@ Continue is an open-source VS Code extension for AI coding assistance.
       "command": "python",
       "args": [
         "-m",
-        "mcp_server.cpp_mcp_server"
+        "mcp_server"
       ],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
@@ -333,7 +333,7 @@ Error in LM Studio MCP bridge process: SSE error: Non-200 status code (405)
   "mcpServers": {
     "cpp-analyzer": {
       "command": "python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
         "PYTHONPATH": "/absolute/path/to/clang_index_mcp"
@@ -372,7 +372,7 @@ Error in LM Studio MCP bridge process: SSE error: Non-200 status code (405)
 
 **Recommended setup for LM Studio:**
 1. **Use HTTP or SSE transport** (fixes applied 2025-12-18) instead of stdio
-2. Start the server separately: `python -m mcp_server.cpp_mcp_server --transport http --port 8000`
+2. Start the server separately: `python -m mcp_server --transport http --port 8000`
 3. Configure LM Studio to connect to `http://127.0.0.1:8000/messages`
 4. This avoids LM Studio killing the server process during long-running indexing
 
@@ -408,7 +408,7 @@ Most MCP clients use a similar configuration format:
   "mcpServers": {
     "cpp-analyzer": {
       "command": "python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/absolute/path/to/clang_index_mcp",
       "env": {
         "PYTHONPATH": "/absolute/path/to/clang_index_mcp"
@@ -425,7 +425,7 @@ Most MCP clients use a similar configuration format:
   - Use virtual environment: `"/path/to/mcp_env/bin/python"`
 
 - **args**: Arguments to pass to Python
-  - `["-m", "mcp_server.cpp_mcp_server"]` - runs the module
+  - `["-m", "mcp_server"]` - runs the module
 
 - **cwd**: Working directory for the server
   - Must be the root of the clang_index_mcp repository
@@ -463,23 +463,23 @@ The examples above use **stdio** transport (standard input/output), which is the
 
 ```bash
 # Start HTTP server on default port 8000
-python -m mcp_server.cpp_mcp_server --transport http --port 8000
+python -m mcp_server --transport http --port 8000
 
 # Start on custom port
-python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 9000
+python -m mcp_server --transport http --host 127.0.0.1 --port 9000
 
 # Allow external connections (use with caution)
-python -m mcp_server.cpp_mcp_server --transport http --host 0.0.0.0 --port 8000
+python -m mcp_server --transport http --host 0.0.0.0 --port 8000
 ```
 
 #### SSE Transport
 
 ```bash
 # Start SSE server on port 8080 (default is 8000)
-python -m mcp_server.cpp_mcp_server --transport sse --port 8080
+python -m mcp_server --transport sse --port 8080
 
 # Start on custom port
-python -m mcp_server.cpp_mcp_server --transport sse --host 127.0.0.1 --port 9000
+python -m mcp_server --transport sse --host 127.0.0.1 --port 9000
 ```
 
 ### MCP Client Configuration for HTTP/SSE
@@ -538,7 +538,7 @@ Type=simple
 User=youruser
 WorkingDirectory=/path/to/clang_index_mcp
 Environment="PYTHONPATH=/path/to/clang_index_mcp"
-ExecStart=/path/to/clang_index_mcp/mcp_env/bin/python -m mcp_server.cpp_mcp_server --transport http --host 127.0.0.1 --port 8000
+ExecStart=/path/to/clang_index_mcp/mcp_env/bin/python -m mcp_server --transport http --host 127.0.0.1 --port 8000
 Restart=on-failure
 
 [Install]
@@ -574,7 +574,7 @@ RUN python scripts/download_libclang.py
 EXPOSE 8000
 
 # Run server
-CMD ["python", "-m", "mcp_server.cpp_mcp_server", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "mcp_server", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 Build and run:
@@ -590,7 +590,7 @@ docker run -d -p 8000:8000 --name cpp-analyzer cpp-analyzer-mcp
 screen -S cpp-analyzer
 cd /path/to/clang_index_mcp
 source mcp_env/bin/activate
-python -m mcp_server.cpp_mcp_server --transport http --port 8000
+python -m mcp_server --transport http --port 8000
 # Press Ctrl+A then D to detach
 
 # Reattach later
@@ -600,7 +600,7 @@ screen -r cpp-analyzer
 tmux new -s cpp-analyzer
 cd /path/to/clang_index_mcp
 source mcp_env/bin/activate
-python -m mcp_server.cpp_mcp_server --transport http --port 8000
+python -m mcp_server --transport http --port 8000
 # Press Ctrl+B then D to detach
 
 # Reattach later
@@ -713,7 +713,7 @@ python scripts/download_libclang.py
 **Solution:** Verify the server works standalone:
 ```bash
 cd /path/to/clang_index_mcp
-python -m mcp_server.cpp_mcp_server
+python -m mcp_server
 ```
 
 If it prints initialization messages and waits for input, it's working correctly.
@@ -765,7 +765,7 @@ You can specify a custom configuration file location:
   "mcpServers": {
     "cpp-analyzer": {
       "command": "python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/path/to/clang_index_mcp",
       "env": {
         "CPP_ANALYZER_CONFIG": "/path/to/custom/cpp-analyzer-config.json"
@@ -784,7 +784,7 @@ To enable debug output for troubleshooting:
   "mcpServers": {
     "cpp-analyzer": {
       "command": "python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/path/to/clang_index_mcp",
       "env": {
         "MCP_DEBUG": "1",

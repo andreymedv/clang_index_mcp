@@ -68,9 +68,9 @@ make run                        # Run MCP server (stdio transport)
 make dev                        # Run with MCP_DEBUG=1 and PYTHONUNBUFFERED=1
 
 # Alternative transport protocols
-python -m mcp_server.cpp_mcp_server                                        # stdio (default)
-python -m mcp_server.cpp_mcp_server --transport http --port 8000           # HTTP
-python -m mcp_server.cpp_mcp_server --transport sse --port 8000            # SSE
+python -m mcp_server                                        # stdio (default)
+python -m mcp_server --transport http --port 8000           # HTTP
+python -m mcp_server --transport sse --port 8000            # SSE
 ```
 
 ### Testing and Debugging
@@ -103,7 +103,7 @@ Use the `/test-mcp` skill for automated MCP server testing:
 For low-level debugging or when automated testing isn't suitable, use SSE transport with curl:
 ```bash
 # Start SSE server
-MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server.cpp_mcp_server --transport sse --port 8000
+MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server --transport sse --port 8000
 
 # Call MCP tool
 curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
@@ -121,7 +121,7 @@ make install-wheel              # Build and install wheel locally
 make install-editable           # Install in editable mode (recommended for dev)
 
 # After install-editable or install-wheel, you can run:
-clang-index-mcp                 # Entry point script (equivalent to python -m mcp_server.cpp_mcp_server)
+clang-index-mcp                 # Entry point script (equivalent to python -m mcp_server)
 ```
 
 ### Maintenance
@@ -322,7 +322,7 @@ Monitor file descriptors and resource usage during indexing to detect leaks:
 
 ```bash
 # Get the MCP server PID
-MCP_PID=$(pgrep -f "cpp_mcp_server" | head -1)
+MCP_PID=$(pgrep -f "python -m mcp_server" | head -1)
 
 # Monitor file descriptor counts (should stay stable at ~10-15)
 watch -n 2 'echo "=== FD Monitor ==="; \
@@ -397,7 +397,7 @@ The `diagnose_parse_errors.py` script tests parsing with different libclang opti
    - Update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`
    - Database will automatically recreate on version mismatch (development mode)
 4. Run `make test` to verify no regressions
-5. Test with example project: `python -m mcp_server.cpp_mcp_server` + set examples/compile_commands_example/
+5. Test with example project: `python -m mcp_server` + set examples/compile_commands_example/
 
 ### Cache Invalidation and Corruption Recovery
 

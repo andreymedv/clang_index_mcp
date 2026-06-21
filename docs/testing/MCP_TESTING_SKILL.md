@@ -603,7 +603,7 @@ curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
 **stdio:**
 ```python
 # Send JSON-RPC via stdin, read from stdout
-echo '{"jsonrpc":"2.0","method":"tools/call",...}' | python -m mcp_server.cpp_mcp_server
+echo '{"jsonrpc":"2.0","method":"tools/call",...}' | python -m mcp_server
 ```
 
 **HTTP:**
