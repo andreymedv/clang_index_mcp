@@ -395,7 +395,7 @@ self._processed: Dict[Tuple[str, str], str] = {}
 
 **Standalone (for testing)**:
 ```bash
-python -m mcp_server.cpp_mcp_server
+python -m mcp_server
 ```
 
 **With MCP Client**:
@@ -405,7 +405,7 @@ python -m mcp_server.cpp_mcp_server
   "mcpServers": {
     "clang-index": {
       "command": "python",
-      "args": ["-m", "mcp_server.cpp_mcp_server"],
+      "args": ["-m", "mcp_server"],
       "cwd": "/path/to/clang_index_mcp"
     }
   }
@@ -488,7 +488,7 @@ clang-index-mcp
 
 This is equivalent to:
 ```bash
-python -m mcp_server.cpp_mcp_server
+python -m mcp_server
 ```
 
 #### Package Configuration
@@ -720,7 +720,7 @@ Enable debug logging:
 ```bash
 export PYTHONUNBUFFERED=1
 export MCP_DEBUG=1
-python -m mcp_server.cpp_mcp_server
+python -m mcp_server
 ```
 
 ### libclang Debugging
@@ -751,7 +751,7 @@ rm -rf .mcp_cache/
 
 ```bash
 # Profile script
-python -m cProfile -o profile.stats -m mcp_server.cpp_mcp_server
+python -m cProfile -o profile.stats -m mcp_server
 
 # Analyze results
 python -m pstats profile.stats

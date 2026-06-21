@@ -179,19 +179,19 @@ make
 
 ```bash
 # Set the project directory
-python -m mcp.server.cpp_mcp_server set_project_directory /path/to/compile_commands_example
+python -m mcp.server set_project_directory /path/to/compile_commands_example
 
 # Get server status (should show compile commands enabled)
-python -m mcp.server.cpp_mcp_server get_server_status
+python -m mcp.server get_server_status
 
 # Search for functions
-python -m mcp.server.cpp_mcp_server search_functions ".*"
+python -m mcp.server search_functions ".*"
 
 # Get specific function info
-python -m mcp.server.cpp_mcp_server get_function_signature "get_greeting"
+python -m mcp.server get_function_signature "get_greeting"
 
 # Find function calls
-python -m mcp.server.cpp_mcp_server find_callees "main"
+python -m mcp.server find_callees "main"
 ```
 
 ### 3. Expected Results
@@ -264,13 +264,13 @@ Respects project-specific compiler configurations:
 
 ```bash
 # Check compile commands status
-python -m mcp.server.cpp_mcp_server get_server_status
+python -m mcp.server get_server_status
 
 # Refresh project (if compile commands changed)
-python -m mcp.server.cpp_mcp_server refresh_project
+python -m mcp.server refresh_project
 
 # Test with a specific file
-python -m mcp.server.cpp_mcp_server find_in_file "src/main.cpp" "main"
+python -m mcp.server find_in_file "src/main.cpp" "main"
 ```
 
 ## Advanced Configuration

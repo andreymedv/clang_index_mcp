@@ -422,7 +422,7 @@ For advanced users who want to test the MCP protocol directly:
 
 ```bash
 # Start the server in stdio mode
-python -m mcp_server.cpp_mcp_server
+python -m mcp_server
 ```
 
 Then send JSON-RPC messages via stdin. Example messages are in `docs/mcp_protocol_examples.json`.
