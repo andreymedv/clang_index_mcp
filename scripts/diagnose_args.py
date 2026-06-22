@@ -8,9 +8,9 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from clang_index_mcp._compilation.compile_commands_manager import (
+from clang_index_mcp._compilation.compile_commands_manager import (  # noqa: E402
     CompileCommandsManager,
-)  # noqa: E402
+)
 
 
 def diagnose_file_args(project_root: str, file_path: str):
