@@ -28,9 +28,9 @@ sys.path.insert(0, str(project_root))
 
 # Try to import clang-dependent modules, skip tests if not available
 try:
-    from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
-    from mcp_server.cpp_analyzer import CppAnalyzer
-    from mcp_server._persistence.symbol_info import SymbolInfo
+    from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
     CLANG_AVAILABLE = True
 except SystemExit:
@@ -333,11 +333,11 @@ class TestOrjsonSupport(unittest.TestCase):
 
         Verifies: The code properly detects orjson installation status via HAS_ORJSON flag.
         """
-        from mcp_server._compilation.compile_commands_manager import HAS_ORJSON
+        from clang_index_mcp._compilation.compile_commands_manager import HAS_ORJSON
 
         self.assertIsInstance(HAS_ORJSON, bool)
 
-    @patch("mcp_server._compilation.compile_commands_manager.HAS_ORJSON", False)
+    @patch("clang_index_mcp._compilation.compile_commands_manager.HAS_ORJSON", False)
     def test_fallback_to_stdlib_json(self):
         """Should fall back to stdlib json if orjson not available.
 

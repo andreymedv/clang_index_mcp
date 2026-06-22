@@ -318,7 +318,7 @@ Create a `.json` configuration file (e.g., `analysis-config.json`) with your des
 ### Method 2: Using Python API
 
 ```python
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
+from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
 from pathlib import Path
 
 # Initialize (project_root is required)
@@ -428,7 +428,7 @@ Use environment variable for build-specific settings:
   env:
     CPP_ANALYZER_CONFIG: ${{ github.workspace }}/.ci/cpp-analyzer-ci.json
   run: |
-    python -m mcp_server.cpp_analyzer
+    python -m clang_index_mcp.cpp_analyzer
 ```
 
 ## Troubleshooting

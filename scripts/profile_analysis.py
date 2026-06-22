@@ -25,7 +25,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
+from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
 class ProfiledAnalyzer(CppAnalyzer):
@@ -241,7 +241,7 @@ class ProfiledAnalyzer(CppAnalyzer):
                 return (False, False)
 
             # Check diagnostics
-            from mcp_server.cpp_analyzer import CppAnalyzer as BaseAnalyzer
+            from clang_index_mcp.cpp_analyzer import CppAnalyzer as BaseAnalyzer
 
             error_diagnostics, warning_diagnostics = BaseAnalyzer._extract_diagnostics(self, tu)
 

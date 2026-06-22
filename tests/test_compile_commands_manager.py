@@ -8,14 +8,14 @@ integration functionality.
 import json
 import os
 
-# Add the mcp_server directory to the path so we can import the modules
+# Add the clang_index_mcp directory to the path so we can import the modules
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
+from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
 
 
 class TestCompileCommandsManager(unittest.TestCase):

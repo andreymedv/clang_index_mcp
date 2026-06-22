@@ -30,7 +30,7 @@ import yaml
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-from mcp_server._mcp.consolidated_tools import list_tools_b  # noqa: E402
+from clang_index_mcp._mcp.consolidated_tools import list_tools_b  # noqa: E402
 from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 
 DEFAULT_FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -86,7 +86,7 @@ def _convert_hierarchy_to_format(response: dict, output_format: str) -> str:
 
     # Use the same converter as the real server if available
     try:
-        from mcp_server._search.hierarchy_format import convert_hierarchy_format
+        from clang_index_mcp._search.hierarchy_format import convert_hierarchy_format
         return convert_hierarchy_format(hierarchy, output_format)
     except ImportError:
         pass

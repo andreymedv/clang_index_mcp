@@ -20,11 +20,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 _analyzer = None
 
 
-def test_mcp_server(project_path: str, config_file: str = None):
+def test_clang_index_mcp(project_path: str, config_file: str = None):
     """Test the MCP server with a real codebase"""
 
     # Configure libclang exactly like production MCP server
-    from mcp_server._core.libclang_setup import configure_libclang, get_libclang_runtime_info
+    from clang_index_mcp._core.libclang_setup import configure_libclang, get_libclang_runtime_info
 
     if not configure_libclang():
         print("Error: Could not find libclang library")
@@ -32,7 +32,7 @@ def test_mcp_server(project_path: str, config_file: str = None):
     print(f"[OK] libclang runtime config: {get_libclang_runtime_info()}")
 
     # Import the analyzer after libclang setup
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     print("=" * 60)
     print("C++ MCP Server Console Test")
@@ -237,7 +237,7 @@ def main():
 
     try:
         # Run the test
-        test_mcp_server(project_path, config_file=config_file)
+        test_clang_index_mcp(project_path, config_file=config_file)
     except KeyboardInterrupt:
         # Handle Ctrl-C gracefully
         print("\n\nInterrupted by user (Ctrl-C)", file=sys.stderr)

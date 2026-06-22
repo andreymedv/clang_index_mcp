@@ -42,7 +42,7 @@ pytest tests/integration/ -v
 
 # Run with coverage
 make test-coverage
-# Or: pytest tests/ --cov=mcp_server --cov-report=html
+# Or: pytest tests/ --cov=clang_index_mcp --cov-report=html
 ```
 
 ### Test Organization
@@ -340,7 +340,7 @@ pytest -m "not slow"            # Skip slow tests
 
 ### Generate Coverage Report
 ```bash
-pytest tests/ --cov=mcp_server --cov-report=html
+pytest tests/ --cov=clang_index_mcp --cov-report=html
 # Open htmlcov/index.html to view report
 ```
 

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_server._search.dependency_graph import DependencyGraphBuilder
+from clang_index_mcp._search.dependency_graph import DependencyGraphBuilder
 
 
 class TestDependencyGraphBuilder(unittest.TestCase):

@@ -720,7 +720,7 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-5.8.1**: The system SHALL load sanitization rules from JSON configuration files.
 
-**REQ-5.8.1.1**: The system SHALL provide default sanitization rules in `mcp_server/sanitization_rules.json` containing:
+**REQ-5.8.1.1**: The system SHALL provide default sanitization rules in `clang_index_mcp/sanitization_rules.json` containing:
 - Rule version
 - Rule descriptions
 - Rule definitions for all standard problematic compiler flags

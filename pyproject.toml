@@ -32,16 +32,16 @@ dependencies = [
 ]
 
 [project.scripts]
-clang-index-mcp = "mcp_server._mcp.cpp_mcp_server:main"
+clang-index-mcp = "clang_index_mcp._mcp.cpp_mcp_server:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["mcp_server*"]
+include = ["clang_index_mcp*"]
 
 [tool.setuptools.package-data]
-mcp_server = ["py.typed"]
+clang_index_mcp = ["py.typed"]
 
 [project.optional-dependencies]
 dev = [
@@ -120,7 +120,7 @@ addopts = [
 ]
 
 [tool.coverage.run]
-source = ["mcp_server"]
+source = ["clang_index_mcp"]
 omit = [
     "*/tests/*",
     "*/test_*.py",

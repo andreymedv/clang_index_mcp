@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
-from mcp_server.cpp_analyzer_config import CompileCommandsConfig
+from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
+from clang_index_mcp.cpp_analyzer_config import CompileCommandsConfig
 
 
 class TestCompileCommandsDiffer(unittest.TestCase):

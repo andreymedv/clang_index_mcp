@@ -5,7 +5,7 @@ description: Run tool description optimization loop — test LLM tool selection 
 
 # Tool Description Optimization Skill
 
-Optimizes MCP tool descriptions in `mcp_server/consolidated_tools.py` by testing
+Optimizes MCP tool descriptions in `clang_index_mcp/consolidated_tools.py` by testing
 how well a local LLM (via LM Studio) selects tools based on natural language queries.
 
 ## Usage
@@ -157,7 +157,7 @@ Follow these principles strictly:
 
 #### Phase 6: Apply fix and verify
 
-1. Edit `mcp_server/consolidated_tools.py` with the designed changes.
+1. Edit `clang_index_mcp/consolidated_tools.py` with the designed changes.
 2. Run ALL tests (original + probes):
    ```bash
    python tools/mock_server/optimize.py run [--model MODEL] --explain-failures

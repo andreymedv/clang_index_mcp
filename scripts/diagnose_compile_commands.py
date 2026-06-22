@@ -20,9 +20,11 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager  # noqa: E402
-from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig  # noqa: E402
+from clang_index_mcp._compilation.compile_commands_manager import (
+    CompileCommandsManager,
+)  # noqa: E402
+from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
+from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig  # noqa: E402
 
 
 def show_compile_command_sample(project_root: Path, sample_count: int = 3):

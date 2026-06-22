@@ -112,7 +112,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, '/path/to/clang_index_mcp')
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 import clang.cindex
 
 # Create analyzer
@@ -253,10 +253,10 @@ xcode-select --install
 **1. Check for running processes:**
 ```bash
 # Linux/macOS
-ps aux | grep "python -m mcp_server"
+ps aux | grep "python -m clang_index_mcp"
 
 # Kill stale processes
-pkill -f "python -m mcp_server"
+pkill -f "python -m clang_index_mcp"
 ```
 
 **2. Remove stale lock files:**
@@ -297,7 +297,7 @@ Look for "FTS5 Health" check results.
 ```bash
 python3 -c "
 from pathlib import Path
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+from clang_index_mcp.sqlite_cache_backend import SqliteCacheBackend
 
 db = SqliteCacheBackend(Path('.mcp_cache/cache.db'))
 db.optimize()
@@ -341,7 +341,7 @@ python3 scripts/cache_stats.py
 ```bash
 python3 -c "
 from pathlib import Path
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+from clang_index_mcp.sqlite_cache_backend import SqliteCacheBackend
 
 db = SqliteCacheBackend(Path('.mcp_cache/cache.db'))
 result = db.auto_maintenance()
@@ -396,7 +396,7 @@ python3 scripts/migrate_cache.py
 ```bash
 python3 -c "
 from pathlib import Path
-from mcp_server.sqlite_cache_backend import SqliteCacheBackend
+from clang_index_mcp.sqlite_cache_backend import SqliteCacheBackend
 
 db = SqliteCacheBackend(Path('.mcp_cache/cache.db'))
 

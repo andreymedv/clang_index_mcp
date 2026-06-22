@@ -9,7 +9,7 @@ import json
 import os
 import shutil
 
-# Add the mcp_server directory to the path
+# Add the clang_index_mcp directory to the path
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -22,7 +22,7 @@ if project_root not in sys.path:
 
 # Try to import CppAnalyzer, gracefully handle missing clang
 try:
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     CLANG_AVAILABLE = True
 except SystemExit:

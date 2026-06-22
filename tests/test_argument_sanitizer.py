@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from mcp_server._core.argument_sanitizer import ArgumentSanitizer
+from clang_index_mcp._core.argument_sanitizer import ArgumentSanitizer
 
 
 class TestRuleLoading:

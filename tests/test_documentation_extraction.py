@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-# Add the mcp_server directory to the path
+# Add the clang_index_mcp directory to the path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
 
 # ============================================================================

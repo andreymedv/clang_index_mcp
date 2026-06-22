@@ -7,7 +7,7 @@ This module tests the integration between CppAnalyzer and CompileCommandsManager
 import json
 import os
 
-# Add the mcp_server directory to the path so we can import the modules
+# Add the clang_index_mcp directory to the path so we can import the modules
 import sys
 import tempfile
 import unittest
@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Import CompileCommandsManager directly to avoid relative import issues
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
+from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
 
 
 class TestCompileCommandsManagerIntegration(unittest.TestCase):

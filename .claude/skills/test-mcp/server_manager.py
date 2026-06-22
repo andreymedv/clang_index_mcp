@@ -73,7 +73,7 @@ class ServerManager:
         cmd = [
             "python",
             "-m",
-            "mcp_server.cpp_mcp_server",
+            "clang_index_mcp.cpp_mcp_server",
             "--transport",
             protocol,
             "--port",

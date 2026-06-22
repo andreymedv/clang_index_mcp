@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-import mcp_server._mcp.cpp_mcp_server as cpp_mcp_server_module
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server._mcp.state_manager import AnalyzerState, AnalyzerStateManager
+import clang_index_mcp._mcp.cpp_mcp_server as cpp_mcp_server_module
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
+from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager
 
 
 @pytest.fixture
@@ -323,7 +323,7 @@ class TestMCPHandlerResponseFormat:
     """
 
     @pytest.fixture
-    def setup_mcp_server(self, indexed_analyzer):
+    def setup_clang_index_mcp(self, indexed_analyzer):
         """Set global MCP server state for handler-level tests."""
         srv = cpp_mcp_server_module
 
@@ -344,9 +344,9 @@ class TestMCPHandlerResponseFormat:
         srv.analyzer_initialized = original_initialized
 
     @pytest.mark.asyncio
-    async def test_get_call_sites_returns_dict_not_list(self, setup_mcp_server):
+    async def test_get_call_sites_returns_dict_not_list(self, setup_clang_index_mcp):
         """get_call_sites MCP handler must return a dict with 'call_sites' key."""
-        srv = setup_mcp_server
+        srv = setup_clang_index_mcp
         result = await srv._handle_tool_call("get_call_sites", {"function_name": "single_caller"})
 
         assert len(result) == 1, "Should return exactly one TextContent"
@@ -358,9 +358,9 @@ class TestMCPHandlerResponseFormat:
         assert isinstance(payload["call_sites"], list), "'call_sites' must be a list"
 
     @pytest.mark.asyncio
-    async def test_get_call_sites_empty_has_metadata(self, setup_mcp_server):
+    async def test_get_call_sites_empty_has_metadata(self, setup_clang_index_mcp):
         """get_call_sites with no results should include metadata with suggestions."""
-        srv = setup_mcp_server
+        srv = setup_clang_index_mcp
         result = await srv._handle_tool_call(
             "get_call_sites", {"function_name": "nonexistent_function_xyz"}
         )
@@ -373,9 +373,9 @@ class TestMCPHandlerResponseFormat:
         assert "suggestions" in payload["metadata"]
 
     @pytest.mark.asyncio
-    async def test_get_call_path_returns_dict_not_list(self, setup_mcp_server):
+    async def test_get_call_path_returns_dict_not_list(self, setup_clang_index_mcp):
         """get_call_path MCP handler must return a dict with 'paths' key."""
-        srv = setup_mcp_server
+        srv = setup_clang_index_mcp
         result = await srv._handle_tool_call(
             "get_call_path",
             {"from_function": "single_caller", "to_function": "nonexistent_xyz"},
@@ -390,9 +390,9 @@ class TestMCPHandlerResponseFormat:
         assert isinstance(payload["paths"], list), "'paths' must be a list"
 
     @pytest.mark.asyncio
-    async def test_get_call_path_empty_has_metadata(self, setup_mcp_server):
+    async def test_get_call_path_empty_has_metadata(self, setup_clang_index_mcp):
         """get_call_path with no paths found should include metadata with suggestions."""
-        srv = setup_mcp_server
+        srv = setup_clang_index_mcp
         result = await srv._handle_tool_call(
             "get_call_path",
             {"from_function": "nonexistent_a", "to_function": "nonexistent_b"},

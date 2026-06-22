@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
 
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
+from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
+from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
 
 project_root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
 config_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
