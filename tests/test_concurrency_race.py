@@ -18,10 +18,15 @@ def test_dict_size_changed_race():
     def background_indexer():
         i = 0
         while not stop_event.is_set():
+            key = f"Class_{i}"
             with analyzer.context.concurrency.index_lock:
-                analyzer.context.symbol_store.class_index[f"Class_{i}"] = [
-                    SymbolInfo(f"Class_{i}", "class", "dummy.cpp", 1, 1)
+                analyzer.context.symbol_store.class_index[key] = [
+                    SymbolInfo(key, "class", "dummy.cpp", 1, 1)
                 ]
+                # Keep dict small to avoid slow iteration in the main thread
+                if len(analyzer.context.symbol_store.class_index) > 100:
+                    oldest = f"Class_{i - 100}"
+                    analyzer.context.symbol_store.class_index.pop(oldest, None)
             i += 1
 
     t = threading.Thread(target=background_indexer)
