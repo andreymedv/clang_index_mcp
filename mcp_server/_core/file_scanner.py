@@ -83,9 +83,10 @@ class FileScanner:
         if not file_path:
             return False
 
-        # Check if file is under project root
+        # Resolve symlinks to handle macOS /var -> /private/var, etc.
         try:
-            rel_path = Path(file_path).relative_to(self.project_root)
+            resolved = Path(file_path).resolve()
+            rel_path = resolved.relative_to(self.project_root)
 
             # Check if file is in a dependency directory (at any level)
             for part in rel_path.parts:
