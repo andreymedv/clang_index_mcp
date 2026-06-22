@@ -34,7 +34,7 @@ Both installations are valid and functional, but server doesn't detect them.
 The current implementation likely searches:
 - `/usr/local/lib/libclang.dylib` (Intel Homebrew)
 - `/usr/lib/libclang.dylib` (system location)
-- `lib/macos/lib/libclang.dylib` (bundled fallback)
+- `mcp_server/libclang/lib/libclang.dylib` (bundled fallback)
 
 **Missing:**
 - ❌ `/Library/Developer/CommandLineTools/usr/lib/` (Xcode CLT)
@@ -47,7 +47,7 @@ The current implementation likely searches:
 1. Server starts up
 2. Searches hardcoded paths
 3. Doesn't find system libclang
-4. Downloads bundled libclang to `lib/macos/lib/libclang.dylib`
+4. Downloads bundled libclang to `mcp_server/libclang/lib/libclang.dylib`
 5. Uses downloaded version
 
 ### Issues with Current Approach
@@ -73,7 +73,7 @@ Likely in `scripts/download_libclang.py` or `mcp_server/cpp_analyzer.py` during 
 SEARCH_PATHS = [
     "/usr/local/lib/libclang.dylib",  # Intel Homebrew
     "/usr/lib/libclang.dylib",        # System (rare on macOS)
-    "lib/macos/lib/libclang.dylib",   # Bundled
+    "mcp_server/libclang/lib/libclang.dylib",   # Bundled
 ]
 ```
 
@@ -98,7 +98,7 @@ MACOS_SEARCH_PATHS = [
     "/usr/lib/libclang.dylib",
 
     # 6. Bundled (last resort)
-    "lib/macos/lib/libclang.dylib",
+    "mcp_server/libclang/lib/libclang.dylib",
 ]
 ```
 
@@ -264,7 +264,7 @@ def find_libclang_macos():
         return found
 
     # Priority 4: Bundled version (last resort)
-    bundled = "lib/macos/lib/libclang.dylib"
+    bundled = "mcp_server/libclang/lib/libclang.dylib"
     if os.path.exists(bundled):
         logger.warning(f"Using bundled libclang: {bundled}")
         return bundled
@@ -348,7 +348,7 @@ python -m mcp_server --help
 # Check logs for "Discovered libclang: /Library/Developer/..."
 
 # Should not download
-ls lib/macos/lib/libclang.dylib
+ls mcp_server/libclang/lib/libclang.dylib
 # Should not exist if system version found
 ```
 
