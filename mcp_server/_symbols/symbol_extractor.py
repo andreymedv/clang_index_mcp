@@ -1514,6 +1514,19 @@ class SymbolExtractor:
                             referenced, template_usr
                         )
                         called_usr = template_usr
+
+                        if display_name and cursor.spelling:
+                            base_before_template = display_name.split("<", 1)[0]
+                            source_name = cursor.spelling
+                            last_component = base_before_template.rsplit("::", 1)[-1]
+                            if last_component and last_component != source_name:
+                                template_args = display_name.split("<", 1)[1]
+                                ns_parts = base_before_template.rsplit("::", 1)
+                                if len(ns_parts) == 2:
+                                    new_base = f"{ns_parts[0]}::{source_name}"
+                                else:
+                                    new_base = source_name
+                                display_name = f"{new_base}<{template_args}"
             except Exception:
                 pass
 
