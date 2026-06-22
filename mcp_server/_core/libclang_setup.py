@@ -161,11 +161,8 @@ def _configure_from_bundled(system: str, parent_dir: str) -> bool:
     config = _get_platform_config(system)
     lib_names = config["lib_names"]
 
-    bundled_subdirs = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
-    platform_subdir = bundled_subdirs.get(system, "linux")
-
     for lib_name in lib_names:
-        path = os.path.join(parent_dir, "lib", platform_subdir, "lib", lib_name)
+        path = os.path.join(parent_dir, "libclang", "lib", lib_name)
         if os.path.exists(path):
             diagnostics.info(f"Using bundled libclang at: {path}")
             Config.set_library_file(path)
