@@ -34,7 +34,7 @@ Both installations are valid and functional, but server doesn't detect them.
 The current implementation likely searches:
 - `/usr/local/lib/libclang.dylib` (Intel Homebrew)
 - `/usr/lib/libclang.dylib` (system location)
-- `mcp_server/libclang/lib/libclang.dylib` (bundled fallback)
+- `clang_index_mcp/libclang/lib/libclang.dylib` (bundled fallback)
 
 **Missing:**
 - ❌ `/Library/Developer/CommandLineTools/usr/lib/` (Xcode CLT)
@@ -47,7 +47,7 @@ The current implementation likely searches:
 1. Server starts up
 2. Searches hardcoded paths
 3. Doesn't find system libclang
-4. Downloads bundled libclang to `mcp_server/libclang/lib/libclang.dylib`
+4. Downloads bundled libclang to `clang_index_mcp/libclang/lib/libclang.dylib`
 5. Uses downloaded version
 
 ### Issues with Current Approach
@@ -66,14 +66,14 @@ The current implementation likely searches:
 ## Technical Details
 
 ### Code Location
-Likely in `scripts/download_libclang.py` or `mcp_server/cpp_analyzer.py` during initialization.
+Likely in `scripts/download_libclang.py` or `clang_index_mcp/cpp_analyzer.py` during initialization.
 
 ### Current Search Order (Estimated)
 ```python
 SEARCH_PATHS = [
     "/usr/local/lib/libclang.dylib",  # Intel Homebrew
     "/usr/lib/libclang.dylib",        # System (rare on macOS)
-    "mcp_server/libclang/lib/libclang.dylib",   # Bundled
+    "clang_index_mcp/libclang/lib/libclang.dylib",   # Bundled
 ]
 ```
 
@@ -98,7 +98,7 @@ MACOS_SEARCH_PATHS = [
     "/usr/lib/libclang.dylib",
 
     # 6. Bundled (last resort)
-    "mcp_server/libclang/lib/libclang.dylib",
+    "clang_index_mcp/libclang/lib/libclang.dylib",
 ]
 ```
 
@@ -264,7 +264,7 @@ def find_libclang_macos():
         return found
 
     # Priority 4: Bundled version (last resort)
-    bundled = "mcp_server/libclang/lib/libclang.dylib"
+    bundled = "clang_index_mcp/libclang/lib/libclang.dylib"
     if os.path.exists(bundled):
         logger.warning(f"Using bundled libclang: {bundled}")
         return bundled
@@ -344,11 +344,11 @@ ls -la /opt/homebrew/Cellar/llvm/*/lib/libclang.dylib
 After implementing solution:
 ```bash
 # Should use system libclang (not bundled)
-python -m mcp_server --help
+python -m clang_index_mcp --help
 # Check logs for "Discovered libclang: /Library/Developer/..."
 
 # Should not download
-ls mcp_server/libclang/lib/libclang.dylib
+ls clang_index_mcp/libclang/lib/libclang.dylib
 # Should not exist if system version found
 ```
 
@@ -372,7 +372,7 @@ echo 'export LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib/libclang.
 - **Issue #9:** Originally documented in MANUAL_TEST_OBSERVATIONS (Issue #9)
   - See `docs/archived/MANUAL_TEST_OBSERVATIONS_DETAILED.md` lines 712-950
 - **Original observation:** macOS with Homebrew/Xcode installations
-- **Code location:** `scripts/download_libclang.py`, `mcp_server/cpp_analyzer.py`
+- **Code location:** `scripts/download_libclang.py`, `clang_index_mcp/cpp_analyzer.py`
 
 ## References
 

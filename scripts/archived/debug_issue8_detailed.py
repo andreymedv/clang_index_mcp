@@ -9,12 +9,12 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import mcp_server
+# Add parent directory to path to import clang_index_mcp
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import threading
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 # Patch _bulk_write_symbols to add debug output
 original_bulk_write = CppAnalyzer._bulk_write_symbols

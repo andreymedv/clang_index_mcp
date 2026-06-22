@@ -74,7 +74,7 @@ test: ## Run all tests
 
 test-coverage: ## Run tests with coverage report
 	@echo "$(BLUE)Running tests with coverage...$(NC)"
-	$(PYTHON) -m pytest --cov=mcp_server --cov-report=html --cov-report=term -v
+	$(PYTHON) -m pytest --cov=clang_index_mcp --cov-report=html --cov-report=term -v
 	@echo "$(GREEN)Coverage report generated in htmlcov/$(NC)"
 
 test-compile-commands: ## Run compile_commands integration tests
@@ -89,23 +89,23 @@ test-installation: ## Test installation and basic functionality
 
 lint: ## Run linting checks (flake8)
 	@echo "$(BLUE)Running linting checks...$(NC)"
-	$(PYTHON) -m flake8 mcp_server/ --max-line-length=100 --select=C90,E,F,W --ignore=E501,W503,E203 --max-complexity=10
+	$(PYTHON) -m flake8 clang_index_mcp/ --max-line-length=100 --select=C90,E,F,W --ignore=E501,W503,E203 --max-complexity=10
 	$(PYTHON) -m flake8 scripts/ --exclude=scripts/archived/ --max-line-length=100 --select=E,F,W --ignore=E501,W503,E203
 	@echo "$(GREEN)Linting complete!$(NC)"
 
 format: ## Format code with black
 	@echo "$(BLUE)Formatting code...$(NC)"
-	$(PYTHON) -m black mcp_server/ scripts/ --line-length=100
+	$(PYTHON) -m black clang_index_mcp/ scripts/ --line-length=100
 	@echo "$(GREEN)Code formatted!$(NC)"
 
 format-check: ## Check code formatting without making changes
 	@echo "$(BLUE)Checking code format...$(NC)"
-	$(PYTHON) -m black mcp_server/ scripts/ --line-length=100 --check
+	$(PYTHON) -m black clang_index_mcp/ scripts/ --line-length=100 --check
 	@echo "$(GREEN)Format check complete!$(NC)"
 
 type-check: ## Run type checking with mypy
 	@echo "$(BLUE)Running type checks...$(NC)"
-	$(PYTHON) -m mypy mcp_server/ --ignore-missing-imports
+	$(PYTHON) -m mypy clang_index_mcp/ --ignore-missing-imports
 	@echo "$(GREEN)Type checking complete!$(NC)"
 
 check: format-check lint type-check ## Run all checks (format, lint, type)
@@ -113,11 +113,11 @@ check: format-check lint type-check ## Run all checks (format, lint, type)
 
 run: ## Run the MCP server
 	@echo "$(BLUE)Starting MCP server...$(NC)"
-	$(PYTHON) -m mcp_server
+	$(PYTHON) -m clang_index_mcp
 
 dev: ## Run in development mode with debug output
 	@echo "$(BLUE)Starting MCP server in development mode...$(NC)"
-	MCP_DEBUG=1 PYTHONUNBUFFERED=1 $(PYTHON) -m mcp_server
+	MCP_DEBUG=1 PYTHONUNBUFFERED=1 $(PYTHON) -m clang_index_mcp
 
 build: ## Build wheel package
 	@echo "$(BLUE)Building wheel package...$(NC)"
@@ -153,7 +153,7 @@ else
 	@find .mcp_cache -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
 endif
 	@$(RMDIR) __pycache__ 2>/dev/null || true
-	@$(RMDIR) mcp_server/__pycache__ 2>/dev/null || true
+	@$(RMDIR) clang_index_mcp/__pycache__ 2>/dev/null || true
 	@$(RMDIR) scripts/__pycache__ 2>/dev/null || true
 	@$(RMDIR) .pytest_cache 2>/dev/null || true
 	@$(RMDIR) htmlcov 2>/dev/null || true

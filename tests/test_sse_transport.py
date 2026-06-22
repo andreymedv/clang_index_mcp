@@ -28,7 +28,7 @@ async def sse_server():
 
     from mcp.server import Server
 
-    from mcp_server._core.http_server import MCPHTTPServer
+    from clang_index_mcp._core.http_server import MCPHTTPServer
 
     # Find an available port dynamically to avoid conflicts
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

@@ -19,7 +19,7 @@ This guide covers everything you need to know to develop and contribute to Clang
 
 ```
 clang_index_mcp/
-├── mcp_server/                 # Main server package
+├── clang_index_mcp/                 # Main server package
 │   ├── __init__.py
 │   ├── cpp_mcp_server.py      # MCP server entry point (18 tools)
 │   ├── cpp_analyzer.py        # Core C++ analysis engine
@@ -349,7 +349,7 @@ if cached_cc_hash != compile_commands_hash:
 
 **Optional: Cross-Source Validation Mode**
 ```bash
-python -m mcp_server.cpp_analyzer --validate-headers
+python -m clang_index_mcp.cpp_analyzer --validate-headers
 ```
 - Extract headers in all inclusion contexts
 - Compare USR sets
@@ -395,7 +395,7 @@ self._processed: Dict[Tuple[str, str], str] = {}
 
 **Standalone (for testing)**:
 ```bash
-python -m mcp_server
+python -m clang_index_mcp
 ```
 
 **With MCP Client**:
@@ -405,7 +405,7 @@ python -m mcp_server
   "mcpServers": {
     "clang-index": {
       "command": "python",
-      "args": ["-m", "mcp_server"],
+      "args": ["-m", "clang_index_mcp"],
       "cwd": "/path/to/clang_index_mcp"
     }
   }
@@ -488,7 +488,7 @@ clang-index-mcp
 
 This is equivalent to:
 ```bash
-python -m mcp_server
+python -m clang_index_mcp
 ```
 
 #### Package Configuration
@@ -660,7 +660,7 @@ pytest tests/test_compile_commands_manager.py
 pytest tests/test_analyzer_integration.py::test_specific
 
 # With coverage
-pytest --cov=mcp_server --cov-report=html
+pytest --cov=clang_index_mcp --cov-report=html
 
 # Verbose output
 pytest -v
@@ -673,7 +673,7 @@ pytest -s
 
 ```python
 import pytest
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 @pytest.fixture
 def sample_project(tmp_path):
@@ -720,7 +720,7 @@ Enable debug logging:
 ```bash
 export PYTHONUNBUFFERED=1
 export MCP_DEBUG=1
-python -m mcp_server
+python -m clang_index_mcp
 ```
 
 ### libclang Debugging
@@ -751,7 +751,7 @@ rm -rf .mcp_cache/
 
 ```bash
 # Profile script
-python -m cProfile -o profile.stats -m mcp_server
+python -m cProfile -o profile.stats -m clang_index_mcp
 
 # Analyze results
 python -m pstats profile.stats

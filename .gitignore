@@ -26,6 +26,7 @@
 .kimi/
 .mcp.json
 .mcp_cache/*
+clang_index_mcp/.mcp_cache/*
 .test-projects/
 .test-results/
 .test-scenarios/*
@@ -35,8 +36,8 @@ build/
 dist/
 lib/**/libclang*
 mcp_env/
-mcp_server/consolidated_tools.py.bak
-mcp_server/libclang/
+clang_index_mcp/consolidated_tools.py.bak
+clang_index_mcp/libclang/
 mock_test_results.json
 tests/pytest.log
 tools/mock_server/optimization_runs/

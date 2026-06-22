@@ -10,10 +10,10 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import mcp_server
+# Add parent directory to path to import clang_index_mcp
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 def test_issue8():

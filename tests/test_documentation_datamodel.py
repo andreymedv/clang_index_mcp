@@ -9,12 +9,12 @@ import sys
 
 import pytest
 
-# Add the mcp_server directory to the path
+# Add the clang_index_mcp directory to the path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
 
 class TestSymbolInfoDocumentation:

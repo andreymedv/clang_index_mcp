@@ -38,7 +38,7 @@ The MCP server workflow consists of three main steps:
 Before you can analyze code, you must tell the server where your C++ project is located:
 
 ```python
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 analyzer = CppAnalyzer("/path/to/your/cpp/project")
 ```
@@ -422,7 +422,7 @@ For advanced users who want to test the MCP protocol directly:
 
 ```bash
 # Start the server in stdio mode
-python -m mcp_server
+python -m clang_index_mcp
 ```
 
 Then send JSON-RPC messages via stdin. Example messages are in `docs/mcp_protocol_examples.json`.

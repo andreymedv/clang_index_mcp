@@ -16,8 +16,8 @@ from unittest.mock import Mock, patch
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
-from mcp_server._incremental.incremental_analyzer import IncrementalAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
+from clang_index_mcp._incremental.incremental_analyzer import IncrementalAnalyzer
 
 
 class TestIncrementalAnalysisIntegration(unittest.TestCase):

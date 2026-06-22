@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_server._persistence.schema_migrations import SchemaMigration
+from clang_index_mcp._persistence.schema_migrations import SchemaMigration
 
 
 class TestSchemaMigration(unittest.TestCase):

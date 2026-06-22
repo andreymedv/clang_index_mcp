@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 @pytest.mark.benchmark
@@ -262,7 +262,7 @@ class TestPatternMatchingPerformance:
 
     def test_component_matching_performance(self):
         """Component-based suffix matching should be fast."""
-        from mcp_server._search.search_engine import SearchEngine
+        from clang_index_mcp._search.search_engine import SearchEngine
 
         # Benchmark component matching on various patterns
         patterns = [
@@ -285,7 +285,7 @@ class TestPatternMatchingPerformance:
 
     def test_regex_pattern_performance(self):
         """Regex pattern matching should be reasonable."""
-        from mcp_server._search.search_engine import SearchEngine
+        from clang_index_mcp._search.search_engine import SearchEngine
 
         # Benchmark regex patterns
         patterns = [

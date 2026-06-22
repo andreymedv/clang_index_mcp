@@ -18,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
+from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
 
 
 class TestArgumentSanitization:

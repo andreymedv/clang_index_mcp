@@ -10,7 +10,7 @@ This file tests the qualified name pattern matching capabilities added in Phase 
 
 import pytest
 
-from mcp_server._search.search_engine import SearchEngine
+from clang_index_mcp._search.search_engine import SearchEngine
 
 
 class TestPatternTypeDetection:
@@ -181,7 +181,7 @@ class TestFindInFileQualifiedPatterns:
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create minimal test project
@@ -222,7 +222,7 @@ void testFunc() {}
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create test project with namespaced classes
@@ -285,7 +285,7 @@ class TestBackwardCompatibility:
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -313,7 +313,7 @@ class View {};
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -347,7 +347,7 @@ class View {};
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -373,7 +373,7 @@ class GlobalClass {};
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -407,7 +407,7 @@ class Config {};
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -448,7 +448,7 @@ class TestPartiallyQualifiedNameLookups:
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -488,7 +488,7 @@ namespace outer {
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -538,7 +538,7 @@ namespace legacy {
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -568,7 +568,7 @@ namespace outer {
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -594,7 +594,7 @@ class MyClass {};
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -626,7 +626,7 @@ namespace outer {
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -664,7 +664,7 @@ class TestAmbiguousClassNameHandling:
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -709,7 +709,7 @@ namespace ns2 {
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"
@@ -750,7 +750,7 @@ namespace ns2 {
         import tempfile
         from pathlib import Path
 
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_file = Path(tmpdir) / "test.cpp"

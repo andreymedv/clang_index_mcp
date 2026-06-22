@@ -9,12 +9,12 @@ import os
 import sys
 import unittest
 
-# Add the mcp_server directory to the path
+# Add the clang_index_mcp directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from mcp_server._search.search_criteria import SearchCriteria
-from mcp_server._search.search_engine import SearchEngine
-from mcp_server._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._search.search_criteria import SearchCriteria
+from clang_index_mcp._search.search_engine import SearchEngine
+from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
 
 class TestSearchEnginePatternDetection(unittest.TestCase):
