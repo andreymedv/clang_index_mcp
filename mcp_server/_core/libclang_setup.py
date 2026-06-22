@@ -189,11 +189,9 @@ def configure_libclang() -> bool:
     system = platform.system()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)
-    project_root = os.path.dirname(parent_dir)
 
-    for search_dir in (parent_dir, project_root):
-        if _configure_from_bundled(system, search_dir):
-            return True
+    if _configure_from_bundled(system, parent_dir):
+        return True
 
     if system == "Darwin" and _configure_from_xcrun():
         return True
