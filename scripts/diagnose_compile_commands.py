@@ -20,9 +20,9 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from clang_index_mcp._compilation.compile_commands_manager import (
+from clang_index_mcp._compilation.compile_commands_manager import (  # noqa: E402
     CompileCommandsManager,
-)  # noqa: E402
+)
 from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
 from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig  # noqa: E402
 
