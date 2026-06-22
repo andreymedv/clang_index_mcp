@@ -190,16 +190,15 @@ def configure_libclang() -> bool:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)
 
+    if _configure_from_bundled(system, parent_dir):
+        return True
+
     if system == "Darwin" and _configure_from_xcrun():
         return True
 
     diagnostics.info("Searching for system-installed libclang...")
 
-    if _configure_from_system(system):
-        return True
-
-    diagnostics.info("No system libclang found, trying bundled libraries...")
-    return _configure_from_bundled(system, parent_dir)
+    return _configure_from_system(system)
 
 
 def get_libclang_runtime_info() -> dict:
