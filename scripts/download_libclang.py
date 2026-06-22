@@ -40,15 +40,15 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
     system = (system_override or platform.system()).lower()
     # Get the directory where the script itself is located
     script_dir = Path(__file__).parent
-    # Set the base_dir to 'lib' in the parent directory of the script
-    base_dir = script_dir.parent / "lib"
+    # Set the dest_dir to 'mcp_server/libclang' in the parent directory of the script
+    base_dir = script_dir.parent / "mcp_server" / "libclang"
 
     if system == "windows":
         return DownloadConfig(
             system="Windows",
             archive_name=f"clang+llvm-{LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz",
             lib_paths=("bin/libclang.dll",),
-            dest_dir=base_dir / "windows",
+            dest_dir=base_dir,
         )
 
     if system == "darwin":
@@ -63,7 +63,7 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
             system="macOS",
             archive_name=archive_name,
             lib_paths=("lib/libclang.dylib",),
-            dest_dir=base_dir / "macos",
+            dest_dir=base_dir,
         )
 
     # Default to Linux (x86_64)
@@ -75,7 +75,7 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
             "lib/libclang.so.1",
             "lib/libclang.so",
         ),
-        dest_dir=base_dir / "linux",
+        dest_dir=base_dir,
     )
 
 
