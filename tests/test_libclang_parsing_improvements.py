@@ -14,9 +14,9 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from mcp_server._compilation.clang_parser import ClangParser
-from mcp_server._compilation.compile_commands_manager import CompileCommandsManager
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp._compilation.clang_parser import ClangParser
+from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 class TestSystemHeaderDiagnosticFiltering:
@@ -159,7 +159,7 @@ class TestSystemHeaderDiagnosticFiltering:
 class TestUnknownCursorKindHandling:
     """Test graceful handling of unknown cursor kinds (commit 535cce4)."""
 
-    @patch("mcp_server.cpp_analyzer.diagnostics")
+    @patch("clang_index_mcp.cpp_analyzer.diagnostics")
     def test_process_cursor_handles_unknown_cursor_kind(self, mock_diagnostics, temp_project):
         """Test that unknown cursor kinds don't crash the analyzer."""
         analyzer = CppAnalyzer(temp_project)
@@ -181,7 +181,7 @@ class TestUnknownCursorKindHandling:
         # Verify get_children was called (to process children after error)
         cursor.get_children.assert_called()
 
-    @patch("mcp_server.cpp_analyzer.diagnostics")
+    @patch("clang_index_mcp.cpp_analyzer.diagnostics")
     def test_process_cursor_continues_with_children_on_unknown_kind(
         self, mock_diagnostics, temp_project
     ):

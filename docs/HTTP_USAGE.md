@@ -15,7 +15,7 @@ The server now supports three transport protocols:
 ### Default (stdio) Transport
 
 ```bash
-python3 -m mcp_server
+python3 -m clang_index_mcp
 # or
 clang-index-mcp
 ```
@@ -23,7 +23,7 @@ clang-index-mcp
 ### HTTP Transport
 
 ```bash
-python3 -m mcp_server --transport http --port 8000
+python3 -m clang_index_mcp --transport http --port 8000
 ```
 
 This starts an HTTP server on `http://127.0.0.1:8000` with the following endpoints:
@@ -35,7 +35,7 @@ This starts an HTTP server on `http://127.0.0.1:8000` with the following endpoin
 ### SSE Transport
 
 ```bash
-python3 -m mcp_server --transport sse --port 8080
+python3 -m clang_index_mcp --transport sse --port 8080
 ```
 
 This starts an SSE server on `http://127.0.0.1:8080` with the following endpoints:
@@ -49,10 +49,10 @@ This starts an SSE server on `http://127.0.0.1:8080` with the following endpoint
 
 ```bash
 # HTTP on custom port
-python3 -m mcp_server --transport http --host 0.0.0.0 --port 9000
+python3 -m clang_index_mcp --transport http --host 0.0.0.0 --port 9000
 
 # SSE on custom port
-python3 -m mcp_server --transport sse --host 127.0.0.1 --port 8888
+python3 -m clang_index_mcp --transport sse --host 127.0.0.1 --port 8888
 ```
 
 ## Using the HTTP API
@@ -414,7 +414,7 @@ lsof -i :8000
 
 Try a different port:
 ```bash
-python3 -m mcp_server --transport http --port 9000
+python3 -m clang_index_mcp --transport http --port 9000
 ```
 
 ### Session not found

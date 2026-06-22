@@ -106,7 +106,7 @@ This indicates a bug in interrupt handling. Please report with:
 
 ### Code Locations
 
-- **Main interrupt handling:** `mcp_server/cpp_analyzer.py:3812-3842`
+- **Main interrupt handling:** `clang_index_mcp/cpp_analyzer.py:3812-3842`
   - KeyboardInterrupt exception handler
   - Executor shutdown with `wait=True`
 
@@ -205,7 +205,7 @@ time python scripts/test_mcp_console.py /path/to/project
 
 ## Related Files
 
-- `mcp_server/cpp_analyzer.py` - Main interrupt handling
+- `clang_index_mcp/cpp_analyzer.py` - Main interrupt handling
 - `scripts/test_mcp_console.py` - Manual test script
 - `scripts/test_interrupt_cleanup.py` - Automated test
 - `scripts/fix_corrupted_cache.py` - Database recovery tool

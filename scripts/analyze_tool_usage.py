@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from mcp_server._search.smart_fallback import (  # noqa: E402
+from clang_index_mcp._search.smart_fallback import (  # noqa: E402
     _PROTOTYPE_PATTERN,
     _looks_like_signature,
 )

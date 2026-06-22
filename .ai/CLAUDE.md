@@ -68,9 +68,9 @@ make run                        # Run MCP server (stdio transport)
 make dev                        # Run with MCP_DEBUG=1 and PYTHONUNBUFFERED=1
 
 # Alternative transport protocols
-python -m mcp_server                                        # stdio (default)
-python -m mcp_server --transport http --port 8000           # HTTP
-python -m mcp_server --transport sse --port 8000            # SSE
+python -m clang_index_mcp                                        # stdio (default)
+python -m clang_index_mcp --transport http --port 8000           # HTTP
+python -m clang_index_mcp --transport sse --port 8000            # SSE
 ```
 
 ### Testing and Debugging
@@ -103,7 +103,7 @@ Use the `/test-mcp` skill for automated MCP server testing:
 For low-level debugging or when automated testing isn't suitable, use SSE transport with curl:
 ```bash
 # Start SSE server
-MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m mcp_server --transport sse --port 8000
+MCP_DEBUG=1 PYTHONUNBUFFERED=1 python -m clang_index_mcp --transport sse --port 8000
 
 # Call MCP tool
 curl -s -X POST http://localhost:8000/mcp/v1/tools/call \
@@ -121,7 +121,7 @@ make install-wheel              # Build and install wheel locally
 make install-editable           # Install in editable mode (recommended for dev)
 
 # After install-editable or install-wheel, you can run:
-clang-index-mcp                 # Entry point script (equivalent to python -m mcp_server)
+clang-index-mcp                 # Entry point script (equivalent to python -m clang_index_mcp)
 ```
 
 ### Maintenance
@@ -198,14 +198,14 @@ make ie                         # install-editable
 - First source file to include a header "claims" it via `HeaderProcessingTracker`
 - 5-10x performance improvement for commonly-included headers
 - Identity tracked by header path only (not compile args)
-- See mcp_server/header_tracker.py
+- See clang_index_mcp/header_tracker.py
 
 **3. Incremental Analysis Architecture**
 - Tracks file changes via MD5 hashing (content-based, platform-independent)
 - Builds dependency graphs to cascade header changes to dependent sources
 - Detects compile_commands.json changes and re-analyzes affected files
 - Provides 30-300x speedup for partial refreshes
-- See mcp_server/incremental_analyzer.py, mcp_server/change_scanner.py
+- See clang_index_mcp/incremental_analyzer.py, clang_index_mcp/change_scanner.py
 - **Resource Management and File Descriptor Handling**
 - **CRITICAL:** TranslationUnit objects are deleted immediately after symbol extraction
 - `del tu` + `gc.collect()` forces cleanup of libclang C++ resources (file descriptors)
@@ -213,22 +213,22 @@ make ie                         # install-editable
 - Singleton analyzer per worker process (not per file) reduces SQLite connections
 - File descriptors remain stable at ~10-15 during indexing (tested with 5700+ files)
 - **Historical Issue:** self.translation_units dict was removed (write-only, caused 516+ FD leak)
-- See mcp_server/cpp_analyzer.py:3322 (explicit TU deletion), :161-191 (worker cleanup)
-- See mcp_server/header_tracker.py
+- See clang_index_mcp/cpp_analyzer.py:3322 (explicit TU deletion), :161-191 (worker cleanup)
+- See clang_index_mcp/header_tracker.py
 
 **5. SQLite Cache with FTS5**
 - Symbol storage in SQLite with full-text search (2-5ms for 100K symbols)
 - WAL mode for concurrent multi-process access
 - Automatic VACUUM, OPTIMIZE, and ANALYZE maintenance
 - Cache per project configuration: (source_dir, config_file) → unique cache dir
-- See mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql
+- See clang_index_mcp/sqlite_cache_backend.py, clang_index_mcp/schema.sql
 
 **6. Compile Commands Integration**
 - Parses compile_commands.json for accurate per-file compilation arguments
 - Binary caching (.mcp_cache/<project>/compile_commands/<hash>.cache) for 10-100x faster startup
 - Optional orjson for 3-5x faster JSON parsing (pip install .[performance])
 - Fallback to hardcoded args if compile_commands.json not found
-- See mcp_server/compile_commands_manager.py
+- See clang_index_mcp/compile_commands_manager.py
 
 **7. No Runtime Monitoring of compile_commands.json**
 - Only checked on analyzer startup (not during runtime)
@@ -240,7 +240,7 @@ make ie                         # install-editable
 - Eliminates race conditions in multi-process mode (was causing ~5000 writes for large projects)
 - Cached as header_tracker.json in project cache directory
 - Includes compile_commands.json hash for invalidation on config changes
-- See mcp_server/header_tracker.py, cpp_analyzer.py:_save_header_tracking()
+- See clang_index_mcp/header_tracker.py, cpp_analyzer.py:_save_header_tracking()
 
 **9. libclang Error Recovery**
 - Leverages libclang's built-in error recovery for non-fatal parse errors
@@ -260,25 +260,25 @@ make ie                         # install-editable
 
 **11. SQLite PRAGMAs:** Applied per-connection in `_set_connection_pragmas()` (WAL, 64MB cache, 256MB mmap). CRITICAL: must be applied to every connection — workers with `skip_schema_recreation=True` bypassed schema init and missed PRAGMAs (>8x perf regression). See `sqlite_cache_backend.py:_set_connection_pragmas()`.
 
-**12. Call Graph in SQLite only:** No in-memory call_graph dicts (was ~2 GB RAM). Workers stream call_sites directly to SQLite; find_callers/find_callees query on-demand. See `mcp_server/call_graph.py`.
+**12. Call Graph in SQLite only:** No in-memory call_graph dicts (was ~2 GB RAM). Workers stream call_sites directly to SQLite; find_callers/find_callees query on-demand. See `clang_index_mcp/call_graph.py`.
 
 **13. Template-Mediated Calls:** `std::make_shared<T>()` tracked via template arg type extraction at parse time. `is_template_mediated: True` flag in find_callees results. See `_extract_template_call_info()`.
 
 
 ### Critical Code Locations
 
-- **MCP Tools Definition:** mcp_server/cpp_mcp_server.py:127-312 (`list_tools()`)
-- **Core Analyzer:** mcp_server/cpp_analyzer.py:512 (CppAnalyzer class)
-- **Symbol Extraction:** mcp_server/cpp_analyzer.py:2536 (`_process_cursor()` recursive AST traversal)
-- **Type Alias Extraction:** mcp_server/cpp_analyzer.py:2393 (`_extract_alias_info()` handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
-- **Documentation Extraction (Phase 2):** mcp_server/cpp_analyzer.py:2044 (`_extract_documentation()` brief and doc_comment extraction)
-- **Virtual Method Extraction (Phase 5):** mcp_server/cpp_analyzer.py:2536 (`_process_cursor()` internals: cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
-- **Parallel Worker:** mcp_server/cpp_analyzer.py:86-193 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
-- **Call Graph Analysis (Phase 4):** mcp_server/call_graph.py (SQLite-only queries, no in-memory dicts)
-- **SQLite FTS5:** mcp_server/sqlite_cache_backend.py, mcp_server/schema.sql (v17.0 — see schema.sql for current column list)
-- **Header Tracking:** mcp_server/header_tracker.py (HeaderProcessingTracker)
-- **Incremental Logic:** mcp_server/incremental_analyzer.py
-- **Compile Commands:** mcp_server/compile_commands_manager.py
+- **MCP Tools Definition:** clang_index_mcp/cpp_mcp_server.py:127-312 (`list_tools()`)
+- **Core Analyzer:** clang_index_mcp/cpp_analyzer.py:512 (CppAnalyzer class)
+- **Symbol Extraction:** clang_index_mcp/cpp_analyzer.py:2536 (`_process_cursor()` recursive AST traversal)
+- **Type Alias Extraction:** clang_index_mcp/cpp_analyzer.py:2393 (`_extract_alias_info()` handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
+- **Documentation Extraction (Phase 2):** clang_index_mcp/cpp_analyzer.py:2044 (`_extract_documentation()` brief and doc_comment extraction)
+- **Virtual Method Extraction (Phase 5):** clang_index_mcp/cpp_analyzer.py:2536 (`_process_cursor()` internals: cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
+- **Parallel Worker:** clang_index_mcp/cpp_analyzer.py:86-193 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
+- **Call Graph Analysis (Phase 4):** clang_index_mcp/call_graph.py (SQLite-only queries, no in-memory dicts)
+- **SQLite FTS5:** clang_index_mcp/sqlite_cache_backend.py, clang_index_mcp/schema.sql (v17.0 — see schema.sql for current column list)
+- **Header Tracking:** clang_index_mcp/header_tracker.py (HeaderProcessingTracker)
+- **Incremental Logic:** clang_index_mcp/incremental_analyzer.py
+- **Compile Commands:** clang_index_mcp/compile_commands_manager.py
 
 ## Configuration
 
@@ -322,7 +322,7 @@ Monitor file descriptors and resource usage during indexing to detect leaks:
 
 ```bash
 # Get the MCP server PID
-MCP_PID=$(pgrep -f "python -m mcp_server" | head -1)
+MCP_PID=$(pgrep -f "python -m clang_index_mcp" | head -1)
 
 # Monitor file descriptor counts (should stay stable at ~10-15)
 watch -n 2 'echo "=== FD Monitor ==="; \
@@ -392,12 +392,12 @@ The `diagnose_parse_errors.py` script tests parsing with different libclang opti
 1. Edit `cpp_analyzer.py` `_process_cursor()` (recursive AST walker)
 2. Update `symbol_info.py` if changing SymbolInfo structure
 3. If changing SQLite schema:
-   - Update `mcp_server/schema.sql` with new columns/tables
+   - Update `clang_index_mcp/schema.sql` with new columns/tables
    - Increment schema version in schema.sql (e.g., "4.0" → "5.0")
    - Update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`
    - Database will automatically recreate on version mismatch (development mode)
 4. Run `make test` to verify no regressions
-5. Test with example project: `python -m mcp_server` + set examples/compile_commands_example/
+5. Test with example project: `python -m clang_index_mcp` + set examples/compile_commands_example/
 
 ### Cache Invalidation and Corruption Recovery
 
@@ -444,12 +444,12 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ## libclang Setup
 
-Libclang is auto-downloaded by setup scripts to `mcp_server/libclang/`:
-- **Windows:** mcp_server/libclang/lib/libclang.dll
-- **macOS:** mcp_server/libclang/lib/libclang.dylib
-- **Linux:** mcp_server/libclang/lib/libclang.so.1
+Libclang is auto-downloaded by setup scripts to `clang_index_mcp/libclang/`:
+- **Windows:** clang_index_mcp/libclang/lib/libclang.dll
+- **macOS:** clang_index_mcp/libclang/lib/libclang.dylib
+- **Linux:** clang_index_mcp/libclang/lib/libclang.so.1
 
-If auto-download fails, manually download from https://github.com/llvm/llvm-project/releases and place in `mcp_server/libclang/lib/`.
+If auto-download fails, manually download from https://github.com/llvm/llvm-project/releases and place in `clang_index_mcp/libclang/lib/`.
 
 ## Important Notes for Claude Code
 

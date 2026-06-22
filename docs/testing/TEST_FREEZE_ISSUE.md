@@ -70,7 +70,7 @@ KeyboardInterrupt
 PytestUnhandledThreadExceptionWarning: Exception in thread Thread-79 (index_project)
 
 Traceback (most recent call last):
-  File "/home/andrey/repos/cplusplus_mcp/mcp_server/cpp_analyzer.py", line 1846, in index_project
+  File "/home/andrey/repos/cplusplus_mcp/clang_index_mcp/cpp_analyzer.py", line 1846, in index_project
     result = future.result()
              ^^^^^^^^^^^^^^^
   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 449, in result
@@ -90,11 +90,11 @@ Traceback (most recent call last):
     self._target(*self._args, **self._kwargs)
   File "/home/andrey/repos/cplusplus_mcp/tests/robustness/test_data_integrity.py", line 70, in index_project
     analyzer.index_project()
-  File "/home/andrey/repos/cplusplus_mcp/mcp_server/cpp_analyzer.py", line 1960, in index_project
+  File "/home/andrey/repos/cplusplus_mcp/clang_index_mcp/cpp_analyzer.py", line 1960, in index_project
     diagnostics.error(f"Error indexing {file_path}: {exc}")
-  File "/home/andrey/repos/cplusplus_mcp/mcp_server/diagnostics.py", line 187, in error
+  File "/home/andrey/repos/cplusplus_mcp/clang_index_mcp/diagnostics.py", line 187, in error
     get_logger().error(message)
-  File "/home/andrey/repos/cplusplus_mcp/mcp_server/diagnostics.py", line 90, in error
+  File "/home/andrey/repos/cplusplus_mcp/clang_index_mcp/diagnostics.py", line 90, in error
     print(
 ValueError: I/O operation on closed file.
 ```
@@ -185,7 +185,7 @@ def test_concurrent_cache_write_protection():
 # In worker initialization
 def _init_worker():
     # Reinitialize logger in child process
-    import mcp_server.diagnostics as diagnostics
+    import clang_index_mcp.diagnostics as diagnostics
     diagnostics.reset_logger()
 ```
 
@@ -277,8 +277,8 @@ pytest tests/robustness/test_data_integrity.py::TestAtomicCacheWrites::test_conc
 ## References
 
 - Test file: `tests/robustness/test_data_integrity.py`
-- Analyzer: `mcp_server/cpp_analyzer.py`
-- Diagnostics: `mcp_server/diagnostics.py`
+- Analyzer: `clang_index_mcp/cpp_analyzer.py`
+- Diagnostics: `clang_index_mcp/diagnostics.py`
 - Python multiprocessing docs: https://docs.python.org/3/library/multiprocessing.html
 
 ---

@@ -188,7 +188,7 @@ def main():
     print(f"Max files: {max_files}")
     print("=" * 60)
 
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     # Create analyzer and clear cache to force fresh indexing
     print("\nCreating CppAnalyzer...")

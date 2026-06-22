@@ -9,14 +9,14 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import mcp_server
+# Add parent directory to path to import clang_index_mcp
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Enable debug logging
 import logging
 
-from mcp_server._core import diagnostics
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp._core import diagnostics
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 

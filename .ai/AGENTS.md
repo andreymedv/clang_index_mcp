@@ -57,7 +57,7 @@ make dev
 
 ## Git Hooks and Code Quality
 
-This repository supports both Makefile-based git hooks and the `pre-commit` framework. The `.pre-commit-config.yaml` is synchronized with the Makefile's `check` and `lint` targets (including a blocking complexity limit of 10 for `mcp_server/`).
+This repository supports both Makefile-based git hooks and the `pre-commit` framework. The `.pre-commit-config.yaml` is synchronized with the Makefile's `check` and `lint` targets (including a blocking complexity limit of 10 for `clang_index_mcp/`).
 
 ### Current Setup
 
@@ -124,13 +124,13 @@ This ensures local checks match GitHub CI exactly.
 
 Most changes will touch one of these areas:
 
-- `mcp_server/cpp_mcp_server.py`: MCP tool schemas and request handlers.
-- `mcp_server/cpp_analyzer.py`: core indexing pipeline, AST traversal, symbol extraction, and worker logic.
-- `mcp_server/call_graph.py`: SQLite-backed call graph storage and queries.
-- `mcp_server/sqlite_cache_backend.py`: schema management, SQLite tuning, and persistence behavior.
-- `mcp_server/incremental_analyzer.py`: change detection and incremental refresh behavior.
-- `mcp_server/compile_commands_manager.py`: compile_commands.json loading and lookup.
-- `mcp_server/header_tracker.py`: header deduplication logic.
+- `clang_index_mcp/cpp_mcp_server.py`: MCP tool schemas and request handlers.
+- `clang_index_mcp/cpp_analyzer.py`: core indexing pipeline, AST traversal, symbol extraction, and worker logic.
+- `clang_index_mcp/call_graph.py`: SQLite-backed call graph storage and queries.
+- `clang_index_mcp/sqlite_cache_backend.py`: schema management, SQLite tuning, and persistence behavior.
+- `clang_index_mcp/incremental_analyzer.py`: change detection and incremental refresh behavior.
+- `clang_index_mcp/compile_commands_manager.py`: compile_commands.json loading and lookup.
+- `clang_index_mcp/header_tracker.py`: header deduplication logic.
 
 Treat the following behaviors as critical unless the task explicitly requires changing them:
 
@@ -155,9 +155,9 @@ Treat the following behaviors as critical unless the task explicitly requires ch
 
 - Preserve the current code style and naming patterns.
 - Keep schema changes coordinated:
-  - Update `mcp_server/schema.sql`.
+  - Update `clang_index_mcp/schema.sql`.
   - Increment the schema version there.
-  - Update `CURRENT_SCHEMA_VERSION` in `mcp_server/sqlite_cache_backend.py`.
+  - Update `CURRENT_SCHEMA_VERSION` in `clang_index_mcp/sqlite_cache_backend.py`.
 - Add or update tests whenever behavior changes.
 - Update documentation when user-visible behavior, architecture, or workflows change.
 - Do not revert unrelated user changes in the worktree.

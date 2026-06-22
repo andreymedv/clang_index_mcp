@@ -35,7 +35,7 @@ To create a new migration:
 
 1. **Determine next version number**: Check existing migrations, use next number (e.g., 002)
 
-2. **Create migration file**: `mcp_server/migrations/002_add_feature.sql`
+2. **Create migration file**: `clang_index_mcp/migrations/002_add_feature.sql`
 
 3. **Write SQL**: Add schema changes (CREATE TABLE, ALTER TABLE, CREATE INDEX, etc.)
 
@@ -108,6 +108,6 @@ If database is corrupted during migration:
 
 ## Related Files
 
-- `mcp_server/schema.sql`: Initial schema definition
-- `mcp_server/schema_migrations.py`: Migration framework code
-- `mcp_server/sqlite_cache_backend.py`: Backend that applies migrations
+- `clang_index_mcp/schema.sql`: Initial schema definition
+- `clang_index_mcp/schema_migrations.py`: Migration framework code
+- `clang_index_mcp/sqlite_cache_backend.py`: Backend that applies migrations

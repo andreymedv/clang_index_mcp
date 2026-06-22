@@ -462,7 +462,7 @@ def main():
     print("=" * 70)
 
     # Import analyzer
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     # Create analyzer
     print("\nCreating CppAnalyzer...")

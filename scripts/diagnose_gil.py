@@ -27,7 +27,7 @@ def parse_file_worker(file_path: str):
     """Worker function to parse a single file (for ProcessPoolExecutor)."""
     import tempfile
 
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     # Create a minimal analyzer just for this file
     # Use a unique temp directory for cache to avoid conflicts
@@ -43,7 +43,7 @@ def test_with_threads(files, max_workers):
     """Test parsing with ThreadPoolExecutor."""
     print(f"\nTesting with ThreadPoolExecutor ({max_workers} workers)...")
 
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     analyzer = CppAnalyzer(".")
 
@@ -94,7 +94,7 @@ def main():
     print("=" * 80)
 
     # Find C++ files
-    from mcp_server._core.file_scanner import FileScanner
+    from clang_index_mcp._core.file_scanner import FileScanner
 
     scanner = FileScanner(project_root)
     all_files = scanner.find_cpp_files()

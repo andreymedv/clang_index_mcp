@@ -59,8 +59,8 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
-        name: flake8 (mcp_server)
-        files: ^mcp_server/
+        name: flake8 (clang_index_mcp)
+        files: ^clang_index_mcp/
         args:
           - '--max-line-length=100'
           - '--select=C90,E,F,W'

@@ -114,7 +114,7 @@ def test_server_import():
         test_code = f"""
 import sys
 sys.path.insert(0, r'{parent_dir}')
-from mcp_server._mcp import cpp_mcp_server
+from clang_index_mcp._mcp import cpp_mcp_server
 print("SUCCESS")
 """
 

@@ -23,7 +23,7 @@ class TestTransportSelection:
     def test_help_output(self):
         """Test that help output includes transport options."""
         result = subprocess.run(
-            [sys.executable, "-m", "mcp_server", "--help"], capture_output=True, text=True
+            [sys.executable, "-m", "clang_index_mcp", "--help"], capture_output=True, text=True
         )
 
         assert result.returncode == 0
@@ -39,7 +39,7 @@ class TestTransportSelection:
         env = os.environ.copy()
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
         result = subprocess.run(
-            [sys.executable, "-m", "mcp_server", "--transport", "invalid"],
+            [sys.executable, "-m", "clang_index_mcp", "--transport", "invalid"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -63,7 +63,7 @@ class TestStdioTransport:
 
         # Start server process
         proc = subprocess.Popen(
-            [sys.executable, "-m", "mcp_server"],
+            [sys.executable, "-m", "clang_index_mcp"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -103,7 +103,7 @@ class TestStdioTransport:
 
         # Start server process
         proc = subprocess.Popen(
-            [sys.executable, "-m", "mcp_server", "--transport", "stdio"],
+            [sys.executable, "-m", "clang_index_mcp", "--transport", "stdio"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -151,7 +151,7 @@ class TestHTTPTransportIntegration:
             [
                 sys.executable,
                 "-m",
-                "mcp_server",
+                "clang_index_mcp",
                 "--transport",
                 "http",
                 "--port",
@@ -214,7 +214,7 @@ class TestSSETransportIntegration:
             [
                 sys.executable,
                 "-m",
-                "mcp_server",
+                "clang_index_mcp",
                 "--transport",
                 "sse",
                 "--port",

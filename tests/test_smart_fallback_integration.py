@@ -7,11 +7,11 @@ and that fallback suggestions flow through the full pipeline.
 import threading
 import unittest
 
-from mcp_server._search.search_criteria import SearchCriteria
-from mcp_server._search.search_engine import SearchEngine
-from mcp_server._search.smart_fallback import SmartFallback
-from mcp_server._mcp.state_manager import AnalyzerState, AnalyzerStateManager, EnhancedQueryResult
-from mcp_server._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._search.search_criteria import SearchCriteria
+from clang_index_mcp._search.search_engine import SearchEngine
+from clang_index_mcp._search.smart_fallback import SmartFallback
+from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager, EnhancedQueryResult
+from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
 
 def _create_symbol(
@@ -214,7 +214,7 @@ class TestFallbackInEnhancedQueryResult(unittest.TestCase):
 
     def test_create_empty_with_fallback(self):
         """EnhancedQueryResult.create_empty should format fallback metadata."""
-        from mcp_server._search.smart_fallback import FallbackResult
+        from clang_index_mcp._search.smart_fallback import FallbackResult
 
         fallback = FallbackResult(
             reason="signature_detected",

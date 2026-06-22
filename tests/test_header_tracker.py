@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from mcp_server._persistence.header_tracker import HeaderProcessingTracker
+from clang_index_mcp._persistence.header_tracker import HeaderProcessingTracker
 
 
 class TestHeaderProcessingTrackerBasic:

@@ -21,9 +21,9 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server._persistence.cache_manager import CacheManager
-from mcp_server._core.error_tracking import ErrorRecord, ErrorTracker, RecoveryManager
-from mcp_server._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._persistence.cache_manager import CacheManager
+from clang_index_mcp._core.error_tracking import ErrorRecord, ErrorTracker, RecoveryManager
+from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
 
 class TestErrorTracker(unittest.TestCase):
@@ -268,7 +268,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         cache_manager = self._create_cache_manager()
 
         # Verify starting with SQLite
-        from mcp_server._persistence.sqlite_cache_backend import SqliteCacheBackend
+        from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
 
         self.assertIsInstance(cache_manager.backend, SqliteCacheBackend)
 

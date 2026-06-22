@@ -17,9 +17,9 @@ from unittest.mock import patch
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from mcp_server._persistence.cache_manager import CacheManager
-from mcp_server._persistence.sqlite_cache_backend import SqliteCacheBackend
-from mcp_server._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._persistence.cache_manager import CacheManager
+from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
+from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
 
 def generate_test_symbols(count):

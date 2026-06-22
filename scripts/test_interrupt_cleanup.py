@@ -39,7 +39,7 @@ def main():
         sys.exit(1)
 
     try:
-        from mcp_server.cpp_analyzer import CppAnalyzer
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
         print("=" * 70)
         print("Testing subprocess cleanup on interrupt (Ctrl-C)")

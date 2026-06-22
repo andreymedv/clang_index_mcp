@@ -65,7 +65,7 @@ See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warn
 **Likely Causes:**
 
 1. **SSE Transport Cleanup Issue** (Most Likely)
-   - `mcp_server/http_server.py` - SSE endpoint implementation
+   - `clang_index_mcp/http_server.py` - SSE endpoint implementation
    - MemoryObjectReceiveStream not properly closed on disconnect
    - Missing cleanup in exception handlers
    - Async context not properly managed
@@ -95,7 +95,7 @@ pytest tests/test_sse_transport.py -v -W error::ResourceWarning
 
 **2. Check SSE endpoint cleanup in production code:**
 ```python
-# mcp_server/http_server.py - Check for missing cleanup
+# clang_index_mcp/http_server.py - Check for missing cleanup
 # Look for:
 # - try/finally blocks around SSE streaming
 # - Proper close() calls on MemoryObjectReceiveStream
@@ -111,7 +111,7 @@ pytest tests/test_sse_transport.py -v -W error::ResourceWarning
 #### Potential Fix Locations
 
 **Production Code:**
-- `mcp_server/http_server.py` - SSE endpoint handlers
+- `clang_index_mcp/http_server.py` - SSE endpoint handlers
   - Lines with `MemoryObjectReceiveStream` usage
   - Event streaming loops
   - Connection cleanup on disconnect/error
@@ -125,7 +125,7 @@ pytest tests/test_sse_transport.py -v -W error::ResourceWarning
 #### Recommended Fix Pattern
 
 ```python
-# In mcp_server/http_server.py or tests
+# In clang_index_mcp/http_server.py or tests
 async def sse_endpoint():
     stream = MemoryObjectReceiveStream()
     try:
@@ -207,7 +207,7 @@ See [TEST_FREEZE_ISSUE.md](TEST_FREEZE_ISSUE.md) - Can cause deadlocks and test 
 ### Short Term (Fix)
 
 1. 🔲 **Review SSE transport code** for missing cleanup:
-   - Check `mcp_server/http_server.py` SSE endpoints
+   - Check `clang_index_mcp/http_server.py` SSE endpoints
    - Add proper cleanup in finally blocks
    - Use async context managers where appropriate
 
@@ -274,7 +274,7 @@ pytest tests/test_sse_transport.py -W error::ResourceWarning
 ## Related Issues
 
 - **Issue #002:** Test freeze due to fork() deprecation
-- **SSE Transport:** `mcp_server/http_server.py`
+- **SSE Transport:** `clang_index_mcp/http_server.py`
 - **anyio Documentation:** https://anyio.readthedocs.io/en/stable/streams.html
 
 ---

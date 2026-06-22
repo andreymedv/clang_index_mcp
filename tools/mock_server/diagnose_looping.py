@@ -20,7 +20,7 @@ import requests
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from mcp_server._mcp.consolidated_tools import list_tools_b  # noqa: E402
+from clang_index_mcp._mcp.consolidated_tools import list_tools_b  # noqa: E402
 
 LM_STUDIO_URL = "http://localhost:1234/v1"
 API_TOKEN = "sk-lm-5q4Npqsm:bWwqKV2nNskIxohZnteZ"

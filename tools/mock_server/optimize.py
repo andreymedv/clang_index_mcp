@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-CONSOLIDATED_TOOLS_PATH = _PROJECT_ROOT / "mcp_server" / "consolidated_tools.py"
+CONSOLIDATED_TOOLS_PATH = _PROJECT_ROOT / "clang_index_mcp" / "consolidated_tools.py"
 RUNNER_PATH = Path(__file__).parent / "runner.py"
 DEFAULT_SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 DEFAULT_OUTPUT_DIR = Path(__file__).parent / "optimization_runs"

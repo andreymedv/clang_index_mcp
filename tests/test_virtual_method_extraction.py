@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 # Prototype-based helpers (for search_functions results)

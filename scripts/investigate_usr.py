@@ -12,8 +12,8 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer  # noqa: E402
-from mcp_server._core.diagnostics import DiagnosticLevel, get_logger  # noqa: E402
+from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
+from clang_index_mcp._core.diagnostics import DiagnosticLevel, get_logger  # noqa: E402
 
 
 def test_usr_matching_same_file():

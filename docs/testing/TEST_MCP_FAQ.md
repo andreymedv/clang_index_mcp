@@ -154,7 +154,7 @@ A: No, builtin projects cannot be removed.
 1. Check if another server is running on port 8000:
    ```bash
    lsof -i :8000
-   pkill -f "python -m mcp_server"
+   pkill -f "python -m clang_index_mcp"
    ```
 
 2. Try a different protocol:
@@ -173,7 +173,7 @@ A: No, builtin projects cannot be removed.
 **Solutions:**
 1. Verify MCP server is installed:
    ```bash
-   python -m mcp_server --help
+   python -m clang_index_mcp --help
    ```
 
 2. Check for Python errors in terminal output
@@ -200,7 +200,7 @@ A: No, builtin projects cannot be removed.
 
 2. Check if server is still running:
    ```bash
-   ps aux | grep "python -m mcp_server"
+   ps aux | grep "python -m clang_index_mcp"
    ```
 
 3. Use tier1 for faster testing

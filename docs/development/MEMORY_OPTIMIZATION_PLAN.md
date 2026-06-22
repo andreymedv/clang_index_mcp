@@ -87,22 +87,22 @@ Purpose: Reference for lessons learned (DO NOT MERGE)
 ### Key Files Modified
 
 **Phase 1:**
-- `mcp_server/call_graph.py` - Added `cache_backend` parameter, lazy loading methods
-- `mcp_server/cpp_analyzer.py` - Set `cache_backend`, removed bulk call_sites load, direct SymbolInfo usage
-- `mcp_server/sqlite_cache_backend.py` - Return SymbolInfo directly, stream from cursor
+- `clang_index_mcp/call_graph.py` - Added `cache_backend` parameter, lazy loading methods
+- `clang_index_mcp/cpp_analyzer.py` - Set `cache_backend`, removed bulk call_sites load, direct SymbolInfo usage
+- `clang_index_mcp/sqlite_cache_backend.py` - Return SymbolInfo directly, stream from cursor
 
 **Race Condition Fix:**
-- `mcp_server/sqlite_cache_backend.py` - Added `skip_schema_recreation` param, `ensure_schema_current()` method
-- `mcp_server/cache_manager.py` - Pass `skip_schema_recreation` to backend, expose `ensure_schema_current()`
-- `mcp_server/cpp_analyzer.py` - Workers use `skip_schema_recreation=True`, main calls `ensure_schema_current()`
+- `clang_index_mcp/sqlite_cache_backend.py` - Added `skip_schema_recreation` param, `ensure_schema_current()` method
+- `clang_index_mcp/cache_manager.py` - Pass `skip_schema_recreation` to backend, expose `ensure_schema_current()`
+- `clang_index_mcp/cpp_analyzer.py` - Workers use `skip_schema_recreation=True`, main calls `ensure_schema_current()`
 
 **Task 1.2 (calls/called_by removal):**
-- `mcp_server/symbol_info.py` - Removed `calls` and `called_by` fields
-- `mcp_server/schema.sql` - v9.0: Removed calls/called_by columns
-- `mcp_server/sqlite_cache_backend.py` - Updated CURRENT_SCHEMA_VERSION, _symbol_to_tuple(), _row_to_symbol()
-- `mcp_server/call_graph.py` - Updated find_callers/find_callees for lazy SQLite loading, deprecated rebuild_from_symbols()
-- `mcp_server/cpp_analyzer.py` - Removed calls/called_by population and restoration
-- `mcp_server/incremental_analyzer.py` - Removed calls/called_by restoration
+- `clang_index_mcp/symbol_info.py` - Removed `calls` and `called_by` fields
+- `clang_index_mcp/schema.sql` - v9.0: Removed calls/called_by columns
+- `clang_index_mcp/sqlite_cache_backend.py` - Updated CURRENT_SCHEMA_VERSION, _symbol_to_tuple(), _row_to_symbol()
+- `clang_index_mcp/call_graph.py` - Updated find_callers/find_callees for lazy SQLite loading, deprecated rebuild_from_symbols()
+- `clang_index_mcp/cpp_analyzer.py` - Removed calls/called_by population and restoration
+- `clang_index_mcp/incremental_analyzer.py` - Removed calls/called_by restoration
 
 ---
 
@@ -482,11 +482,11 @@ backup/memory-optimization-phase1-attempt1
 Contains: Failed first attempt with 9 commits, useful for reference
 
 ### Key Files
-- `mcp_server/cpp_analyzer.py` - Main analyzer (indexes, cache loading)
-- `mcp_server/call_graph.py` - Call graph analyzer (call_sites)
-- `mcp_server/sqlite_cache_backend.py` - SQLite operations
-- `mcp_server/symbol_info.py` - SymbolInfo dataclass
-- `mcp_server/schema.sql` - Database schema (v8.0)
+- `clang_index_mcp/cpp_analyzer.py` - Main analyzer (indexes, cache loading)
+- `clang_index_mcp/call_graph.py` - Call graph analyzer (call_sites)
+- `clang_index_mcp/sqlite_cache_backend.py` - SQLite operations
+- `clang_index_mcp/symbol_info.py` - SymbolInfo dataclass
+- `clang_index_mcp/schema.sql` - Database schema (v8.0)
 
 ### Memory Analysis
 See `backup/memory-optimization-phase1-attempt1:docs/MEMORY_OPTIMIZATION_ANALYSIS.md` for detailed memory bottleneck analysis.
@@ -552,8 +552,8 @@ args = self.compile_commands_manager.get_compile_args_with_fallback(file_path)
 - User can set integer value to limit workers (e.g., `"max_workers": 8`)
 
 **Files Changed**:
-- `mcp_server/cpp_analyzer_config.py` - Added `get_max_workers()` method
-- `mcp_server/cpp_analyzer.py` - Use config value if provided
+- `clang_index_mcp/cpp_analyzer_config.py` - Added `get_max_workers()` method
+- `clang_index_mcp/cpp_analyzer.py` - Use config value if provided
 
 **Configuration Example**:
 ```json
@@ -677,9 +677,9 @@ Worker Process:
 - Phase 3 analysis and profiling scripts removed during documentation cleanup
 
 ### Key Files for Phase 3 Implementation
-- `mcp_server/cpp_analyzer.py:86-135` - Worker function (`_process_file_worker`)
-- `mcp_server/cpp_analyzer.py:3805-3810` - Work submission to ProcessPoolExecutor
-- `mcp_server/compile_commands_manager.py` - CompileCommandsManager class
+- `clang_index_mcp/cpp_analyzer.py:86-135` - Worker function (`_process_file_worker`)
+- `clang_index_mcp/cpp_analyzer.py:3805-3810` - Work submission to ProcessPoolExecutor
+- `clang_index_mcp/compile_commands_manager.py` - CompileCommandsManager class
 
 ---
 
@@ -796,9 +796,9 @@ for file in files:
    - `get_call_statistics()` and helper methods (not used in codebase)
 
 **Key Changes**:
-- `mcp_server/call_graph.py`: Removed dicts, updated queries
-- `mcp_server/sqlite_cache_backend.py`: Added `delete_call_sites_by_usr()`
-- `mcp_server/cpp_analyzer.py`: Fixed debug logging
+- `clang_index_mcp/call_graph.py`: Removed dicts, updated queries
+- `clang_index_mcp/sqlite_cache_backend.py`: Added `delete_call_sites_by_usr()`
+- `clang_index_mcp/cpp_analyzer.py`: Fixed debug logging
 
 **Memory Savings**: ~2 GB
 

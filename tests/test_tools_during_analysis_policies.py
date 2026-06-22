@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-from mcp_server._mcp.state_manager import AnalyzerState, AnalyzerStateManager, QueryBehaviorPolicy
+from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
+from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager, QueryBehaviorPolicy
 
 
 @pytest.fixture
@@ -268,7 +268,7 @@ def test_policy_enforcement_logic_simulation():
     # This test simulates the policy enforcement logic
     # without requiring the full MCP server
 
-    from mcp_server.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     with tempfile.TemporaryDirectory() as tmpdir:
         project = Path(tmpdir) / "project"
