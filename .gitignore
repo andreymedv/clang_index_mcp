@@ -1,52 +1,42 @@
-# Virtual environment
-mcp_env/
 
-# MCP cache contents (but keep the folder)
-.mcp_cache/*
-!.mcp_cache/.gitkeep
-
-# Test projects (managed by /test-mcp skill)
-.test-projects/
-!.test-projects/README.md
-
-# Test results (optional - can be kept for history)
-.test-results/
-
-# Custom test scenarios (keep examples, ignore user-created)
-.test-scenarios/*
-!.test-scenarios/README.md
-!.test-scenarios/*.yaml
-
-# Local tool state
-.claude/
 !.claude/skills/
-.claude/skills/**/__pycache__/
-.mcp.json
-.kimi/
-
+!.mcp_cache/.gitkeep
+!.test-projects/README.md
+!.test-scenarios/*.yaml
+!.test-scenarios/README.md
+# Benchmark results (contains local paths and model-specific data)
+# Custom test scenarios (keep examples, ignore user-created)
+# Downloaded libclang binaries
 # IDE files
-.idea/
-
+# Local tool state
+# MCP cache contents (but keep the folder)
+# Mock server optimization runs (ephemeral test output)
+# Mock server test results
 # Python build artifacts
-__pycache__/
+# Test projects (managed by /test-mcp skill)
+# Test results (optional - can be kept for history)
+# Tool definition backups (created by optimize.py)
+# Virtual environment
+*.egg-info/
 *.py[cod]
+.aider*
+.claude/
+.claude/skills/**/__pycache__/
+.idea/
+.kimi/
+.mcp.json
+.mcp_cache/*
+.test-projects/
+.test-results/
+.test-scenarios/*
+__pycache__/
+benchmark_results.jsonl
 build/
 dist/
-*.egg-info/
-
-# Downloaded libclang binaries
 lib/**/libclang*
-.aider*
-tests/pytest.log
-
-# Benchmark results (contains local paths and model-specific data)
-benchmark_results.jsonl
-
-# Mock server optimization runs (ephemeral test output)
-tools/mock_server/optimization_runs/
-
-# Mock server test results
-mock_test_results.json
-
-# Tool definition backups (created by optimize.py)
+mcp_env/
 mcp_server/consolidated_tools.py.bak
+mcp_server/libclang/
+mock_test_results.json
+tests/pytest.log
+tools/mock_server/optimization_runs/

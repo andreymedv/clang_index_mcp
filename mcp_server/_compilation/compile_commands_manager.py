@@ -765,7 +765,7 @@ class CompileCommandsManager:
         """Get C++ stdlib include path from bundled libclang directory.
 
         When libclang is bundled with C++ standard library headers (e.g.
-        lib/<platform>/include/c++/v1/), return that path so libclang can
+        libclang/include/c++/v1/), return that path so libclang can
         resolve standard headers like <cstdio>, <vector>, etc.
         """
         from clang.cindex import Config
