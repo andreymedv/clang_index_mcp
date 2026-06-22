@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mcp_server._mcp.tool_registry import ToolRegistry
+from clang_index_mcp._mcp.tool_registry import ToolRegistry
 
 from mcp.types import TextContent
 
-from mcp_server._mcp.consolidated_tools import (
+from clang_index_mcp._mcp.consolidated_tools import (
     TOOL_NAMES,
     _add_system_state,
     _filter_detail_level,
@@ -295,7 +295,7 @@ class TestAddSystemState:
 @pytest.fixture
 def mock_handle_tool_call():
     """Mock ToolRegistry.call_tool to capture internal calls."""
-    with patch("mcp_server._mcp.tool_registry.ToolRegistry.call_tool") as mock:
+    with patch("clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool") as mock:
         yield mock
 
 
@@ -313,7 +313,7 @@ class TestHandleToolCallBRouting:
         ]
         for tool_name in passthrough:
             with patch(
-                "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+                "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
                 new_callable=AsyncMock,
                 return_value=_tc({"result": "ok"}),
             ) as mock:
@@ -325,7 +325,7 @@ class TestHandleToolCallBRouting:
     async def test_sync_project_status_adds_state(self) -> None:
         """sync_project (no args) returns status with system_state."""
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"state": "indexed", "parsed_files": 42}),
         ):
@@ -347,7 +347,7 @@ class TestSearchCodebaseRouting:
     @pytest.mark.asyncio
     async def test_classes_routes_to_search_classes(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"results": []}),
         ) as mock:
@@ -369,7 +369,7 @@ class TestSearchCodebaseRouting:
     @pytest.mark.asyncio
     async def test_functions_routes_to_search_functions(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"results": []}),
         ) as mock:
@@ -386,7 +386,7 @@ class TestSearchCodebaseRouting:
     @pytest.mark.asyncio
     async def test_all_routes_to_search_symbols(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"classes": [], "functions": []}),
         ) as mock:
@@ -400,7 +400,7 @@ class TestSearchCodebaseRouting:
     @pytest.mark.asyncio
     async def test_default_target_type_is_all(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"classes": [], "functions": []}),
         ) as mock:
@@ -412,7 +412,7 @@ class TestSearchCodebaseRouting:
     async def test_schema_b_params_not_forwarded(self) -> None:
         """target_type and output_detail_level should not be in internal args."""
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"results": []}),
         ) as mock:
@@ -446,7 +446,7 @@ class TestSearchCodebaseRouting:
             ]
         }
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc(raw_data),
         ):
@@ -471,7 +471,7 @@ class TestGetFunctionsCalledByRouting:
     @pytest.mark.asyncio
     async def test_summary_routes_to_outgoing_calls(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"callees": [{"qualified_name": "f", "file": "a.cpp"}]}),
         ) as mock:
@@ -489,7 +489,7 @@ class TestGetFunctionsCalledByRouting:
     async def test_summary_applies_compact_filter(self) -> None:
         """Summary format should strip location/doc fields."""
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc(
                 {
@@ -519,7 +519,7 @@ class TestGetFunctionsCalledByRouting:
     @pytest.mark.asyncio
     async def test_full_routes_to_outgoing_calls_no_filter(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc(
                 {"callees": [{"qualified_name": "f", "file": "a.cpp", "brief": "doc"}]}
@@ -541,7 +541,7 @@ class TestGetFunctionsCalledByRouting:
     @pytest.mark.asyncio
     async def test_call_sites_routes_to_get_call_sites(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"call_sites": []}),
         ) as mock:
@@ -559,7 +559,7 @@ class TestGetFunctionsCalledByRouting:
     async def test_call_sites_strips_extra_args(self) -> None:
         """get_call_sites only takes function_name + class_name."""
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"call_sites": []}),
         ) as mock:
@@ -583,7 +583,7 @@ class TestGetFunctionsCalledByRouting:
     async def test_return_format_not_forwarded(self) -> None:
         """return_format is consolidated only, must not appear in internal args."""
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"callees": []}),
         ) as mock:
@@ -606,7 +606,7 @@ class TestFindUsageSitesRouting:
     @pytest.mark.asyncio
     async def test_delegates_to_incoming_calls(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"callers": []}),
         ) as mock:
@@ -621,7 +621,7 @@ class TestTraceExecutionPathRouting:
     @pytest.mark.asyncio
     async def test_translates_param_names(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"paths": []}),
         ) as mock:
@@ -646,7 +646,7 @@ class TestTraceExecutionPathRouting:
     @pytest.mark.asyncio
     async def test_max_depth_optional(self) -> None:
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"paths": []}),
         ) as mock:
@@ -686,7 +686,7 @@ class TestSetProjectRouting:
                 )
             return _tc({"result": "ok"})
 
-        with patch("mcp_server._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
+        with patch("clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             result = await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             parsed = _parse_tc(result)
             assert parsed["status"] == "ready"
@@ -710,7 +710,7 @@ class TestSetProjectRouting:
                 return _tc({"state": "indexed"})
             return _tc({"result": "ok"})
 
-        with patch("mcp_server._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
+        with patch("clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             assert captured_args["config_file"] == "/tmp/c.json"
 
@@ -724,7 +724,7 @@ class TestSetProjectRouting:
                 return _tc({"state": "indexing", "parsed_files": 5})
             return _tc({"result": "ok"})
 
-        with patch("mcp_server._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
+        with patch("clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             result = await handle_tool_call_b("set_project", {"config_file": "/tmp/c.json"})
             parsed = _parse_tc(result)
             assert parsed["status"] == "indexing_in_progress"
@@ -737,7 +737,7 @@ class TestSyncProjectRouting:
     async def test_sync_project_no_args_returns_status(self) -> None:
         """sync_project with no args returns current status."""
         with patch(
-            "mcp_server._mcp.tool_registry.ToolRegistry.call_tool",
+            "clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool",
             new_callable=AsyncMock,
             return_value=_tc({"state": "indexed", "parsed_files": 100}),
         ) as mock:
@@ -761,7 +761,7 @@ class TestSyncProjectRouting:
                 return _tc({"state": "indexed", "parsed_files": 100})
             return _tc({"result": "ok"})
 
-        with patch("mcp_server._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
+        with patch("clang_index_mcp._mcp.tool_registry.ToolRegistry.call_tool", side_effect=mock_handle):
             result = await handle_tool_call_b("sync_project", {"refresh_mode": "incremental"})
             parsed = _parse_tc(result)
             assert parsed["system_state"] == "ready"
@@ -774,7 +774,7 @@ class TestModuleImports:
 
     def test_module_imports(self) -> None:
         """consolidated_tools module should be importable."""
-        from mcp_server._mcp.consolidated_tools import TOOL_NAMES, handle_tool_call_b, list_tools_b
+        from clang_index_mcp._mcp.consolidated_tools import TOOL_NAMES, handle_tool_call_b, list_tools_b
 
         assert callable(list_tools_b)
         assert callable(handle_tool_call_b)  # type: ignore[arg-type]

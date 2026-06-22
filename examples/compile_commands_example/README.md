@@ -319,4 +319,4 @@ To support additional file types:
 
 - [COMPILE_COMMANDS_INTEGRATION.md](../../docs/COMPILE_COMMANDS_INTEGRATION.md) - Detailed documentation
 - [../../cpp-analyzer-config.json](../../cpp-analyzer-config.json) - Default configuration
-- [../../mcp_server/compile_commands_manager.py](../../mcp_server/compile_commands_manager.py) - Implementation
+- [../../clang_index_mcp/compile_commands_manager.py](../../clang_index_mcp/compile_commands_manager.py) - Implementation

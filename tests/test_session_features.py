@@ -17,9 +17,9 @@ import pytest
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from mcp_server._persistence.cache_manager import CacheManager
-from mcp_server.cpp_analyzer_config import CppAnalyzerConfig
-from mcp_server._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._persistence.cache_manager import CacheManager
+from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
+from clang_index_mcp._persistence.symbol_info import SymbolInfo
 
 # Skip all tests in this module - it's designed to be run standalone
 pytestmark = pytest.mark.skip(

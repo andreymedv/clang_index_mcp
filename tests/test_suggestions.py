@@ -1,9 +1,9 @@
 """
-Unit tests for mcp_server/suggestions.py — conditional next-step suggestions.
+Unit tests for clang_index_mcp/suggestions.py — conditional next-step suggestions.
 """
 
-from mcp_server._core import suggestions
-from mcp_server._mcp.state_manager import EnhancedQueryResult
+from clang_index_mcp._core import suggestions
+from clang_index_mcp._mcp.state_manager import EnhancedQueryResult
 
 # ---------------------------------------------------------------------------
 # for_get_class_info

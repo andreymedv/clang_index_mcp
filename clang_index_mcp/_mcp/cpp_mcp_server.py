@@ -1338,10 +1338,10 @@ async def main():
 
 if __name__ == "__main__":
     # Register this module under its package name so that
-    # `from mcp_server.cpp_mcp_server import X` reuses it instead of
+    # `from clang_index_mcp.cpp_mcp_server import X` reuses it instead of
     # reimporting and re-running module-level code (which would fail
     # because Config.set_library_file() cannot be called twice).
-    sys.modules.setdefault("mcp_server.cpp_mcp_server", sys.modules[__name__])
+    sys.modules.setdefault("clang_index_mcp.cpp_mcp_server", sys.modules[__name__])
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

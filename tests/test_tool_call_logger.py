@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_server._mcp.tool_call_logger import ToolCallLogger, _classify_pattern
+from clang_index_mcp._mcp.tool_call_logger import ToolCallLogger, _classify_pattern
 
 
 @pytest.fixture

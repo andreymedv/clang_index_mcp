@@ -40,8 +40,8 @@ def get_download_config(system_override: Optional[str] = None) -> DownloadConfig
     system = (system_override or platform.system()).lower()
     # Get the directory where the script itself is located
     script_dir = Path(__file__).parent
-    # Set the dest_dir to 'mcp_server/libclang' in the parent directory of the script
-    base_dir = script_dir.parent / "mcp_server" / "libclang"
+    # Set the dest_dir to 'clang_index_mcp/libclang' in the parent directory of the script
+    base_dir = script_dir.parent / "clang_index_mcp" / "libclang"
 
     if system == "windows":
         return DownloadConfig(

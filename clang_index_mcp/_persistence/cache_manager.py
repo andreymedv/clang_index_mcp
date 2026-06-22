@@ -80,10 +80,10 @@ class CacheManager:
             Path to cache directory
         """
         # Use the MCP server directory for cache, not the project being analyzed
-        mcp_server_root = Path(
+        clang_index_mcp_root = Path(
             __file__
-        ).parent.parent  # Go up from mcp_server/cache_manager.py to root
-        cache_base = mcp_server_root / ".mcp_cache"
+        ).parent.parent  # Go up from clang_index_mcp/cache_manager.py to root
+        cache_base = clang_index_mcp_root / ".mcp_cache"
 
         # Use ProjectIdentity to get unique cache directory name
         cache_dir_name = self.project_identity.get_cache_directory_name()

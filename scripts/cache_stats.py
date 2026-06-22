@@ -40,7 +40,9 @@ def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
 
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        backend_module = importlib.import_module("mcp_server._persistence.sqlite_cache_backend")
+        backend_module = importlib.import_module(
+            "clang_index_mcp._persistence.sqlite_cache_backend"
+        )
         SqliteCacheBackend = backend_module.SqliteCacheBackend
 
         backend = SqliteCacheBackend(db_path)

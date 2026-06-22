@@ -24,7 +24,7 @@ def test_libclang_path_env_variable():
         os.environ["LIBCLANG_PATH"] = fake_libclang
 
         # Import and test (this will try to load libclang)
-        from mcp_server._mcp.cpp_mcp_server import find_and_configure_libclang  # noqa: F401
+        from clang_index_mcp._mcp.cpp_mcp_server import find_and_configure_libclang  # noqa: F401
 
         # Test that it would use our env variable
         print(f"✓ LIBCLANG_PATH={fake_libclang}")
@@ -48,7 +48,7 @@ def test_macos_paths_exist():
     print("=" * 60)
 
     # Check the source code for required paths
-    cpp_mcp_server_path = Path(__file__).parent / "mcp_server" / "_mcp" / "cpp_mcp_server.py"
+    cpp_mcp_server_path = Path(__file__).parent / "clang_index_mcp" / "_mcp" / "cpp_mcp_server.py"
     source = cpp_mcp_server_path.read_text()
 
     required_paths = [
@@ -78,7 +78,7 @@ def test_search_order():
     print("Test 3: Search order (LIBCLANG_PATH -> smart -> system -> bundled)")
     print("=" * 60)
 
-    cpp_mcp_server_path = Path(__file__).parent / "mcp_server" / "_mcp" / "cpp_mcp_server.py"
+    cpp_mcp_server_path = Path(__file__).parent / "clang_index_mcp" / "_mcp" / "cpp_mcp_server.py"
     source = cpp_mcp_server_path.read_text()
 
     # Find positions of each step
@@ -110,7 +110,7 @@ def test_xcrun_discovery():
     print("Test 4: xcrun smart discovery (macOS)")
     print("=" * 60)
 
-    cpp_mcp_server_path = Path(__file__).parent / "mcp_server" / "_mcp" / "cpp_mcp_server.py"
+    cpp_mcp_server_path = Path(__file__).parent / "clang_index_mcp" / "_mcp" / "cpp_mcp_server.py"
     source = cpp_mcp_server_path.read_text()
 
     has_xcrun = "xcrun" in source and "--find" in source and "clang" in source

@@ -42,7 +42,7 @@ search_classes({"pattern": "View"})
 ✅ **Qualified names ARE SUPPORTED** - Feature was implemented in Phase 2
 
 **Evidence:**
-- Implementation: `mcp_server/search_engine.py:287+` (`matches_qualified_pattern()`)
+- Implementation: `clang_index_mcp/search_engine.py:287+` (`matches_qualified_pattern()`)
 - Supports 4 matching modes:
   1. Leading `::` → exact match in global namespace
   2. No `::` → match unqualified name only
@@ -86,7 +86,7 @@ search_classes({"pattern": "app::.*::View"})  # Regex match
 
 **Evidence:**
 - Parameter: `search_classes(..., namespace="ns2")` filters by exact namespace
-- Implementation: `mcp_server/search_engine.py:445+` (`_matches_namespace()`)
+- Implementation: `clang_index_mcp/search_engine.py:445+` (`_matches_namespace()`)
 - Tested and working in validation test case TC2
 
 **Function Signature:**
@@ -165,7 +165,7 @@ WHERE name IN ('IInterface', 'ImplementationBase', 'ConcreteImpl');
 - Transitive link missing: no connection between `IInterface` and `ConcreteImpl`
 
 **Root Cause (validated):**
-- **Location:** `mcp_server/cpp_analyzer.py` (inheritance tracking)
+- **Location:** `clang_index_mcp/cpp_analyzer.py` (inheritance tracking)
 - **Issue:** To detect transitive inheritance, analyzer would need to:
   1. Parse template specializations (`ImplementationBase<IInterface>`)
   2. Match template parameter `Interface` with substituted type `IInterface`
@@ -231,7 +231,7 @@ SELECT name, qualified_name, kind, line FROM symbols WHERE name = 'Container';
 5. **Derived Classes:** Store full template args in base_classes (e.g., `["Container<int>"]`) ✅
 
 **Root Cause (validated):**
-- **Location:** `mcp_server/cpp_analyzer.py` (symbol extraction)
+- **Location:** `clang_index_mcp/cpp_analyzer.py` (symbol extraction)
 - **Issue:** libclang's `cursor.spelling` returns unqualified template name without arguments
 - **Impact:** Cannot search for specific specializations like "Container<int>" by qualified_name
 - **Workaround:** Search by `kind` field or query derived classes
@@ -304,7 +304,7 @@ SELECT name, base_classes FROM symbols WHERE name LIKE '%Impl';
 **Root Cause of Original Observation:**
 - **Original observation was incorrect** - likely based on misinterpretation or outdated testing
 - libclang DOES provide qualified names for template arguments
-- Current implementation in `mcp_server/cpp_analyzer.py` correctly preserves qualification
+- Current implementation in `clang_index_mcp/cpp_analyzer.py` correctly preserves qualification
 - Works for builtin types, pointers, global namespace, and nested namespace classes
 
 **Impact:** **POSITIVE** - No ambiguity, full qualification preserved
@@ -470,7 +470,7 @@ Root Issue C: Error Reporting
 
 ```bash
 # Start server
-MCP_DEBUG=1 python -m mcp_server --transport sse --port 8000
+MCP_DEBUG=1 python -m clang_index_mcp --transport sse --port 8000
 
 # Test Obs #2: Qualified names
 curl -s -X POST http://localhost:8000/mcp/v1/tools/call \

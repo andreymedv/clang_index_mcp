@@ -16,17 +16,17 @@ import logging
 import sys
 from pathlib import Path
 
-# Add project root to path so we can import mcp_server.consolidated_tools
+# Add project root to path so we can import clang_index_mcp.consolidated_tools
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from mcp.server import Server  # noqa: E402
 from mcp.types import TextContent, Tool  # noqa: E402
 
-from mcp_server._mcp.consolidated_tools import list_tools_b  # noqa: E402
+from clang_index_mcp._mcp.consolidated_tools import list_tools_b  # noqa: E402
 from tools.mock_server.fixtures import FixtureStore  # noqa: E402
 
-logger = logging.getLogger("mock_mcp_server")
+logger = logging.getLogger("mock_clang_index_mcp")
 
 DEFAULT_FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -83,8 +83,8 @@ def _convert_hierarchy_response(response: dict, output_format: str) -> str:
 
     # Use the same converter as the real server
     try:
-        # Try importing from mcp_server first
-        from mcp_server._search.hierarchy_format import convert_hierarchy_format
+        # Try importing from clang_index_mcp first
+        from clang_index_mcp._search.hierarchy_format import convert_hierarchy_format
     except ImportError:
         # Fallback to local implementation
         return _mock_convert_hierarchy(hierarchy, output_format)
@@ -93,7 +93,7 @@ def _convert_hierarchy_response(response: dict, output_format: str) -> str:
 
 
 def _mock_convert_hierarchy(hierarchy: dict, output_format: str) -> str:
-    """Fallback converter when mcp_server module is not available."""
+    """Fallback converter when clang_index_mcp module is not available."""
     classes = hierarchy.get("classes", {})
     queried_class = hierarchy.get("queried_class", "Unknown")
 

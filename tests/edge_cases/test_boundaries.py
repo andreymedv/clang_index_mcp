@@ -18,7 +18,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 @pytest.mark.edge_case

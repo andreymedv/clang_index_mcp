@@ -29,7 +29,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server._persistence.cache_manager import CacheManager  # noqa: E402
+from clang_index_mcp._persistence.cache_manager import CacheManager  # noqa: E402
 
 
 def print_error_entry(error, index=None, verbose=False):

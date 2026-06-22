@@ -16,7 +16,7 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 class TestMultipleForwardDeclarations:

@@ -21,7 +21,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.cpp_analyzer import CppAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 class MemoryMonitor:
@@ -273,9 +273,9 @@ def run_tracemalloc_analysis():
         print(f"{i:2}. {stat.size / (1024*1024):.2f} MB - {stat.traceback}")
 
     # Group by lineno for our code
-    print("\nTop allocations in mcp_server/:")
+    print("\nTop allocations in clang_index_mcp/:")
     stats = snapshot.statistics("lineno")
-    mcp_stats = [s for s in stats if "mcp_server" in str(s.traceback)]
+    mcp_stats = [s for s in stats if "clang_index_mcp" in str(s.traceback)]
     for i, stat in enumerate(mcp_stats[:30], 1):
         print(f"{i:2}. {stat.size / (1024*1024):.2f} MB - {stat.traceback}")
 

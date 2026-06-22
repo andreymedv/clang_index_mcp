@@ -984,13 +984,13 @@ async def set_project_directory(
 **Goal**: Project identity and database schema
 
 1. **Task 1.1**: Implement `ProjectIdentity` class
-   - File: `mcp_server/project_identity.py` (new)
+   - File: `clang_index_mcp/project_identity.py` (new)
    - Tests: Unit tests for hash computation
 
 2. **Task 1.2**: Update database schema
    - Add `file_dependencies` table
    - Migration script for existing caches
-   - File: `mcp_server/schema.sql`
+   - File: `clang_index_mcp/schema.sql`
 
 3. **Task 1.3**: Integrate ProjectIdentity into CacheManager
    - Update constructor to accept ProjectIdentity
@@ -1001,7 +1001,7 @@ async def set_project_directory(
 **Goal**: Build and maintain include dependency graph
 
 1. **Task 2.1**: Implement `DependencyGraphBuilder`
-   - File: `mcp_server/dependency_graph.py` (new)
+   - File: `clang_index_mcp/dependency_graph.py` (new)
    - Extract includes from TranslationUnit
    - Database CRUD operations
 
@@ -1018,13 +1018,13 @@ async def set_project_directory(
 **Goal**: Detect all types of changes
 
 1. **Task 3.1**: Implement `ChangeScanner`
-   - File: `mcp_server/change_scanner.py` (new)
+   - File: `clang_index_mcp/change_scanner.py` (new)
    - Scan for file content changes
    - Scan for compile_commands.json changes
    - Detect added/removed files
 
 2. **Task 3.2**: Implement `CompileCommandsDiffer`
-   - File: `mcp_server/compile_commands_differ.py` (new)
+   - File: `clang_index_mcp/compile_commands_differ.py` (new)
    - Compute diffs between CC versions
    - Store per-file args hashes
 
@@ -1036,7 +1036,7 @@ async def set_project_directory(
 **Goal**: Re-analyze only affected files
 
 1. **Task 4.1**: Implement `IncrementalAnalyzer`
-   - File: `mcp_server/incremental_analyzer.py` (new)
+   - File: `clang_index_mcp/incremental_analyzer.py` (new)
    - Coordinate change detection + re-analysis
    - Handle each change type appropriately
 

@@ -698,7 +698,7 @@ class CompileCommandsManager:
             Sanitized list of arguments safe for libclang
 
         See Also:
-            - mcp_server/_core/sanitization_rules.json for default rules
+            - clang_index_mcp/_core/sanitization_rules.json for default rules
             - ArgumentSanitizer class for rule engine implementation
         """
         return self.argument_sanitizer.sanitize(args)

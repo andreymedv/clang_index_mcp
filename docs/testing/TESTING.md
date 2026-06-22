@@ -149,10 +149,10 @@ pytest -m "critical and security" -v
 
 ```bash
 # Run tests with coverage report
-pytest --cov=mcp_server tests/
+pytest --cov=clang_index_mcp tests/
 
 # Generate HTML coverage report
-pytest --cov=mcp_server --cov-report=html tests/
+pytest --cov=clang_index_mcp --cov-report=html tests/
 
 # Open coverage report in browser
 open htmlcov/index.html  # macOS
@@ -264,10 +264,10 @@ pytest -m base_functionality -v
 
 ```bash
 # Terminal report
-pytest --cov=mcp_server --cov-report=term-missing tests/
+pytest --cov=clang_index_mcp --cov-report=term-missing tests/
 
 # HTML report
-pytest --cov=mcp_server --cov-report=html tests/
+pytest --cov=clang_index_mcp --cov-report=html tests/
 ```
 
 ### Coverage Goals
@@ -325,7 +325,7 @@ Mutation testing is configured in `pyproject.toml`:
 
 ```toml
 [tool.mutmut]
-paths_to_mutate = "mcp_server/"
+paths_to_mutate = "clang_index_mcp/"
 backup = false
 runner = "pytest -x tests/"
 tests_dir = "tests/"
@@ -524,7 +524,7 @@ pytest --collect-only tests/
 Test configuration is defined in `pytest.ini`:
 
 - **Test discovery**: `tests/` directory
-- **Coverage source**: `mcp_server/` directory
+- **Coverage source**: `clang_index_mcp/` directory
 - **Default options**: Verbose, short traceback, coverage
 - **Markers**: All custom markers registered
 - **Timeouts**: Configurable per test
@@ -548,10 +548,10 @@ Test configuration is defined in `pytest.ini`:
 pip install -r requirements-test.txt
 
 # Run tests with coverage
-pytest --cov=mcp_server --cov-report=xml tests/
+pytest --cov=clang_index_mcp --cov-report=xml tests/
 
 # Check coverage threshold
-pytest --cov=mcp_server --cov-fail-under=80 tests/
+pytest --cov=clang_index_mcp --cov-fail-under=80 tests/
 ```
 
 ### GitHub Actions Example
@@ -578,7 +578,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/ -v --cov=mcp_server --cov-report=xml --html=test-report.html
+          pytest tests/ -v --cov=clang_index_mcp --cov-report=xml --html=test-report.html
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
