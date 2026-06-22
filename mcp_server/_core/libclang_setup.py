@@ -161,11 +161,8 @@ def _configure_from_bundled(system: str, parent_dir: str) -> bool:
     config = _get_platform_config(system)
     lib_names = config["lib_names"]
 
-    bundled_subdirs = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
-    platform_subdir = bundled_subdirs.get(system, "linux")
-
     for lib_name in lib_names:
-        path = os.path.join(parent_dir, "lib", platform_subdir, "lib", lib_name)
+        path = os.path.join(parent_dir, "libclang", "lib", lib_name)
         if os.path.exists(path):
             diagnostics.info(f"Using bundled libclang at: {path}")
             Config.set_library_file(path)
@@ -190,16 +187,15 @@ def configure_libclang() -> bool:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)
 
+    if _configure_from_bundled(system, parent_dir):
+        return True
+
     if system == "Darwin" and _configure_from_xcrun():
         return True
 
     diagnostics.info("Searching for system-installed libclang...")
 
-    if _configure_from_system(system):
-        return True
-
-    diagnostics.info("No system libclang found, trying bundled libraries...")
-    return _configure_from_bundled(system, parent_dir)
+    return _configure_from_system(system)
 
 
 def get_libclang_runtime_info() -> dict:

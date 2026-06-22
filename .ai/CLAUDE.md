@@ -444,12 +444,12 @@ See [docs/INTERRUPT_HANDLING.md](docs/INTERRUPT_HANDLING.md) for complete guide 
 
 ## libclang Setup
 
-Libclang is auto-downloaded by setup scripts to `lib/{platform}/lib/`:
-- **Windows:** lib/windows/lib/libclang.dll
-- **macOS:** lib/macos/lib/libclang.dylib
-- **Linux:** lib/linux/lib/libclang.so.1
+Libclang is auto-downloaded by setup scripts to `mcp_server/libclang/`:
+- **Windows:** mcp_server/libclang/lib/libclang.dll
+- **macOS:** mcp_server/libclang/lib/libclang.dylib
+- **Linux:** mcp_server/libclang/lib/libclang.so.1
 
-If auto-download fails, manually download from https://github.com/llvm/llvm-project/releases and place in appropriate `lib/` directory.
+If auto-download fails, manually download from https://github.com/llvm/llvm-project/releases and place in `mcp_server/libclang/lib/`.
 
 ## Important Notes for Claude Code
 
