@@ -13,6 +13,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Set
 
+from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.search_criteria import SearchCriteria
 from .._search.search_engine import SearchEngine
 from .._search.smart_fallback import FallbackResult, SmartFallback
@@ -227,7 +228,7 @@ class QueryEngine:
             for name, infos in self.symbol_store.iter_class_items():
                 for info in infos:
                     qualified_name = info.qualified_name if info.qualified_name else info.name
-                    if SearchEngine.matches_qualified_pattern(qualified_name, type_name):
+                    if matches_qualified_pattern(qualified_name, type_name):
                         matches.append(info)
         return matches
 
@@ -517,9 +518,7 @@ class QueryEngine:
         """Find files where the class is defined and return its kind."""
         if symbol_kind in (None, "class"):
             for info in self.symbol_store.get_classes_by_name(simple_name):
-                if SearchEngine.matches_qualified_pattern(
-                    info.qualified_name or info.name, symbol_name
-                ):
+                if matches_qualified_pattern(info.qualified_name or info.name, symbol_name):
                     if not project_only or info.is_project:
                         files.add(info.file)
                         if info.header_file:
@@ -539,9 +538,7 @@ class QueryEngine:
         kind = None
         if symbol_kind in (None, "function", "method"):
             for info in self.symbol_store.get_functions_by_name(simple_name):
-                if SearchEngine.matches_qualified_pattern(
-                    info.qualified_name or info.name, symbol_name
-                ):
+                if matches_qualified_pattern(info.qualified_name or info.name, symbol_name):
                     if not project_only or info.is_project:
                         files.add(info.file)
                         if info.header_file:
@@ -585,9 +582,7 @@ class QueryEngine:
         ):
 
             def _name_matches(info) -> bool:
-                return SearchEngine.matches_qualified_pattern(
-                    info.qualified_name or info.name, symbol_name
-                )
+                return matches_qualified_pattern(info.qualified_name or info.name, symbol_name)
 
             target_usrs = set()
             for info in self.symbol_store.get_functions_by_name(simple_name):
@@ -621,9 +616,9 @@ class QueryEngine:
                     for symbol in symbols:
                         sym_qname = symbol.qualified_name or symbol.name
                         parent_qname = symbol.parent_class or ""
-                        if SearchEngine.matches_qualified_pattern(
+                        if matches_qualified_pattern(
                             sym_qname, symbol_name
-                        ) or SearchEngine.matches_qualified_pattern(parent_qname, symbol_name):
+                        ) or matches_qualified_pattern(parent_qname, symbol_name):
                             files.add(file_path)
                             break
 
@@ -735,7 +730,7 @@ class QueryEngine:
         if "::" not in template_name:
             return True
         info_qualified = info.qualified_name if info.qualified_name else info.name
-        return SearchEngine.matches_qualified_pattern(info_qualified, template_name)
+        return matches_qualified_pattern(info_qualified, template_name)
 
     @staticmethod
     def _build_param_name_to_index(template_parameters: Optional[str]) -> Dict[str, int]:
@@ -935,7 +930,7 @@ class QueryEngine:
             for info in infos:
                 if is_qual:
                     info_qn = info.qualified_name if info.qualified_name else info.name
-                    if not SearchEngine.matches_qualified_pattern(info_qn, lookup):
+                    if not matches_qualified_pattern(info_qn, lookup):
                         continue
                 qn = info.qualified_name if info.qualified_name else info.name
                 return str(qn)  # type: ignore[no-any-return]
@@ -953,7 +948,7 @@ class QueryEngine:
             infos = [
                 i
                 for i in infos
-                if SearchEngine.matches_qualified_pattern(
+                if matches_qualified_pattern(
                     i.qualified_name if i.qualified_name else i.name, lookup
                 )
             ]
