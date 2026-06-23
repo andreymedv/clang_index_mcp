@@ -321,44 +321,44 @@ class TestWhitespaceNormalization:
     """Tests for whitespace normalization in template arguments."""
 
     def test_normalize_whitespace_function(self):
-        """Test the _normalize_template_whitespace function directly."""
-        from clang_index_mcp._search.search_engine import SearchEngine
+        """Test the normalize_template_whitespace function directly."""
+        from clang_index_mcp._search.pattern_matcher import normalize_template_whitespace
 
         # Test pointer types
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget *>")
+            normalize_template_whitespace("Container<Widget *>")
             == "Container<Widget*>"
         )
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget*>")
+            normalize_template_whitespace("Container<Widget*>")
             == "Container<Widget*>"
         )
 
         # Test reference types
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget &>")
+            normalize_template_whitespace("Container<Widget &>")
             == "Container<Widget&>"
         )
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget&>")
+            normalize_template_whitespace("Container<Widget&>")
             == "Container<Widget&>"
         )
 
         # Test complex types
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget * const &>")
+            normalize_template_whitespace("Container<Widget * const &>")
             == "Container<Widget*const&>"
         )
 
         # Test nested templates
         assert (
-            SearchEngine._normalize_template_whitespace("Container<std::vector<int *>>")
+            normalize_template_whitespace("Container<std::vector<int *>>")
             == "Container<std::vector<int*>>"
         )
 
         # Test multiple parameters (comma space is preserved)
         assert (
-            SearchEngine._normalize_template_whitespace("Pair<int *, double *>")
+            normalize_template_whitespace("Pair<int *, double *>")
             == "Pair<int*, double*>"
         )
 

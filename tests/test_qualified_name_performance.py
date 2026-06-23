@@ -262,7 +262,7 @@ class TestPatternMatchingPerformance:
 
     def test_component_matching_performance(self):
         """Component-based suffix matching should be fast."""
-        from clang_index_mcp._search.search_engine import SearchEngine
+        from clang_index_mcp._search.pattern_matcher import matches_qualified_pattern
 
         # Benchmark component matching on various patterns
         patterns = [
@@ -275,7 +275,7 @@ class TestPatternMatchingPerformance:
         for qualified_name, pattern in patterns:
             start = time.time()
             for _ in range(1000):  # Run 1000 times
-                SearchEngine.matches_qualified_pattern(qualified_name, pattern)
+                matches_qualified_pattern(qualified_name, pattern)
             elapsed = time.time() - start
 
             avg_time_ms = (elapsed / 1000) * 1000
@@ -285,7 +285,7 @@ class TestPatternMatchingPerformance:
 
     def test_regex_pattern_performance(self):
         """Regex pattern matching should be reasonable."""
-        from clang_index_mcp._search.search_engine import SearchEngine
+        from clang_index_mcp._search.pattern_matcher import matches_qualified_pattern
 
         # Benchmark regex patterns
         patterns = [
@@ -297,7 +297,7 @@ class TestPatternMatchingPerformance:
         for qualified_name, pattern in patterns:
             start = time.time()
             for _ in range(100):  # Run 100 times (regex is slower)
-                SearchEngine.matches_qualified_pattern(qualified_name, pattern)
+                matches_qualified_pattern(qualified_name, pattern)
             elapsed = time.time() - start
 
             avg_time_ms = (elapsed / 100) * 1000
