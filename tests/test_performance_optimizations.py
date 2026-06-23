@@ -2,7 +2,7 @@
 Tests for performance optimizations added in the optimize-slow-host-performance session.
 
 Tests cover:
-- ProcessPoolExecutor vs ThreadPoolExecutor
+- ProcessPoolExecutor configuration
 - Bulk symbol writes
 - compile_commands.json binary caching
 - Worker count optimization
@@ -75,44 +75,19 @@ class TestProcessPoolExecutor(unittest.TestCase):
     """Test ProcessPoolExecutor configuration and fallback"""
 
     def test_default_uses_processpool(self):
-        """By default, use_processes should be True (ProcessPoolExecutor)"""
+        """By default, WorkerPoolManager should use ProcessPoolExecutor"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Ensure environment variable is not set
-            env_backup = os.environ.get("CPP_ANALYZER_USE_THREADS")
-            if "CPP_ANALYZER_USE_THREADS" in os.environ:
-                del os.environ["CPP_ANALYZER_USE_THREADS"]
+            analyzer = CppAnalyzer(tmpdir)
+            from clang_index_mcp._indexing.worker_pool import WorkerPoolManager
 
-            try:
-                analyzer = CppAnalyzer(tmpdir)
-                self.assertTrue(analyzer.context.use_processes, "Should use ProcessPoolExecutor by default")
-            finally:
-                if env_backup is not None:
-                    os.environ["CPP_ANALYZER_USE_THREADS"] = env_backup
+            self.assertIsInstance(
+                analyzer.context.execution.worker_pool, WorkerPoolManager
+            )
+            self.assertIsNone(analyzer.context.execution.worker_pool.executor)
+            executor = analyzer.context.execution.worker_pool.setup()
+            from concurrent.futures import ProcessPoolExecutor
 
-    def test_can_override_to_threadpool(self):
-        """CPP_ANALYZER_USE_THREADS=true should switch to ThreadPoolExecutor"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.environ["CPP_ANALYZER_USE_THREADS"] = "true"
-            try:
-                analyzer = CppAnalyzer(tmpdir)
-                self.assertFalse(
-                    analyzer.context.use_processes, "Should use ThreadPoolExecutor when env var set"
-                )
-            finally:
-                if "CPP_ANALYZER_USE_THREADS" in os.environ:
-                    del os.environ["CPP_ANALYZER_USE_THREADS"]
-
-    def test_case_insensitive_env_var(self):
-        """Environment variable should be case-insensitive"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for value in ["TRUE", "True", "true"]:
-                os.environ["CPP_ANALYZER_USE_THREADS"] = value
-                try:
-                    analyzer = CppAnalyzer(tmpdir)
-                    self.assertFalse(analyzer.context.use_processes, f"Should recognize '{value}' as true")
-                finally:
-                    if "CPP_ANALYZER_USE_THREADS" in os.environ:
-                        del os.environ["CPP_ANALYZER_USE_THREADS"]
+            self.assertIsInstance(executor, ProcessPoolExecutor)
 
 
 @unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")

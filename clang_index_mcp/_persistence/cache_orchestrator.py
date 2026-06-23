@@ -327,8 +327,6 @@ class CacheOrchestrator:
 
     def _save_cache(self):
         """Save index to cache file"""
-        from .._core import diagnostics
-
         # Get current config file info
         config_path = self.config.config_path
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
@@ -360,24 +358,8 @@ class CacheOrchestrator:
             validation_context=validation_context,
         )
 
-        # Phase 3/4: Save call sites to database
-        # In ProcessPoolExecutor mode (default): call_sites are already streamed to SQLite
-        # as they arrive from workers (Phase 4 optimization), so this set is empty.
-        # In ThreadPoolExecutor mode: call_sites are accumulated in memory, so we need
-        # to save them here. This is still needed for backwards compatibility.
-        call_sites = self.call_graph_service.call_graph_analyzer.get_all_call_sites()
-        if call_sites:
-            diagnostics.debug(
-                f"Saving {len(call_sites)} call sites to database (ThreadPoolExecutor mode)"
-            )
-            saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
-            if saved_count != len(call_sites):
-                diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
-
     def _load_cache(self) -> bool:
         """Load index from cache file"""
-        from .._core import diagnostics
-
         # Get current config file info
         config_path = self.config.config_path
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None

@@ -104,9 +104,7 @@ class ProjectIndexingOrchestrator:
                     callbacks.wait_for_tools()
 
                 file_path = future_to_file[future]
-                success, was_cached = self.worker_result_merger.get_worker_result(
-                    future, file_path, self.execution.use_processes
-                )
+                success, was_cached = self.worker_result_merger.get_worker_result(future, file_path)
 
                 idx_d, cache_d, fail_d = self._update_indexing_counts(success, was_cached)
                 indexed_count += idx_d

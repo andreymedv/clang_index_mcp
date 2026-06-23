@@ -39,7 +39,6 @@ All available configuration options:
 
 **Environment Variables:**
 - `CPP_ANALYZER_CONFIG` - Path to custom config file
-- `CPP_ANALYZER_USE_THREADS` - Use ThreadPool instead of ProcessPool (not recommended)
 - `CLANG_INDEX_CACHE_DIR` - Custom cache directory location
 
 **Project Identity & Incremental Analysis:**
@@ -232,27 +231,10 @@ The analyzer supports several environment variables for runtime configuration:
 
 ### Performance Configuration
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CPP_ANALYZER_USE_THREADS` | boolean | `false` | Use ThreadPoolExecutor instead of ProcessPoolExecutor (not recommended) |
-
-**CPP_ANALYZER_USE_THREADS**:
-- **Default**: `false` (uses ProcessPoolExecutor for GIL bypass)
-- **Set to `true`**: Uses ThreadPoolExecutor (legacy mode, slower)
-- **Recommendation**: Keep default for best performance on multi-core systems
-
-**Example**:
-```bash
-# Linux/macOS (not recommended - ProcessPool is faster)
-export CPP_ANALYZER_USE_THREADS=true
-
-# Windows (not recommended)
-set CPP_ANALYZER_USE_THREADS=true
-```
+Parallel indexing always uses `ProcessPoolExecutor` with the `spawn` multiprocessing start method. This bypasses Python's Global Interpreter Lock and provides true parallelism on multi-core systems. There is no configuration option to use threads for indexing.
 
 **Performance Impact**:
-- ProcessPoolExecutor (default): 6-7x faster on 4+ core systems
-- ThreadPoolExecutor (when enabled): Limited by Python's GIL
+- ProcessPoolExecutor (spawn): 6-7x faster on 4+ core systems, isolated worker memory
 
 ### Configuration File Path
 

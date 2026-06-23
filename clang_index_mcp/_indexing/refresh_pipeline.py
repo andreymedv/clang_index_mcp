@@ -81,8 +81,7 @@ class RefreshPipeline:
             return 0
 
         diagnostics.debug(f"Refresh: {len(modified_files)} modified, {len(new_files)} new files")
-        if self.execution.use_processes:
-            self.cache_manager.ensure_schema_current()
+        self.cache_manager.ensure_schema_current()
 
         executor = self.execution.worker_pool.setup()
         try:
@@ -135,9 +134,7 @@ class RefreshPipeline:
 
             file_path = future_to_file[future]
             try:
-                if self.worker_result_merger.process_refresh_result(
-                    file_path, future.result(), self.execution.use_processes
-                ):
+                if self.worker_result_merger.process_refresh_result(file_path, future.result()):
                     refreshed += 1
                 else:
                     failed += 1
