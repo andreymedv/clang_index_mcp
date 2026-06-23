@@ -1,4 +1,4 @@
-"""Tests for _usr_to_display_name() and its helper functions.
+"""Tests for usr_to_display_name() and its helper functions.
 
 The helpers decode libclang USR (Unified Symbol Resolution) strings into
 human-readable qualified names, preserving template arguments.
@@ -6,11 +6,11 @@ human-readable qualified names, preserving template arguments.
 
 import pytest
 
-from clang_index_mcp._symbols.symbol_extractor import (
+from clang_index_mcp._symbols.usr_decoder import (
     _decode_class_ref,
     _decode_template_args,
     _decode_usr_type,
-    _usr_to_display_name,
+    usr_to_display_name,
 )
 
 # ---- Primitive type decoding ------------------------------------------------
@@ -41,7 +41,7 @@ class TestPrimitiveTypeDecoding:
         ],
     )
     def test_primitive_types(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Multiple template arguments -------------------------------------------
@@ -57,7 +57,7 @@ class TestMultipleTemplateArgs:
         ],
     )
     def test_multiple_args(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Pointer / reference / const -------------------------------------------
@@ -80,7 +80,7 @@ class TestQualifiers:
         ],
     )
     def test_qualifiers(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Template parameter references (tN.M) ----------------------------------
@@ -96,7 +96,7 @@ class TestTemplateParamRefs:
         ],
     )
     def test_tparam_refs(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Namespace + class segments ---------------------------------------------
@@ -113,7 +113,7 @@ class TestNamespaceClassSegments:
         ],
     )
     def test_namespace_class(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Class ref in template args ($@...) -------------------------------------
@@ -129,7 +129,7 @@ class TestClassRefInTemplateArgs:
         ],
     )
     def test_class_ref(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Function segments (param types skipped) --------------------------------
@@ -146,7 +146,7 @@ class TestFunctionSegments:
         ],
     )
     def test_function_segments(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Template definitions (@ST>, @SP>) --------------------------------------
@@ -167,7 +167,7 @@ class TestTemplateDefinitions:
         ],
     )
     def test_template_definitions(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Function templates (@FT@>) ---------------------------------------------
@@ -193,7 +193,7 @@ class TestFunctionTemplates:
         ],
     )
     def test_function_templates(self, usr, expected):
-        assert _usr_to_display_name(usr) == expected
+        assert usr_to_display_name(usr) == expected
 
 
 # ---- Real-world USR regression tests ----------------------------------------
@@ -208,7 +208,7 @@ class TestRealWorldUSRs:
             "c:@N@std@FT@>2#T#pTmake_unique#P&&t0.1#"
             "^_MakeUniq<type-parameter-0-0>:::__single_object#"
         )
-        result = _usr_to_display_name(usr)
+        result = usr_to_display_name(usr)
         assert result == "std::make_unique"
 
     def test_unique_ptr_constructor_usr(self):
@@ -220,7 +220,7 @@ class TestRealWorldUSRs:
             "@FT@>3#T#T#Tunique_ptr#&&>"
             "@N@std@ST>2#T#T@unique_ptr2t0.0t0.1#v#"
         )
-        result = _usr_to_display_name(usr)
+        result = usr_to_display_name(usr)
         assert result == (
             "std::unique_ptr<ns::SomeClass, std::default_delete<type>>" "::unique_ptr"
         )
@@ -231,24 +231,24 @@ class TestRealWorldUSRs:
 
 class TestEdgeCases:
     def test_empty_string(self):
-        assert _usr_to_display_name("") == ""
+        assert usr_to_display_name("") == ""
 
     def test_non_usr_string(self):
         """Non-USR strings are returned unchanged (fallback)."""
-        assert _usr_to_display_name("not a usr") == "not a usr"
+        assert usr_to_display_name("not a usr") == "not a usr"
 
     def test_no_template_args(self):
-        assert _usr_to_display_name("c:@S@A") == "A"
+        assert usr_to_display_name("c:@S@A") == "A"
 
     def test_only_namespace(self):
-        assert _usr_to_display_name("c:@N@myns") == "myns"
+        assert usr_to_display_name("c:@N@myns") == "myns"
 
     def test_deeply_nested(self):
-        assert _usr_to_display_name("c:@N@a@N@b@N@c@S@D") == "a::b::c::D"
+        assert usr_to_display_name("c:@N@a@N@b@N@c@S@D") == "a::b::c::D"
 
     def test_unknown_type_code_produces_question_mark(self):
         """Unknown type codes in template args produce '?'."""
-        result = _usr_to_display_name("c:@S@Foo>#Z")
+        result = usr_to_display_name("c:@S@Foo>#Z")
         assert "?" in result or "Foo" in result
 
 
