@@ -24,12 +24,11 @@ import time
 from concurrent.futures import (
     Executor,
     ProcessPoolExecutor,
-    ThreadPoolExecutor,
     as_completed,
 )
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
 
 # Handle both package and script imports
 try:
@@ -384,67 +383,55 @@ class IncrementalAnalyzer:
         return file_compile_args
 
     def _create_executor(
-        self, use_processes: bool, max_workers: int
-    ) -> Tuple[Optional[multiprocessing.context.BaseContext], type, str]:
-        """Create an executor and its context based on configuration."""
+        self, max_workers: int
+    ) -> Tuple[Optional[multiprocessing.context.BaseContext], Type[ProcessPoolExecutor], str]:
+        """Create a process pool executor and its spawn context."""
         mp_context = None
-        executor_class: type
         msg: str
 
-        if use_processes:
-            # Use 'spawn' context to avoid inheriting open file descriptors
-            try:
-                mp_context = multiprocessing.get_context("spawn")
-                executor_class = ProcessPoolExecutor
-                msg = f"Incremental refresh: Using ProcessPoolExecutor (spawn) with {max_workers} workers"
-            except Exception as e:
-                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-                executor_class = ProcessPoolExecutor
-                mp_context = None
-                msg = f"Incremental refresh: Using ProcessPoolExecutor with {max_workers} workers"
-        else:
-            executor_class = ThreadPoolExecutor
+        # Use 'spawn' context to avoid inheriting open file descriptors
+        try:
+            mp_context = multiprocessing.get_context("spawn")
+            msg = (
+                f"Incremental refresh: Using ProcessPoolExecutor (spawn) with {max_workers} workers"
+            )
+        except Exception as e:
+            diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
             mp_context = None
-            msg = f"Incremental refresh: Using ThreadPoolExecutor with {max_workers} workers"
+            msg = f"Incremental refresh: Using ProcessPoolExecutor with {max_workers} workers"
 
-        return mp_context, executor_class, msg
+        return mp_context, ProcessPoolExecutor, msg
 
-    def _process_future_result(
-        self, result: Any, file_path: str, use_processes: bool
-    ) -> Tuple[bool, bool]:
+    def _process_future_result(self, result: Any, file_path: str) -> Tuple[bool, bool]:
         """Process the result from a future and merge it into the analyzer."""
-        if use_processes:
-            # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
-            _, success, was_cached, symbols, call_sites, processed_headers = result
+        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
+        _, success, was_cached, symbols, call_sites, processed_headers = result
 
-            # Merge symbols into main process (same logic as index_project)
-            if success and symbols:
-                self._merge_symbols(symbols)
+        # Merge symbols into main process (same logic as index_project)
+        if success and symbols:
+            self._merge_symbols(symbols)
 
-            # Restore call sites
-            if call_sites:
-                for cs_dict in call_sites:
-                    self.analyzer.context.call_graph_service.call_graph_analyzer.add_call(
-                        cs_dict["caller_usr"],
-                        cs_dict["callee_usr"],
-                        cs_dict["file"],
-                        cs_dict["line"],
-                        cs_dict.get("column"),
-                    )
+        # Restore call sites
+        if call_sites:
+            for cs_dict in call_sites:
+                self.analyzer.context.call_graph_service.call_graph_analyzer.add_call(
+                    cs_dict["caller_usr"],
+                    cs_dict["callee_usr"],
+                    cs_dict["file"],
+                    cs_dict["line"],
+                    cs_dict.get("column"),
+                )
 
-            # Merge header tracking
-            if processed_headers:
-                for header_path, header_hash in processed_headers.items():
-                    self.analyzer.context.cache_orchestrator.mark_header_completed(
-                        header_path, header_hash
-                    )
+        # Merge header tracking
+        if processed_headers:
+            for header_path, header_hash in processed_headers.items():
+                self.analyzer.context.cache_orchestrator.mark_header_completed(
+                    header_path, header_hash
+                )
 
-            # Update file hash tracking
-            file_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
-            self.analyzer.context.symbol_store.set_file_hash(file_path, file_hash)
-        else:
-            # ThreadPoolExecutor returns (success, was_cached)
-            success, was_cached = result
+        # Update file hash tracking
+        file_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
+        self.analyzer.context.symbol_store.set_file_hash(file_path, file_hash)
 
         return success, was_cached
 
@@ -491,53 +478,43 @@ class IncrementalAnalyzer:
         self,
         executor: Executor,
         file_list: List[str],
-        use_processes: bool,
     ) -> Dict[Any, str]:
-        """Submit re-analysis tasks to the executor."""
-        if use_processes:
-            # ProcessPoolExecutor: use worker function (same as index_project)
-            from .._indexing.worker_pool import _process_file_worker
+        """Submit re-analysis tasks to the process pool executor."""
+        from .._indexing.worker_pool import _process_file_worker
 
-            # Get project configuration for workers
-            project_root = str(self.analyzer.project_root)
-            config_file_str = (
-                str(self.analyzer.project_identity.config_file_path)
-                if self.analyzer.project_identity.config_file_path
-                else None
-            )
-            include_dependencies = self.analyzer.context.compilation_env.include_dependencies
+        # Get project configuration for workers
+        project_root = str(self.analyzer.project_root)
+        config_file_str = (
+            str(self.analyzer.project_identity.config_file_path)
+            if self.analyzer.project_identity.config_file_path
+            else None
+        )
+        include_dependencies = self.analyzer.context.compilation_env.include_dependencies
 
-            # Task 3.2: Prepare compile args for all files in main process
-            # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
-            file_compile_args = self._get_file_compile_args(file_list)
+        # Task 3.2: Prepare compile args for all files in main process
+        # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
+        file_compile_args = self._get_file_compile_args(file_list)
 
-            # Submit all files to worker processes
-            return {
-                executor.submit(
-                    _process_file_worker,
-                    IndexingTaskSpec(
-                        project_root=project_root,
-                        config_file=config_file_str,
-                        file_path=os.path.abspath(file_path),
-                        force=True,  # force=True for refresh
-                        include_dependencies=include_dependencies,
-                        compile_args=file_compile_args[file_path],  # Task 3.2: precomputed args
-                    ),
-                ): file_path
-                for file_path in file_list
-            }
-        else:
-            # ThreadPoolExecutor: use index_file method directly
-            return {
-                executor.submit(self.analyzer.index_file, file_path, force=True): file_path
-                for file_path in file_list
-            }
+        # Submit all files to worker processes
+        return {
+            executor.submit(
+                _process_file_worker,
+                IndexingTaskSpec(
+                    project_root=project_root,
+                    config_file=config_file_str,
+                    file_path=os.path.abspath(file_path),
+                    force=True,  # force=True for refresh
+                    include_dependencies=include_dependencies,
+                    compile_args=file_compile_args[file_path],  # Task 3.2: precomputed args
+                ),
+            ): file_path
+            for file_path in file_list
+        }
 
     def _process_loop(
         self,
         executor: Executor,
         future_to_file: Dict[Any, str],
-        use_processes: bool,
         start_time: float,
         total: int,
         callbacks: Optional[IndexingCallbacks],
@@ -561,7 +538,7 @@ class IncrementalAnalyzer:
             file_path = future_to_file[future]
             try:
                 result = future.result()
-                success, was_cached = self._process_future_result(result, file_path, use_processes)
+                success, was_cached = self._process_future_result(result, file_path)
 
                 if success:
                     analyzed += 1
@@ -592,9 +569,9 @@ class IncrementalAnalyzer:
         """
         Re-analyze a set of files using parallel processing.
 
-        Uses the analyzer's parallel indexing infrastructure (ProcessPoolExecutor
-        or ThreadPoolExecutor) to re-parse files concurrently, providing the same
-        6-7x speedup as initial indexing on multi-core systems.
+        Uses the analyzer's ProcessPoolExecutor-based indexing infrastructure
+        to re-parse files concurrently, providing the same 6-7x speedup as
+        initial indexing on multi-core systems.
 
         Args:
             files: Set of file paths to re-analyze
@@ -614,40 +591,27 @@ class IncrementalAnalyzer:
 
         # Use analyzer's parallel processing infrastructure (same pattern as index_project)
         # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
-        from unittest.mock import Mock
-
-        use_processes = getattr(self.analyzer, "use_processes", True)
         max_workers = getattr(self.analyzer, "max_workers", None)
 
-        # Detect mocked analyzer (can't pickle Mock objects)
-        # Fall back to ThreadPoolExecutor when analyzer is mocked in tests
-        if isinstance(self.analyzer, Mock) or type(self.analyzer).__name__ in ("Mock", "MagicMock"):
-            use_processes = False
-            diagnostics.debug("Detected mocked analyzer - using ThreadPoolExecutor")
-
-        # Handle mocked analyzer in tests or missing attribute
         if max_workers is None or not isinstance(max_workers, int):
             max_workers = os.cpu_count() or 4
 
-        # Choose executor based on configuration
-        mp_context, executor_class, msg = self._create_executor(use_processes, max_workers)
+        mp_context, _, msg = self._create_executor(max_workers)
         diagnostics.debug(msg)
 
         executor: Optional[Executor] = None
         try:
-            if use_processes and mp_context:
+            if mp_context:
                 executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_context)
             else:
-                executor = executor_class(max_workers=max_workers)  # type: ignore[operator]
+                executor = ProcessPoolExecutor(max_workers=max_workers)
 
-            assert executor is not None
-            future_to_file = self._submit_tasks(executor, file_list, use_processes)
+            future_to_file = self._submit_tasks(executor, file_list)
 
             # Process results as they complete
             analyzed, failed = self._process_loop(
                 executor,
                 future_to_file,
-                use_processes,
                 start_time,
                 total,
                 callbacks,

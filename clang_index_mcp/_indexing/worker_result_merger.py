@@ -2,8 +2,8 @@
 Worker result merging for C++ Analyzer.
 
 Extracted from CppAnalyzer to isolate the logic that merges symbols, call sites,
-and header-tracking state produced by worker processes (or threads) back into the
-main process indexes.
+and header-tracking state produced by worker processes back into the main process
+indexes.
 """
 
 from typing import TYPE_CHECKING, Any, Tuple
@@ -58,26 +58,20 @@ class WorkerResultMerger:
             file_hash = self.cache_orchestrator._get_file_hash(file_path)
             self.symbol_store.set_file_hash(file_path, file_hash)
 
-    def get_worker_result(self, future, file_path: str, use_processes: bool) -> Tuple[bool, bool]:
+    def get_worker_result(self, future, file_path: str) -> Tuple[bool, bool]:
         """Get result from future and merge into indexes."""
         try:
             result = future.result()
-            if use_processes:
-                # ProcessPoolExecutor: result is 6-tuple
-                self.merge_worker_result(result, file_path)
-                return bool(result[1]), bool(result[2])  # success, was_cached
-
-            # ThreadPoolExecutor: result is (success, was_cached)
-            return bool(result[0]), bool(result[1])
+            self.merge_worker_result(result, file_path)
+            return bool(result[1]), bool(result[2])  # success, was_cached
         except Exception as exc:
             diagnostics.error(f"Error indexing {file_path}: {exc}")
             return False, False
 
-    def process_refresh_result(self, file_path: str, res: Any, use_processes: bool) -> bool:
+    def process_refresh_result(self, file_path: str, res: Any) -> bool:
         """Process result from indexing worker during refresh. Returns True if successful."""
-        success = res[1] if use_processes else res[0]
+        success = res[1]
         if success:
-            if use_processes:
-                self.merge_worker_result(res, file_path)
+            self.merge_worker_result(res, file_path)
             return True
         return False

@@ -113,8 +113,3 @@ class ProjectContext:
     def max_workers(self) -> int:
         """Convenience accessor for the worker pool size."""
         return self.execution.max_workers
-
-    @property
-    def use_processes(self) -> bool:
-        """Convenience accessor for the process-vs-thread execution mode."""
-        return self.execution.use_processes

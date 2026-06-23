@@ -164,7 +164,7 @@ class CppAnalyzer:
         self.context.symbol_extractor = self.symbol_extractor
 
         # Indexing/refresh pipelines receive the fully wired context.
-        self.task_submitter = IndexingTaskSubmitter(self.context, self.index_file)
+        self.task_submitter = IndexingTaskSubmitter(self.context)
         self.worker_result_merger = WorkerResultMerger(self.context)
         self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
         self.refresh_pipeline = RefreshPipeline(
@@ -177,8 +177,7 @@ class CppAnalyzer:
 
         diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
         diagnostics.debug(
-            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.context.use_processes else 'ThreadPool'} "
-            f"with {self.context.max_workers} workers"
+            f"Concurrency mode: ProcessPool (spawn, GIL bypass) with {self.context.max_workers} workers"
         )
 
         # Print compile commands configuration status

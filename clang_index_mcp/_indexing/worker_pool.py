@@ -11,7 +11,6 @@ import time
 from concurrent.futures import (
     Executor,
     ProcessPoolExecutor,
-    ThreadPoolExecutor,
 )
 from typing import Any, Dict, List, Optional
 
@@ -73,9 +72,6 @@ def _process_file_worker(spec: IndexingTaskSpec):
     # Reset stateful components to prevent data leakage between files
     context.call_graph_service.call_graph_analyzer = CallGraphAnalyzer()
 
-    # Mark this instance as isolated (no shared memory, locks not needed)
-    context.concurrency._needs_locking = False
-
     # Set precomputed compile args
     context.compilation_env._provided_compile_args = spec.compile_args
 
@@ -108,29 +104,22 @@ def _process_file_worker(spec: IndexingTaskSpec):
 class WorkerPoolManager:
     """Manages a pool of workers for parallel C++ file indexing."""
 
-    def __init__(self, max_workers: int, use_processes: bool = True):
+    def __init__(self, max_workers: int):
         self.max_workers = max_workers
-        self.use_processes = use_processes
         self.executor: Optional[Executor] = None
         self.mp_context: Optional[Any] = None
 
     def setup(self) -> Executor:
-        """Initialize and return the appropriate executor."""
-        if self.use_processes:
-            try:
-                self.mp_context = multiprocessing.get_context("spawn")
-                diagnostics.debug(
-                    f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers"
-                )
-                self.executor = ProcessPoolExecutor(
-                    max_workers=self.max_workers, mp_context=self.mp_context
-                )
-            except Exception as e:
-                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-                self.executor = ProcessPoolExecutor(max_workers=self.max_workers)
-        else:
-            diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
-            self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        """Initialize and return the process pool executor."""
+        try:
+            self.mp_context = multiprocessing.get_context("spawn")
+            diagnostics.debug(f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers")
+            self.executor = ProcessPoolExecutor(
+                max_workers=self.max_workers, mp_context=self.mp_context
+            )
+        except Exception as e:
+            diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
+            self.executor = ProcessPoolExecutor(max_workers=self.max_workers)
 
         return self.executor
 
