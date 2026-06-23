@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 from .._core import diagnostics
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
-from .._symbols.symbol_extractor import _usr_to_display_name
+from .._symbols.usr_decoder import usr_to_display_name
 from .._persistence.symbol_info import build_location_objects, omit_empty
 
 if TYPE_CHECKING:
@@ -327,7 +327,7 @@ class CallGraphService:
             else:
                 callers_list.append(
                     {
-                        "qualified_name": _usr_to_display_name(caller_usr),
+                        "qualified_name": usr_to_display_name(caller_usr),
                         "is_project": False,
                     }
                 )
@@ -354,7 +354,7 @@ class CallGraphService:
                     "file": call_site.file,
                     "line": call_site.line,
                     "column": call_site.column,
-                    "caller": _usr_to_display_name(call_site.caller_usr),
+                    "caller": usr_to_display_name(call_site.caller_usr),
                 }
             )
 
@@ -433,7 +433,7 @@ class CallGraphService:
             else:
                 callees_list.append(
                     {
-                        "qualified_name": _usr_to_display_name(callee_usr),
+                        "qualified_name": usr_to_display_name(callee_usr),
                         "is_project": False,
                     }
                 )
@@ -504,7 +504,7 @@ class CallGraphService:
         if not rows:
             return None
         row = rows[0]
-        display_name = row.get("display_name") or _usr_to_display_name(callee_usr)
+        display_name = row.get("display_name") or usr_to_display_name(callee_usr)
         try:
             project_types = json.loads(row["template_project_types"])
         except (json.JSONDecodeError, TypeError):

@@ -1,268 +1,19 @@
 import json
 import re
-import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 from clang.cindex import CursorKind
 
 from .._core import diagnostics
 from .._persistence.symbol_info import SymbolInfo
+from .alias_extractor import extract_alias_info
+from .cursor_utils import extract_namespace, get_qualified_name
+from .documentation_extractor import extract_documentation
+from .signature_builder import build_human_readable_signature
+from .usr_decoder import usr_to_display_name
 
 if TYPE_CHECKING:
     from ..project_context import ProjectContext
-
-# ---------------------------------------------------------------------------
-# USR → human-readable qualified name conversion
-# ---------------------------------------------------------------------------
-_USR_TYPE_CODES: Dict[str, str] = {
-    "v": "void",
-    "b": "bool",
-    "c": "char",
-    "a": "signed char",
-    "h": "unsigned char",
-    "w": "wchar_t",
-    "s": "short",
-    "i": "int",
-    "I": "unsigned int",
-    "j": "long",
-    "k": "unsigned long",
-    "l": "long long",
-    "m": "unsigned long long",
-    "f": "float",
-    "d": "double",
-    "e": "long double",
-    "D": "auto",
-}
-
-_TPARAM_LETTERS = "TUVWXYZABCDE"
-
-
-def _decode_template_param(s: str, pos: int) -> tuple:
-    m = re.match(r"t(\d+)\.(\d+)", s[pos:])
-    if m:
-        depth = int(m.group(1))
-        idx = int(m.group(2))
-        total_idx = depth * 4 + idx
-        letter = _TPARAM_LETTERS[total_idx] if total_idx < len(_TPARAM_LETTERS) else f"T{total_idx}"
-        return (letter, pos + m.end())
-    return ("unsigned short", pos + 1)
-
-
-def _decode_pointer_or_reference(s: str, pos: int, ch: str) -> tuple:
-    suffix = " &&" if ch == "O" else f" {ch}"
-    inner, npos = _decode_usr_type(s, pos)
-    return (f"{inner}{suffix}", npos)
-
-
-def _decode_cv_qualified(s: str, pos: int, ch: str) -> tuple:
-    prefix = "volatile " if ch in ("V", "2") else "const "
-    inner, npos = _decode_usr_type(s, pos)
-    return (f"{prefix}{inner}", npos)
-
-
-def _try_decode_substitution(s: str, pos: int) -> Optional[tuple]:
-    if s[pos] != "S" or pos + 1 >= len(s):
-        return None
-    if not (s[pos + 1].isdigit() or s[pos + 1] == "_"):
-        return None
-    end = pos + 1
-    while end < len(s) and (s[end].isdigit() or s[end] == "_"):
-        end += 1
-    return ("type", end)
-
-
-def _decode_usr_type(s: str, pos: int) -> tuple:
-    if pos >= len(s):
-        return ("?", pos)
-
-    ch = s[pos]
-
-    if ch == "t":
-        return _decode_template_param(s, pos)
-
-    if ch in _USR_TYPE_CODES:
-        return (_USR_TYPE_CODES[ch], pos + 1)
-
-    if ch in ("*", "&", "O"):
-        return _decode_pointer_or_reference(s, pos + 1, ch)
-
-    if ch in ("K", "1", "V", "2"):
-        return _decode_cv_qualified(s, pos + 1, ch)
-
-    if ch == "$":
-        return _decode_class_ref(s, pos + 1)
-
-    sub = _try_decode_substitution(s, pos)
-    if sub is not None:
-        return sub
-
-    return ("?", pos + 1)
-
-
-def _decode_class_ref(s: str, pos: int) -> tuple:
-    parts: List[str] = []
-    i = pos
-    while i < len(s):
-        if s[i] != "@":
-            break
-        if i + 2 >= len(s):
-            break
-        kind = s[i + 1]
-        if s[i + 2] != "@":
-            break
-        name_start = i + 3
-        name_end = name_start
-        while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
-            name_end += 1
-        if name_end == name_start:
-            break
-        parts.append(s[name_start:name_end])
-        i = name_end
-
-        if kind in ("S", "C") and i < len(s) and s[i] == ">":
-            if i + 1 < len(s) and s[i + 1] == "#":
-                targs, i = _decode_template_args(s, i + 2)
-                parts[-1] += targs
-            else:
-                i += 1
-    name = "::".join(parts)
-    return (name if name else "?", i)
-
-
-def _decode_template_args(s: str, pos: int) -> tuple:
-    args: List[str] = []
-    i = pos
-    while i < len(s):
-        ch = s[i]
-        if ch == "@":
-            break
-        if ch == "#":
-            i += 1
-            continue
-        arg, i = _decode_usr_type(s, i)
-        args.append(arg)
-    if not args:
-        return ("", i)
-    return (f"<{', '.join(args)}>", i)
-
-
-def _parse_template_definition(s: str, i: int, parts: List[str]) -> int:
-    mt = re.match(r"@(ST|SP)>", s[i:])
-    if not mt:
-        return -1
-
-    kind = mt.group(1)
-    j = i + mt.end()
-    inner_m = re.search(r"@([^@#>]+)", s[j:])
-    if inner_m:
-        raw_name = inner_m.group(1)
-        name_only = re.match(r"([A-Za-z_]\w*?)(?=\d+t\d|\d*$)", raw_name)
-        parts.append(name_only.group(1) if name_only else raw_name)
-        new_i = j + inner_m.end()
-        if kind == "SP" and new_i < len(s) and s[new_i] == ">":
-            if new_i + 1 < len(s) and s[new_i + 1] == "#":
-                targs, new_i = _decode_template_args(s, new_i + 2)
-                parts[-1] += targs
-            else:
-                new_i += 1
-        return new_i
-    return j
-
-
-def _skip_template_parameters(s: str, k: int, param_count: int) -> int:
-    for _ in range(param_count):
-        if k < len(s) and s[k] == "#":
-            k += 1
-            if k < len(s) and s[k] == "p":
-                k += 1
-            if k < len(s) and s[k] in ("T", "t"):
-                k += 1
-            elif k < len(s) and s[k] == "N":
-                k += 1
-                _, k = _decode_usr_type(s, k)
-    return k
-
-
-def _parse_function_template(s: str, i: int, parts: List[str]) -> int:
-    if not s[i:].startswith("@FT@"):
-        return -1
-
-    j = i + 4
-    if j < len(s) and s[j] == ">":
-        j += 1
-
-    bare_name = None
-    count_m = re.match(r"(\d+)", s[j:])
-    if count_m:
-        param_count = int(count_m.group(1))
-        k = j + count_m.end()
-        k = _skip_template_parameters(s, k, param_count)
-        name_m = re.match(r"([A-Za-z_]\w*)", s[k:])
-        if name_m:
-            bare_name = name_m.group(1)
-
-    if bare_name is not None:
-        parts.append(bare_name)
-        return len(s)
-    else:
-        inner_m = re.search(r"@([A-Za-z])@([^@#>]+)", s[j:])
-        if inner_m:
-            return j + inner_m.start()
-        return j
-
-
-def _parse_regular_segment(s: str, i: int, parts: List[str]) -> int:
-    m = re.match(r"@([A-Za-z])@", s[i:])
-    if not m:
-        return i + 1
-
-    kind = m.group(1)
-    name_start = i + m.end()
-    name_end = name_start
-    while name_end < len(s) and s[name_end] not in ("@", "#", ">"):
-        name_end += 1
-
-    if name_end == name_start:
-        return name_start
-
-    name = s[name_start:name_end]
-    parts.append(name)
-    new_i = name_end
-
-    if kind in ("S", "C") and new_i < len(s) and s[new_i] == ">":
-        if new_i + 1 < len(s) and s[new_i + 1] == "#":
-            targs, new_i = _decode_template_args(s, new_i + 2)
-            parts[-1] += targs
-        else:
-            new_i += 1
-
-    if kind in ("F", "f") and new_i < len(s) and s[new_i] == "#":
-        while new_i < len(s) and s[new_i] != "@":
-            new_i += 1
-
-    return new_i
-
-
-def _usr_to_display_name(usr: str) -> str:
-    if not usr:
-        return usr
-
-    s = usr[2:] if usr.startswith("c:") else usr
-    parts: List[str] = []
-    i = 0
-
-    while i < len(s):
-        next_i = _parse_template_definition(s, i, parts)
-        if next_i != -1:
-            i = next_i
-            continue
-        next_i = _parse_function_template(s, i, parts)
-        if next_i != -1:
-            i = next_i
-            continue
-        i = _parse_regular_segment(s, i, parts)
-
-    return "::".join(parts) if parts else usr
 
 
 class SymbolExtractor:
@@ -324,52 +75,6 @@ class SymbolExtractor:
 
     def _get_thread_local_buffers(self):
         return self.concurrency.get_thread_local_buffers()
-
-    @staticmethod
-    def _get_qualified_name(cursor: Any) -> str:
-        """Build fully qualified name by walking up semantic parent chain."""
-        parts = []
-        current = cursor
-        max_depth = 100
-        depth = 0
-        visited = set()
-
-        while current and depth < max_depth:
-            cursor_id = id(current)
-            if cursor_id in visited:
-                diagnostics.warning(
-                    f"Circular reference detected in semantic parent chain for {cursor.spelling}"
-                )
-                break
-            visited.add(cursor_id)
-
-            if current.kind == CursorKind.TRANSLATION_UNIT:
-                break
-
-            if current.spelling:
-                parts.append(current.spelling)
-            elif current.kind == CursorKind.NAMESPACE and current.is_anonymous():
-                parts.append("(anonymous namespace)")
-
-            current = current.semantic_parent
-            depth += 1
-
-        if depth >= max_depth:
-            diagnostics.warning(
-                f"Maximum depth ({max_depth}) exceeded when building qualified name for {cursor.spelling}"
-            )
-
-        parts.reverse()
-        return "::".join(parts) if parts else cursor.spelling
-
-    @staticmethod
-    def _extract_namespace(qualified_name: str) -> str:
-        """Extract namespace portion from qualified name."""
-        if "::" not in qualified_name:
-            return ""
-
-        parts = qualified_name.split("::")
-        return "::".join(parts[:-1])
 
     def _build_type_param_map(self, cursor: Any) -> Dict[str, str]:
         """Build a map from 'type-parameter-D-I' to actual template parameter names."""
@@ -683,178 +388,6 @@ class SymbolExtractor:
         return result
 
     @staticmethod
-    def _extract_brief_comment(cursor: Any) -> Optional[str]:
-        """Extract and truncate brief comment from cursor."""
-        brief_comment = cursor.brief_comment
-        if not brief_comment:
-            return None
-        brief = str(brief_comment).strip()
-        if len(brief) > 200:
-            brief = brief[:200]
-        return brief
-
-    @staticmethod
-    def _extract_raw_doc_comment(cursor: Any) -> Optional[str]:
-        """Extract and truncate full documentation comment from cursor."""
-        raw_comment = cursor.raw_comment
-        if not raw_comment:
-            return None
-        doc_comment = str(raw_comment).strip()
-        if len(doc_comment) > 4000:
-            doc_comment = doc_comment[:3997] + "..."
-        return doc_comment
-
-    @staticmethod
-    def _extract_brief_from_doc(doc_comment: str) -> Optional[str]:
-        """Extract first meaningful line from a documentation comment."""
-        for line in doc_comment.split("\n"):
-            cleaned = line.strip().lstrip("/*!/").lstrip("*").strip()
-            if cleaned and not cleaned.startswith("@"):
-                if len(cleaned) > 200:
-                    cleaned = cleaned[:200]
-                return cleaned
-        return None
-
-    @staticmethod
-    def _extract_documentation(cursor: Any) -> dict:
-        """Extract documentation from cursor comments."""
-        result: Dict[str, Optional[str]] = {"brief": None, "doc_comment": None}
-
-        try:
-            result["brief"] = SymbolExtractor._extract_brief_comment(cursor)
-
-            doc_comment = SymbolExtractor._extract_raw_doc_comment(cursor)
-            if doc_comment:
-                result["doc_comment"] = doc_comment
-                if not result["brief"]:
-                    result["brief"] = SymbolExtractor._extract_brief_from_doc(doc_comment)
-
-        except Exception as e:
-            diagnostics.debug(f"Could not extract documentation for {cursor.spelling}: {e}")
-
-        return result
-
-    @staticmethod
-    def _get_type_spelling(cursor: Any):
-        """Safely get cursor.type.spelling, returning None if unavailable."""
-        if not cursor.type:
-            return None
-        return cursor.type.spelling or None
-
-    @staticmethod
-    def _get_return_type(cursor: Any) -> str:
-        """Safely get cursor.result_type.spelling."""
-        try:
-            if cursor.result_type and cursor.result_type.spelling:
-                return str(cursor.result_type.spelling)
-        except Exception:
-            pass
-        return ""
-
-    @staticmethod
-    def _format_args(args: List[Any]) -> str:
-        """Format a list of cursor arguments into a parameter string."""
-        param_parts = []
-        for arg in args:
-            arg_type = arg.type.spelling if arg.type else ""
-            arg_name = arg.spelling or ""
-            if arg_name:
-                param_parts.append(f"{arg_type} {arg_name}")
-            else:
-                param_parts.append(arg_type)
-        return ", ".join(param_parts)
-
-    @staticmethod
-    def _extract_params_from_type_spelling(type_spelling: str) -> str:
-        """Extract parameter types from a C function type spelling string."""
-        if not type_spelling:
-            return ""
-
-        depth = 0
-        start = -1
-        for i, ch in enumerate(type_spelling):
-            if ch == "(":
-                if depth == 0:
-                    start = i
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0 and start >= 0:
-                    return type_spelling[start + 1 : i]
-
-        return ""
-
-    @staticmethod
-    def _extract_trailing_qualifiers(type_spelling: str) -> str:
-        """Extract trailing qualifiers from type spelling."""
-        if not type_spelling:
-            return ""
-
-        depth = 0
-        last_close = -1
-        for i, ch in enumerate(type_spelling):
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    last_close = i
-
-        if last_close >= 0 and last_close < len(type_spelling) - 1:
-            qualifiers = type_spelling[last_close + 1 :]
-            return qualifiers
-
-        return ""
-
-    @staticmethod
-    def _assemble_signature(return_type: str, name: str, params_str: str, qualifiers: str) -> str:
-        """Assemble the final human-readable signature string."""
-        if return_type:
-            return f"{return_type} {name}({params_str}){qualifiers}"
-        return f"{name}({params_str}){qualifiers}"
-
-    @staticmethod
-    def _fallback_signature(cursor: Any) -> str:
-        """Return cursor.type.spelling as a fallback, or empty string on failure."""
-        try:
-            return cursor.type.spelling if cursor.type else ""
-        except Exception:
-            return ""
-
-    def _get_params_str(self, cursor: Any, type_spelling: str) -> str:
-        """Get parameter string from cursor arguments or type spelling fallback."""
-        try:
-            args = list(cursor.get_arguments())
-            if args:
-                return self._format_args(args)
-            return self._extract_params_from_type_spelling(type_spelling)
-        except Exception:
-            return self._extract_params_from_type_spelling(type_spelling)
-
-    def _try_build_human_readable_signature(self, cursor: Any) -> str:
-        """Attempt to build signature without exception handling."""
-        type_spelling = self._get_type_spelling(cursor)
-        if type_spelling is None:
-            return ""
-
-        name = cursor.spelling or ""
-        return_type = self._get_return_type(cursor)
-        params_str = self._get_params_str(cursor, type_spelling)
-        qualifiers = self._extract_trailing_qualifiers(type_spelling)
-
-        return self._assemble_signature(return_type, name, params_str, qualifiers)
-
-    def _build_human_readable_signature(self, cursor: Any) -> str:
-        """Build a human-readable function signature from a libclang cursor."""
-        try:
-            return self._try_build_human_readable_signature(cursor)
-        except Exception as e:
-            diagnostics.debug(
-                f"Could not build human-readable signature for " f"{cursor.spelling}: {e}"
-            )
-            return self._fallback_signature(cursor)
-
-    @staticmethod
     def _extract_template_parameters(cursor: Any) -> Optional[str]:
         """Extract template parameters from a template cursor."""
         template_params = []
@@ -889,138 +422,6 @@ class SymbolExtractor:
 
         return None
 
-    def _extract_template_alias_info(
-        self, cursor: Any
-    ) -> Tuple[str, str, str, str, str, int, int, List[dict]]:
-        """Extract alias info from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
-        template_params = []
-        type_alias_decl = None
-
-        for child in cursor.get_children():
-            if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
-                template_params.append({"name": child.spelling, "kind": "type"})
-            elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
-                template_params.append(
-                    {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
-                )
-            elif child.kind == CursorKind.TYPE_ALIAS_DECL:
-                type_alias_decl = child
-
-        if type_alias_decl:
-            alias_name = type_alias_decl.spelling
-            qualified_name = self._get_qualified_name(type_alias_decl)
-
-            try:
-                underlying_type = type_alias_decl.underlying_typedef_type
-                target_type = underlying_type.spelling
-                canonical_type = underlying_type.get_canonical().spelling
-            except AttributeError:
-                target_type = type_alias_decl.type.spelling
-                canonical_type = type_alias_decl.type.get_canonical().spelling
-        else:
-            alias_name = cursor.spelling
-            qualified_name = self._get_qualified_name(cursor)
-            target_type = ""
-            canonical_type = ""
-
-        file_path = str(cursor.location.file.name) if cursor.location.file else ""
-        line = cursor.location.line
-        column = cursor.location.column
-
-        return (
-            alias_name,
-            qualified_name,
-            target_type,
-            canonical_type,
-            file_path,
-            line,
-            column,
-            template_params,
-        )
-
-    def _extract_simple_alias_info(
-        self, cursor: Any
-    ) -> Tuple[str, str, str, str, str, int, int, str]:
-        """Extract alias info from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
-        alias_name = cursor.spelling
-        qualified_name = self._get_qualified_name(cursor)
-
-        try:
-            underlying_type = cursor.underlying_typedef_type
-            target_type = underlying_type.spelling
-            canonical_type = underlying_type.get_canonical().spelling
-        except AttributeError:
-            target_type = cursor.type.spelling
-            canonical_type = cursor.type.get_canonical().spelling
-
-        if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
-            alias_kind = "using"
-        elif cursor.kind == CursorKind.TYPEDEF_DECL:
-            alias_kind = "typedef"
-        else:
-            alias_kind = "unknown"
-
-        file_path = str(cursor.location.file.name) if cursor.location.file else ""
-        line = cursor.location.line
-        column = cursor.location.column
-
-        return (
-            alias_name,
-            qualified_name,
-            target_type,
-            canonical_type,
-            file_path,
-            line,
-            column,
-            alias_kind,
-        )
-
-    def _extract_alias_info(self, cursor: Any) -> dict:
-        """Extract type alias information from TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL cursor."""
-        is_template_alias = cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL
-
-        if is_template_alias:
-            (
-                alias_name,
-                qualified_name,
-                target_type,
-                canonical_type,
-                file_path,
-                line,
-                column,
-                template_params,
-            ) = self._extract_template_alias_info(cursor)
-            alias_kind = "using"
-        else:
-            (
-                alias_name,
-                qualified_name,
-                target_type,
-                canonical_type,
-                file_path,
-                line,
-                column,
-                alias_kind,
-            ) = self._extract_simple_alias_info(cursor)
-            template_params = []
-
-        namespace = self._extract_namespace(qualified_name)
-
-        return {
-            "alias_name": alias_name,
-            "qualified_name": qualified_name,
-            "target_type": target_type,
-            "canonical_type": canonical_type,
-            "file": file_path,
-            "line": line,
-            "column": column,
-            "alias_kind": alias_kind,
-            "namespace": namespace,
-            "is_template_alias": is_template_alias,
-            "template_params": json.dumps(template_params) if template_params else None,
-            "created_at": time.time(),
-        }
-
     def _detect_template_specialization(self, cursor: Any) -> bool:
         """Detect if cursor represents a template specialization."""
         try:
@@ -1054,12 +455,12 @@ class SymbolExtractor:
 
     def _get_common_symbol_data(self, cursor: Any) -> Dict[str, Any]:
         """Extract common metadata for any symbol."""
-        qualified_name = self._get_qualified_name(cursor)
+        qualified_name = get_qualified_name(cursor)
         return {
             "qualified_name": qualified_name,
-            "namespace": self._extract_namespace(qualified_name),
+            "namespace": extract_namespace(qualified_name),
             "loc_info": self._extract_line_range_info(cursor),
-            "doc_info": self._extract_documentation(cursor),
+            "doc_info": extract_documentation(cursor),
         }
 
     def _process_cursor(
@@ -1281,7 +682,7 @@ class SymbolExtractor:
             loc_info = common["loc_info"]
             doc_info = common["doc_info"]
 
-            signature = self._build_human_readable_signature(cursor)
+            signature = build_human_readable_signature(cursor)
             function_usr = cursor.get_usr() if cursor.get_usr() else ""
             template_params = self._extract_template_parameters(cursor)
 
@@ -1364,7 +765,7 @@ class SymbolExtractor:
             loc_info = common["loc_info"]
             doc_info = common["doc_info"]
 
-            signature = self._build_human_readable_signature(cursor)
+            signature = build_human_readable_signature(cursor)
             function_usr = cursor.get_usr() if cursor.get_usr() else ""
             is_template_spec = self._detect_template_specialization(cursor)
             primary_usr = self._get_primary_template_usr(cursor) if is_template_spec else None
@@ -1448,7 +849,7 @@ class SymbolExtractor:
         kind = cursor.kind
         if cursor.spelling and should_extract:
             try:
-                alias_info = self._extract_alias_info(cursor)
+                alias_info = extract_alias_info(cursor)
                 aliases_buffer.append(alias_info)
             except Exception as e:
                 diagnostics.warning(
@@ -1488,7 +889,7 @@ class SymbolExtractor:
             if not project_types:
                 return (None, None)
 
-            base_name = _usr_to_display_name(called_usr)
+            base_name = usr_to_display_name(called_usr)
             display_name = f"{base_name}<{', '.join(all_type_names)}>"
             return (display_name, json.dumps(project_types))
         except Exception:
