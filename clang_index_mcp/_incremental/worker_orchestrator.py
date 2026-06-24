@@ -88,7 +88,7 @@ def report_progress(
     processed = i + 1
     if processed % 10 == 0 or processed == total:
         try:
-            from .._mcp.state_manager import IndexingProgress
+            from .._indexing.progress import IndexingProgress
 
             elapsed = time.time() - start_time
             rate = processed / elapsed if elapsed > 0 else 0
