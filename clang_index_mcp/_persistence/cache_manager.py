@@ -7,13 +7,16 @@ import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from .._core.error_tracking_adapter import ErrorTrackingAdapter
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
-from .._core.error_tracking import ErrorTracker, RecoveryManager
 from .._persistence.project_identity import ProjectIdentity
 from .._symbols.model import SymbolInfo
+
+if TYPE_CHECKING:
+    from .._persistence.ports.recovery import CacheRecoveryPort
 
 # Handle both package and script imports
 try:
@@ -56,17 +59,21 @@ class CacheManager:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
 
-        # Initialize error tracking
-        self.error_tracker = ErrorTracker(
-            window_seconds=300.0,  # 5 minute window
-            fallback_threshold=0.05,  # 5% error rate triggers fallback
-        )
-
-        # Initialize recovery manager
-        self.recovery_manager = RecoveryManager()
+        # Recovery/error tracking port (concrete implementation wired externally)
+        self.recovery: "CacheRecoveryPort" = ErrorTrackingAdapter()
 
         # Initialize SQLite cache backend
         self.backend = self._create_backend()
+
+    @property
+    def error_tracker(self):
+        """Backward-compatible accessor for tests."""
+        return self.recovery._error_tracker
+
+    @property
+    def recovery_manager(self):
+        """Backward-compatible accessor for tests."""
+        return self.recovery._recovery_manager
 
     def _get_cache_dir(self) -> Path:
         """
@@ -194,9 +201,7 @@ class CacheManager:
         )
 
         # Record error
-        self.error_tracker.record_error(
-            error_type, error_message, operation, recoverable=recoverable
-        )
+        self.recovery.record_error(error_type, error_message, operation, recoverable=recoverable)
 
         # For critical errors (corruption, disk full), attempt recovery
         if not recoverable:
@@ -224,14 +229,14 @@ class CacheManager:
 
             # Create backup first
             db_path = self.cache_dir / "symbols.db"
-            backup_path = self.recovery_manager.backup_database(db_path)
+            backup_path = self.recovery.backup_database(db_path)
 
             if not backup_path:
                 diagnostics.error("Failed to create backup before repair")
                 return False
 
             # Attempt repair
-            if self.recovery_manager.attempt_repair(db_path):
+            if self.recovery.attempt_repair(db_path):
                 diagnostics.info("Database repair successful")
                 # Reconnect to repaired database
                 try:
@@ -249,7 +254,7 @@ class CacheManager:
         # For permission errors or disk full, clear cache as last resort
         elif isinstance(error, (PermissionError, OSError)):
             diagnostics.warning(f"Clearing cache due to {type(error).__name__}")
-            if self.recovery_manager.clear_cache(self.cache_dir):
+            if self.recovery.clear_cache(self.cache_dir):
                 diagnostics.info("Cache cleared successfully")
                 return True
             else:
@@ -271,7 +276,7 @@ class CacheManager:
             Result from backend method, or None on error
         """
         try:
-            self.error_tracker.record_operation(operation)
+            self.recovery.record_operation(operation)
             result = func(*args, **kwargs)
             return result
 
@@ -427,7 +432,7 @@ class CacheManager:
             Dict with error statistics
         """
         # Get error tracker summary for cache backend errors
-        tracker_summary = self.error_tracker.get_error_summary()
+        tracker_summary = self.recovery.get_error_summary()
 
         # Also include parse errors from the JSONL log
         parse_errors = self.get_parse_errors()
@@ -451,7 +456,7 @@ class CacheManager:
 
     def reset_error_tracking(self):
         """Reset error tracking state (useful for testing)."""
-        self.error_tracker.reset()
+        self.recovery.reset()
 
     def log_parse_error(
         self,
