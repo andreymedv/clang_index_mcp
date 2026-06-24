@@ -125,7 +125,11 @@ class CppAnalyzer:
         )
         self.context.symbols.symbol_store = self.symbol_store
 
-        self.compilation_env = CompilationEnvironment(self.context)
+        self.compilation_env = CompilationEnvironment(
+            self.context.identity,
+            self.context.symbols,
+            self.context.persistence,
+        )
         self.context.compilation.compilation_env = self.compilation_env
 
         self.query_engine = QueryEngine(self.context)
