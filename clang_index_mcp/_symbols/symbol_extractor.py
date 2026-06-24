@@ -15,32 +15,42 @@ from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import ParseResult, SymbolParser
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._core.concurrency_context import ConcurrencyContext
+    from .._persistence.cache_orchestrator import CacheOrchestrator
+    from .._search.call_graph_service import CallGraphService
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class SymbolExtractor:
     """Coordinates symbol extraction from translation units."""
 
-    def __init__(self, context: "ProjectContext", parser: SymbolParser):
+    def __init__(
+        self,
+        symbol_store: "SymbolIndexStore",
+        concurrency: "ConcurrencyContext",
+        compilation_env: "CompilationEnvironment",
+        cache_orchestrator: "CacheOrchestrator",
+        call_graph_service: "CallGraphService",
+        parser: SymbolParser,
+    ):
         """
         Initialize SymbolExtractor.
 
         Args:
-            context: Shared project context for access to indexes and config.
+            symbol_store: In-memory symbol indexes.
+            concurrency: Concurrency context with index_lock.
+            compilation_env: Compilation environment for file scanning.
+            cache_orchestrator: Cache orchestration and header tracking.
+            call_graph_service: Call graph and dependency tracking.
             parser: SymbolParser port implementation responsible for AST traversal.
         """
-        self.context = context
         self.parser = parser
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
-        assert context.concurrency is not None
-        self.concurrency = context.concurrency
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.cache_orchestrator is not None
-        self.cache_orchestrator = context.cache_orchestrator
-        assert context.call_graph_service is not None
-        self.call_graph_service = context.call_graph_service
+        self.symbol_store = symbol_store
+        self.concurrency = concurrency
+        self.compilation_env = compilation_env
+        self.cache_orchestrator = cache_orchestrator
+        self.call_graph_service = call_graph_service
 
     @property
     def index_lock(self):
