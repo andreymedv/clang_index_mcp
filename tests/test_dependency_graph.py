@@ -6,6 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from clang_index_mcp._compilation.include_extractor import ClangIncludeExtractor
+from clang_index_mcp._persistence.repositories.dependency_repository import (
+    SqliteDependencyRepository,
+)
 from clang_index_mcp._search.dependency_graph import DependencyGraphBuilder
 
 
@@ -34,7 +38,9 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.conn.execute("CREATE INDEX idx_dep_included ON file_dependencies(included_file)")
         self.conn.commit()
 
-        self.builder = DependencyGraphBuilder(self.conn)
+        repository = SqliteDependencyRepository(lambda: self.conn)
+        extractor = ClangIncludeExtractor()
+        self.builder = DependencyGraphBuilder(repository, extractor)
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -265,7 +271,8 @@ class TestDependencyGraphBuilder(unittest.TestCase):
         self.builder.update_dependencies(source, includes)
 
         # Create new builder with same connection
-        builder2 = DependencyGraphBuilder(self.conn)
+        repository2 = SqliteDependencyRepository(lambda: self.conn)
+        builder2 = DependencyGraphBuilder(repository2, ClangIncludeExtractor())
 
         # Should be able to query dependencies
         dependents = builder2.find_dependents("/project/a.h")
