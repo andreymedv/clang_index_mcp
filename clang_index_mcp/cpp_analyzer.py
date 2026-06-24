@@ -194,7 +194,15 @@ class CppAnalyzer:
         # Indexing/refresh pipelines receive the fully wired context.
         self.task_submitter = IndexingTaskSubmitter(self.context)
         self.worker_result_merger = WorkerResultMerger(self.context)
-        self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
+        self.indexing_pipeline = SingleFileIndexingPipeline(
+            clang_parser=self.clang_parser,
+            symbol_extractor=self.symbol_extractor,
+            compilation_env=self.compilation_env,
+            cache_orchestrator=self.cache_orchestrator,
+            cache_manager=self.cache_manager,
+            concurrency=self.concurrency,
+            symbol_store=self.symbol_store,
+        )
         self.refresh_pipeline = RefreshPipeline(
             compilation_env=self.compilation_env,
             execution=self.execution,
