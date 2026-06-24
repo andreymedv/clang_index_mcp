@@ -135,7 +135,7 @@ class CompileCommandsManager:
             self.cache_dir, self.project_root, self.compile_commands_path
         )
 
-    def _get_file_hash(self, file_path: Path) -> str:
+    def get_file_hash(self, file_path: Path) -> str:
         """Get MD5 hash of a file for cache validation."""
         return compile_commands_cache.get_file_hash(file_path)
 

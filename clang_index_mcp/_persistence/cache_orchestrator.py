@@ -138,11 +138,11 @@ class CacheOrchestrator:
         except Exception as e:
             diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
 
-    def _get_file_hash(self, file_path: str) -> str:
+    def get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
 
-    def _calculate_compile_commands_hash(self):
+    def calculate_compile_commands_hash(self):
         """
         Calculate and store MD5 hash of compile_commands.json file.
 
@@ -166,7 +166,7 @@ class CacheOrchestrator:
             self.compilation_env.compile_commands_manager.get_compile_commands_hash()
         )
 
-    def _restore_or_reset_header_tracking(self):
+    def restore_or_reset_header_tracking(self):
         """
         Restore header tracking from cache or reset if compile_commands.json changed.
 
@@ -222,7 +222,7 @@ class CacheOrchestrator:
             # On error, start fresh
             self.clear_header_tracker()
 
-    def _save_header_tracking(self):
+    def save_header_tracking(self):
         """
         Save header tracking state to disk cache.
 
@@ -269,7 +269,7 @@ class CacheOrchestrator:
         except Exception as e:
             diagnostics.warning(f"Failed to save header tracking cache: {e}")
 
-    def _save_file_cache(
+    def save_file_cache(
         self,
         file_path: str,
         symbols: List[Any],
@@ -284,7 +284,7 @@ class CacheOrchestrator:
             file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
         )
 
-    def _load_file_cache(
+    def load_file_cache(
         self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Load cached data for a file if still valid
@@ -294,7 +294,7 @@ class CacheOrchestrator:
         """
         return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
 
-    def _try_load_cached_index(
+    def try_load_cached_index(
         self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
     ) -> Optional[Tuple[bool, bool]]:
         """Try to load index from per-file cache. Returns result tuple or None if not cached."""
@@ -303,7 +303,7 @@ class CacheOrchestrator:
         if force:
             return None
 
-        cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
+        cache_data = self.load_file_cache(file_path, current_hash, compile_args_hash)
         if cache_data is None:
             return None
 
@@ -317,10 +317,10 @@ class CacheOrchestrator:
                 return (False, True)
             return None
 
-        self.symbol_store._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
+        self.symbol_store.apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
         return (True, True)
 
-    def _handle_cache_initial_index(
+    def handle_cache_initial_index(
         self,
         force: bool,
         refresh_fn: Optional[Callable[[bool], int]] = None,
@@ -334,7 +334,7 @@ class CacheOrchestrator:
         """
         from .._core import diagnostics
 
-        if not force and self._load_cache():
+        if not force and self.load_cache():
             if refresh_fn is not None:
                 refreshed = refresh_fn(self.compilation_env.include_dependencies)
                 if refreshed > 0:
@@ -346,7 +346,7 @@ class CacheOrchestrator:
             return int(self.symbol_store.indexed_file_count)  # type: ignore[no-any-return]
         return None
 
-    def _save_cache(self):
+    def save_cache(self):
         """Save index to cache file"""
         # Get current config file info
         config_path = self.config.config_path
@@ -379,7 +379,7 @@ class CacheOrchestrator:
             validation_context=validation_context,
         )
 
-    def _load_cache(self) -> bool:
+    def load_cache(self) -> bool:
         """Load index from cache file"""
         # Get current config file info
         config_path = self.config.config_path
@@ -412,8 +412,8 @@ class CacheOrchestrator:
             return False
 
         try:
-            self.symbol_store._populate_indexes_from_cache(cache_data)
-            self.symbol_store._rebuild_auxiliary_structures()
+            self.symbol_store.populate_indexes_from_cache(cache_data)
+            self.symbol_store.rebuild_auxiliary_structures()
 
             # Memory optimization: call sites are now loaded LAZILY on-demand
             # instead of loading all at startup (saves ~150-200 MB for large projects)
@@ -431,7 +431,7 @@ class CacheOrchestrator:
             self.cache_loaded = False
             return False
 
-    def _save_progress_summary(
+    def save_progress_summary(
         self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0
     ):
         """Save a summary of indexing progress"""

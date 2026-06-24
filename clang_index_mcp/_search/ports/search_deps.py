@@ -65,7 +65,7 @@ class SearchCacheManager(Protocol):
 class SearchCompilationEnv(Protocol):
     """Minimal interface for compilation environment used by search."""
 
-    def _is_project_file(self, file_path: str) -> bool:
+    def is_project_file(self, file_path: str) -> bool:
         pass
 
 

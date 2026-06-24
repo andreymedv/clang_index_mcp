@@ -96,7 +96,7 @@ class ProjectIndexingOrchestrator:
         refresh_fn = None
         if self.refresh_pipeline is not None:
             refresh_fn = self.refresh_pipeline.refresh_if_needed
-        cached_count = self.cache_orchestrator._handle_cache_initial_index(force, refresh_fn)
+        cached_count = self.cache_orchestrator.handle_cache_initial_index(force, refresh_fn)
         if cached_count is not None:
             return cached_count  # type: ignore[no-any-return]
 
@@ -157,14 +157,14 @@ class ProjectIndexingOrchestrator:
     def _prepare_indexing_files(self, include_dependencies: bool) -> List[str]:
         """Find C++ files to index and log compilation environment."""
         diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
-        files = self.compilation_env._find_cpp_files(include_dependencies=include_dependencies)
+        files = self.compilation_env.find_cpp_files(include_dependencies=include_dependencies)
 
         if not files:
             diagnostics.warning("No C++ files found in project")
             return []
 
         diagnostics.debug(f"Found {len(files)} C++ files to index")
-        self.compilation_env._log_compilation_environment(files)
+        self.compilation_env.log_compilation_environment(files)
         return files  # type: ignore[no-any-return]
 
     def _finalize_indexing(
@@ -199,12 +199,12 @@ class ProjectIndexingOrchestrator:
                 f"Note: {failed_count} files failed to parse - this is normal for complex projects"
             )
 
-        self.symbol_extractor._resolve_deferred_instantiation_bases()
-        self.cache_orchestrator._save_cache()
-        self.cache_orchestrator._save_progress_summary(
+        self.symbol_extractor.resolve_deferred_instantiation_bases()
+        self.cache_orchestrator.save_cache()
+        self.cache_orchestrator.save_progress_summary(
             indexed_count, total_files, cache_hits, failed_count
         )
-        self.cache_orchestrator._save_header_tracking()
+        self.cache_orchestrator.save_header_tracking()
         self.cache_manager.backend.rebuild_fts()
 
         return indexed_count

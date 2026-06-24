@@ -147,8 +147,8 @@ class CompositionRoot:
 
         # Initialize dependency graph and header tracking
         self.call_graph_service.init_dependency_graph()
-        self.cache_orchestrator._calculate_compile_commands_hash()
-        self.cache_orchestrator._restore_or_reset_header_tracking()
+        self.cache_orchestrator.calculate_compile_commands_hash()
+        self.cache_orchestrator.restore_or_reset_header_tracking()
 
         # 6. ClangParser (needs persistence context)
         self.clang_parser = ClangParser(self.context.persistence)

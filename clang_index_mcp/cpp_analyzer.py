@@ -388,7 +388,7 @@ if __name__ == "__main__":
 
     # Try to load from cache first
     assert analyzer.cache_orchestrator is not None
-    if not analyzer.cache_orchestrator._load_cache():
+    if not analyzer.cache_orchestrator.load_cache():
         analyzer.index_project()
 
     stats = analyzer.get_stats()

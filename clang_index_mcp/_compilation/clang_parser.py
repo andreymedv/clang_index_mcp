@@ -30,7 +30,7 @@ class ClangParser:
             self._thread_local.index = index
         return index
 
-    def _try_parse_with_fallback(
+    def try_parse_with_fallback(
         self, file_path: str, args: List[str]
     ) -> Tuple[Optional[Any], Optional[str]]:
         """Try parsing with progressive fallback if initial attempt fails."""
@@ -130,7 +130,7 @@ class ClangParser:
 
         return "\n".join(messages)
 
-    def _handle_index_file_diagnostics(
+    def handle_index_file_diagnostics(
         self, file_path: str, tu: Any, current_hash: str, compile_args_hash: str, retry_count: int
     ) -> Optional[str]:
         """Extract and process diagnostics. Returns error message if any."""

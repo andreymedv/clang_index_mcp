@@ -115,9 +115,9 @@ class RefreshPipeline:
 
     def _prepare_refresh_set(self, include_dependencies: bool) -> Tuple[List[str], List[str], int]:
         """Identify files to refresh and handle deleted files. Returns (modified, new, deleted_count)."""
-        current_files = set(self.compilation_env._find_cpp_files(include_dependencies))
-        deleted_count = self.compilation_env._handle_deleted_files(current_files)
-        modified_files, new_files = self.compilation_env._identify_refresh_files(current_files)
+        current_files = set(self.compilation_env.find_cpp_files(include_dependencies))
+        deleted_count = self.compilation_env.handle_deleted_files(current_files)
+        modified_files, new_files = self.compilation_env.identify_refresh_files(current_files)
         return modified_files, new_files, deleted_count
 
     def _run_refresh_loop(
@@ -161,9 +161,9 @@ class RefreshPipeline:
     def _finalize_refresh(self, refreshed: int, deleted: int) -> None:
         """Perform post-refresh cleanup and optimizations."""
         if refreshed > 0 or deleted > 0:
-            self.symbol_extractor._resolve_deferred_instantiation_bases()
-            self.cache_orchestrator._save_cache()
-            self.cache_orchestrator._save_header_tracking()
+            self.symbol_extractor.resolve_deferred_instantiation_bases()
+            self.cache_orchestrator.save_cache()
+            self.cache_orchestrator.save_header_tracking()
             if deleted > 0:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
             if refreshed > 0:
