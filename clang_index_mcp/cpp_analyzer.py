@@ -118,24 +118,24 @@ class CppAnalyzer:
         # Order matters: CompilationEnvironment needs symbol_store, QueryEngine
         # needs both CompilationEnvironment and CallGraphService.
         self.call_graph_service = CallGraphService(self.context)
-        self.context.call_graph_service = self.call_graph_service
+        self.context.symbols.call_graph_service = self.call_graph_service
 
         self.symbol_store = SymbolIndexStore(
             self.context, self.call_graph_service.call_graph_analyzer
         )
-        self.context.symbol_store = self.symbol_store
+        self.context.symbols.symbol_store = self.symbol_store
 
         self.compilation_env = CompilationEnvironment(self.context)
-        self.context.compilation_env = self.compilation_env
+        self.context.compilation.compilation_env = self.compilation_env
 
         self.query_engine = QueryEngine(self.context)
-        self.context.query_engine = self.query_engine
+        self.context.query.query_engine = self.query_engine
 
         # Break circular dependency: CallGraphService needs symbol_store/query_engine.
         self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
 
         self.cache_orchestrator: "CacheOrchestrator" = CacheOrchestrator(self.context)
-        self.context.cache_orchestrator = self.cache_orchestrator
+        self.context.persistence.cache_orchestrator = self.cache_orchestrator
 
         # Wire call graph service to SQLite cache backend.
         self.call_graph_service.setup_cache_backend()
@@ -161,10 +161,10 @@ class CppAnalyzer:
 
         # Parsing services.
         self.clang_parser = ClangParser(self.context)
-        self.context.clang_parser = self.clang_parser
+        self.context.compilation.clang_parser = self.clang_parser
 
         self.symbol_extractor = SymbolExtractor(self.context, ClangSymbolParser(self.context))
-        self.context.symbol_extractor = self.symbol_extractor
+        self.context.symbols.symbol_extractor = self.symbol_extractor
 
         # Indexing/refresh pipelines receive the fully wired context.
         self.task_submitter = IndexingTaskSubmitter(self.context)
@@ -173,7 +173,7 @@ class CppAnalyzer:
         self.refresh_pipeline = RefreshPipeline(
             self.context, self.task_submitter, self.worker_result_merger
         )
-        self.context.refresh_pipeline = self.refresh_pipeline
+        self.context.persistence.refresh_pipeline = self.refresh_pipeline
         self.indexing_orchestrator = ProjectIndexingOrchestrator(
             self.context, self.task_submitter, self.worker_result_merger
         )
