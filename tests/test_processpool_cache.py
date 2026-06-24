@@ -21,7 +21,7 @@ if project_root not in sys.path:
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
 from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 def worker_write_symbols(args):

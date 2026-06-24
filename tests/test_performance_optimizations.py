@@ -30,7 +30,7 @@ sys.path.insert(0, str(project_root))
 try:
     from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
     from clang_index_mcp.cpp_analyzer import CppAnalyzer
-    from clang_index_mcp._persistence.symbol_info import SymbolInfo
+    from clang_index_mcp._symbols.model import SymbolInfo
 
     CLANG_AVAILABLE = True
 except SystemExit:

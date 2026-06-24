@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from clang_index_mcp._search.pattern_matcher import is_pattern, matches
 from clang_index_mcp._search.search_criteria import SearchCriteria
 from clang_index_mcp._search.search_engine import SearchEngine
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 class TestSearchEnginePatternDetection(unittest.TestCase):

@@ -8,7 +8,7 @@ dependencies on indexes or locks, so it is easy to test in isolation.
 import json
 from typing import List, Optional
 
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 
 
 def build_function_prototype(info: SymbolInfo) -> Optional[str]:

@@ -20,7 +20,7 @@ from typing import Any, Dict
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 class TestConfigChangeDetection(unittest.TestCase):

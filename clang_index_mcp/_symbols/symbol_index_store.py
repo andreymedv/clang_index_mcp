@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .._core import diagnostics
-from .._persistence.symbol_info import CLASS_KINDS, SymbolInfo, is_richer_definition
+from .._symbols.model import CLASS_KINDS, SymbolInfo, is_richer_definition
 from .._symbols import symbol_resolver, template_symbol_indexer
 
 if TYPE_CHECKING:

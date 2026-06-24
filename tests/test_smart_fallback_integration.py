@@ -11,7 +11,7 @@ from clang_index_mcp._search.search_criteria import SearchCriteria
 from clang_index_mcp._search.search_engine import SearchEngine
 from clang_index_mcp._search.smart_fallback import SmartFallback
 from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager, EnhancedQueryResult
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 def _create_symbol(

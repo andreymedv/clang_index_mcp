@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from clang_index_mcp._search.search_criteria import SearchCriteria
 from clang_index_mcp._search.search_engine import SearchEngine
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 class TestSignaturePattern(unittest.TestCase):
