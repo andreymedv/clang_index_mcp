@@ -18,29 +18,25 @@ Usage:
         print(f"Re-analyzed {result.files_analyzed} files")
 """
 
-import multiprocessing
-import os
 import time
-from concurrent.futures import (
-    Executor,
-    ProcessPoolExecutor,
-    as_completed,
-)
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Optional, Set
 
 # Handle both package and script imports
 try:
     from .._core import diagnostics
+    from .._incremental import change_handler, worker_orchestrator
     from .._incremental.change_scanner import ChangeScanner, ChangeSet
     from .._symbols.indexing_callbacks import IndexingCallbacks
-    from .._indexing.indexing_task_spec import IndexingTaskSpec
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
+    import change_handler  # type: ignore[no-redef]
+    import worker_orchestrator  # type: ignore[no-redef]
     from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
     from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
-    from indexing_task_spec import IndexingTaskSpec  # type: ignore[no-redef]
+
+if TYPE_CHECKING:
+    from ..cpp_analyzer import CppAnalyzer
 
 
 @dataclass
@@ -86,7 +82,7 @@ class IncrementalAnalyzer:
     - Source changes are isolated
     """
 
-    def __init__(self, analyzer):
+    def __init__(self, analyzer: "CppAnalyzer"):
         """
         Initialize incremental analyzer.
 
@@ -152,7 +148,7 @@ class IncrementalAnalyzer:
         diagnostics.info(f"Detected changes: {changes}")
 
         # 2. Build re-analysis set
-        files_to_analyze = set()
+        files_to_analyze: Set[str] = set()
 
         # Handle compile_commands.json change (broadest impact)
         if changes.compile_commands_changed:
@@ -196,248 +192,62 @@ class IncrementalAnalyzer:
         return result
 
     def _handle_compile_commands_change(self) -> Set[str]:
-        """
-        Handle compile_commands.json change.
-
-        Strategy:
-            1. Load new compile_commands.json
-            2. Compute diff with cached version
-            3. Return files with changed/added/removed entries
-            4. Invalidate all headers (compilation args affect preprocessing)
-
-        Returns:
-            Set of files to re-analyze
-        """
-        diagnostics.info("Handling compile_commands.json change...")
-
-        # Get compile commands manager
-        cc_manager = self.analyzer.context.compile_commands_manager
-        assert cc_manager is not None
-
-        # Get old commands (from current state)
-        old_commands = cc_manager.file_to_command_map.copy()
-
-        # Reload compile commands
-        cc_manager._load_compile_commands()
-        new_commands = cc_manager.file_to_command_map
-
-        # Compute diff
-        files_to_analyze: Set[str]
-        if cc_manager.cache_backend is not None and hasattr(
-            cc_manager.cache_backend, "set_compile_args_hash"
-        ):
-            # Extract argument lists from command dicts if needed
-            def _extract_args(commands):
-                result = {}
-                for fp, cmd in commands.items():
-                    if cmd and isinstance(cmd[0], dict):
-                        result[fp] = cmd[0].get("arguments", [])
-                    else:
-                        result[fp] = cmd
-                return result
-
-            try:
-                old_args = _extract_args(old_commands)
-                new_args = _extract_args(new_commands)
-            except (AttributeError, TypeError, IndexError):
-                # If extraction fails (e.g., mock objects), pass through as-is
-                old_args = old_commands
-                new_args = new_commands
-
-            added, removed, changed = cc_manager.compute_commands_diff(old_args, new_args)
-
-            diagnostics.info(
-                f"Compile commands diff: +{len(added)} -{len(removed)} ~{len(changed)}"
-            )
-
-            # Files to re-analyze
-            files_to_analyze = added | changed
-
-            # Store new commands
-            cc_manager.store_command_hashes(new_args)
-        else:
-            # No SQLite backend, re-analyze all files from new commands
-            files_to_analyze = set(new_commands.keys())
-            diagnostics.warning("No SQLite backend, re-analyzing all compile_commands files")
-
-        # Update compile_commands_hash
-        self.analyzer.context.cache_orchestrator.compile_commands_hash = (
-            cc_manager.get_compile_commands_hash()
-        )
-
-        # Invalidate ALL headers (args changed might affect preprocessing)
-        # This is conservative but safe
-        self.analyzer.context.cache_orchestrator.clear_header_tracker()
-        diagnostics.info("Invalidated all header tracking due to compile commands change")
-
-        return files_to_analyze
+        """Handle compile_commands.json change."""
+        return change_handler.handle_compile_commands_change(self.analyzer)
 
     def _handle_header_change(self, header_path: str) -> Set[str]:
-        """
-        Handle header file change.
+        """Handle header file change."""
+        return change_handler.handle_header_change(self.analyzer, header_path)
 
-        Strategy:
-            1. Find all files that depend on this header (via dependency graph)
-            2. Invalidate header in tracker (will be re-processed)
-            3. Return set of dependents to re-analyze
+    def _handle_source_change(self, source_path: str) -> None:
+        """Handle source file change."""
+        return change_handler.handle_source_change(self.analyzer, source_path)
 
-        Args:
-            header_path: Path to modified header
+    def _remove_file(self, file_path: str) -> None:
+        """Remove a deleted file from cache, indexes, and dependency graph."""
+        return change_handler.remove_file(self.analyzer, file_path)
 
-        Returns:
-            Set of files to re-analyze (transitive dependents)
-        """
-        diagnostics.info(f"Handling header change: {header_path}")
-
-        # Find dependents via dependency graph
-        if self.analyzer.context.call_graph_service.dependency_graph:
-            dependents = self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents(
-                header_path
-            )
-            diagnostics.info(f"Header {header_path} affects {len(dependents)} files")
-        else:
-            # No dependency graph, conservative: re-analyze everything
-            diagnostics.warning("No dependency graph, cannot determine affected files")
-            dependents = set()
-
-        # Invalidate header in tracker
-        self.analyzer.context.cache_orchestrator.invalidate_header(header_path)
-
-        result: Set[str] = dependents
-        return result
-
-    def _handle_source_change(self, source_path: str):
-        """
-        Handle source file change.
-
-        Strategy:
-            Source files are isolated - only re-analyze this file.
-            Headers it includes will be checked via first-win strategy.
-
-        Args:
-            source_path: Path to modified source file
-
-        Note:
-            The file will be added to files_to_analyze by the caller.
-            This method just does any necessary prep work.
-        """
-        diagnostics.debug(f"Handling source change: {source_path}")
-        # No additional work needed - file will be re-analyzed
-
-    def _remove_file(self, file_path: str):
-        """
-        Remove file from cache, indexes, and dependency graph.
-
-        Args:
-            file_path: Path to deleted file
-        """
-        diagnostics.info(f"Removing deleted file: {file_path}")
-        try:
-            self.analyzer.context.cache_orchestrator.remove_deleted_file(file_path)
-        except Exception as e:
-            diagnostics.warning(f"Failed to remove deleted file {file_path}: {e}")
-
-    def _remove_symbol_from_index(self, symbol: Any) -> None:
+    def _remove_symbol_from_index(self, symbol) -> None:
         """Remove a symbol from the appropriate index (class or function)."""
-        self.analyzer.context.symbol_store.remove_symbol_from_indexes(symbol)
+        from .._incremental.symbol_merger import remove_symbol_from_index
 
-    def _handle_definition_wins(self, symbol: Any, existing: Any) -> bool:
-        """Apply 'definition wins' rule for duplicate symbols. Returns True if symbol should be skipped."""
-        if symbol.is_definition and not existing.is_definition:
-            # Remove old declaration from index
-            self._remove_symbol_from_index(existing)
-            return False
-        else:
-            # Keep existing
-            return True
+        return remove_symbol_from_index(self.analyzer, symbol)
 
-    def _add_symbol_to_indices(self, symbol: Any) -> None:
+    def _handle_definition_wins(self, symbol, existing) -> bool:
+        """Apply 'definition wins' rule for duplicate symbols."""
+        from .._incremental.symbol_merger import handle_definition_wins
+
+        return handle_definition_wins(self.analyzer, symbol, existing)
+
+    def _add_symbol_to_indices(self, symbol) -> None:
         """Add a symbol to the analyzer's indices."""
-        self.analyzer.context.symbol_store.add_symbol_to_indexes(symbol)
+        from .._incremental.symbol_merger import add_symbol_to_indices
 
-    def _merge_symbols(self, symbols: List[Any]) -> None:
+        return add_symbol_to_indices(self.analyzer, symbol)
+
+    def _merge_symbols(self, symbols) -> None:
         """Merge symbols from a worker process into the main analyzer index."""
-        with self.analyzer.context.concurrency.index_lock:
-            for symbol in symbols:
-                # Apply same deduplication logic as index_project
-                skip_symbol = False
+        from .._incremental.symbol_merger import merge_symbols
 
-                store = self.analyzer.context.symbol_store
-                if symbol.usr and store.contains_usr(symbol.usr):
-                    existing = store.get_symbol_by_usr(symbol.usr)
-                    assert existing is not None
-                    skip_symbol = self._handle_definition_wins(symbol, existing)
+        return merge_symbols(self.analyzer, symbols)
 
-                if not skip_symbol:
-                    self._add_symbol_to_indices(symbol)
-
-    def _get_file_compile_args(self, file_list: List[str]) -> Dict[str, List[str]]:
+    def _get_file_compile_args(self, file_list):
         """Precompute compile arguments for a list of files."""
-        file_compile_args = {}
-        from pathlib import Path
+        from .._incremental.compile_args_resolver import get_file_compile_args
 
-        for file_path in file_list:
-            file_path_obj = Path(file_path)
-            args = self.analyzer.context.compilation_env.get_compile_args_for_file(file_path_obj)
-            file_compile_args[file_path] = args
-        return file_compile_args
+        return get_file_compile_args(self.analyzer, file_list)
 
-    def _create_executor(
-        self, max_workers: int
-    ) -> Tuple[Optional[multiprocessing.context.BaseContext], Type[ProcessPoolExecutor], str]:
+    def _create_executor(self, max_workers: int):
         """Create a process pool executor and its spawn context."""
-        mp_context = None
-        msg: str
+        return worker_orchestrator.create_executor(max_workers)
 
-        # Use 'spawn' context to avoid inheriting open file descriptors
-        try:
-            mp_context = multiprocessing.get_context("spawn")
-            msg = (
-                f"Incremental refresh: Using ProcessPoolExecutor (spawn) with {max_workers} workers"
-            )
-        except Exception as e:
-            diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-            mp_context = None
-            msg = f"Incremental refresh: Using ProcessPoolExecutor with {max_workers} workers"
-
-        return mp_context, ProcessPoolExecutor, msg
-
-    def _process_future_result(self, result: Any, file_path: str) -> Tuple[bool, bool]:
+    def _process_future_result(self, result, file_path: str):
         """Process the result from a future and merge it into the analyzer."""
-        # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
-        _, success, was_cached, symbols, call_sites, processed_headers = result
-
-        # Merge symbols into main process (same logic as index_project)
-        if success and symbols:
-            self._merge_symbols(symbols)
-
-        # Restore call sites
-        if call_sites:
-            for cs_dict in call_sites:
-                self.analyzer.context.call_graph_service.call_graph_analyzer.add_call(
-                    cs_dict["caller_usr"],
-                    cs_dict["callee_usr"],
-                    cs_dict["file"],
-                    cs_dict["line"],
-                    cs_dict.get("column"),
-                )
-
-        # Merge header tracking
-        if processed_headers:
-            for header_path, header_hash in processed_headers.items():
-                self.analyzer.context.cache_orchestrator.mark_header_completed(
-                    header_path, header_hash
-                )
-
-        # Update file hash tracking
-        file_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
-        self.analyzer.context.symbol_store.set_file_hash(file_path, file_hash)
-
-        return success, was_cached
+        return worker_orchestrator.process_future_result(self.analyzer, result, file_path)
 
     def _report_progress(
         self,
-        progress_callback: Callable,
+        progress_callback,
         i: int,
         total: int,
         analyzed: int,
@@ -446,119 +256,26 @@ class IncrementalAnalyzer:
         file_path: str,
     ) -> None:
         """Calculate and report indexing progress via callback."""
-        processed = i + 1
-        # Report every 10 files or at completion
-        if processed % 10 == 0 or processed == total:
-            try:
-                # Import IndexingProgress here to avoid circular dependency
-                from .._mcp.state_manager import IndexingProgress
-
-                elapsed = time.time() - start_time
-                rate = processed / elapsed if elapsed > 0 else 0
-                eta = (total - processed) / rate if rate > 0 else 0
-
-                estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-
-                progress = IndexingProgress(
-                    total_files=total,
-                    indexed_files=analyzed,
-                    failed_files=failed,
-                    cache_hits=0,  # Not tracked during refresh
-                    current_file=file_path if processed < total else None,
-                    start_time=datetime.fromtimestamp(start_time),
-                    estimated_completion=estimated_completion,
-                )
-
-                progress_callback(progress)
-            except Exception as e:
-                # Don't fail refresh if progress callback fails
-                diagnostics.debug(f"Progress callback failed: {e}")
-
-    def _submit_tasks(
-        self,
-        executor: Executor,
-        file_list: List[str],
-    ) -> Dict[Any, str]:
-        """Submit re-analysis tasks to the process pool executor."""
-        from .._indexing.worker_pool import _process_file_worker
-
-        # Get project configuration for workers
-        project_root = str(self.analyzer.project_root)
-        config_file_str = (
-            str(self.analyzer.project_identity.config_file_path)
-            if self.analyzer.project_identity.config_file_path
-            else None
+        return worker_orchestrator.report_progress(
+            progress_callback, i, total, analyzed, failed, start_time, file_path
         )
-        include_dependencies = self.analyzer.context.compilation_env.include_dependencies
 
-        # Task 3.2: Prepare compile args for all files in main process
-        # This avoids loading CompileCommandsManager in each worker (~6-10 GB memory savings)
-        file_compile_args = self._get_file_compile_args(file_list)
-
-        # Submit all files to worker processes
-        return {
-            executor.submit(
-                _process_file_worker,
-                IndexingTaskSpec(
-                    project_root=project_root,
-                    config_file=config_file_str,
-                    file_path=os.path.abspath(file_path),
-                    force=True,  # force=True for refresh
-                    include_dependencies=include_dependencies,
-                    compile_args=file_compile_args[file_path],  # Task 3.2: precomputed args
-                ),
-            ): file_path
-            for file_path in file_list
-        }
+    def _submit_tasks(self, executor, file_list):
+        """Submit re-analysis tasks to the process pool executor."""
+        return worker_orchestrator.submit_tasks(self.analyzer, executor, file_list)
 
     def _process_loop(
         self,
-        executor: Executor,
-        future_to_file: Dict[Any, str],
+        executor,
+        future_to_file,
         start_time: float,
         total: int,
         callbacks: Optional[IndexingCallbacks],
-    ) -> Tuple[int, int]:
+    ):
         """Process results from futures in a loop."""
-        analyzed = 0
-        failed = 0
-
-        for i, future in enumerate(as_completed(future_to_file)):
-            # Check for interruption
-            if getattr(self.analyzer, "_interrupted", False) is True:
-                # Cancel all pending futures
-                for f in future_to_file:
-                    f.cancel()
-                diagnostics.info("Incremental refresh interrupted by request")
-                raise KeyboardInterrupt("Incremental refresh interrupted by request")
-
-            if callbacks and callbacks.wait_for_tools:
-                callbacks.wait_for_tools()
-
-            file_path = future_to_file[future]
-            try:
-                result = future.result()
-                success, was_cached = self._process_future_result(result, file_path)
-
-                if success:
-                    analyzed += 1
-                    diagnostics.debug(f"Re-analyzed: {file_path}")
-                else:
-                    failed += 1
-                    diagnostics.warning(f"Failed to re-analyze: {file_path}")
-
-            except Exception as e:
-                failed += 1
-                diagnostics.error(f"Error re-analyzing {file_path}: {e}")
-
-            # Report progress periodically
-            progress_callback = callbacks.progress if callbacks else None
-            if progress_callback:
-                self._report_progress(
-                    progress_callback, i, total, analyzed, failed, start_time, file_path
-                )
-
-        return analyzed, failed
+        return worker_orchestrator.process_loop(
+            self.analyzer, executor, future_to_file, start_time, total, callbacks
+        )
 
     def _reanalyze_files(
         self,
@@ -566,70 +283,5 @@ class IncrementalAnalyzer:
         start_time: float,
         callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
-        """
-        Re-analyze a set of files using parallel processing.
-
-        Uses the analyzer's ProcessPoolExecutor-based indexing infrastructure
-        to re-parse files concurrently, providing the same 6-7x speedup as
-        initial indexing on multi-core systems.
-
-        Args:
-            files: Set of file paths to re-analyze
-            start_time: Unix timestamp when analysis started (for ETA calculation)
-            callbacks: Optional IndexingCallbacks with progress and wait_for_tools callbacks
-
-        Returns:
-            Number of files successfully analyzed
-        """
-        if not files:
-            return 0
-
-        analyzed = 0
-        failed = 0
-        total = len(files)
-        file_list = list(files)  # Convert to list for processing
-
-        # Use analyzer's parallel processing infrastructure (same pattern as index_project)
-        # ProcessPoolExecutor provides true parallelism (GIL bypass) for 6-7x speedup
-        max_workers = getattr(self.analyzer, "max_workers", None)
-
-        if max_workers is None or not isinstance(max_workers, int):
-            max_workers = os.cpu_count() or 4
-
-        mp_context, _, msg = self._create_executor(max_workers)
-        diagnostics.debug(msg)
-
-        executor: Optional[Executor] = None
-        try:
-            if mp_context:
-                executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_context)
-            else:
-                executor = ProcessPoolExecutor(max_workers=max_workers)
-
-            future_to_file = self._submit_tasks(executor, file_list)
-
-            # Process results as they complete
-            analyzed, failed = self._process_loop(
-                executor,
-                future_to_file,
-                start_time,
-                total,
-                callbacks,
-            )
-        except KeyboardInterrupt:
-            # Gracefully handle Ctrl-C or requested interruption
-            diagnostics.info("\nIncremental refresh interrupted")
-            if executor is not None:
-                # Call the shared shutdown helper on the main analyzer
-                self.analyzer._shutdown_executor(executor, name="Incremental Refresh")
-            raise
-
-        finally:
-            if executor is not None:
-                # Final cleanup (non-blocking)
-                try:
-                    executor.shutdown(wait=False)
-                except Exception:
-                    pass
-
-        return analyzed
+        """Re-analyze a set of files using parallel processing."""
+        return worker_orchestrator.reanalyze_files(self.analyzer, files, start_time, callbacks)
