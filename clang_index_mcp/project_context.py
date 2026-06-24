@@ -23,11 +23,11 @@ from ._indexing.execution_config import ExecutionConfig
 from ._indexing.indexing_progress_reporter import IndexingProgressReporter
 from ._persistence.project_identity import ProjectIdentity
 from ._search.query_engine import QueryEngine
-from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
 
 if TYPE_CHECKING:
     from ._indexing.refresh_pipeline import RefreshPipeline
+    from ._symbols.symbol_extractor import SymbolExtractor
 
 
 class ProjectContext:

@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional
 from ._persistence.cache_orchestrator import CacheOrchestrator
 from ._search.call_graph_service import CallGraphService
 from ._compilation.clang_parser import ClangParser
+from ._compilation.clang_symbol_parser import ClangSymbolParser
 from ._compilation.compilation_environment import CompilationEnvironment
 from ._compilation.compile_commands_manager import CompileCommandsManager
 from ._symbols.indexing_callbacks import IndexingCallbacks
@@ -162,7 +163,7 @@ class CppAnalyzer:
         self.clang_parser = ClangParser(self.context)
         self.context.clang_parser = self.clang_parser
 
-        self.symbol_extractor = SymbolExtractor(self.context)
+        self.symbol_extractor = SymbolExtractor(self.context, ClangSymbolParser(self.context))
         self.context.symbol_extractor = self.symbol_extractor
 
         # Indexing/refresh pipelines receive the fully wired context.

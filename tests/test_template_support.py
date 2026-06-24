@@ -1423,7 +1423,7 @@ class TestBaseClassResolutionFromIndex:
         # actually parsing, so we'll test the method directly with edge cases)
 
         # Empty primary_usr should return empty list
-        result = param_inheritance_analyzer.context.symbol_extractor._resolve_instantiation_base_classes(
+        result = param_inheritance_analyzer.context.symbol_extractor.parser._resolve_instantiation_base_classes(
             cursor=None, primary_template_usr=None  # Not used when primary_usr is None
         )
         assert result == [], "Should return empty list when primary_usr is None"
