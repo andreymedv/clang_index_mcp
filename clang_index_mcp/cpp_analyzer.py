@@ -181,7 +181,14 @@ class CppAnalyzer:
         self.clang_parser = ClangParser(self.context.persistence)
         self.context.compilation.clang_parser = self.clang_parser
 
-        self.symbol_extractor = SymbolExtractor(self.context, ClangSymbolParser(self.context))
+        self.symbol_extractor = SymbolExtractor(
+            symbol_store=self.symbol_store,
+            concurrency=self.concurrency,
+            compilation_env=self.compilation_env,
+            cache_orchestrator=self.cache_orchestrator,
+            call_graph_service=self.call_graph_service,
+            parser=ClangSymbolParser(self.context),
+        )
         self.context.symbols.symbol_extractor = self.symbol_extractor
 
         # Indexing/refresh pipelines receive the fully wired context.
