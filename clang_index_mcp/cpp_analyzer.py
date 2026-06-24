@@ -198,7 +198,12 @@ class CppAnalyzer:
             execution=self.execution,
             compilation_env=self.compilation_env,
         )
-        self.worker_result_merger = WorkerResultMerger(self.context)
+        self.worker_result_merger = WorkerResultMerger(
+            concurrency=self.concurrency,
+            symbol_store=self.symbol_store,
+            call_graph_service=self.call_graph_service,
+            cache_orchestrator=self.cache_orchestrator,
+        )
         self.indexing_pipeline = SingleFileIndexingPipeline(
             clang_parser=self.clang_parser,
             symbol_extractor=self.symbol_extractor,

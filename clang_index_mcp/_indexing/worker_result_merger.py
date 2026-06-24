@@ -11,29 +11,35 @@ from typing import TYPE_CHECKING, Any, Tuple
 from .._core import diagnostics
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._core.concurrency_context import ConcurrencyContext
+    from .._persistence.cache_orchestrator import CacheOrchestrator
+    from .._search.call_graph_service import CallGraphService
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class WorkerResultMerger:
     """Merges results from indexing workers into the shared indexes."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        concurrency: "ConcurrencyContext",
+        symbol_store: "SymbolIndexStore",
+        call_graph_service: "CallGraphService",
+        cache_orchestrator: "CacheOrchestrator",
+    ):
         """
         Initialize the worker result merger.
 
         Args:
-            context: Shared project context with concurrency, symbol store, call
-                     graph service, and cache orchestrator.
+            concurrency: Concurrency context with index_lock.
+            symbol_store: In-memory symbol indexes.
+            call_graph_service: Call graph and dependency tracking.
+            cache_orchestrator: Cache orchestration and header tracking.
         """
-        self.context = context
-        assert context.concurrency is not None
-        self.concurrency = context.concurrency
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
-        assert context.call_graph_service is not None
-        self.call_graph_service = context.call_graph_service
-        assert context.cache_orchestrator is not None
-        self.cache_orchestrator = context.cache_orchestrator
+        self.concurrency = concurrency
+        self.symbol_store = symbol_store
+        self.call_graph_service = call_graph_service
+        self.cache_orchestrator = cache_orchestrator
 
     def merge_worker_result(self, result: Tuple, file_path: str):
         """Merge symbols and call sites from a worker process result."""
