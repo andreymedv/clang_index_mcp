@@ -6,8 +6,9 @@ and index maintenance operations.
 """
 
 import dataclasses
+import threading
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from .._core import diagnostics
 from .._symbols.model import CLASS_KINDS, SymbolInfo, is_richer_definition
@@ -15,7 +16,7 @@ from .._symbols import symbol_resolver, template_symbol_indexer
 from .._symbols.ports.call_graph import CallGraphPort
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._persistence.cache_manager import CacheManager
 
 
 class SymbolIndexStore:
@@ -26,20 +27,27 @@ class SymbolIndexStore:
 
     def __init__(
         self,
-        context: "ProjectContext",
+        get_lock: Callable[[], Any],
+        index_lock: threading.RLock,
+        get_thread_local_buffers: Callable[[], Any],
+        cache_manager: "CacheManager",
         call_graph_port: CallGraphPort,
     ):
         """
         Initialize SymbolIndexStore.
 
         Args:
-            context: Shared project context for concurrency utilities.
+            get_lock: Callable that returns a threading lock for thread-safe operations.
+            index_lock: The shared index lock for read/write operations.
+            get_thread_local_buffers: Callable that returns thread-local buffers for bulk writes.
+            cache_manager: Cache manager for saving type aliases.
             call_graph_port: Port for call graph updates.
         """
-        self.context = context
         self.call_graph_port = call_graph_port
-        assert context.concurrency is not None
-        self._get_lock = context.concurrency.get_lock
+        self._get_lock = get_lock
+        self.index_lock = index_lock
+        self._get_thread_local_buffers = get_thread_local_buffers
+        self._cache_manager = cache_manager
 
         # Indexes for fast lookup
         self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
@@ -162,7 +170,7 @@ class SymbolIndexStore:
                 usr_updates[symbol.usr] = symbol
 
         # Apply all updates with a single lock acquisition
-        with self.context.concurrency.get_lock():
+        with self._get_lock():
             # Clear old entries for this file
             self._clear_file_index_entries(file_path)
 
@@ -288,9 +296,7 @@ class SymbolIndexStore:
         Returns:
             Number of symbols actually added (after deduplication)
         """
-        symbols_buffer, calls_buffer, aliases_buffer = (
-            self.context.concurrency.get_thread_local_buffers()
-        )
+        symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
 
         if not symbols_buffer and not calls_buffer and not aliases_buffer:
             return 0
@@ -327,7 +333,7 @@ class SymbolIndexStore:
             # Add all collected type aliases
             if aliases_buffer:
                 diagnostics.debug(f"Processing {len(aliases_buffer)} type aliases from buffer")
-                saved_count = self.context.cache_manager.save_type_aliases_batch(aliases_buffer)
+                saved_count = self._cache_manager.save_type_aliases_batch(aliases_buffer)
                 diagnostics.debug(f"Saved {saved_count} type aliases to cache")
 
         # Clear buffers for next use
@@ -339,7 +345,7 @@ class SymbolIndexStore:
 
     def remove_file(self, file_path: str) -> None:
         """Remove all symbols and metadata for a deleted file from the in-memory indexes."""
-        with self.context.concurrency.index_lock:
+        with self.index_lock:
             self._remove_file_from_indexes(file_path)
             self.file_hashes.pop(file_path, None)
 
@@ -411,7 +417,7 @@ class SymbolIndexStore:
         Delegates to the internal merge logic with deduplication.
         Used by incremental analyzer for individual symbol additions.
         """
-        with self.context.concurrency.index_lock:
+        with self.index_lock:
             self._merge_symbol_into_indexes(symbol)
 
     def remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
@@ -419,7 +425,7 @@ class SymbolIndexStore:
 
         Used by incremental analyzer for individual symbol removals.
         """
-        with self.context.concurrency.index_lock:
+        with self.index_lock:
             self._remove_symbol_from_indexes(symbol)
 
     # ------------------------------------------------------------------

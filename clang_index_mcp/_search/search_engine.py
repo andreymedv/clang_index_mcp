@@ -40,7 +40,7 @@ class SearchEngine:
             self.function_index = symbol_store.function_index
             self.file_index = symbol_store.file_index
             self.usr_index = symbol_store.usr_index
-            self.index_lock = index_lock or symbol_store.context.concurrency.index_lock
+            self.index_lock = index_lock or symbol_store.index_lock
         else:
             assert class_index is not None
             assert function_index is not None

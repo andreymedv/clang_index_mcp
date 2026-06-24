@@ -77,7 +77,7 @@ def find_template_specializations(store: "SymbolIndexStore", base_name: str) -> 
     """
     results: List["SymbolInfo"] = []
 
-    with store.context.concurrency.index_lock:
+    with store.index_lock:
         add_class_template_symbols(store.class_index, base_name, results)
         add_function_template_symbols(store.function_index, base_name, results)
 

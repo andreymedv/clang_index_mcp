@@ -121,7 +121,11 @@ class CppAnalyzer:
         self.context.symbols.call_graph_service = self.call_graph_service
 
         self.symbol_store = SymbolIndexStore(
-            self.context, self.call_graph_service.call_graph_analyzer
+            get_lock=self.concurrency.get_lock,
+            index_lock=self.concurrency.index_lock,
+            get_thread_local_buffers=self.concurrency.get_thread_local_buffers,
+            cache_manager=self.cache_manager,
+            call_graph_port=self.call_graph_service.call_graph_analyzer,
         )
         self.context.symbols.symbol_store = self.symbol_store
 
