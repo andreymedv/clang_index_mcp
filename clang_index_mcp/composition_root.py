@@ -10,33 +10,23 @@ CppAnalyzer delegates to CompositionRoot for initialization, keeping itself
 as a thin facade over the composed services.
 """
 
-from pathlib import Path
 from typing import Optional
-
-from clang.cindex import Index
 
 from ._compilation.clang_parser import ClangParser
 from ._compilation.clang_symbol_parser import ClangSymbolParser
 from ._compilation.compile_commands_manager import CompileCommandsManager
 from ._compilation.compilation_environment import CompilationEnvironment
 from ._core import diagnostics
-from ._core.cancellation_coordinator import CancellationCoordinator
-from ._core.concurrency_context import ConcurrencyContext
-from ._indexing.execution_config import ExecutionConfig
 from ._indexing.indexing_orchestrator import ProjectIndexingOrchestrator
 from ._indexing.indexing_pipeline import SingleFileIndexingPipeline
-from ._indexing.indexing_progress_reporter import IndexingProgressReporter
 from ._indexing.indexing_task_submitter import IndexingTaskSubmitter
 from ._indexing.refresh_pipeline import RefreshPipeline
 from ._indexing.worker_result_merger import WorkerResultMerger
-from ._persistence.cache_manager import CacheManager
 from ._persistence.cache_orchestrator import CacheOrchestrator
-from ._persistence.project_identity import ProjectIdentity
 from ._search.call_graph_service import CallGraphService
 from ._search.query_engine import QueryEngine
 from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
-from .cpp_analyzer_config import CppAnalyzerConfig
 from .project_context import ProjectContext
 
 
@@ -50,8 +40,8 @@ class CompositionRoot:
     - Swap implementations
     - Test with mock implementations
 
-    The CompositionRoot creates and holds references to all composed services.
-    CppAnalyzer delegates to this class for initialization.
+    The CompositionRoot extracts core contexts from ProjectContext and wires
+    all concrete implementations. CppAnalyzer delegates to this class.
     """
 
     def __init__(
@@ -72,42 +62,26 @@ class CompositionRoot:
             use_compile_commands_manager: If False, skip CompileCommandsManager initialization.
                                          Used by worker processes that receive precomputed args.
         """
-        self._skip_schema_recreation = skip_schema_recreation
-
-        # Resolve paths
-        project_root_path = Path(project_root).resolve()
-        config_path = Path(config_file).resolve() if config_file else None
-
-        # Create project identity and config
-        project_identity = ProjectIdentity(project_root_path, config_path)
-        config = CppAnalyzerConfig(project_root_path, config_path=config_path)
-
-        # Create core contexts
-        cache_manager = CacheManager(
-            project_identity, skip_schema_recreation=skip_schema_recreation
-        )
-        concurrency = ConcurrencyContext()
-        cancellation = CancellationCoordinator()
-        execution = ExecutionConfig(config_max_workers=config.get_max_workers())
-        progress_reporter = IndexingProgressReporter()
-
-        # Build ProjectContext (thin facade over focused contexts)
+        # Build ProjectContext first — it owns the core contexts (concurrency,
+        # cancellation, execution, cache_manager, etc.).  CompositionRoot
+        # extracts them and uses the same instances throughout.
         self.context = ProjectContext(
             project_root,
             config_file=config_file,
             skip_schema_recreation=skip_schema_recreation,
         )
 
-        # Expose core attributes
-        self.project_root = project_root_path
-        self.project_identity = project_identity
-        self.config = config
-        self.cache_manager = cache_manager
-        self.concurrency = concurrency
-        self.cancellation = cancellation
-        self.execution = execution
-        self.progress_reporter = progress_reporter
-        self.index = Index.create()
+        # Extract core attributes from ProjectContext so every downstream
+        # component receives the exact same instances.
+        self.project_root = self.context.project_root
+        self.project_identity = self.context.project_identity
+        self.config = self.context.config
+        self.cache_manager = self.context.cache_manager
+        self.concurrency = self.context.concurrency
+        self.cancellation = self.context.cancellation
+        self.execution = self.context.execution
+        self.progress_reporter = self.context.progress_reporter
+        self.index = self.context.index
 
         # Wire services in dependency order
 
@@ -117,10 +91,10 @@ class CompositionRoot:
 
         # 2. SymbolIndexStore (needs concurrency and call graph)
         self.symbol_store = SymbolIndexStore(
-            get_lock=concurrency.get_lock,
-            index_lock=concurrency.index_lock,
-            get_thread_local_buffers=concurrency.get_thread_local_buffers,
-            cache_manager=cache_manager,
+            get_lock=self.concurrency.get_lock,
+            index_lock=self.concurrency.index_lock,
+            get_thread_local_buffers=self.concurrency.get_thread_local_buffers,
+            cache_manager=self.cache_manager,
             call_graph_port=self.call_graph_service.call_graph_analyzer,
         )
         self.context.symbols.symbol_store = self.symbol_store
@@ -136,22 +110,22 @@ class CompositionRoot:
         # 4. QueryEngine (needs symbol_store, cache, concurrency, compilation, call_graph)
         self.query_engine = QueryEngine(
             symbol_store=self.symbol_store,
-            cache_manager=cache_manager,
-            concurrency=concurrency,
+            cache_manager=self.cache_manager,
+            concurrency=self.concurrency,
             compilation_env=self.compilation_env,
             call_graph_service=self.call_graph_service,
-            project_root=project_root_path,
+            project_root=self.project_root,
         )
         self.context.query.query_engine = self.query_engine
 
         # Break circular dependency: CallGraphService needs symbol_store/query_engine
         self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
 
-        # 5. CacheOrchestrator (needs cache, config, project_root, symbol_store, compilation, call_graph)
+        # 5. CacheOrchestrator
         self.cache_orchestrator = CacheOrchestrator(
-            cache_manager=cache_manager,
-            config=config,
-            project_root=project_root_path,
+            cache_manager=self.cache_manager,
+            config=self.config,
+            project_root=self.project_root,
             symbol_store=self.symbol_store,
             compilation_env=self.compilation_env,
             call_graph_service=self.call_graph_service,
@@ -163,12 +137,12 @@ class CompositionRoot:
 
         # Initialize compile commands manager only if needed
         if use_compile_commands_manager:
-            compile_commands_config = config.get_compile_commands_config()
+            compile_commands_config = self.config.get_compile_commands_config()
             self.compilation_env.compile_commands_manager = CompileCommandsManager(
-                project_root_path,
+                self.project_root,
                 compile_commands_config,
-                cache_dir=cache_manager.cache_dir,
-                cache_backend=cache_manager.backend,
+                cache_dir=self.cache_manager.cache_dir,
+                cache_backend=self.cache_manager.backend,
             )
 
         # Initialize dependency graph and header tracking
@@ -180,10 +154,10 @@ class CompositionRoot:
         self.clang_parser = ClangParser(self.context.persistence)
         self.context.compilation.clang_parser = self.clang_parser
 
-        # 7. SymbolExtractor (needs symbol_store, concurrency, compilation, cache_orchestrator, call_graph, parser)
+        # 7. SymbolExtractor
         self.symbol_extractor = SymbolExtractor(
             symbol_store=self.symbol_store,
-            concurrency=concurrency,
+            concurrency=self.concurrency,
             compilation_env=self.compilation_env,
             cache_orchestrator=self.cache_orchestrator,
             call_graph_service=self.call_graph_service,
@@ -197,13 +171,13 @@ class CompositionRoot:
 
         # 8. Indexing pipeline components
         self.task_submitter = IndexingTaskSubmitter(
-            project_root=project_root_path,
-            project_identity=project_identity,
-            execution=execution,
+            project_root=self.project_root,
+            project_identity=self.project_identity,
+            execution=self.execution,
             compilation_env=self.compilation_env,
         )
         self.worker_result_merger = WorkerResultMerger(
-            concurrency=concurrency,
+            concurrency=self.concurrency,
             symbol_store=self.symbol_store,
             call_graph_service=self.call_graph_service,
             cache_orchestrator=self.cache_orchestrator,
@@ -213,47 +187,42 @@ class CompositionRoot:
             symbol_extractor=self.symbol_extractor,
             compilation_env=self.compilation_env,
             cache_orchestrator=self.cache_orchestrator,
-            cache_manager=cache_manager,
-            concurrency=concurrency,
+            cache_manager=self.cache_manager,
+            concurrency=self.concurrency,
             symbol_store=self.symbol_store,
         )
         self.refresh_pipeline = RefreshPipeline(
             compilation_env=self.compilation_env,
-            execution=execution,
-            cache_manager=cache_manager,
+            execution=self.execution,
+            cache_manager=self.cache_manager,
             cache_orchestrator=self.cache_orchestrator,
             symbol_extractor=self.symbol_extractor,
             symbol_store=self.symbol_store,
-            progress_reporter=progress_reporter,
+            progress_reporter=self.progress_reporter,
             task_submitter=self.task_submitter,
             worker_result_merger=self.worker_result_merger,
         )
         self.context.persistence.refresh_pipeline = self.refresh_pipeline
         self.indexing_orchestrator = ProjectIndexingOrchestrator(
-            cancellation=cancellation,
-            concurrency=concurrency,
-            execution=execution,
+            cancellation=self.cancellation,
+            concurrency=self.concurrency,
+            execution=self.execution,
             compilation_env=self.compilation_env,
             cache_orchestrator=self.cache_orchestrator,
-            cache_manager=cache_manager,
+            cache_manager=self.cache_manager,
             symbol_extractor=self.symbol_extractor,
             symbol_store=self.symbol_store,
-            progress_reporter=progress_reporter,
+            progress_reporter=self.progress_reporter,
             task_submitter=self.task_submitter,
             worker_result_merger=self.worker_result_merger,
             refresh_pipeline=self.refresh_pipeline,
         )
 
-        # Log initialization
-        diagnostics.debug(f"CompositionRoot initialized for project: {project_root_path}")
-        diagnostics.debug(
-            f"Concurrency mode: ProcessPool (spawn, GIL bypass) with {execution.max_workers} workers"
-        )
+        diagnostics.debug(f"CompositionRoot initialized for project: {self.project_root}")
 
-        # Log compile commands status
         if self.compilation_env.has_active_compile_commands():
-            compile_commands_config = config.get_compile_commands_config()
-            cc_path = project_root_path / compile_commands_config.compile_commands_path
+            compile_commands_config = self.config.get_compile_commands_config()
+            cc_path = self.project_root / compile_commands_config.compile_commands_path
             if cc_path.exists():
                 diagnostics.debug(
                     f"Compile commands enabled: using {compile_commands_config.compile_commands_path}"
