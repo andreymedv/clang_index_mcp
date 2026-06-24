@@ -414,7 +414,7 @@ def _try_resume_session(saved_session):
         new_analyzer = CppAnalyzer(project_path, config_file=config_file)
         new_background_indexer = BackgroundIndexer(new_analyzer, state_manager)
 
-        cache_loaded = new_analyzer.context.cache_orchestrator._load_cache()
+        cache_loaded = new_analyzer.context.cache_orchestrator.load_cache()
         if cache_loaded:
             diagnostics.info(
                 f"Session restored from cache: {new_analyzer.context.symbol_store.class_name_count()} classes, "

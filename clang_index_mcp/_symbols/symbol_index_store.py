@@ -151,7 +151,7 @@ class SymbolIndexStore:
         if not already_in_file_index:
             self.file_index[info.file].append(info)
 
-    def _apply_cached_symbols(
+    def apply_cached_symbols(
         self, file_path: str, cached_symbols: List[SymbolInfo], current_hash: str
     ) -> None:
         """Apply cached symbols to indexes and update file hash."""
@@ -172,7 +172,7 @@ class SymbolIndexStore:
         # Apply all updates with a single lock acquisition
         with self._get_lock():
             # Clear old entries for this file
-            self._clear_file_index_entries(file_path)
+            self.clear_file_index_entries(file_path)
 
             # Add cached symbols
             self.file_index[file_path] = cached_symbols
@@ -186,7 +186,7 @@ class SymbolIndexStore:
 
             self.file_hashes[file_path] = current_hash
 
-    def _clear_file_index_entries(self, file_path: str) -> None:
+    def clear_file_index_entries(self, file_path: str) -> None:
         """Clear existing index entries for a file (atomicity should be handled by caller)."""
         self._remove_file_from_indexes(file_path)
 
@@ -213,7 +213,7 @@ class SymbolIndexStore:
 
         self.file_index[symbol.file].append(symbol)
 
-    def _merge_symbol_into_indexes(self, symbol: SymbolInfo):
+    def merge_symbol_into_indexes(self, symbol: SymbolInfo):
         """Merge a single symbol into the main process indexes with deduplication."""
         if symbol.usr and symbol.usr in self.usr_index:
             existing = self.usr_index[symbol.usr]
@@ -238,7 +238,7 @@ class SymbolIndexStore:
         if symbol.file:
             self._add_to_file_index(symbol)
 
-    def _populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
+    def populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
         """Populate main and file indexes from cache data."""
         # Load indexes - Memory optimization: SymbolInfo objects come directly
         # from SQLite backend (no dict conversion needed, saves ~500 MB peak)
@@ -264,7 +264,7 @@ class SymbolIndexStore:
         self.file_hashes = cache_data.get("file_hashes", {})
         self._indexed_file_count = cache_data.get("indexed_file_count", 0)
 
-    def _rebuild_auxiliary_structures(self) -> None:
+    def rebuild_auxiliary_structures(self) -> None:
         """Rebuild USR index and call graph from loaded symbols."""
         self.usr_index.clear()
         self.call_graph_port.clear()
@@ -286,7 +286,7 @@ class SymbolIndexStore:
         # Rebuild call graph from all symbols
         self.call_graph_port.rebuild_from_symbols(all_symbols)
 
-    def _bulk_write_symbols(self) -> int:
+    def bulk_write_symbols(self) -> int:
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
 
@@ -418,7 +418,7 @@ class SymbolIndexStore:
         Used by incremental analyzer for individual symbol additions.
         """
         with self.index_lock:
-            self._merge_symbol_into_indexes(symbol)
+            self.merge_symbol_into_indexes(symbol)
 
     def remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
         """Remove a symbol from all in-memory indexes.

@@ -72,7 +72,7 @@ def _process_file_worker(spec: IndexingTaskSpec):
     context.call_graph_service.call_graph_analyzer.clear()
 
     # Set precomputed compile args
-    context.compilation_env._provided_compile_args = spec.compile_args
+    context.compilation_env.provided_compile_args = spec.compile_args
 
     # Parse the file
     success, was_cached = _worker_analyzer.index_file(spec.file_path, spec.force)

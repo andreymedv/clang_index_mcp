@@ -49,19 +49,19 @@ class WorkerResultMerger:
             with self.concurrency.index_lock:
                 # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
                 # This ensures that modified files don't have duplicate/stale symbols
-                self.symbol_store._clear_file_index_entries(file_path)
+                self.symbol_store.clear_file_index_entries(file_path)
 
                 for symbol in symbols:
-                    self.symbol_store._merge_symbol_into_indexes(symbol)
+                    self.symbol_store.merge_symbol_into_indexes(symbol)
 
             if call_sites:
-                self.call_graph_service._stream_call_sites(file_path, call_sites)
+                self.call_graph_service.stream_call_sites(file_path, call_sites)
 
             if processed_headers:
                 for header_path, header_hash in processed_headers.items():
                     self.cache_orchestrator.mark_header_completed(header_path, header_hash)
 
-            file_hash = self.cache_orchestrator._get_file_hash(file_path)
+            file_hash = self.cache_orchestrator.get_file_hash(file_path)
             self.symbol_store.set_file_hash(file_path, file_hash)
 
     def get_worker_result(self, future, file_path: str) -> Tuple[bool, bool]:

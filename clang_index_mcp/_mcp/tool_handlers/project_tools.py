@@ -75,7 +75,7 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
             # If so, load directly without calling index_project
             loop = asyncio.get_event_loop()
             cache_valid = await loop.run_in_executor(
-                None, analyzer.context.cache_orchestrator._load_cache
+                None, analyzer.context.cache_orchestrator.load_cache
             )
 
             if cache_valid:

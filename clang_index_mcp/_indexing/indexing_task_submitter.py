@@ -53,7 +53,7 @@ class IndexingTaskSubmitter:
             if self.project_identity.config_file_path
             else None
         )
-        file_compile_args = self.compilation_env._prepare_worker_compile_args(files)
+        file_compile_args = self.compilation_env.prepare_worker_compile_args(files)
 
         return {
             executor.submit(
@@ -87,7 +87,7 @@ class IndexingTaskSubmitter:
         )
 
         all_files_to_process = list(modified_files) + list(new_files)
-        file_compile_args = self.compilation_env._prepare_refresh_compile_args(all_files_to_process)
+        file_compile_args = self.compilation_env.prepare_refresh_compile_args(all_files_to_process)
 
         for f in modified_files:
             future = executor.submit(

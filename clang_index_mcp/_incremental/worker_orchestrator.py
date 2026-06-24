@@ -67,7 +67,7 @@ def process_future_result(
         for header_path, header_hash in processed_headers.items():
             cache_orchestrator.mark_header_completed(header_path, header_hash)
 
-    file_hash = cache_orchestrator._get_file_hash(file_path)
+    file_hash = cache_orchestrator.get_file_hash(file_path)
     symbol_store.set_file_hash(file_path, file_hash)
 
     return success, was_cached

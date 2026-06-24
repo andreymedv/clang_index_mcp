@@ -77,10 +77,10 @@ class SymbolExtractor:
         return self.call_graph_service.dependency_graph
 
     def _is_project_file(self, file_path: str) -> bool:
-        return self.compilation_env._is_project_file(file_path)
+        return self.compilation_env.is_project_file(file_path)
 
-    def _get_file_hash(self, file_path: str) -> str:
-        return self.cache_orchestrator._get_file_hash(file_path)
+    def get_file_hash(self, file_path: str) -> str:
+        return self.cache_orchestrator.get_file_hash(file_path)
 
     @staticmethod
     def _extract_template_args_from_displayname(displayname: str) -> List[str]:
@@ -206,7 +206,7 @@ class SymbolExtractor:
             return True
         return False
 
-    def _resolve_deferred_instantiation_bases(self) -> int:
+    def resolve_deferred_instantiation_bases(self) -> int:
         """Resolve base_classes for template instantiations that couldn't be resolved during parsing."""
         resolved_count = 0
         for name, infos in self.class_index.items():
@@ -245,7 +245,7 @@ class SymbolExtractor:
             return False
 
         try:
-            file_hash = self._get_file_hash(file_path)
+            file_hash = self.get_file_hash(file_path)
             result = bool(self.cache_orchestrator.try_claim_header(file_path, file_hash))
             return result
         except Exception as e:
@@ -276,7 +276,7 @@ class SymbolExtractor:
         calls_buffer.extend(result.call_sites)
         aliases_buffer.extend(result.type_aliases)
 
-    def _index_translation_unit(self, tu: Any, source_file: str) -> Dict[str, Any]:
+    def index_translation_unit(self, tu: Any, source_file: str) -> Dict[str, Any]:
         """Process translation unit, extracting symbols from source and project headers."""
         processed_files: Set[str] = set()
         skipped_headers: Set[str] = set()
@@ -303,7 +303,7 @@ class SymbolExtractor:
         self.concurrency.init_thread_local_buffers()
         result = self.parser.parse(tu, source_file, should_extract_from_file)
         self._apply_parse_result(result)
-        self.symbol_store._bulk_write_symbols()
+        self.symbol_store.bulk_write_symbols()
 
         self._finalize_header_status(result.processed_headers)
         self._update_dependency_graph(tu, source_file)

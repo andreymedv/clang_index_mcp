@@ -78,7 +78,7 @@ class CallGraphService:
 
         self.call_graph_analyzer.process_call_buffer(calls_buffer)
 
-    def _stream_call_sites(self, file_path: str, call_sites: List[Dict]):
+    def stream_call_sites(self, file_path: str, call_sites: List[Dict]):
         """Stream call sites to SQLite and update in-memory call graph."""
         diagnostics.debug(f"Streaming {len(call_sites)} call sites from {file_path} to SQLite")
         cache_manager = self.cache_manager

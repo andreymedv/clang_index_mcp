@@ -49,10 +49,10 @@ class ClangSymbolParser(SymbolParser):
         self._aliases_buffer: List[Dict[str, Any]] = []
 
     def _is_project_file(self, file_path: str) -> bool:
-        return self.compilation_env._is_project_file(file_path)
+        return self.compilation_env.is_project_file(file_path)
 
     def _get_file_hash(self, file_path: str) -> str:
-        return self.cache_orchestrator._get_file_hash(file_path)
+        return self.cache_orchestrator.get_file_hash(file_path)
 
     @property
     def index_lock(self):

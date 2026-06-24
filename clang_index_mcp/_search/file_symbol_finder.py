@@ -325,7 +325,7 @@ def _find_class_reference_files(
     """Find files that reference a class and add them to the set."""
     if kind in ("class", "struct") or (not kind and symbol_kind in (None, "class")):
         for file_path, symbols in symbol_store.iter_file_items():
-            if not project_only or compilation_env._is_project_file(file_path):
+            if not project_only or compilation_env.is_project_file(file_path):
                 for symbol in symbols:
                     sym_qname = symbol.qualified_name or symbol.name
                     parent_qname = symbol.parent_class or ""
