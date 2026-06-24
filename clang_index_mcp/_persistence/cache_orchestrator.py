@@ -7,40 +7,51 @@ Manages cache loading/saving, file caching, header tracking, and progress summar
 
 import json
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from .._core import diagnostics
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._persistence.header_tracker import HeaderProcessingTracker
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._persistence.cache_manager import CacheManager
+    from .._search.call_graph_service import CallGraphService
+    from .._symbols.symbol_index_store import SymbolIndexStore
+    from ..cpp_analyzer_config import CppAnalyzerConfig
+    from pathlib import Path
 
 
 class CacheOrchestrator:
     """Manages cache operations and header tracking state."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        cache_manager: "CacheManager",
+        config: "CppAnalyzerConfig",
+        project_root: "Path",
+        symbol_store: "SymbolIndexStore",
+        compilation_env: "CompilationEnvironment",
+        call_graph_service: "CallGraphService",
+    ):
         """
         Initialize cache orchestrator.
 
         Args:
-            context: Shared project context with cache, config, and symbol services.
+            cache_manager: SQLite-backed cache and persistence.
+            config: Project configuration.
+            project_root: Project root directory.
+            symbol_store: In-memory symbol indexes.
+            compilation_env: Compilation environment for file scanning.
+            call_graph_service: Call graph and dependency tracking.
         """
-        self.context = context
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
-        assert context.config is not None
-        self.config = context.config
-        assert context.project_root is not None
-        self.project_root = context.project_root
-        self.cache_dir = context.cache_manager.cache_dir
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.call_graph_service is not None
-        self.call_graph_service = context.call_graph_service
+        self.cache_manager = cache_manager
+        self.config = config
+        self.project_root = project_root
+        self.cache_dir = cache_manager.cache_dir
+        self.symbol_store = symbol_store
+        self.compilation_env = compilation_env
+        self.call_graph_service = call_graph_service
 
         self.cache_loaded = False
         self.last_index_time = 0.0
@@ -309,17 +320,27 @@ class CacheOrchestrator:
         self.symbol_store._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
         return (True, True)
 
-    def _handle_cache_initial_index(self, force: bool) -> Optional[int]:
-        """Try to load from cache if not forcing."""
+    def _handle_cache_initial_index(
+        self,
+        force: bool,
+        refresh_fn: Optional[Callable[[bool], int]] = None,
+    ) -> Optional[int]:
+        """Try to load from cache if not forcing.
+
+        Args:
+            force: If True, skip cache loading.
+            refresh_fn: Optional callable that performs incremental refresh.
+                       Accepts include_dependencies flag, returns number of refreshed files.
+        """
         from .._core import diagnostics
 
         if not force and self._load_cache():
-            assert self.context.refresh_pipeline is not None
-            refreshed = self.context.refresh_pipeline.refresh_if_needed(
-                include_dependencies=self.compilation_env.include_dependencies,
-            )
-            if refreshed > 0:
-                diagnostics.debug(f"Using cached index (updated {refreshed} files)")
+            if refresh_fn is not None:
+                refreshed = refresh_fn(self.compilation_env.include_dependencies)
+                if refreshed > 0:
+                    diagnostics.debug(f"Using cached index (updated {refreshed} files)")
+                else:
+                    diagnostics.debug("Using cached index")
             else:
                 diagnostics.debug("Using cached index")
             return int(self.symbol_store.indexed_file_count)  # type: ignore[no-any-return]

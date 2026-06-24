@@ -26,6 +26,7 @@ class ProjectIndexingOrchestrator:
         context: "ProjectContext",
         task_submitter: Any,
         worker_result_merger: Any,
+        refresh_pipeline: Any = None,
     ):
         """
         Initialize the project indexing orchestrator.
@@ -35,6 +36,7 @@ class ProjectIndexingOrchestrator:
                      execution, compilation, cache, and symbol services.
             task_submitter: IndexingTaskSubmitter instance.
             worker_result_merger: WorkerResultMerger instance.
+            refresh_pipeline: RefreshPipeline instance (optional, for cache initial index).
         """
         self.context = context
         assert context.cancellation is not None
@@ -57,6 +59,7 @@ class ProjectIndexingOrchestrator:
         self.worker_result_merger = worker_result_merger
         assert context.progress_reporter is not None
         self.progress_reporter = context.progress_reporter
+        self.refresh_pipeline = refresh_pipeline
 
     def index_project(
         self,
@@ -77,7 +80,10 @@ class ProjectIndexingOrchestrator:
         """
         start_time = time.time()
 
-        cached_count = self.cache_orchestrator._handle_cache_initial_index(force)
+        refresh_fn = None
+        if self.refresh_pipeline is not None:
+            refresh_fn = self.refresh_pipeline.refresh_if_needed
+        cached_count = self.cache_orchestrator._handle_cache_initial_index(force, refresh_fn)
         if cached_count is not None:
             return cached_count  # type: ignore[no-any-return]
 
