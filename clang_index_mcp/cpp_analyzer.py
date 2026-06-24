@@ -164,7 +164,7 @@ class CppAnalyzer:
         self.cache_orchestrator._restore_or_reset_header_tracking()
 
         # Parsing services.
-        self.clang_parser = ClangParser(self.context)
+        self.clang_parser = ClangParser(self.context.persistence)
         self.context.compilation.clang_parser = self.clang_parser
 
         self.symbol_extractor = SymbolExtractor(self.context, ClangSymbolParser(self.context))
