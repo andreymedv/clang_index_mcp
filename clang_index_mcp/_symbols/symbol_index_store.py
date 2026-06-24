@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from .._core import diagnostics
 from .._symbols.model import CLASS_KINDS, SymbolInfo, is_richer_definition
 from .._symbols import symbol_resolver, template_symbol_indexer
+from .._symbols.ports.call_graph import CallGraphPort
 
 if TYPE_CHECKING:
     from ..project_context import ProjectContext
@@ -23,18 +24,20 @@ class SymbolIndexStore:
     and maintaining symbol data across multiple lookup structures.
     """
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        context: "ProjectContext",
+        call_graph_port: CallGraphPort,
+    ):
         """
         Initialize SymbolIndexStore.
 
         Args:
-            context: Shared project context for access to call graph service
-                     and concurrency utilities.
+            context: Shared project context for concurrency utilities.
+            call_graph_port: Port for call graph updates.
         """
         self.context = context
-        assert context.call_graph_service is not None
-        self.call_graph_service = context.call_graph_service
-        self.call_graph_analyzer = self.call_graph_service.call_graph_analyzer
+        self.call_graph_port = call_graph_port
         assert context.concurrency is not None
         self._get_lock = context.concurrency.get_lock
 
@@ -76,7 +79,7 @@ class SymbolIndexStore:
                 existing = self.usr_index[symbol.usr]
                 if existing == symbol or existing.usr == symbol.usr:
                     del self.usr_index[symbol.usr]
-            self.call_graph_analyzer.remove_symbol(symbol.usr)
+            self.call_graph_port.remove_symbol(symbol.usr)
 
     def _handle_symbol_definition_wins(
         self, info: SymbolInfo, existing_symbol: SymbolInfo
@@ -256,7 +259,7 @@ class SymbolIndexStore:
     def _rebuild_auxiliary_structures(self) -> None:
         """Rebuild USR index and call graph from loaded symbols."""
         self.usr_index.clear()
-        self.call_graph_analyzer.clear()
+        self.call_graph_port.clear()
 
         # Rebuild from all loaded symbols
         all_symbols = []
@@ -273,7 +276,7 @@ class SymbolIndexStore:
                     all_symbols.append(symbol)
 
         # Rebuild call graph from all symbols
-        self.call_graph_analyzer.rebuild_from_symbols(all_symbols)
+        self.call_graph_port.rebuild_from_symbols(all_symbols)
 
     def _bulk_write_symbols(self) -> int:
         """
@@ -319,7 +322,7 @@ class SymbolIndexStore:
                 added_count += 1
 
             # Add all collected call relationships
-            self.call_graph_service._process_call_buffer(calls_buffer)
+            self.call_graph_port.process_call_buffer(calls_buffer)
 
             # Add all collected type aliases
             if aliases_buffer:
