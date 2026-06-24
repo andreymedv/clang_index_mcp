@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._persistence.symbol_info import SymbolInfo
+from .._persistence import type_alias_repository
 
 # Handle both package and script imports
 try:
@@ -2304,231 +2305,29 @@ class SqliteCacheBackend:
     # -------------------------------------------------------------------------
 
     def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
-        """
-        Batch insert type aliases using transaction.
-
-        Phase 1.3: Type Alias Tracking - Store aliases extracted during parsing
-
-        Args:
-            aliases: List of alias dictionaries with keys:
-                - alias_name: Short name (e.g., "WidgetAlias")
-                - qualified_name: Fully qualified (e.g., "foo::WidgetAlias")
-                - target_type: Immediate target spelling
-                - canonical_type: Final resolved type spelling
-                - file: File where alias is defined
-                - line: Line number
-                - column: Column number
-                - alias_kind: 'using' or 'typedef'
-                - namespace: Namespace portion
-                - is_template_alias: Boolean (False for Phase 1)
-                - created_at: Unix timestamp
-
-        Returns:
-            Number of aliases successfully saved
-        """
-        if not aliases:
-            return 0
-
-        try:
-            self._ensure_connected()
-
-            # Batch insert in a single transaction
-            with self._conn:
-                self._conn.executemany(
-                    """
-                    INSERT OR REPLACE INTO type_aliases (
-                        alias_name, qualified_name, target_type, canonical_type,
-                        file, line, column, alias_kind, namespace,
-                        is_template_alias, template_params, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            alias["alias_name"],
-                            alias["qualified_name"],
-                            alias["target_type"],
-                            alias["canonical_type"],
-                            alias["file"],
-                            alias["line"],
-                            alias["column"],
-                            alias["alias_kind"],
-                            alias["namespace"],
-                            1 if alias.get("is_template_alias", False) else 0,
-                            alias.get("template_params"),  # Phase 2.0: Template parameters as JSON
-                            alias["created_at"],
-                        )
-                        for alias in aliases
-                    ],
-                )
-
-            diagnostics.debug(f"Saved {len(aliases)} type aliases to database")
-            return len(aliases)
-
-        except Exception as e:
-            diagnostics.error(f"Failed to batch save {len(aliases)} type aliases: {e}")
-            return 0
+        """Batch insert type aliases using transaction."""
+        self._ensure_connected()
+        return type_alias_repository.save_type_aliases_batch(self._conn, aliases)
 
     def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
-        """
-        Get all alias names that resolve to a given canonical type.
-
-        Phase 1.3: Type Alias Tracking - Search unification support
-
-        Example:
-            canonical_type = "Widget"
-            returns ["WidgetAlias", "WidgetPtr", "foo::WidgetAlias"]
-
-        Args:
-            canonical_type: Canonical type to search for
-
-        Returns:
-            List of alias names (both short names and qualified names)
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                """
-                SELECT alias_name, qualified_name
-                FROM type_aliases
-                WHERE canonical_type = ?
-                """,
-                (canonical_type,),
-            )
-
-            # Return both short names and qualified names
-            alias_names = []
-            for row in cursor.fetchall():
-                alias_names.append(row["alias_name"])
-                # Add qualified name if different from short name
-                if row["qualified_name"] != row["alias_name"]:
-                    alias_names.append(row["qualified_name"])
-
-            return alias_names
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get aliases for canonical type '{canonical_type}': {e}")
-            return []
+        """Get all alias names that resolve to a given canonical type."""
+        self._ensure_connected()
+        return type_alias_repository.get_aliases_for_canonical(self._conn, canonical_type)
 
     def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
-        """
-        Get canonical type for a given alias name.
-
-        Phase 1.3: Type Alias Tracking - Lookup support for hybrid response format
-
-        Args:
-            alias_name: Alias name to look up (can be short or qualified)
-
-        Returns:
-            Canonical type string, or None if not found
-        """
-        try:
-            self._ensure_connected()
-
-            # Try exact match first (short name or qualified name)
-            cursor = self._conn.execute(
-                """
-                SELECT canonical_type
-                FROM type_aliases
-                WHERE alias_name = ? OR qualified_name = ?
-                LIMIT 1
-                """,
-                (alias_name, alias_name),
-            )
-
-            row = cursor.fetchone()
-            if row:
-                result: str = row["canonical_type"]
-                return result
-
-            return None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get canonical type for alias '{alias_name}': {e}")
-            return None
+        """Get canonical type for a given alias name (short or qualified)."""
+        self._ensure_connected()
+        return type_alias_repository.get_canonical_for_alias(self._conn, alias_name)
 
     def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get high-level info for a known alias from the type_aliases table.
-
-        Returns:
-            Dict with canonical_type, qualified_name, namespace, file, line and
-            a list of alias details, or None if type_name is not a known alias.
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                """
-                SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
-                       is_template_alias, template_params
-                FROM type_aliases
-                WHERE alias_name = ? OR qualified_name = ?
-                LIMIT 1
-                """,
-                (type_name, type_name),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-
-            alias_names = self.get_aliases_for_canonical(row["canonical_type"])
-            aliases = self.get_type_alias_details(alias_names)
-
-            return {
-                "canonical_type": row["canonical_type"],
-                "qualified_name": row["qualified_name"],
-                "namespace": row["namespace"],
-                "file": row["file"],
-                "line": row["line"],
-                "input_was_alias": True,
-                "is_ambiguous": False,
-                "aliases": aliases,
-            }
-        except Exception as e:
-            diagnostics.warning(f"Error querying type_aliases for '{type_name}': {e}")
-            return None
+        """Get high-level info for a known alias from the type_aliases table."""
+        self._ensure_connected()
+        return type_alias_repository.get_type_alias_info(self._conn, type_name)
 
     def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
-        """
-        Get detailed records from the type_aliases table for a list of alias names.
-
-        Returns:
-            List of alias detail dicts with name, qualified_name, file, line and
-            optional template information.
-        """
-        unique_aliases: Dict[str, Dict[str, Any]] = {}
-        try:
-            self._ensure_connected()
-
-            for alias_name in alias_names:
-                cursor = self._conn.execute(
-                    """
-                    SELECT alias_name, qualified_name, canonical_type, file, line, namespace,
-                           is_template_alias, template_params
-                    FROM type_aliases
-                    WHERE alias_name = ? OR qualified_name = ?
-                    """,
-                    (alias_name, alias_name),
-                )
-                row = cursor.fetchone()
-                if row:
-                    qualified_alias = row["qualified_name"]
-                    if qualified_alias not in unique_aliases:
-                        alias_dict = {
-                            "name": row["alias_name"],
-                            "qualified_name": qualified_alias,
-                            "file": row["file"],
-                            "line": row["line"],
-                        }
-                        if row["is_template_alias"]:
-                            alias_dict["is_template_alias"] = True
-                            if row["template_params"]:
-                                alias_dict["template_params"] = json.loads(row["template_params"])
-                        unique_aliases[qualified_alias] = alias_dict
-        except Exception as e:
-            diagnostics.debug(f"Failed to get alias details: {e}")
-        return list(unique_aliases.values())
+        """Get detailed records from the type_aliases table for a list of alias names."""
+        self._ensure_connected()
+        return type_alias_repository.get_type_alias_details(self._conn, alias_names)
 
     def get_all_cached_file_paths(self) -> Set[str]:
         """
@@ -2637,31 +2436,6 @@ class SqliteCacheBackend:
             return 0
 
     def get_all_alias_mappings(self) -> Dict[str, str]:
-        """
-        Get all alias → canonical mappings.
-
-        Phase 1.3: Type Alias Tracking - Bulk lookup for search expansion
-
-        Returns:
-            Dictionary mapping alias names to canonical types
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("""
-                SELECT alias_name, qualified_name, canonical_type
-                FROM type_aliases
-                """)
-
-            # Build mapping: both short and qualified names point to canonical type
-            mappings = {}
-            for row in cursor.fetchall():
-                mappings[row["alias_name"]] = row["canonical_type"]
-                if row["qualified_name"] != row["alias_name"]:
-                    mappings[row["qualified_name"]] = row["canonical_type"]
-
-            return mappings
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get all alias mappings: {e}")
-            return {}
+        """Get all alias → canonical mappings."""
+        self._ensure_connected()
+        return type_alias_repository.get_all_alias_mappings(self._conn)
