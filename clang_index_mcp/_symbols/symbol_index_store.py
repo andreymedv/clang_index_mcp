@@ -6,18 +6,12 @@ and index maintenance operations.
 """
 
 import dataclasses
-import re
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .._core import diagnostics
-from .._persistence.symbol_info import (
-    CLASS_KINDS,
-    SymbolInfo,
-    build_location_objects,
-    is_richer_definition,
-    omit_empty,
-)
+from .._persistence.symbol_info import CLASS_KINDS, SymbolInfo, is_richer_definition
+from .._symbols import symbol_resolver, template_symbol_indexer
 
 if TYPE_CHECKING:
     from ..project_context import ProjectContext
@@ -348,7 +342,7 @@ class SymbolIndexStore:
 
     def contains_usr(self, usr: str) -> bool:
         """Return True if the given USR is present in the in-memory index."""
-        return usr in self.usr_index
+        return symbol_resolver.contains_usr(self, usr)
 
     # ------------------------------------------------------------------
     # file_hashes accessors
@@ -356,11 +350,11 @@ class SymbolIndexStore:
 
     def get_file_hash(self, file_path: str) -> Optional[str]:
         """Return the stored hash for a file, or None if not tracked."""
-        return self.file_hashes.get(file_path)
+        return symbol_resolver.get_file_hash(self, file_path)
 
     def has_file_hash(self, file_path: str) -> bool:
         """Return True if a file hash is tracked."""
-        return file_path in self.file_hashes
+        return symbol_resolver.has_file_hash(self, file_path)
 
     def set_file_hash(self, file_path: str, file_hash: str) -> None:
         """Store or update the hash for a file."""
@@ -431,55 +425,55 @@ class SymbolIndexStore:
 
     def get_classes_by_name(self, name: str) -> List[SymbolInfo]:
         """Return all class symbols with the given simple name."""
-        return self.class_index.get(name, [])
+        return symbol_resolver.get_classes_by_name(self, name)
 
     def get_functions_by_name(self, name: str) -> List[SymbolInfo]:
         """Return all function symbols with the given simple name."""
-        return self.function_index.get(name, [])
+        return symbol_resolver.get_functions_by_name(self, name)
 
     def get_symbols_in_file(self, file_path: str) -> List[SymbolInfo]:
         """Return all symbols in a given file."""
-        return self.file_index.get(file_path, [])
+        return symbol_resolver.get_symbols_in_file(self, file_path)
 
     def has_class_name(self, name: str) -> bool:
         """Return True if the class index contains the given name."""
-        return name in self.class_index
+        return symbol_resolver.has_class_name(self, name)
 
     def has_function_name(self, name: str) -> bool:
         """Return True if the function index contains the given name."""
-        return name in self.function_index
+        return symbol_resolver.has_function_name(self, name)
 
     def iter_class_items(self):
         """Iterate over (name, symbols) pairs in the class index."""
-        return self.class_index.items()
+        return symbol_resolver.iter_class_items(self)
 
     def iter_function_items(self):
         """Iterate over (name, symbols) pairs in the function index."""
-        return self.function_index.items()
+        return symbol_resolver.iter_function_items(self)
 
     def iter_file_items(self):
         """Iterate over (file_path, symbols) pairs in the file index."""
-        return self.file_index.items()
+        return symbol_resolver.iter_file_items(self)
 
     def class_name_count(self) -> int:
         """Return the number of unique class names."""
-        return len(self.class_index)
+        return symbol_resolver.class_name_count(self)
 
     def function_name_count(self) -> int:
         """Return the number of unique function names."""
-        return len(self.function_index)
+        return symbol_resolver.function_name_count(self)
 
     def file_index_count(self) -> int:
         """Return the number of indexed files in the file index."""
-        return len(self.file_index)
+        return symbol_resolver.file_index_count(self)
 
     def total_class_symbols(self) -> int:
         """Return total number of class symbols (including duplicates by name)."""
-        return sum(len(v) for v in self.class_index.values())
+        return symbol_resolver.total_class_symbols(self)
 
     def total_function_symbols(self) -> int:
         """Return total number of function symbols (including duplicates by name)."""
-        return sum(len(v) for v in self.function_index.values())
+        return symbol_resolver.total_function_symbols(self)
 
     def get_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
         """
@@ -488,16 +482,7 @@ class SymbolIndexStore:
         First checks the in-memory USR index, then falls back to the SQLite backend
         for symbols that are not currently loaded.
         """
-        if usr in self.usr_index:
-            return self.usr_index[usr]
-        backend = getattr(self.context.cache_manager, "backend", None)
-        if backend is not None and hasattr(backend, "load_symbol_by_usr"):
-            try:
-                info: Optional[SymbolInfo] = backend.load_symbol_by_usr(usr)
-                return info
-            except Exception as e:
-                diagnostics.warning(f"Failed to load symbol by USR {usr}: {e}")
-        return None
+        return symbol_resolver.get_symbol_by_usr(self, usr)
 
     def resolve_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
         """
@@ -505,21 +490,7 @@ class SymbolIndexStore:
 
         Returns None when the symbol cannot be found at all.
         """
-        info = self.get_symbol_by_usr(usr)
-        if info is None:
-            return None
-
-        is_project = info.is_project if usr in self.usr_index else False
-        return omit_empty(
-            {
-                "qualified_name": info.qualified_name or info.name,
-                "kind": info.kind,
-                "signature": info.signature,
-                "parent_class": info.parent_class or None,
-                "is_project": is_project,
-                **build_location_objects(info),
-            }
-        )
+        return symbol_resolver.resolve_symbol_info(self, usr)
 
     def _remove_file_from_indexes(self, file_path: str):
         """Remove all symbols from a deleted file from all indexes"""
@@ -549,46 +520,17 @@ class SymbolIndexStore:
         Returns:
             Base template name (e.g., "Container") or None if not a template-related USR
         """
-        if not usr:
-            return None
-
-        match = re.search(r"c:@ST>[^@]*@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        match = re.search(r"c:@S@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        match = re.search(r"c:@SP>[^@]*@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        return None
+        return template_symbol_indexer.extract_template_base_name_from_usr(usr)
 
     def _add_class_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
         """Add class template and specialization symbols to results."""
-        if base_name not in self.class_index:
-            return
-        for symbol in self.class_index[base_name]:
-            if symbol.kind in ("class_template", "partial_specialization"):
-                results.append(symbol)
-            elif symbol.kind in ("class", "struct"):
-                if symbol.usr and ">#" in symbol.usr:
-                    results.append(symbol)
+        template_symbol_indexer.add_class_template_symbols(self.class_index, base_name, results)
 
     def _add_function_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
         """Add function template and specialization symbols to results."""
-        if base_name not in self.function_index:
-            return
-        for symbol in self.function_index[base_name]:
-            if symbol.kind == "function_template":
-                results.append(symbol)
-            elif symbol.kind in ("function", "method"):
-                if symbol.is_template_specialization or (
-                    symbol.usr and ("<#" in symbol.usr or ">#" in symbol.usr)
-                ):
-                    results.append(symbol)
+        template_symbol_indexer.add_function_template_symbols(
+            self.function_index, base_name, results
+        )
 
     def find_template_specializations(self, base_name: str) -> List[SymbolInfo]:
         """
@@ -599,10 +541,4 @@ class SymbolIndexStore:
         2. Explicit full specializations (kind=class, function with template args in USR)
         3. Partial specializations (kind=partial_specialization)
         """
-        results: List[SymbolInfo] = []
-
-        with self.context.concurrency.index_lock:
-            self._add_class_template_symbols(base_name, results)
-            self._add_function_template_symbols(base_name, results)
-
-        return results
+        return template_symbol_indexer.find_template_specializations(self, base_name)
