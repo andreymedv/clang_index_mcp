@@ -117,7 +117,7 @@ class CppAnalyzer:
         # Components migrated to ProjectContext are created with the context.
         # Order matters: CompilationEnvironment needs symbol_store, QueryEngine
         # needs both CompilationEnvironment and CallGraphService.
-        self.call_graph_service = CallGraphService(self.context)
+        self.call_graph_service = CallGraphService(self.context.persistence)
         self.context.symbols.call_graph_service = self.call_graph_service
 
         self.symbol_store = SymbolIndexStore(
