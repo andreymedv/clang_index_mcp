@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from mcp.types import TextContent
 
 from .. import cpp_mcp_server as _server
-from ..._core import suggestions
+from ..response_formatters import suggestions
 
 
 async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextContent]:

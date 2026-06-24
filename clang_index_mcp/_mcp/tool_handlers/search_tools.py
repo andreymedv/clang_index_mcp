@@ -8,7 +8,7 @@ from mcp.types import TextContent
 
 from .. import cpp_mcp_server as _server
 from ..state_manager import EnhancedQueryResult
-from ..._core import suggestions
+from ..response_formatters import suggestions
 
 
 async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]:
