@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional
 
 from .._core import diagnostics
-from .._mcp.state_manager import IndexingProgress
+from .._indexing.progress import IndexingProgress
 
 
 class IndexingProgressReporter:
