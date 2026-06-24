@@ -226,7 +226,18 @@ class CppAnalyzer:
         )
         self.context.persistence.refresh_pipeline = self.refresh_pipeline
         self.indexing_orchestrator = ProjectIndexingOrchestrator(
-            self.context, self.task_submitter, self.worker_result_merger, self.refresh_pipeline
+            cancellation=self.cancellation,
+            concurrency=self.concurrency,
+            execution=self.execution,
+            compilation_env=self.compilation_env,
+            cache_orchestrator=self.cache_orchestrator,
+            cache_manager=self.cache_manager,
+            symbol_extractor=self.symbol_extractor,
+            symbol_store=self.symbol_store,
+            progress_reporter=self.progress_reporter,
+            task_submitter=self.task_submitter,
+            worker_result_merger=self.worker_result_merger,
+            refresh_pipeline=self.refresh_pipeline,
         )
 
         diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
