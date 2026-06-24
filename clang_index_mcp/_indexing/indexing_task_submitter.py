@@ -6,6 +6,7 @@ items to the process pool executor.
 """
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
 from .._indexing.indexing_task_spec import IndexingTaskSpec
@@ -14,27 +15,34 @@ from .._indexing.worker_pool import _process_file_worker
 if TYPE_CHECKING:
     from concurrent.futures import Executor, Future
 
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._indexing.execution_config import ExecutionConfig
+    from .._persistence.project_identity import ProjectIdentity
 
 
 class IndexingTaskSubmitter:
     """Submits indexing/refresh tasks to the process pool executor."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        project_root: Path,
+        project_identity: "ProjectIdentity",
+        execution: "ExecutionConfig",
+        compilation_env: "CompilationEnvironment",
+    ):
         """
         Initialize the task submitter.
 
         Args:
-            context: Shared project context with project root, identity, execution,
-                     and compilation environment.
+            project_root: Project root directory.
+            project_identity: Project identity for config file path.
+            execution: Execution configuration with worker pool.
+            compilation_env: Compilation environment for compile args.
         """
-        self.context = context
-        self.project_root = context.project_root
-        self.project_identity = context.project_identity
-        assert context.execution is not None
-        self.execution = context.execution
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
+        self.project_root = project_root
+        self.project_identity = project_identity
+        self.execution = execution
+        self.compilation_env = compilation_env
 
     def submit_indexing_tasks(
         self, executor: "Executor", files: List[str], force: bool, include_dependencies: bool
