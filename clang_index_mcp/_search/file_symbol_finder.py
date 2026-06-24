@@ -7,14 +7,12 @@ out of the main QueryEngine class.
 
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.search_criteria import SearchCriteria
 from .._search.search_engine import SearchEngine
-
-if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+from .ports.search_deps import SearchDependencies
 
 
 def matches_glob(indexed_file: str, glob_pattern: str, project_root: Optional[str]) -> bool:
@@ -45,7 +43,7 @@ def filter_results_by_files(
     return results
 
 
-def _project_root_str(context: "ProjectContext") -> Optional[str]:
+def _project_root_str(context: SearchDependencies) -> Optional[str]:
     root = context.project_root
     return str(root) if root is not None else None
 
@@ -53,7 +51,7 @@ def _project_root_str(context: "ProjectContext") -> Optional[str]:
 def find_in_files_glob(
     glob_pattern: str,
     symbol_pattern: str,
-    context: "ProjectContext",
+    context: SearchDependencies,
     search_engine: SearchEngine,
 ) -> Dict[str, Any]:
     """Search for symbols in files matching a glob pattern."""
@@ -125,7 +123,7 @@ def match_item_to_file(item: Dict[str, Any], file_path: str, abs_file_path: Opti
 def find_in_file_exact(
     file_path: str,
     pattern: str,
-    context: "ProjectContext",
+    context: SearchDependencies,
     search_engine: SearchEngine,
 ) -> Dict[str, Any]:
     """Search for symbols in a specific file (exact or suffix match)."""
@@ -169,7 +167,7 @@ def find_in_file_exact(
 
 
 def get_path_suggestions(
-    partial_path: str, context: "ProjectContext", max_suggestions: int = 5
+    partial_path: str, context: SearchDependencies, max_suggestions: int = 5
 ) -> List[str]:
     """Get suggestions for similar file paths based on partial input."""
     symbol_store = context.symbol_store
@@ -206,7 +204,7 @@ def get_path_suggestions(
 def find_in_file(
     file_path: str,
     pattern: str,
-    context: "ProjectContext",
+    context: SearchDependencies,
     search_engine: SearchEngine,
 ) -> Dict[str, Any]:
     """Search for symbols within a specific file or files matching a glob pattern."""
@@ -342,7 +340,7 @@ async def get_files_containing_symbol(
     symbol_name: str,
     symbol_kind: Optional[str],
     project_only: bool,
-    context: "ProjectContext",
+    context: SearchDependencies,
 ) -> Dict[str, Any]:
     """Get all files that contain references to or define a symbol."""
     symbol_store = context.symbol_store
