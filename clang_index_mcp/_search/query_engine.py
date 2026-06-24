@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .._search.file_symbol_finder import find_in_file, get_files_containing_symbol
 from .._search.hierarchy_analyzer import get_class_hierarchy
+from .._search.ports.search_deps import SearchDependencies
 from .._search.search_criteria import SearchCriteria
 from .._search.search_engine import SearchEngine
 from .._search.smart_fallback import FallbackResult, SmartFallback
@@ -18,37 +19,58 @@ from .._search.template_analyzer import get_derived_classes
 from .._search.type_alias_resolver import get_type_alias_info
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from pathlib import Path
+
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._core.concurrency_context import ConcurrencyContext
+    from .._persistence.cache_manager import CacheManager
+    from .._search.call_graph_service import CallGraphService
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class QueryEngine:
     """Manages search queries and analysis operations."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        symbol_store: "SymbolIndexStore",
+        cache_manager: "CacheManager",
+        concurrency: "ConcurrencyContext",
+        compilation_env: "CompilationEnvironment",
+        call_graph_service: "CallGraphService",
+        project_root: "Path",
+    ):
         """
         Initialize query engine.
 
         Args:
-            context: Shared project context with indexes, cache, and compilation services.
+            symbol_store: In-memory symbol indexes.
+            cache_manager: SQLite-backed cache and persistence.
+            concurrency: Concurrency context with index_lock.
+            compilation_env: Compilation environment for compile args and file scanning.
+            call_graph_service: Call graph and dependency tracking.
+            project_root: Project root directory.
         """
-        self.context = context
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
-        assert context.concurrency is not None
-        self.concurrency = context.concurrency
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.call_graph_service is not None
-        self.call_graph_service = context.call_graph_service
-        self.project_root = context.project_root
+        self.symbol_store = symbol_store
+        self.cache_manager = cache_manager
+        self.concurrency = concurrency
+        self.compilation_env = compilation_env
+        self.call_graph_service = call_graph_service
+        self.project_root = project_root
         self.search_engine = SearchEngine(
-            symbol_store=self.symbol_store,
-            cache_manager=self.cache_manager,
+            symbol_store=symbol_store,
+            cache_manager=cache_manager,
         )
         self.smart_fallback = SmartFallback()
         self._last_fallback: Optional[FallbackResult] = None
+
+    def _as_search_deps(self) -> SearchDependencies:
+        """Return self as a SearchDependencies-compatible object.
+
+        QueryEngine implements the SearchDependencies protocol, so it can
+        pass itself directly to helper functions.
+        """
+        return self
 
     def pop_last_fallback(self):
         """Return and clear the last fallback result.
@@ -150,7 +172,7 @@ class QueryEngine:
 
             # Add compile commands statistics if enabled
             # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-            if self.context.is_compile_commands_enabled():
+            if self.compilation_env.has_active_compile_commands():
                 stats["compile_commands_stats"] = self.compilation_env.get_compile_commands_stats()
 
             return stats
@@ -218,19 +240,17 @@ class QueryEngine:
 
     def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
         """Get comprehensive type alias information."""
-        return get_type_alias_info(type_name, self.context)
+        return get_type_alias_info(type_name, self)
 
     def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
         """Search for symbols within a specific file or files matching a glob pattern."""
-        return find_in_file(file_path, pattern, self.context, self.search_engine)
+        return find_in_file(file_path, pattern, self, self.search_engine)
 
     async def get_files_containing_symbol(
         self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
     ) -> Dict[str, Any]:
         """Get all files that contain references to or define a symbol."""
-        return await get_files_containing_symbol(
-            symbol_name, symbol_kind, project_only, self.context
-        )
+        return await get_files_containing_symbol(symbol_name, symbol_kind, project_only, self)
 
     def _check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
         """Check if a class indirectly inherits from target_class through template parameter inheritance."""

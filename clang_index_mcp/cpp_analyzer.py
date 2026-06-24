@@ -132,7 +132,14 @@ class CppAnalyzer:
         )
         self.context.compilation.compilation_env = self.compilation_env
 
-        self.query_engine = QueryEngine(self.context)
+        self.query_engine = QueryEngine(
+            symbol_store=self.symbol_store,
+            cache_manager=self.cache_manager,
+            concurrency=self.concurrency,
+            compilation_env=self.compilation_env,
+            call_graph_service=self.call_graph_service,
+            project_root=self.project_root,
+        )
         self.context.query.query_engine = self.query_engine
 
         # Break circular dependency: CallGraphService needs symbol_store/query_engine.

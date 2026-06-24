@@ -7,10 +7,11 @@ that type-alias queries are isolated from the rest of query-engine logic.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from .._search.pattern_matcher import matches_qualified_pattern
+from .._search.ports.search_deps import SearchDependencies
 from .._symbols.model import SymbolInfo
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    pass
 
 
 def get_alias_details_from_db(alias_names: List[str], cache_manager) -> List[Dict[str, Any]]:
@@ -25,7 +26,7 @@ def get_info_for_known_alias(type_name: str, cache_manager) -> Optional[Dict[str
 
 def find_type_matches(
     type_name: str,
-    context: "ProjectContext",
+    context: SearchDependencies,
 ) -> List[SymbolInfo]:
     """Search class index for matching types and return list of matches."""
     matches: List[SymbolInfo] = []
@@ -66,7 +67,7 @@ def check_type_ambiguity(type_name: str, matches: List[SymbolInfo]) -> Optional[
 
 def get_type_alias_info(
     type_name: str,
-    context: "ProjectContext",
+    context: SearchDependencies,
 ) -> Dict[str, Any]:
     """Get comprehensive type alias information."""
     input_canonical = context.cache_manager.get_canonical_for_alias(type_name)
