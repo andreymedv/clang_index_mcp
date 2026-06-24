@@ -1,22 +1,12 @@
 """
-C++ Analyzer — Thin Orchestrator Shell
+C++ Analyzer — Thin Orchestrator Facade
 
-This module provides the CppAnalyzer class, which serves as a thin orchestration
-layer over focused, independently-testable components. CppAnalyzer wires together:
-
-- ProjectContext: project identity, config, and shared references
-- SymbolIndexStore: in-memory symbol indexes (class_index, function_index, etc.)
-- CacheManager: SQLite-backed persistence and error tracking
-- CacheOrchestrator: header tracking, cache validation, and index lifecycle
-- CompilationEnvironment: compile commands and compilation arguments
-- QueryEngine: symbol search and retrieval
-- CallGraphService: call graph queries and dependency tracking
-- IndexingOrchestrator: project-level indexing coordination
-- IndexingPipeline: single-file parsing and symbol extraction
-- RefreshPipeline: incremental refresh and change detection
+This module provides the CppAnalyzer class, which serves as a thin facade
+over the CompositionRoot. CppAnalyzer exposes the public API for code analysis
+while delegating component wiring to the CompositionRoot.
 
 CppAnalyzer itself contains only:
-- __init__: component wiring
+- __init__: delegates to CompositionRoot
 - Lifecycle: close, __enter__, __exit__, __del__
 - Interrupt handling: interrupt, _is_interrupted
 - Thin public wrappers that delegate to the appropriate component
@@ -28,22 +18,8 @@ or through the public wrapper methods (e.g. analyzer.search_classes()).
 import sys
 from typing import Any, Dict, List, Optional
 
-from ._persistence.cache_orchestrator import CacheOrchestrator
-from ._search.call_graph_service import CallGraphService
-from ._compilation.clang_parser import ClangParser
-from ._compilation.clang_symbol_parser import ClangSymbolParser
-from ._compilation.compilation_environment import CompilationEnvironment
-from ._compilation.compile_commands_manager import CompileCommandsManager
+from .composition_root import CompositionRoot
 from ._symbols.indexing_callbacks import IndexingCallbacks
-from ._indexing.indexing_orchestrator import ProjectIndexingOrchestrator
-from ._indexing.indexing_pipeline import SingleFileIndexingPipeline
-from ._indexing.indexing_task_submitter import IndexingTaskSubmitter
-from .project_context import ProjectContext
-from ._indexing.worker_result_merger import WorkerResultMerger
-from ._search.query_engine import QueryEngine
-from ._indexing.refresh_pipeline import RefreshPipeline
-from ._symbols.symbol_extractor import SymbolExtractor
-from ._symbols.symbol_index_store import SymbolIndexStore
 
 # Handle both package and script imports
 try:
@@ -86,7 +62,7 @@ class CppAnalyzer:
                                    Used by worker processes to avoid race conditions.
                                    Workers should rely on main process to ensure schema is current.
             use_compile_commands_manager: If False, skip CompileCommandsManager initialization.
-                                         Used by worker processes that receive precomputed compile args (Task 3.2).
+                                         Used by worker processes that receive precomputed compile args.
 
         Note:
             Project identity is determined by (source_directory, config_file) pair.
@@ -94,183 +70,38 @@ class CppAnalyzer:
         """
         self._skip_schema_recreation = skip_schema_recreation
 
-        # ProjectContext is the shared dependency container.  Components that
-        # have been migrated receive the context; the rest still receive self
-        # (CppAnalyzer) and are attached to the context so that pipeline classes
-        # can access them uniformly.
-        self.context: ProjectContext = ProjectContext(
+        # Delegate all wiring to CompositionRoot
+        self._root = CompositionRoot(
             project_root,
             config_file=config_file,
             skip_schema_recreation=skip_schema_recreation,
-        )
-        # Expose core context attributes directly on CppAnalyzer for backward compatibility.
-        self.project_root = self.context.project_root
-        self.index = self.context.index
-        self.project_identity = self.context.project_identity
-        self.config = self.context.config
-        self.cache_manager = self.context.cache_manager
-        self.concurrency = self.context.concurrency
-        self.cancellation = self.context.cancellation
-        self.execution = self.context.execution
-        self.progress_reporter = self.context.progress_reporter
-
-        # Components migrated to ProjectContext are created with the context.
-        # Order matters: CompilationEnvironment needs symbol_store, QueryEngine
-        # needs both CompilationEnvironment and CallGraphService.
-        self.call_graph_service = CallGraphService(self.context.persistence)
-        self.context.symbols.call_graph_service = self.call_graph_service
-
-        self.symbol_store = SymbolIndexStore(
-            get_lock=self.concurrency.get_lock,
-            index_lock=self.concurrency.index_lock,
-            get_thread_local_buffers=self.concurrency.get_thread_local_buffers,
-            cache_manager=self.cache_manager,
-            call_graph_port=self.call_graph_service.call_graph_analyzer,
-        )
-        self.context.symbols.symbol_store = self.symbol_store
-
-        self.compilation_env = CompilationEnvironment(
-            self.context.identity,
-            self.context.symbols,
-            self.context.persistence,
-        )
-        self.context.compilation.compilation_env = self.compilation_env
-
-        self.query_engine = QueryEngine(
-            symbol_store=self.symbol_store,
-            cache_manager=self.cache_manager,
-            concurrency=self.concurrency,
-            compilation_env=self.compilation_env,
-            call_graph_service=self.call_graph_service,
-            project_root=self.project_root,
-        )
-        self.context.query.query_engine = self.query_engine
-
-        # Break circular dependency: CallGraphService needs symbol_store/query_engine.
-        self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
-
-        self.cache_orchestrator: "CacheOrchestrator" = CacheOrchestrator(
-            cache_manager=self.cache_manager,
-            config=self.config,
-            project_root=self.project_root,
-            symbol_store=self.symbol_store,
-            compilation_env=self.compilation_env,
-            call_graph_service=self.call_graph_service,
-        )
-        self.context.persistence.cache_orchestrator = self.cache_orchestrator
-
-        # Wire call graph service to SQLite cache backend.
-        self.call_graph_service.setup_cache_backend()
-
-        # Keep cache_dir for compatibility.
-        self.cache_dir = self.cache_manager.cache_dir
-
-        # Task 3.2: Initialize compile commands manager only if needed.
-        # Workers skip this to save ~6-10 GB memory by using precomputed args.
-        if use_compile_commands_manager:
-            compile_commands_config = self.config.get_compile_commands_config()
-            self.compilation_env.compile_commands_manager = CompileCommandsManager(
-                self.project_root,
-                compile_commands_config,
-                cache_dir=self.cache_manager.cache_dir,
-                cache_backend=self.cache_manager.backend,
-            )
-
-        # Initialize dependency graph builder and restore header tracking.
-        self.call_graph_service.init_dependency_graph()
-        self.cache_orchestrator._calculate_compile_commands_hash()
-        self.cache_orchestrator._restore_or_reset_header_tracking()
-
-        # Parsing services.
-        self.clang_parser = ClangParser(self.context.persistence)
-        self.context.compilation.clang_parser = self.clang_parser
-
-        self.symbol_extractor = SymbolExtractor(
-            symbol_store=self.symbol_store,
-            concurrency=self.concurrency,
-            compilation_env=self.compilation_env,
-            cache_orchestrator=self.cache_orchestrator,
-            call_graph_service=self.call_graph_service,
-            parser=ClangSymbolParser(
-                compilation_env=self.compilation_env,
-                symbol_store=self.symbol_store,
-                cache_orchestrator=self.cache_orchestrator,
-            ),
-        )
-        self.context.symbols.symbol_extractor = self.symbol_extractor
-
-        # Indexing/refresh pipelines receive the fully wired context.
-        self.task_submitter = IndexingTaskSubmitter(
-            project_root=self.project_root,
-            project_identity=self.project_identity,
-            execution=self.execution,
-            compilation_env=self.compilation_env,
-        )
-        self.worker_result_merger = WorkerResultMerger(
-            concurrency=self.concurrency,
-            symbol_store=self.symbol_store,
-            call_graph_service=self.call_graph_service,
-            cache_orchestrator=self.cache_orchestrator,
-        )
-        self.indexing_pipeline = SingleFileIndexingPipeline(
-            clang_parser=self.clang_parser,
-            symbol_extractor=self.symbol_extractor,
-            compilation_env=self.compilation_env,
-            cache_orchestrator=self.cache_orchestrator,
-            cache_manager=self.cache_manager,
-            concurrency=self.concurrency,
-            symbol_store=self.symbol_store,
-        )
-        self.refresh_pipeline = RefreshPipeline(
-            compilation_env=self.compilation_env,
-            execution=self.execution,
-            cache_manager=self.cache_manager,
-            cache_orchestrator=self.cache_orchestrator,
-            symbol_extractor=self.symbol_extractor,
-            symbol_store=self.symbol_store,
-            progress_reporter=self.progress_reporter,
-            task_submitter=self.task_submitter,
-            worker_result_merger=self.worker_result_merger,
-        )
-        self.context.persistence.refresh_pipeline = self.refresh_pipeline
-        self.indexing_orchestrator = ProjectIndexingOrchestrator(
-            cancellation=self.cancellation,
-            concurrency=self.concurrency,
-            execution=self.execution,
-            compilation_env=self.compilation_env,
-            cache_orchestrator=self.cache_orchestrator,
-            cache_manager=self.cache_manager,
-            symbol_extractor=self.symbol_extractor,
-            symbol_store=self.symbol_store,
-            progress_reporter=self.progress_reporter,
-            task_submitter=self.task_submitter,
-            worker_result_merger=self.worker_result_merger,
-            refresh_pipeline=self.refresh_pipeline,
+            use_compile_commands_manager=use_compile_commands_manager,
         )
 
-        diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
-        diagnostics.debug(
-            f"Concurrency mode: ProcessPool (spawn, GIL bypass) with {self.context.max_workers} workers"
-        )
-
-        # Print compile commands configuration status
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compilation_env.has_active_compile_commands():
-            compile_commands_config = self.config.get_compile_commands_config()
-            cc_path = self.project_root / compile_commands_config.compile_commands_path
-            if cc_path.exists():
-                # This message will be followed by actual load message from CompileCommandsManager
-                diagnostics.debug(
-                    f"Compile commands enabled: using {compile_commands_config.compile_commands_path}"
-                )
-            else:
-                diagnostics.debug(
-                    f"Compile commands enabled: {compile_commands_config.compile_commands_path} not found, will use fallback args"
-                )
-        elif self.compilation_env.compile_commands_manager is None:
-            diagnostics.debug("Worker mode: using precomputed compile args from main process")
-        else:
-            diagnostics.debug("Compile commands disabled in configuration")
+        # Expose all composed services as direct attributes for backward compatibility
+        self.context = self._root.context
+        self.project_root = self._root.project_root
+        self.index = self._root.index
+        self.project_identity = self._root.project_identity
+        self.config = self._root.config
+        self.cache_manager = self._root.cache_manager
+        self.concurrency = self._root.concurrency
+        self.cancellation = self._root.cancellation
+        self.execution = self._root.execution
+        self.progress_reporter = self._root.progress_reporter
+        self.call_graph_service = self._root.call_graph_service
+        self.symbol_store = self._root.symbol_store
+        self.compilation_env = self._root.compilation_env
+        self.query_engine = self._root.query_engine
+        self.cache_orchestrator = self._root.cache_orchestrator
+        self.cache_dir = self._root.cache_manager.cache_dir
+        self.clang_parser = self._root.clang_parser
+        self.symbol_extractor = self._root.symbol_extractor
+        self.task_submitter = self._root.task_submitter
+        self.worker_result_merger = self._root.worker_result_merger
+        self.indexing_pipeline = self._root.indexing_pipeline
+        self.refresh_pipeline = self._root.refresh_pipeline
+        self.indexing_orchestrator = self._root.indexing_orchestrator
 
     def interrupt(self):
         """
