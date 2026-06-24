@@ -46,7 +46,6 @@ def _process_file_worker(spec: IndexingTaskSpec):
 
     # Lazy import to avoid circular dependency at module level
     from ..cpp_analyzer import CppAnalyzer
-    from .._search.call_graph import CallGraphAnalyzer
 
     # Create a single analyzer instance per worker process (process-local)
     if _worker_analyzer is None:
@@ -70,7 +69,7 @@ def _process_file_worker(spec: IndexingTaskSpec):
     # Set per-call parameters
     context.compilation_env.include_dependencies = spec.include_dependencies
     # Reset stateful components to prevent data leakage between files
-    context.call_graph_service.call_graph_analyzer = CallGraphAnalyzer()
+    context.call_graph_service.call_graph_analyzer.clear()
 
     # Set precomputed compile args
     context.compilation_env._provided_compile_args = spec.compile_args

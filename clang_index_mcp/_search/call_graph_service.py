@@ -77,39 +77,7 @@ class CallGraphService:
         diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
         diagnostics.debug(f"First call format: {calls_buffer[0]}")
 
-        for call_info in calls_buffer:
-            if len(call_info) == 7:
-                # v17.0 format
-                (
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    disp_name,
-                    tmpl_types,
-                ) = call_info
-                self.call_graph_analyzer.add_call(
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    display_name=disp_name,
-                    template_project_types=tmpl_types,
-                )
-            elif len(call_info) == 5:
-                # Phase 3 format
-                caller_usr, called_usr, call_file, call_line, call_column = call_info
-                self.call_graph_analyzer.add_call(
-                    caller_usr, called_usr, call_file, call_line, call_column
-                )
-            elif len(call_info) == 2:
-                # Legacy format
-                caller_usr, called_usr = call_info
-                self.call_graph_analyzer.add_call(caller_usr, called_usr)
-            else:
-                diagnostics.warning(f"Unexpected call_info format: {call_info}")
+        self.call_graph_analyzer.process_call_buffer(calls_buffer)
 
     def _stream_call_sites(self, file_path: str, call_sites: List[Dict]):
         """Stream call sites to SQLite and update in-memory call graph."""

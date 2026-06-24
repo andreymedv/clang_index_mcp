@@ -119,7 +119,9 @@ class CppAnalyzer:
         self.call_graph_service = CallGraphService(self.context)
         self.context.call_graph_service = self.call_graph_service
 
-        self.symbol_store = SymbolIndexStore(self.context)
+        self.symbol_store = SymbolIndexStore(
+            self.context, self.call_graph_service.call_graph_analyzer
+        )
         self.context.symbol_store = self.symbol_store
 
         self.compilation_env = CompilationEnvironment(self.context)
@@ -131,7 +133,7 @@ class CppAnalyzer:
         # Break circular dependency: CallGraphService needs symbol_store/query_engine.
         self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
 
-        self.cache_orchestrator = CacheOrchestrator(self.context)
+        self.cache_orchestrator: "CacheOrchestrator" = CacheOrchestrator(self.context)
         self.context.cache_orchestrator = self.cache_orchestrator
 
         # Wire call graph service to SQLite cache backend.
@@ -483,6 +485,7 @@ if __name__ == "__main__":
     analyzer = CppAnalyzer(".")
 
     # Try to load from cache first
+    assert analyzer.cache_orchestrator is not None
     if not analyzer.cache_orchestrator._load_cache():
         analyzer.index_project()
 
