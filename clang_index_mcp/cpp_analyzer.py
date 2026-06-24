@@ -189,7 +189,15 @@ class CppAnalyzer:
         self.worker_result_merger = WorkerResultMerger(self.context)
         self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
         self.refresh_pipeline = RefreshPipeline(
-            self.context, self.task_submitter, self.worker_result_merger
+            compilation_env=self.compilation_env,
+            execution=self.execution,
+            cache_manager=self.cache_manager,
+            cache_orchestrator=self.cache_orchestrator,
+            symbol_extractor=self.symbol_extractor,
+            symbol_store=self.symbol_store,
+            progress_reporter=self.progress_reporter,
+            task_submitter=self.task_submitter,
+            worker_result_merger=self.worker_result_merger,
         )
         self.context.persistence.refresh_pipeline = self.refresh_pipeline
         self.indexing_orchestrator = ProjectIndexingOrchestrator(

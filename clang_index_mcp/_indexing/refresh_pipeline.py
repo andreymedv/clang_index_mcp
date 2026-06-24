@@ -14,7 +14,13 @@ from .._symbols.indexing_callbacks import IndexingCallbacks
 if TYPE_CHECKING:
     from concurrent.futures import Executor
 
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._indexing.execution_config import ExecutionConfig
+    from .._indexing.indexing_progress_reporter import IndexingProgressReporter
+    from .._persistence.cache_manager import CacheManager
+    from .._persistence.cache_orchestrator import CacheOrchestrator
+    from .._symbols.symbol_extractor import SymbolExtractor
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class RefreshPipeline:
@@ -22,7 +28,13 @@ class RefreshPipeline:
 
     def __init__(
         self,
-        context: "ProjectContext",
+        compilation_env: "CompilationEnvironment",
+        execution: "ExecutionConfig",
+        cache_manager: "CacheManager",
+        cache_orchestrator: "CacheOrchestrator",
+        symbol_extractor: "SymbolExtractor",
+        symbol_store: "SymbolIndexStore",
+        progress_reporter: "IndexingProgressReporter",
         task_submitter: Any,
         worker_result_merger: Any,
     ):
@@ -30,28 +42,25 @@ class RefreshPipeline:
         Initialize the refresh pipeline.
 
         Args:
-            context: Shared project context with compilation, cache, symbol, and
-                     progress services.
+            compilation_env: Compilation environment for file scanning.
+            execution: Execution configuration with worker pool.
+            cache_manager: SQLite-backed cache and persistence.
+            cache_orchestrator: Cache orchestration and header tracking.
+            symbol_extractor: Symbol extraction from translation units.
+            symbol_store: In-memory symbol indexes.
+            progress_reporter: Progress reporting for indexing operations.
             task_submitter: IndexingTaskSubmitter instance.
             worker_result_merger: WorkerResultMerger instance.
         """
-        self.context = context
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.execution is not None
-        self.execution = context.execution
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
-        assert context.cache_orchestrator is not None
-        self.cache_orchestrator = context.cache_orchestrator
-        assert context.symbol_extractor is not None
-        self.symbol_extractor = context.symbol_extractor
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
+        self.compilation_env = compilation_env
+        self.execution = execution
+        self.cache_manager = cache_manager
+        self.cache_orchestrator = cache_orchestrator
+        self.symbol_extractor = symbol_extractor
+        self.symbol_store = symbol_store
+        self.progress_reporter = progress_reporter
         self.task_submitter = task_submitter
         self.worker_result_merger = worker_result_merger
-        assert context.progress_reporter is not None
-        self.progress_reporter = context.progress_reporter
 
     def refresh_if_needed(
         self,
@@ -66,8 +75,8 @@ class RefreshPipeline:
         """
         refreshed, deleted, start_time = 0, 0, time.time()
 
-        if self.context.is_compile_commands_enabled():
-            compile_commands_manager = self.context.compile_commands_manager
+        if self.compilation_env.has_active_compile_commands():
+            compile_commands_manager = self.compilation_env.compile_commands_manager
             assert compile_commands_manager is not None
             if compile_commands_manager.refresh_if_needed():
                 diagnostics.debug("Compile commands refreshed")
