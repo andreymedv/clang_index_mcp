@@ -192,7 +192,12 @@ class CppAnalyzer:
         self.context.symbols.symbol_extractor = self.symbol_extractor
 
         # Indexing/refresh pipelines receive the fully wired context.
-        self.task_submitter = IndexingTaskSubmitter(self.context)
+        self.task_submitter = IndexingTaskSubmitter(
+            project_root=self.project_root,
+            project_identity=self.project_identity,
+            execution=self.execution,
+            compilation_env=self.compilation_env,
+        )
         self.worker_result_merger = WorkerResultMerger(self.context)
         self.indexing_pipeline = SingleFileIndexingPipeline(
             clang_parser=self.clang_parser,
