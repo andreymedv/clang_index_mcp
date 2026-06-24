@@ -1,9 +1,8 @@
-"""
-Project-wide dependency container for C++ analysis components.
+"""Project-wide dependency container for C++ analysis components.
 
-ProjectContext holds the shared services and configuration that the indexing,
-refresh, and query pipelines need.  It is intentionally a plain data container:
-no behavior lives here except trivial delegations to the owned components.
+ProjectContext is now a thin facade over focused, cohesive contexts.  Each
+component can receive only the context it actually needs, while legacy callers
+continue to work through the backward-compatible properties on this class.
 """
 
 from pathlib import Path
@@ -11,35 +10,39 @@ from typing import TYPE_CHECKING, Optional
 
 from clang.cindex import Index
 
-from ._persistence.cache_manager import CacheManager
-from ._persistence.cache_orchestrator import CacheOrchestrator
-from ._search.call_graph_service import CallGraphService
+if TYPE_CHECKING:
+    from ._indexing.refresh_pipeline import RefreshPipeline
+
 from ._core.cancellation_coordinator import CancellationCoordinator
-from ._compilation.clang_parser import ClangParser
-from ._compilation.compilation_environment import CompilationEnvironment
 from ._core.concurrency_context import ConcurrencyContext
+from ._core.project_identity_context import ProjectIdentityContext
+from ._core.runtime_context import RuntimeContext
+from ._compilation.clang_parser import ClangParser
+from ._compilation.compilation_context import CompilationContext
+from ._compilation.compilation_environment import CompilationEnvironment
 from .cpp_analyzer_config import CppAnalyzerConfig
 from ._indexing.execution_config import ExecutionConfig
 from ._indexing.indexing_progress_reporter import IndexingProgressReporter
+from ._persistence.cache_manager import CacheManager
+from ._persistence.cache_orchestrator import CacheOrchestrator
+from ._persistence.persistence_context import PersistenceContext
 from ._persistence.project_identity import ProjectIdentity
+from ._search.call_graph_service import CallGraphService
+from ._search.query_context import QueryContext
 from ._search.query_engine import QueryEngine
+from ._symbols.symbol_context import SymbolContext
+from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
-
-if TYPE_CHECKING:
-    from ._indexing.refresh_pipeline import RefreshPipeline
-    from ._symbols.symbol_extractor import SymbolExtractor
 
 
 class ProjectContext:
     """
     Mutable container for all services tied to a single analyzed project.
 
-    Components receive this object instead of the full CppAnalyzer, which makes
-    dependencies explicit and simplifies unit testing.  Backward-compatible
-    properties on CppAnalyzer still expose the same services.
-
-    The container is mutable so that components can be wired incrementally during
-    the one-by-one migration away from CppAnalyzer references.
+    Components should receive one of the focused contexts (``identity``,
+    ``runtime``, ``compilation``, ``persistence``, ``symbols``, ``query``)
+    instead of this facade whenever possible.  The properties on this class
+    remain for backward compatibility and for the thin ``CppAnalyzer`` shell.
     """
 
     def __init__(
@@ -57,59 +60,136 @@ class ProjectContext:
             config_file: Optional path to configuration file for project identity.
             skip_schema_recreation: Passed to CacheManager for worker processes.
         """
-        self.project_root = Path(project_root).resolve()
-        self.index = Index.create()
         self._skip_schema_recreation = skip_schema_recreation
 
+        project_root_path = Path(project_root).resolve()
         config_path = Path(config_file).resolve() if config_file else None
-        self.project_identity = ProjectIdentity(self.project_root, config_path)
-        self.config = CppAnalyzerConfig(self.project_root, config_path=config_path)
 
-        # Core services with no circular construction dependencies.
-        self.cache_manager = CacheManager(
-            self.project_identity, skip_schema_recreation=self._skip_schema_recreation
+        project_identity = ProjectIdentity(project_root_path, config_path)
+        config = CppAnalyzerConfig(project_root_path, config_path=config_path)
+
+        cache_manager = CacheManager(
+            project_identity, skip_schema_recreation=self._skip_schema_recreation
         )
-        self.concurrency = ConcurrencyContext()
-        self.cancellation = CancellationCoordinator()
-        self.execution = ExecutionConfig(config_max_workers=self.config.get_max_workers())
-        self.progress_reporter = IndexingProgressReporter()
+        concurrency = ConcurrencyContext()
+        cancellation = CancellationCoordinator()
+        execution = ExecutionConfig(config_max_workers=config.get_max_workers())
+        progress_reporter = IndexingProgressReporter()
 
-        # Components populated after the context is created so they can depend on
-        # the context instead of the full CppAnalyzer.
-        self.clang_parser: Optional[ClangParser] = None
-        self.symbol_extractor: Optional[SymbolExtractor] = None
-        self.symbol_store: Optional[SymbolIndexStore] = None
-        self.call_graph_service: Optional[CallGraphService] = None
-        self.query_engine: Optional[QueryEngine] = None
-        self.compilation_env: Optional[CompilationEnvironment] = None
-        self.cache_orchestrator: Optional[CacheOrchestrator] = None
-        self.refresh_pipeline: Optional["RefreshPipeline"] = None
+        self.identity = ProjectIdentityContext(
+            project_root=project_root_path,
+            project_identity=project_identity,
+            config=config,
+        )
+        self.runtime = RuntimeContext(
+            concurrency=concurrency,
+            cancellation=cancellation,
+            execution=execution,
+            progress_reporter=progress_reporter,
+        )
+        self.compilation = CompilationContext(index=Index.create())
+        self.persistence = PersistenceContext(cache_manager=cache_manager)
+        self.symbols = SymbolContext()
+        self.query = QueryContext()
+
+    # ------------------------------------------------------------------
+    # Backward-compatible facade properties
+    # ------------------------------------------------------------------
+
+    @property
+    def project_root(self) -> Path:
+        return self.identity.project_root
+
+    @property
+    def project_identity(self) -> ProjectIdentity:
+        return self.identity.project_identity
+
+    @property
+    def config(self) -> CppAnalyzerConfig:
+        return self.identity.config
+
+    @property
+    def index(self) -> Index:
+        return self.compilation.index
+
+    @property
+    def cache_manager(self) -> CacheManager:
+        return self.persistence.cache_manager
+
+    @property
+    def cache_orchestrator(self) -> Optional[CacheOrchestrator]:
+        return self.persistence.cache_orchestrator
+
+    @property
+    def concurrency(self) -> ConcurrencyContext:
+        return self.runtime.concurrency
+
+    @property
+    def cancellation(self) -> CancellationCoordinator:
+        return self.runtime.cancellation
+
+    @property
+    def execution(self) -> ExecutionConfig:
+        return self.runtime.execution
+
+    @property
+    def progress_reporter(self) -> IndexingProgressReporter:
+        return self.runtime.progress_reporter
+
+    @property
+    def call_graph_service(self) -> Optional[CallGraphService]:
+        return self.symbols.call_graph_service
+
+    @property
+    def symbol_store(self) -> Optional[SymbolIndexStore]:
+        return self.symbols.symbol_store
+
+    @property
+    def symbol_extractor(self) -> Optional[SymbolExtractor]:
+        return self.symbols.symbol_extractor
+
+    @property
+    def compilation_env(self) -> Optional[CompilationEnvironment]:
+        return self.compilation.compilation_env
+
+    @property
+    def clang_parser(self) -> Optional[ClangParser]:
+        return self.compilation.clang_parser
+
+    @property
+    def query_engine(self) -> Optional[QueryEngine]:
+        return self.query.query_engine
+
+    @property
+    def refresh_pipeline(self) -> Optional["RefreshPipeline"]:
+        return self.persistence.refresh_pipeline
 
     @property
     def compile_commands_manager(self):
         """Convenience accessor for the compile commands manager."""
-        if self.compilation_env is None:
+        if self.compilation.compilation_env is None:
             return None
-        return self.compilation_env.compile_commands_manager
+        return self.compilation.compilation_env.compile_commands_manager
 
     def is_compile_commands_enabled(self) -> bool:
         """Return True when compile commands integration is active."""
         return (
-            self.compilation_env is not None and self.compilation_env.has_active_compile_commands()
+            self.compilation.compilation_env is not None
+            and self.compilation.compilation_env.has_active_compile_commands()
         )
 
     @property
     def cache_dir(self) -> Path:
         """Convenience accessor for the cache directory."""
-        return self.cache_manager.cache_dir
+        return self.persistence.cache_manager.cache_dir
 
     @property
     def file_scanner(self):
         """Convenience accessor for the file scanner."""
-        assert self.compilation_env is not None
-        return self.compilation_env.file_scanner
+        assert self.compilation.compilation_env is not None
+        return self.compilation.compilation_env.file_scanner
 
     @property
     def max_workers(self) -> int:
         """Convenience accessor for the worker pool size."""
-        return self.execution.max_workers
+        return self.runtime.execution.max_workers
