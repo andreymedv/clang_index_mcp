@@ -6,18 +6,16 @@ and call paths between functions.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from .._compilation.include_extractor import ClangIncludeExtractor
 from .._core import diagnostics
 from .._persistence.repositories.dependency_repository import SqliteDependencyRepository
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
+from .._persistence.persistence_context import PersistenceContext
 from .._symbols.usr_decoder import usr_to_display_name
 from .._symbols.model import build_location_objects, omit_empty
-
-if TYPE_CHECKING:
-    from ..project_context import ProjectContext
 
 
 class CallGraphService:
@@ -26,13 +24,12 @@ class CallGraphService:
     and call path queries.
     """
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(self, context: PersistenceContext):
         """
         Initialize CallGraphService.
 
         Args:
-            context: Shared project context for access to indexes,
-                     cache_manager, and search_functions.
+            context: Persistence context for access to cache_manager.
         """
         self.context = context
         assert context.cache_manager is not None
