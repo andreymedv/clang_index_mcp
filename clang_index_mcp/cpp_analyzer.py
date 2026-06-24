@@ -191,7 +191,11 @@ class CppAnalyzer:
             compilation_env=self.compilation_env,
             cache_orchestrator=self.cache_orchestrator,
             call_graph_service=self.call_graph_service,
-            parser=ClangSymbolParser(self.context),
+            parser=ClangSymbolParser(
+                compilation_env=self.compilation_env,
+                symbol_store=self.symbol_store,
+                cache_orchestrator=self.cache_orchestrator,
+            ),
         )
         self.context.symbols.symbol_extractor = self.symbol_extractor
 

@@ -16,26 +16,31 @@ from .._symbols.signature_builder import build_human_readable_signature
 from .._symbols.usr_decoder import usr_to_display_name
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._persistence.cache_orchestrator import CacheOrchestrator
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class ClangSymbolParser(SymbolParser):
     """AST traversal and symbol extraction backed by libclang cursors."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        compilation_env: "CompilationEnvironment",
+        symbol_store: "SymbolIndexStore",
+        cache_orchestrator: "CacheOrchestrator",
+    ):
         """
         Initialize ClangSymbolParser.
 
         Args:
-            context: Shared project context for access to indexes and config.
+            compilation_env: Compilation environment for project file detection.
+            symbol_store: In-memory symbol indexes.
+            cache_orchestrator: Cache orchestration for file hashing.
         """
-        self.context = context
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
-        assert context.cache_orchestrator is not None
-        self.cache_orchestrator = context.cache_orchestrator
+        self.compilation_env = compilation_env
+        self.symbol_store = symbol_store
+        self.cache_orchestrator = cache_orchestrator
 
         # Buffers are normally reset by parse(); they are also kept available so
         # _process_cursor can be exercised directly in tests and diagnostics.
@@ -51,7 +56,7 @@ class ClangSymbolParser(SymbolParser):
 
     @property
     def index_lock(self):
-        return self.context.concurrency.index_lock
+        return self.symbol_store.index_lock
 
     @property
     def class_index(self):
