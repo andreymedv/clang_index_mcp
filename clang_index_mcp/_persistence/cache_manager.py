@@ -13,7 +13,7 @@ from .._persistence.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._core.error_tracking import ErrorTracker, RecoveryManager
 from .._persistence.project_identity import ProjectIdentity
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 
 # Handle both package and script imports
 try:

@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 
 
 @runtime_checkable

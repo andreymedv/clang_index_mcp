@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from .._persistence.symbol_info import SymbolInfo, build_location_objects, omit_empty
+from .._symbols.model import SymbolInfo, build_location_objects, omit_empty
 from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.search_engine import SearchEngine
 

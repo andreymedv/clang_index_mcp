@@ -7,10 +7,10 @@ management.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .._core import diagnostics
-from .._persistence.symbol_info import build_location_objects, omit_empty
+from .._symbols.model import build_location_objects, omit_empty
 
 if TYPE_CHECKING:
-    from .._persistence.symbol_info import SymbolInfo
+    from .._symbols.model import SymbolInfo
     from .symbol_index_store import SymbolIndexStore
 
 

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from .._core.regex_validator import RegexValidator
 from .._search.search_criteria import SearchCriteria
-from .._persistence.symbol_info import (
+from .._symbols.model import (
     SymbolInfo,
     build_location_objects,
     get_template_param_base_indices,

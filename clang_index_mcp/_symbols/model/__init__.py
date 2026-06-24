@@ -1,10 +1,6 @@
-"""Backward-compatible re-export of the symbol domain model.
+"""Domain model for symbols and analysis results."""
 
-The canonical location is ``clang_index_mcp._symbols.model``. This module is kept
-only for compatibility during the migration and will be removed in a follow-up.
-"""
-
-from .._symbols.model.symbol_info import (
+from .symbol_info import (
     CLASS_KINDS,
     SymbolInfo,
     build_location_objects,

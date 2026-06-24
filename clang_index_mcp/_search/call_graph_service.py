@@ -12,7 +12,7 @@ from .._core import diagnostics
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
 from .._symbols.usr_decoder import usr_to_display_name
-from .._persistence.symbol_info import build_location_objects, omit_empty
+from .._symbols.model import build_location_objects, omit_empty
 
 if TYPE_CHECKING:
     from ..project_context import ProjectContext

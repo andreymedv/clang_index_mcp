@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 from clang.cindex import CursorKind
 
 from .._core import diagnostics
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 from .alias_extractor import extract_alias_info
 from .cursor_utils import extract_namespace, get_qualified_name
 from .documentation_extractor import extract_documentation

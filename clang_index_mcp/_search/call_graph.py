@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional, Set
 
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 
 
 class CallSite:

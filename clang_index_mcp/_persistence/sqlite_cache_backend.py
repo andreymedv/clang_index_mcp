@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 from .._persistence import type_alias_repository
 
 # Handle both package and script imports
@@ -1621,7 +1621,7 @@ class SqliteCacheBackend:
 
             elif operation == "write":
                 # Test write performance (rollback to avoid changes)
-                from .._persistence.symbol_info import SymbolInfo
+                from .._symbols.model import SymbolInfo
 
                 test_symbol = SymbolInfo(
                     name="PerfTestSymbol",

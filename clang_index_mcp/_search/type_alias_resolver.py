@@ -7,7 +7,7 @@ that type-alias queries are isolated from the rest of query-engine logic.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from .._search.pattern_matcher import matches_qualified_pattern
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 
 if TYPE_CHECKING:
     from ..project_context import ProjectContext

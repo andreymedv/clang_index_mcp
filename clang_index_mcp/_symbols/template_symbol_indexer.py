@@ -4,7 +4,7 @@ import re
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from .._persistence.symbol_info import SymbolInfo
+    from .._symbols.model import SymbolInfo
     from .symbol_index_store import SymbolIndexStore
 
 

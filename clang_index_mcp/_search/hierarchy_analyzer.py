@@ -8,7 +8,7 @@ of this logic.
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .._persistence.symbol_info import SymbolInfo
+from .._symbols.model import SymbolInfo
 from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.search_engine import SearchEngine
 from .._search.template_analyzer import get_derived_classes
