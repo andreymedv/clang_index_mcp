@@ -1,9 +1,8 @@
 """Symbol extraction and call-graph domain context."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
-from .._search.call_graph_service import CallGraphService
 from .symbol_extractor import SymbolExtractor
 from .symbol_index_store import SymbolIndexStore
 
@@ -14,4 +13,4 @@ class SymbolContext:
 
     symbol_store: Optional[SymbolIndexStore] = None
     symbol_extractor: Optional[SymbolExtractor] = None
-    call_graph_service: Optional[CallGraphService] = None
+    call_graph_service: Optional[Any] = None

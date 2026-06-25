@@ -3,7 +3,8 @@
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from .._core.error_tracking import ErrorTracker, RecoveryManager
+from .._core.error_tracking import ErrorTracker
+from .._persistence.recovery import RecoveryManager
 from .._persistence.ports.recovery import CacheRecoveryPort
 
 

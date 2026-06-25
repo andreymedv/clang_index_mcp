@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
 from ._core.cancellation_coordinator import CancellationCoordinator
 from ._core.concurrency_context import ConcurrencyContext
-from ._core.project_identity_context import ProjectIdentityContext
-from ._core.runtime_context import RuntimeContext
+from ._core.error_tracking_adapter import ErrorTrackingAdapter
+from ._contexts import ProjectIdentityContext
+from ._contexts.runtime_context import RuntimeContext
 from ._compilation.clang_parser import ClangParser
 from ._compilation.compilation_context import CompilationContext
 from ._compilation.compilation_environment import CompilationEnvironment
@@ -27,6 +28,7 @@ from ._persistence.cache_manager import CacheManager
 from ._persistence.cache_orchestrator import CacheOrchestrator
 from ._persistence.persistence_context import PersistenceContext
 from ._persistence.project_identity import ProjectIdentity
+from ._persistence.sqlite_cache_backend import SqliteCacheBackend
 from ._search.call_graph_service import CallGraphService
 from ._search.query_context import QueryContext
 from ._search.query_engine import QueryEngine
@@ -60,16 +62,24 @@ class ProjectContext:
             config_file: Optional path to configuration file for project identity.
             skip_schema_recreation: Passed to CacheManager for worker processes.
         """
-        self._skip_schema_recreation = skip_schema_recreation
-
         project_root_path = Path(project_root).resolve()
         config_path = Path(config_file).resolve() if config_file else None
 
         project_identity = ProjectIdentity(project_root_path, config_path)
         config = CppAnalyzerConfig(project_root_path, config_path=config_path)
 
+        cache_dir = CacheManager.compute_cache_dir(project_identity)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_backend = SqliteCacheBackend(
+            cache_dir / "symbols.db",
+            skip_schema_recreation=skip_schema_recreation,
+        )
+        cache_recovery = ErrorTrackingAdapter()
         cache_manager = CacheManager(
-            project_identity, skip_schema_recreation=self._skip_schema_recreation
+            project_identity,
+            skip_schema_recreation=skip_schema_recreation,
+            backend=cache_backend,
+            recovery=cache_recovery,
         )
         concurrency = ConcurrencyContext()
         cancellation = CancellationCoordinator()

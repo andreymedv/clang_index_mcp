@@ -10,6 +10,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._symbols.model import SymbolInfo
 from .._persistence import type_alias_repository
+from .._persistence.repositories.symbol_repository import SymbolRepository
+from .._persistence.repositories.call_site_repository import CallSiteRepository
+from .._persistence.repositories.file_metadata_repository import FileMetadataRepository
+from .._persistence.repositories.maintenance_service import MaintenanceService
 
 # Handle both package and script imports
 try:
@@ -66,6 +70,12 @@ class SqliteCacheBackend:
         with self._acquire_init_lock():
             self._connect()
             self._init_database()
+
+        # Sub-repositories (delegate after connection is live)
+        self._symbol_repo = SymbolRepository(self.get_connection)
+        self._call_site_repo = CallSiteRepository(self.get_connection)
+        self._file_metadata_repo = FileMetadataRepository(self.get_connection)
+        self._maintenance = MaintenanceService(self.get_connection)
 
     def _connect(self):
         """Open database connection with optimized settings."""
@@ -449,296 +459,34 @@ class SqliteCacheBackend:
         self._close()
 
     def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
-        """
-        Convert SymbolInfo to tuple for SQL insertion.
-
-        Args:
-            symbol: SymbolInfo object
-
-        Returns:
-            Tuple of values matching INSERT statement column order
-        """
-        now = time.time()
-
-        return (
-            symbol.usr,
-            symbol.name,
-            symbol.qualified_name,  # v10.0: Qualified Names Phase 1
-            symbol.kind,
-            symbol.file,
-            symbol.line,
-            symbol.column,
-            symbol.signature,
-            symbol.is_project,
-            symbol.namespace,
-            symbol.access,
-            symbol.parent_class,
-            json.dumps(symbol.base_classes),
-            # v9.0: calls/called_by removed - use call_sites table
-            symbol.is_template_specialization,  # v10.1: Phase 3 Qualified Names
-            # v13.0: Template tracking
-            symbol.is_template,
-            symbol.template_kind,
-            symbol.template_parameters,
-            symbol.primary_template_usr,
-            symbol.start_line,  # v5.0: Line ranges
-            symbol.end_line,  # v5.0: Line ranges
-            symbol.header_file,  # v5.0: Header location
-            symbol.header_line,  # v5.0: Header location
-            symbol.header_start_line,  # v5.0: Header location
-            symbol.header_end_line,  # v5.0: Header location
-            symbol.is_definition,  # v6.0: Definition tracking
-            # v14.0: Virtual/abstract indicators
-            symbol.is_virtual,
-            symbol.is_pure_virtual,
-            symbol.is_const,
-            symbol.is_static,
-            symbol.brief,  # v7.0: Documentation
-            symbol.doc_comment,  # v7.0: Documentation
-            now,  # created_at
-            now,  # updated_at
-        )
+        return self._symbol_repo._symbol_to_tuple(symbol)
 
     def _row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
-        """
-        Convert database row to SymbolInfo object.
-
-        Args:
-            row: SQLite row object
-
-        Returns:
-            SymbolInfo object
-        """
-        return SymbolInfo(
-            name=row["name"],
-            qualified_name=(
-                row["qualified_name"] if "qualified_name" in row.keys() else ""
-            ),  # v10.0: Qualified Names
-            kind=row["kind"],
-            file=row["file"],
-            line=row["line"],
-            column=row["column"],
-            signature=row["signature"] or "",
-            is_project=bool(row["is_project"]),
-            namespace=row["namespace"] or "",
-            access=row["access"] or "public",
-            parent_class=row["parent_class"] or "",
-            base_classes=json.loads(row["base_classes"]) if row["base_classes"] else [],
-            usr=row["usr"] or "",
-            # v10.1: Phase 3 Qualified Names - Overload metadata
-            is_template_specialization=(
-                bool(row["is_template_specialization"])
-                if "is_template_specialization" in row.keys()
-                else False
-            ),
-            # v13.0: Template tracking
-            is_template=(bool(row["is_template"]) if "is_template" in row.keys() else False),
-            template_kind=(row["template_kind"] if "template_kind" in row.keys() else None),
-            template_parameters=(
-                row["template_parameters"] if "template_parameters" in row.keys() else None
-            ),
-            primary_template_usr=(
-                row["primary_template_usr"] if "primary_template_usr" in row.keys() else None
-            ),
-            # v9.0: calls/called_by removed - use call graph API
-            # v5.0: Line ranges and header location
-            start_line=row["start_line"] if "start_line" in row.keys() else None,
-            end_line=row["end_line"] if "end_line" in row.keys() else None,
-            header_file=row["header_file"] if "header_file" in row.keys() else None,
-            header_line=row["header_line"] if "header_line" in row.keys() else None,
-            header_start_line=(
-                row["header_start_line"] if "header_start_line" in row.keys() else None
-            ),
-            header_end_line=row["header_end_line"] if "header_end_line" in row.keys() else None,
-            # v6.0: Definition tracking
-            is_definition=bool(row["is_definition"]) if "is_definition" in row.keys() else False,
-            # v14.0: Virtual/abstract indicators
-            is_virtual=bool(row["is_virtual"]) if "is_virtual" in row.keys() else False,
-            is_pure_virtual=(
-                bool(row["is_pure_virtual"]) if "is_pure_virtual" in row.keys() else False
-            ),
-            is_const=bool(row["is_const"]) if "is_const" in row.keys() else False,
-            is_static=bool(row["is_static"]) if "is_static" in row.keys() else False,
-            # v7.0: Documentation
-            brief=row["brief"] if "brief" in row.keys() else None,
-            doc_comment=row["doc_comment"] if "doc_comment" in row.keys() else None,
-        )
+        return self._symbol_repo._row_to_symbol(row)
 
     def save_symbol(self, symbol: SymbolInfo) -> bool:
-        """
-        Insert or update a single symbol.
-
-        Args:
-            symbol: SymbolInfo object to save
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    self._symbol_to_tuple(symbol),
-                )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Failed to save symbol {symbol.usr}: {e}")
-            return False
+        self._ensure_connected()
+        return self._symbol_repo.save_symbol(symbol)
 
     def save_symbols_batch(self, symbols: List[SymbolInfo]) -> int:
-        """
-        Batch insert/update symbols using transaction.
-
-        Performance: ~10,000 symbols/sec vs ~100 symbols/sec for individual inserts.
-
-        Args:
-            symbols: List of SymbolInfo objects to save
-
-        Returns:
-            Number of symbols successfully saved
-        """
-        if not symbols:
-            return 0
-
-        try:
-            self._ensure_connected()
-
-            # Batch insert in a single transaction
-            with self._conn:
-                self._conn.executemany(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [self._symbol_to_tuple(s) for s in symbols],
-                )
-
-            return len(symbols)
-
-        except Exception as e:
-            diagnostics.error(f"Failed to batch save {len(symbols)} symbols: {e}")
-            return 0
+        self._ensure_connected()
+        return self._symbol_repo.save_symbols_batch(symbols)
 
     def load_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
-        """
-        Load a symbol by its USR.
-
-        Args:
-            usr: Unified Symbol Resolution ID
-
-        Returns:
-            SymbolInfo object if found, None otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
-
-            row = cursor.fetchone()
-            if row:
-                return self._row_to_symbol(row)
-
-            return None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load symbol by USR {usr}: {e}")
-            return None
+        self._ensure_connected()
+        return self._symbol_repo.load_symbol_by_usr(usr)
 
     def load_symbols_by_name(self, name: str) -> List[SymbolInfo]:
-        """
-        Load all symbols matching a name.
-
-        Args:
-            name: Symbol name to search for
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
-
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load symbols by name {name}: {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.load_symbols_by_name(name)
 
     def count_symbols(self) -> int:
-        """
-        Get total symbol count.
-
-        Returns:
-            Number of symbols in database
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols")
-            result: int = cursor.fetchone()[0]
-            return result
-
-        except Exception as e:
-            diagnostics.error(f"Failed to count symbols: {e}")
-            return 0
+        self._ensure_connected()
+        return self._symbol_repo.count_symbols()
 
     def delete_symbols_by_file(self, file_path: str) -> int:
-        """
-        Delete all symbols from a specific file.
-
-        Args:
-            file_path: Path to file whose symbols should be deleted
-
-        Returns:
-            Number of symbols deleted
-        """
-        try:
-            self._ensure_connected()
-
-            # Get count before deletion
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
-            count = cursor.fetchone()[0]
-
-            if count == 0:
-                return 0
-
-            # Delete symbols
-            with self._conn:
-                self._conn.execute("DELETE FROM symbols WHERE file = ?", (file_path,))
-
-            diagnostics.debug(f"Deleted {count} symbols from {file_path}")
-            deleted: int = count
-            return deleted
-
-        except Exception as e:
-            diagnostics.error(f"Failed to delete symbols for file {file_path}: {e}")
-            return 0
+        self._ensure_connected()
+        return self._symbol_repo.delete_symbols_by_file(file_path)
 
     def update_file_metadata(
         self,
@@ -750,946 +498,115 @@ class SqliteCacheBackend:
         error_message: Optional[str] = None,
         retry_count: int = 0,
     ) -> bool:
-        """
-        Update or insert file metadata.
-
-        Args:
-            file_path: Absolute path to file
-            file_hash: MD5 hash of file contents
-            compile_args_hash: Hash of compilation arguments
-            symbol_count: Number of symbols in file
-            success: Whether parsing succeeded
-            error_message: Error message if parsing failed
-            retry_count: Number of retry attempts
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO file_metadata
-                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count,
-                     success, error_message, retry_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        file_path,
-                        file_hash,
-                        compile_args_hash,
-                        time.time(),
-                        symbol_count,
-                        success,
-                        error_message,
-                        retry_count,
-                    ),
-                )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Failed to update file metadata for {file_path}: {e}")
-            return False
+        self._ensure_connected()
+        return self._file_metadata_repo.update_file_metadata(
+            file_path,
+            file_hash,
+            compile_args_hash,
+            symbol_count,
+            success,
+            error_message,
+            retry_count,
+        )
 
     def get_file_metadata(self, file_path: str) -> Optional[Dict[str, Any]]:
-        """
-        Get metadata for a file.
-
-        Args:
-            file_path: Path to file
-
-        Returns:
-            Dict with file metadata if found, None otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                "SELECT * FROM file_metadata WHERE file_path = ?", (file_path,)
-            )
-
-            row = cursor.fetchone()
-            if row:
-                # Handle databases that may not have the new columns yet (before migration)
-                result = {
-                    "file_path": row["file_path"],
-                    "file_hash": row["file_hash"],
-                    "compile_args_hash": row["compile_args_hash"],
-                    "indexed_at": row["indexed_at"],
-                    "symbol_count": row["symbol_count"],
-                }
-                # Add new columns if they exist
-                try:
-                    result["success"] = bool(row["success"])
-                    result["error_message"] = row["error_message"]
-                    result["retry_count"] = row["retry_count"]
-                except (KeyError, IndexError):
-                    # Columns don't exist yet (pre-migration database)
-                    result["success"] = True
-                    result["error_message"] = None
-                    result["retry_count"] = 0
-                return result
-
-            return None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get file metadata for {file_path}: {e}")
-            return None
+        self._ensure_connected()
+        return self._file_metadata_repo.get_file_metadata(file_path)
 
     def load_all_file_hashes(self) -> Dict[str, str]:
-        """
-        Load all file hashes for cache validation.
-
-        Returns:
-            Dict mapping file_path to file_hash
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT file_path, file_hash FROM file_metadata")
-
-            return {row["file_path"]: row["file_hash"] for row in cursor.fetchall()}
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load file hashes: {e}")
-            return {}
+        self._ensure_connected()
+        return self._file_metadata_repo.load_all_file_hashes()
 
     def update_cache_metadata(self, key: str, value: str) -> bool:
-        """
-        Update cache metadata.
-
-        Args:
-            key: Metadata key
-            value: Metadata value (as JSON string for complex types)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    (key, value, time.time()),
-                )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Failed to update cache metadata {key}: {e}")
-            return False
+        self._ensure_connected()
+        return self._file_metadata_repo.update_cache_metadata(key, value)
 
     def get_cache_metadata(self, key: str) -> Optional[str]:
-        """
-        Get cache metadata value.
-
-        Args:
-            key: Metadata key
-
-        Returns:
-            Metadata value if found, None otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT value FROM cache_metadata WHERE key = ?", (key,))
-
-            row = cursor.fetchone()
-            return row["value"] if row else None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get cache metadata {key}: {e}")
-            return None
+        self._ensure_connected()
+        return self._file_metadata_repo.get_cache_metadata(key)
 
     def search_symbols_fts(
         self, pattern: str, kind: Optional[str] = None, project_only: bool = True
     ) -> List[SymbolInfo]:
-        """
-        Fast full-text search using FTS5.
-
-        Pattern can be:
-        - Exact: "Vector"
-        - Prefix: "Vec*"
-        - Multiple terms: "Vector push"
-
-        Performance: 2-5ms for 100K symbols (vs 50ms with LIKE)
-
-        Args:
-            pattern: Search pattern (FTS5 MATCH syntax)
-            kind: Filter by symbol kind (class, function, etc.)
-            project_only: If True, only return project symbols
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            # Build query using FTS5
-            query = """
-                SELECT s.* FROM symbols s
-                WHERE s.usr IN (
-                    SELECT usr FROM symbols_fts
-                    WHERE name MATCH ?
-                )
-            """
-
-            params = [pattern]
-
-            if kind:
-                query += " AND s.kind = ?"
-                params.append(kind)
-
-            if project_only:
-                query += " AND s.is_project = 1"
-
-            cursor = self._conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"FTS5 search failed for pattern '{pattern}': {e}")
-            # Fall back to regex search
-            return self.search_symbols_regex(pattern, kind, project_only)
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_fts(pattern, kind, project_only)
 
     def search_symbols_regex(
         self, pattern: str, kind: Optional[str] = None, project_only: bool = True
     ) -> List[SymbolInfo]:
-        """
-        Regex search (fallback for complex patterns).
-
-        Slower than FTS5 but more flexible.
-        Performance: 10-50ms for 100K symbols
-
-        Args:
-            pattern: Regular expression pattern
-            kind: Filter by symbol kind
-            project_only: If True, only return project symbols
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            query = "SELECT * FROM symbols WHERE name REGEXP ?"
-            params = [pattern]
-
-            if kind:
-                query += " AND kind = ?"
-                params.append(kind)
-
-            if project_only:
-                query += " AND is_project = 1"
-
-            cursor = self._conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Regex search failed for pattern '{pattern}': {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_regex(pattern, kind, project_only)
 
     def search_symbols_by_file(self, file_path: str) -> List[SymbolInfo]:
-        """
-        Get all symbols defined in a specific file.
-
-        Args:
-            file_path: Path to source file
-
-        Returns:
-            List of SymbolInfo objects from that file
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
-
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to search symbols by file {file_path}: {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_by_file(file_path)
 
     def search_symbols_by_kind(self, kind: str, project_only: bool = True) -> List[SymbolInfo]:
-        """
-        Get all symbols of a specific kind.
-
-        Args:
-            kind: Symbol kind (class, function, method, etc.)
-            project_only: If True, only return project symbols
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            query = "SELECT * FROM symbols WHERE kind = ?"
-            params = [kind]
-
-            if project_only:
-                query += " AND is_project = 1"
-
-            cursor = self._conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to search symbols by kind {kind}: {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_by_kind(kind, project_only)
 
     def get_symbol_stats(self) -> Dict[str, Any]:
-        """
-        Get detailed symbol statistics.
-
-        Returns:
-            Dict with statistics about symbols in database
-        """
-        try:
-            self._ensure_connected()
-
-            stats = {}
-
-            # Total symbol count
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols")
-            stats["total_symbols"] = cursor.fetchone()[0]
-
-            # Count by kind
-            cursor = self._conn.execute("""
-                SELECT kind, COUNT(*) as count
-                FROM symbols
-                GROUP BY kind
-                ORDER BY count DESC
-            """)
-            stats["by_kind"] = {row["kind"]: row["count"] for row in cursor.fetchall()}
-
-            # Project vs dependencies
-            cursor = self._conn.execute("""
-                SELECT is_project, COUNT(*) as count
-                FROM symbols
-                GROUP BY is_project
-            """)
-            for row in cursor.fetchall():
-                if row["is_project"]:
-                    stats["project_symbols"] = row["count"]
-                else:
-                    stats["dependency_symbols"] = row["count"]
-
-            # File count
-            cursor = self._conn.execute("SELECT COUNT(*) FROM file_metadata")
-            stats["total_files"] = cursor.fetchone()[0]
-
-            # Database size
-            cursor = self._conn.execute("PRAGMA page_count")
-            page_count = cursor.fetchone()[0]
-            cursor = self._conn.execute("PRAGMA page_size")
-            page_size = cursor.fetchone()[0]
-            stats["db_size_bytes"] = page_count * page_size
-            stats["db_size_mb"] = stats["db_size_bytes"] / (1024 * 1024)
-
-            return stats
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get symbol stats: {e}")
-            return {}
+        self._ensure_connected()
+        return self._maintenance.get_symbol_stats()
 
     def verify_integrity(self) -> bool:
-        """
-        Verify database integrity.
-
-        Returns:
-            True if database is healthy, False if corrupted
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("PRAGMA integrity_check")
-            result = cursor.fetchone()[0]
-
-            if result == "ok":
-                diagnostics.debug("Database integrity check: OK")
-                return True
-            else:
-                diagnostics.error(f"Database integrity check failed: {result}")
-                return False
-
-        except Exception as e:
-            diagnostics.error(f"Failed to check integrity: {e}")
-            return False
-
-    # =========================================================================
-    # Database Maintenance Methods
-    # =========================================================================
+        self._ensure_connected()
+        return self._maintenance.verify_integrity()
 
     def vacuum(self) -> bool:
-        """
-        Reclaim space from deleted records and defragment database.
-
-        VACUUM rebuilds the database file, repacking it into a minimal amount
-        of disk space. This is useful after large deletions.
-
-        Performance: Can take several seconds for large databases (100K+ symbols).
-        Best run during idle time or as part of scheduled maintenance.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            # Get size before vacuum
-            stats_before = self.get_symbol_stats()
-            size_before_mb = stats_before.get("db_size_mb", 0)
-
-            diagnostics.info(f"Running VACUUM (database size: {size_before_mb:.2f} MB)...")
-            start_time = time.time()
-
-            # Run VACUUM (cannot be in transaction)
-            self._conn.execute("VACUUM")
-
-            elapsed = time.time() - start_time
-
-            # Get size after vacuum
-            stats_after = self.get_symbol_stats()
-            size_after_mb = stats_after.get("db_size_mb", 0)
-            space_saved = size_before_mb - size_after_mb
-
-            diagnostics.info(
-                f"VACUUM complete in {elapsed:.2f}s. "
-                f"Size: {size_before_mb:.2f} MB → {size_after_mb:.2f} MB "
-                f"(saved {space_saved:.2f} MB)"
-            )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"VACUUM failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.vacuum()
 
     def optimize(self) -> bool:
-        """
-        Optimize FTS5 indexes by rebuilding them.
-
-        This is useful after large bulk inserts or updates to ensure
-        optimal search performance.
-
-        Performance: Can take 1-2 seconds for 100K symbols.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.info("Optimizing FTS5 indexes...")
-            start_time = time.time()
-
-            # Optimize FTS5 table
-            self._conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')")
-
-            elapsed = time.time() - start_time
-            diagnostics.info(f"FTS5 optimization complete in {elapsed:.2f}s")
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"FTS5 optimization failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.optimize()
 
     def rebuild_fts(self) -> bool:
-        """
-        Rebuild FTS5 index from scratch.
-
-        This is needed after force re-indexing because INSERT OR REPLACE
-        on the symbols table causes rowid changes, and FTS5 internal tables
-        accumulate stale entries that are not cleaned up by the DELETE trigger.
-
-        Unlike 'optimize' which only merges b-tree segments, 'rebuild'
-        completely recreates the FTS index from the content table, removing
-        all stale data and reclaiming space.
-
-        Performance: Can take 1-2 seconds for 100K symbols.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.debug("Rebuilding FTS5 index...")
-            start_time = time.time()
-
-            # Rebuild FTS5 table completely
-            self._conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')")
-
-            elapsed = time.time() - start_time
-            diagnostics.debug(f"FTS5 rebuild complete in {elapsed:.2f}s")
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"FTS5 rebuild failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.rebuild_fts()
 
     def analyze(self) -> bool:
-        """
-        Update query planner statistics for optimal query performance.
-
-        ANALYZE gathers statistics about tables and indexes that SQLite's
-        query optimizer uses to make better decisions about query plans.
-
-        Performance: Fast, typically < 100ms for 100K symbols.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.info("Running ANALYZE...")
-            start_time = time.time()
-
-            # Analyze all tables
-            self._conn.execute("ANALYZE")
-
-            elapsed = time.time() - start_time
-            diagnostics.info(f"ANALYZE complete in {elapsed:.2f}s")
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"ANALYZE failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.analyze()
 
     def auto_maintenance(
         self, vacuum_threshold_mb: float = 100.0, vacuum_min_waste_mb: float = 10.0
     ) -> Dict[str, Any]:
-        """
-        Run automatic maintenance based on database health.
-
-        Decision rules:
-        1. Always run ANALYZE (fast, always beneficial)
-        2. Run OPTIMIZE if FTS5 table exists (improves search)
-        3. Run VACUUM only if:
-           - Database > vacuum_threshold_mb AND
-           - Estimated waste > vacuum_min_waste_mb
-
-        Args:
-            vacuum_threshold_mb: Only vacuum if DB exceeds this size
-            vacuum_min_waste_mb: Only vacuum if waste exceeds this amount
-
-        Returns:
-            Dict with maintenance actions taken and results
-        """
-        try:
-            diagnostics.info("Running auto-maintenance...")
-            results: Dict[str, Any] = {
-                "analyze": False,
-                "optimize": False,
-                "vacuum": False,
-                "vacuum_skipped_reason": None,
-            }
-
-            # Always run ANALYZE (fast)
-            results["analyze"] = self.analyze()
-
-            # Always run OPTIMIZE (relatively fast, improves search)
-            results["optimize"] = self.optimize()
-
-            # Conditionally run VACUUM
-            stats = self.get_symbol_stats()
-            db_size_mb = stats.get("db_size_mb", 0)
-
-            if db_size_mb < vacuum_threshold_mb:
-                results["vacuum_skipped_reason"] = (
-                    f"Database too small ({db_size_mb:.2f} MB < {vacuum_threshold_mb} MB)"
-                )
-                diagnostics.info(results["vacuum_skipped_reason"])
-            else:
-                # Estimate wasted space (rough heuristic)
-                # Get page count and freelist count
-                cursor = self._conn.execute("PRAGMA freelist_count")
-                freelist_count = cursor.fetchone()[0]
-                cursor = self._conn.execute("PRAGMA page_size")
-                page_size = cursor.fetchone()[0]
-
-                waste_mb = (freelist_count * page_size) / (1024 * 1024)
-
-                if waste_mb >= vacuum_min_waste_mb:
-                    diagnostics.info(
-                        f"Running VACUUM (DB: {db_size_mb:.2f} MB, waste: {waste_mb:.2f} MB)"
-                    )
-                    results["vacuum"] = self.vacuum()
-                else:
-                    results["vacuum_skipped_reason"] = (
-                        f"Insufficient waste ({waste_mb:.2f} MB < {vacuum_min_waste_mb} MB)"
-                    )
-                    diagnostics.info(results["vacuum_skipped_reason"])
-
-            diagnostics.info(f"Auto-maintenance complete: {results}")
-            return results
-
-        except Exception as e:
-            diagnostics.error(f"Auto-maintenance failed: {e}")
-            return {"error": str(e)}
-
-    # =========================================================================
-    # Health Check Methods
-    # =========================================================================
+        self._ensure_connected()
+        return self._maintenance.auto_maintenance(vacuum_threshold_mb, vacuum_min_waste_mb)
 
     def check_integrity(self, full: bool = False) -> Tuple[bool, str]:
-        """
-        Check database integrity with detailed reporting.
-
-        Args:
-            full: If True, run full integrity check (slower but more thorough)
-
-        Returns:
-            Tuple of (is_healthy: bool, message: str)
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.info(f"Running {'full' if full else 'quick'} integrity check...")
-            start_time = time.time()
-
-            if full:
-                # Full integrity check
-                cursor = self._conn.execute("PRAGMA integrity_check")
-            else:
-                # Quick check (faster)
-                cursor = self._conn.execute("PRAGMA quick_check")
-
-            results = [row[0] for row in cursor.fetchall()]
-            elapsed = time.time() - start_time
-
-            if results == ["ok"]:
-                message = f"Integrity check passed in {elapsed:.2f}s"
-                diagnostics.info(message)
-                return True, message
-            else:
-                message = f"Integrity check FAILED: {', '.join(results[:5])}"
-                if len(results) > 5:
-                    message += f" (and {len(results) - 5} more issues)"
-                diagnostics.error(message)
-                return False, message
-
-        except Exception as e:
-            message = f"Integrity check error: {e}"
-            diagnostics.error(message)
-            return False, message
+        self._ensure_connected()
+        return self._maintenance.check_integrity(full)
 
     def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
-        """Check FTS5 index health and update health dict."""
-        try:
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
-            fts_count = cursor.fetchone()[0]
-            symbol_count = stats.get("total_symbols", 0)
-
-            fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
-
-            if fts_count != symbol_count:
-                warning = (
-                    f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
-                    "Consider running optimize()."
-                )
-                health["warnings"].append(warning)
-                fts_health["status"] = "warning"
-
-            health["checks"]["fts_index"] = fts_health
-
-        except Exception as e:
-            health["errors"].append(f"FTS5 check failed: {e}")
-            health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
+        self._maintenance._check_fts5_health(health, stats)
 
     def _check_wal_mode(self, health: Dict[str, Any]) -> None:
-        """Check WAL journal mode and update health dict."""
-        try:
-            cursor = self._conn.execute("PRAGMA journal_mode")
-            journal_mode = cursor.fetchone()[0].lower()
-
-            wal_health = {
-                "journal_mode": journal_mode,
-                "status": "ok" if journal_mode == "wal" else "warning",
-            }
-
-            if journal_mode != "wal":
-                warning = f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
-                health["warnings"].append(warning)
-
-            health["checks"]["wal_mode"] = wal_health
-
-        except Exception as e:
-            health["errors"].append(f"WAL check failed: {e}")
+        self._maintenance._check_wal_mode(health)
 
     @staticmethod
     def _determine_overall_status(health: Dict[str, Any]) -> None:
-        """Set overall health status based on errors and warnings."""
-        if health["errors"]:
-            health["status"] = "error"
-        elif health["warnings"]:
-            health["status"] = "warning"
-        else:
-            health["status"] = "healthy"
+        MaintenanceService._determine_overall_status(health)
 
     def get_health_status(self) -> Dict[str, Any]:
-        """
-        Get comprehensive database health status.
-
-        Returns:
-            Dict with health metrics and status
-        """
-        try:
-            self._ensure_connected()
-
-            health: Dict[str, Any] = {
-                "status": "unknown",
-                "checks": {},
-                "warnings": [],
-                "errors": [],
-            }
-
-            # 1. Integrity check
-            is_healthy, message = self.check_integrity(full=False)
-            health["checks"]["integrity"] = {"passed": is_healthy, "message": message}
-            if not is_healthy:
-                health["errors"].append(f"Integrity: {message}")
-
-            # 2. Database size check
-            stats = self.get_symbol_stats()
-            db_size_mb = stats.get("db_size_mb", 0)
-            health["checks"]["size"] = {"db_size_mb": db_size_mb, "status": "ok"}
-
-            if db_size_mb > 500:
-                warning = f"Database is very large ({db_size_mb:.2f} MB)"
-                health["warnings"].append(warning)
-                health["checks"]["size"]["status"] = "warning"
-
-            # 3. FTS5 index health
-            self._check_fts5_health(health, stats)
-
-            # 4. WAL mode check
-            self._check_wal_mode(health)
-
-            # 5. Table statistics
-            health["checks"]["tables"] = self._get_table_sizes()
-
-            self._determine_overall_status(health)
-
-            return health
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get health status: {e}")
-            return {"status": "error", "errors": [str(e)]}
+        self._ensure_connected()
+        return self._maintenance.get_health_status()
 
     def _get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Get size information for all tables.
-
-        Returns:
-            Dict mapping table names to size info
-        """
-        try:
-            tables = {}
-
-            # Get list of tables
-            cursor = self._conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            )
-            table_names = [row[0] for row in cursor.fetchall()]
-
-            for table_name in table_names:
-                try:
-                    # Get row count
-                    cursor = self._conn.execute(f"SELECT COUNT(*) FROM {table_name}")
-                    row_count = cursor.fetchone()[0]
-
-                    tables[table_name] = {"row_count": row_count, "status": "ok"}
-
-                except Exception as e:
-                    tables[table_name] = {"error": str(e), "status": "error"}
-
-            return tables
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get table sizes: {e}")
-            return {}
+        return self._maintenance._get_table_sizes()
 
     def get_cache_stats(self) -> Dict[str, Any]:
-        """
-        Get comprehensive cache statistics (enhanced version).
-
-        Returns:
-            Dict with detailed cache statistics
-        """
-        try:
-            self._ensure_connected()
-
-            stats = {}
-
-            # Basic symbol stats (reuse existing method)
-            symbol_stats = self.get_symbol_stats()
-            stats.update(symbol_stats)
-
-            # File statistics
-            cursor = self._conn.execute("""
-                SELECT
-                    COUNT(*) as total_files,
-                    SUM(symbol_count) as total_symbols_from_files,
-                    AVG(symbol_count) as avg_symbols_per_file,
-                    MAX(symbol_count) as max_symbols_in_file
-                FROM file_metadata
-            """)
-            row = cursor.fetchone()
-            stats["file_stats"] = {
-                "total_files": row[0] or 0,
-                "total_symbols_from_files": row[1] or 0,
-                "avg_symbols_per_file": round(row[2], 2) if row[2] else 0,
-                "max_symbols_in_file": row[3] or 0,
-            }
-
-            # Top files by symbol count
-            cursor = self._conn.execute("""
-                SELECT file_path, symbol_count
-                FROM file_metadata
-                ORDER BY symbol_count DESC
-                LIMIT 10
-            """)
-            stats["top_files"] = [
-                {"file": row[0], "symbol_count": row[1]} for row in cursor.fetchall()
-            ]
-
-            # Cache metadata
-            cursor = self._conn.execute("SELECT key, value FROM cache_metadata")
-            stats["metadata"] = {row[0]: row[1] for row in cursor.fetchall()}
-
-            # Performance metrics
-            stats["performance"] = {
-                "db_path": str(self.db_path),
-                "connection_timeout": self._connection_timeout,
-                "last_access_age_seconds": time.time() - self._last_access,
-            }
-
-            return stats
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get cache stats: {e}")
-            return {}
+        self._ensure_connected()
+        return self._maintenance.get_cache_stats(
+            db_path=str(self.db_path),
+            connection_timeout=self._connection_timeout,
+            last_access=self._last_access,
+        )
 
     def monitor_performance(self, operation: str = "search") -> Dict[str, float]:
-        """
-        Monitor database performance with sample queries.
-
-        Args:
-            operation: Type of operation to test ('search', 'load', 'write')
-
-        Returns:
-            Dict with performance metrics (times in milliseconds)
-        """
-        try:
-            self._ensure_connected()
-
-            metrics = {}
-
-            if operation == "search":
-                # Test FTS5 search performance
-                start = time.time()
-                cursor = self._conn.execute(
-                    "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test*'"
-                )
-                cursor.fetchone()
-                metrics["fts_search_ms"] = (time.time() - start) * 1000
-
-                # Test regular search
-                start = time.time()
-                cursor = self._conn.execute("SELECT COUNT(*) FROM symbols WHERE name LIKE 'test%'")
-                cursor.fetchone()
-                metrics["like_search_ms"] = (time.time() - start) * 1000
-
-            elif operation == "load":
-                # Test symbol load by USR
-                # Get a random USR first
-                cursor = self._conn.execute("SELECT usr FROM symbols LIMIT 1")
-                row = cursor.fetchone()
-                if row:
-                    usr = row[0]
-                    start = time.time()
-                    cursor = self._conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
-                    cursor.fetchone()
-                    metrics["load_by_usr_ms"] = (time.time() - start) * 1000
-
-            elif operation == "write":
-                # Test write performance (rollback to avoid changes)
-                # Build a raw tuple matching the symbols table column order
-                # instead of creating a domain SymbolInfo object.
-                test_tuple = (
-                    "perf_test_usr",  # usr
-                    "PerfTestSymbol",  # name
-                    "",  # qualified_name
-                    "function",  # kind
-                    "/test/perf.cpp",  # file
-                    1,  # line
-                    1,  # column
-                    "void PerfTestSymbol",  # signature
-                    True,  # is_project
-                    "",  # namespace
-                    "public",  # access
-                    "",  # parent_class
-                    "[]",  # base_classes
-                    False,  # is_template_specialization
-                    False,  # is_template
-                    None,  # template_kind
-                    None,  # template_parameters
-                    None,  # primary_template_usr
-                    1,  # start_line
-                    1,  # end_line
-                    None,  # header_file
-                    None,  # header_line
-                    None,  # header_start_line
-                    None,  # header_end_line
-                    True,  # is_definition
-                    False,  # is_virtual
-                    False,  # is_pure_virtual
-                    False,  # is_const
-                    False,  # is_static
-                    None,  # brief
-                    None,  # doc_comment
-                    time.time(),  # created_at
-                    time.time(),  # updated_at
-                )
-
-                start = time.time()
-                # Use savepoint to rollback
-                self._conn.execute("SAVEPOINT perf_test")
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    test_tuple,
-                )
-                self._conn.execute("ROLLBACK TO perf_test")
-                metrics["write_symbol_ms"] = (time.time() - start) * 1000
-
-            return metrics
-
-        except Exception as e:
-            diagnostics.error(f"Performance monitoring failed: {e}")
-            return {}
+        self._ensure_connected()
+        return self._maintenance.monitor_performance(operation)
 
     # =========================================================================
     # CacheBackend Protocol Adapter Methods
@@ -2048,288 +965,34 @@ class SqliteCacheBackend:
     # Phase 3: Call Sites Methods (v8.0)
 
     def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
-        """
-        Batch insert call sites using transaction.
-
-        Args:
-            call_sites: List of dicts with keys:
-                - caller_usr: USR of calling function
-                - callee_usr: USR of called function
-                - file: Source file containing call
-                - line: Line number of call
-                - column: Column number (optional)
-
-        Returns:
-            Number of call sites successfully saved
-        """
-        if not call_sites:
-            return 0
-
-        try:
-            self._ensure_connected()
-
-            current_time = time.time()
-
-            # Prepare tuples for batch insert
-            values = [
-                (
-                    cs["caller_usr"],
-                    cs["callee_usr"],
-                    cs["file"],
-                    cs["line"],
-                    cs.get("column"),
-                    cs.get("display_name"),
-                    cs.get("template_project_types"),
-                    current_time,
-                )
-                for cs in call_sites
-            ]
-
-            # Batch insert in a single transaction
-            with self._conn:
-                self._conn.executemany(
-                    """
-                    INSERT INTO call_sites (
-                        caller_usr, callee_usr, file, line, column,
-                        display_name, template_project_types, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    values,
-                )
-
-            return len(call_sites)
-
-        except Exception as e:
-            diagnostics.error(f"Failed to batch save {len(call_sites)} call sites: {e}")
-            return 0
+        self._ensure_connected()
+        return self._call_site_repo.save_call_sites_batch(call_sites)
 
     def get_call_sites_for_caller(self, caller_usr: str) -> List[Dict[str, Any]]:
-        """
-        Get all call sites from a specific caller function.
-
-        Args:
-            caller_usr: USR of the calling function
-
-        Returns:
-            List of call site dicts with keys: callee_usr, file, line, column
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                """
-                SELECT callee_usr, file, line, column,
-                       display_name, template_project_types
-                FROM call_sites
-                WHERE caller_usr = ?
-                ORDER BY file, line
-                """,
-                (caller_usr,),
-            )
-
-            return [
-                {
-                    "callee_usr": row["callee_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                    "display_name": row["display_name"],
-                    "template_project_types": row["template_project_types"],
-                }
-                for row in cursor.fetchall()
-            ]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get call sites for caller {caller_usr}: {e}")
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.get_call_sites_for_caller(caller_usr)
 
     def get_call_sites_for_callee(self, callee_usr: str) -> List[Dict[str, Any]]:
-        """
-        Get all call sites to a specific callee function.
-
-        Args:
-            callee_usr: USR of the called function
-
-        Returns:
-            List of call site dicts with keys: caller_usr, file, line, column
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                """
-                SELECT caller_usr, file, line, column,
-                       display_name, template_project_types
-                FROM call_sites
-                WHERE callee_usr = ?
-                ORDER BY file, line
-                """,
-                (callee_usr,),
-            )
-
-            return [
-                {
-                    "caller_usr": row["caller_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                    "display_name": row["display_name"],
-                    "template_project_types": row["template_project_types"],
-                }
-                for row in cursor.fetchall()
-            ]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get call sites for callee {callee_usr}: {e}")
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.get_call_sites_for_callee(callee_usr)
 
     def get_template_mediated_call_sites(
         self, caller_usrs: List[str], callee_usr: str
     ) -> List[Dict[str, Any]]:
-        """
-        Get call sites between specific callers and a callee that have template metadata.
-
-        Args:
-            caller_usrs: List of caller USRs
-            callee_usr: USR of the called function
-
-        Returns:
-            List of call site dicts with template_project_types set
-        """
-        if not caller_usrs:
-            return []
-        try:
-            self._ensure_connected()
-            placeholders = ",".join("?" for _ in caller_usrs)
-            cursor = self._conn.execute(
-                f"""
-                SELECT caller_usr, callee_usr, file, line, column,
-                       display_name, template_project_types
-                FROM call_sites
-                WHERE caller_usr IN ({placeholders})
-                  AND callee_usr = ?
-                  AND template_project_types IS NOT NULL
-                ORDER BY file, line
-                """,
-                (*caller_usrs, callee_usr),
-            )
-            return [
-                {
-                    "caller_usr": row["caller_usr"],
-                    "callee_usr": row["callee_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                    "display_name": row["display_name"],
-                    "template_project_types": row["template_project_types"],
-                }
-                for row in cursor.fetchall()
-            ]
-        except Exception as e:
-            diagnostics.error(
-                f"Failed to get template-mediated call sites for callee {callee_usr}: {e}"
-            )
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.get_template_mediated_call_sites(caller_usrs, callee_usr)
 
     def delete_call_sites_by_file(self, file_path: str) -> int:
-        """
-        Delete all call sites from a specific file.
-
-        Args:
-            file_path: Path to file whose call sites should be deleted
-
-        Returns:
-            Number of call sites deleted
-        """
-        try:
-            self._ensure_connected()
-
-            # Get count before deletion
-            cursor = self._conn.execute(
-                "SELECT COUNT(*) FROM call_sites WHERE file = ?", (file_path,)
-            )
-            count: int = cursor.fetchone()[0]
-
-            if count == 0:
-                return 0
-
-            # Delete call sites
-            with self._conn:
-                self._conn.execute("DELETE FROM call_sites WHERE file = ?", (file_path,))
-
-            return count
-
-        except Exception as e:
-            diagnostics.error(f"Failed to delete call sites for file {file_path}: {e}")
-            return 0
+        self._ensure_connected()
+        return self._call_site_repo.delete_call_sites_by_file(file_path)
 
     def delete_call_sites_by_usr(self, usr: str) -> int:
-        """
-        Delete all call sites where the given USR appears as either caller or callee.
-
-        Used during incremental refresh when removing symbols.
-
-        Args:
-            usr: USR of the symbol to remove from call graph
-
-        Returns:
-            Number of call sites deleted
-        """
-        try:
-            self._ensure_connected()
-
-            # Get count before deletion
-            cursor = self._conn.execute(
-                "SELECT COUNT(*) FROM call_sites WHERE caller_usr = ? OR callee_usr = ?",
-                (usr, usr),
-            )
-            count: int = cursor.fetchone()[0]
-
-            if count == 0:
-                return 0
-
-            # Delete call sites where USR is either caller or callee
-            with self._conn:
-                self._conn.execute(
-                    "DELETE FROM call_sites WHERE caller_usr = ? OR callee_usr = ?", (usr, usr)
-                )
-
-            return count
-
-        except Exception as e:
-            diagnostics.error(f"Failed to delete call sites for USR {usr}: {e}")
-            return 0
+        self._ensure_connected()
+        return self._call_site_repo.delete_call_sites_by_usr(usr)
 
     def load_all_call_sites(self) -> List[Dict[str, Any]]:
-        """
-        Load all call sites from the database.
-
-        Returns:
-            List of call site dicts with keys: caller_usr, callee_usr, file, line, column
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("""
-                SELECT caller_usr, callee_usr, file, line, column
-                FROM call_sites
-                ORDER BY file, line
-                """)
-
-            return [
-                {
-                    "caller_usr": row["caller_usr"],
-                    "callee_usr": row["callee_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                }
-                for row in cursor.fetchall()
-            ]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load call sites from database: {e}")
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.load_all_call_sites()
 
     # -------------------------------------------------------------------------
     # Type Aliases Storage and Lookup (Phase 1.3: Type Alias Tracking)
@@ -2361,110 +1024,20 @@ class SqliteCacheBackend:
         return type_alias_repository.get_type_alias_details(self._conn, alias_names)
 
     def get_all_cached_file_paths(self) -> Set[str]:
-        """
-        Return all file paths stored in file_metadata table.
-
-        Used by ChangeScanner to identify cached files for diff analysis.
-
-        Returns:
-            Set of file paths
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute("SELECT file_path FROM file_metadata")
-            return {row[0] for row in cursor.fetchall()}
-        except Exception as e:
-            diagnostics.warning(f"Failed to get cached file paths: {e}")
-            return set()
+        self._ensure_connected()
+        return self._file_metadata_repo.get_all_cached_file_paths()
 
     def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
-        """
-        Store or update the compile arguments hash for a file.
-
-        Phase 1.4: Compile Commands Integration
-
-        Args:
-            file_path: Source file path
-            args_hash: Hash of the compile arguments
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute(
-                """
-                UPDATE file_metadata
-                SET compile_args_hash = ?
-                WHERE file_path = ?
-                """,
-                (args_hash, file_path),
-            )
-            if cursor.rowcount == 0:
-                self._conn.execute(
-                    """
-                    INSERT OR IGNORE INTO file_metadata
-                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (file_path, "", args_hash, time.time(), 0),
-                )
-            self._conn.commit()
-            return True
-        except Exception as e:
-            diagnostics.warning(f"Failed to set compile args hash for {file_path}: {e}")
-            self._conn.rollback()
-            return False
+        self._ensure_connected()
+        return self._file_metadata_repo.set_compile_args_hash(file_path, args_hash)
 
     def get_compile_args_hash(self, file_path: str) -> Optional[str]:
-        """
-        Return the stored compile arguments hash for a file.
-
-        Phase 1.4: Compile Commands Integration
-
-        Args:
-            file_path: Source file path
-
-        Returns:
-            Args hash string or None if not found
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute(
-                """
-                SELECT compile_args_hash FROM file_metadata
-                WHERE file_path = ?
-                """,
-                (file_path,),
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
-        except Exception as e:
-            diagnostics.warning(f"Failed to get compile args hash for {file_path}: {e}")
-            return None
+        self._ensure_connected()
+        return self._file_metadata_repo.get_compile_args_hash(file_path)
 
     def clear_compile_args_hashes(self) -> int:
-        """
-        Clear all stored compile arguments hashes from file_metadata.
-
-        Phase 1.4: Compile Commands Integration
-
-        Returns:
-            Number of rows cleared
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute("""
-                UPDATE file_metadata
-                SET compile_args_hash = NULL
-                """)
-            cleared = cursor.rowcount or 0
-            self._conn.commit()
-            return cleared
-        except Exception as e:
-            diagnostics.warning(f"Failed to clear compile args hashes: {e}")
-            self._conn.rollback()
-            return 0
+        self._ensure_connected()
+        return self._file_metadata_repo.clear_compile_args_hashes()
 
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """Get all alias → canonical mappings."""

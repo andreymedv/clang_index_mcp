@@ -30,7 +30,7 @@ async def http_server():
 
     from mcp.server import Server
 
-    from clang_index_mcp._core.http_server import MCPHTTPServer
+    from clang_index_mcp._mcp.transport.http_server import MCPHTTPServer
 
     # Find an available port dynamically to avoid conflicts
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

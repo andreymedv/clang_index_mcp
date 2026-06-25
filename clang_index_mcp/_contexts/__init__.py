@@ -1,4 +1,8 @@
-"""Project identity and configuration context."""
+"""Project identity and configuration context.
+
+Moved from _core/ to break the inward dependency violation where _core/
+imported upper-layer types (CppAnalyzerConfig, ProjectIdentity).
+"""
 
 from dataclasses import dataclass
 from pathlib import Path

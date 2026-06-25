@@ -1,9 +1,13 @@
-"""Runtime and concurrency context."""
+"""Runtime and concurrency context.
+
+Moved from _core/ to break the inward dependency violation where _core/
+imported upper-layer types (_indexing.*).
+"""
 
 from dataclasses import dataclass
 
-from .cancellation_coordinator import CancellationCoordinator
-from .concurrency_context import ConcurrencyContext
+from .._core.cancellation_coordinator import CancellationCoordinator
+from .._core.concurrency_context import ConcurrencyContext
 from .._indexing.execution_config import ExecutionConfig
 from .._indexing.indexing_progress_reporter import IndexingProgressReporter
 

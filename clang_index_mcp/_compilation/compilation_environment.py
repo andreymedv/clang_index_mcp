@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._core import diagnostics
-from .._core.project_identity_context import ProjectIdentityContext
+from .._contexts import ProjectIdentityContext
 from .._compilation.compile_commands_manager import CompileCommandsManager
 from .._core.file_scanner import FileScanner
 from .._persistence.persistence_context import PersistenceContext
