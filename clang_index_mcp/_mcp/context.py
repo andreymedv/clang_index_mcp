@@ -9,7 +9,7 @@ breaking the dependency on the transport layer.
 from typing import TYPE_CHECKING, Optional
 
 from .state_manager import AnalyzerStateManager
-from .._core.session_manager import SessionManager
+from .._persistence.session_manager import SessionManager
 
 if TYPE_CHECKING:
     from ...cpp_analyzer import CppAnalyzer

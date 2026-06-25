@@ -22,7 +22,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
-from clang_index_mcp._core.error_tracking import ErrorRecord, ErrorTracker, RecoveryManager
+from clang_index_mcp._core.error_tracking import ErrorRecord, ErrorTracker
+from clang_index_mcp._persistence.recovery import RecoveryManager
 from clang_index_mcp._symbols.model import SymbolInfo
 
 
