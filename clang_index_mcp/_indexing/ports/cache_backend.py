@@ -98,6 +98,14 @@ class CacheBackend(Protocol):
         """Return all file paths stored in file_metadata table."""
         ...
 
+    def load_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
+        """Load a single symbol by its USR from persistent storage.
+
+        Used to resolve external (non-project) symbols that are not held
+        in the in-memory index.
+        """
+        ...
+
     def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
         """Store or update the compile arguments hash for a file."""
         ...
