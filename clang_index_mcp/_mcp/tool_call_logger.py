@@ -16,7 +16,7 @@ from collections import Counter, deque
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .._search.smart_fallback import _PROTOTYPE_PATTERN, _looks_like_signature
+from .._search.smart_fallback import PROTOTYPE_PATTERN, looks_like_signature
 
 # Regex metacharacters that distinguish regex patterns from plain names
 _REGEX_META = re.compile(r"[.*+?\[\]{}()|\\^$]")
@@ -43,9 +43,9 @@ def _classify_pattern(pattern: str) -> str:
     4. regex — has regex metacharacters
     5. plain_name — simple identifier
     """
-    if _looks_like_signature(pattern):
+    if looks_like_signature(pattern):
         return "signature_like"
-    if _PROTOTYPE_PATTERN.search(pattern):
+    if PROTOTYPE_PATTERN.search(pattern):
         return "prototype_like"
     has_colons = "::" in pattern
     has_meta = bool(_REGEX_META.search(pattern))
