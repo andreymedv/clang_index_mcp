@@ -1625,15 +1625,42 @@ class SqliteCacheBackend:
 
             elif operation == "write":
                 # Test write performance (rollback to avoid changes)
-                from .._symbols.model import SymbolInfo
-
-                test_symbol = SymbolInfo(
-                    name="PerfTestSymbol",
-                    kind="function",
-                    file="/test/perf.cpp",
-                    line=1,
-                    column=1,
-                    usr="perf_test_usr",
+                # Build a raw tuple matching the symbols table column order
+                # instead of creating a domain SymbolInfo object.
+                test_tuple = (
+                    "perf_test_usr",  # usr
+                    "PerfTestSymbol",  # name
+                    "",  # qualified_name
+                    "function",  # kind
+                    "/test/perf.cpp",  # file
+                    1,  # line
+                    1,  # column
+                    "void PerfTestSymbol",  # signature
+                    True,  # is_project
+                    "",  # namespace
+                    "public",  # access
+                    "",  # parent_class
+                    "[]",  # base_classes
+                    False,  # is_template_specialization
+                    False,  # is_template
+                    None,  # template_kind
+                    None,  # template_parameters
+                    None,  # primary_template_usr
+                    1,  # start_line
+                    1,  # end_line
+                    None,  # header_file
+                    None,  # header_line
+                    None,  # header_start_line
+                    None,  # header_end_line
+                    True,  # is_definition
+                    False,  # is_virtual
+                    False,  # is_pure_virtual
+                    False,  # is_const
+                    False,  # is_static
+                    None,  # brief
+                    None,  # doc_comment
+                    time.time(),  # created_at
+                    time.time(),  # updated_at
                 )
 
                 start = time.time()
@@ -1653,7 +1680,7 @@ class SqliteCacheBackend:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    self._symbol_to_tuple(test_symbol),
+                    test_tuple,
                 )
                 self._conn.execute("ROLLBACK TO perf_test")
                 metrics["write_symbol_ms"] = (time.time() - start) * 1000
