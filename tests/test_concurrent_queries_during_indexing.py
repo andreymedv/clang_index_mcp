@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from clang_index_mcp._mcp import cpp_mcp_server
+from clang_index_mcp._mcp.context import ctx
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager, BackgroundIndexer
 
@@ -87,9 +88,9 @@ async def test_query_during_background_indexing(large_cpp_project):
     background_indexer = BackgroundIndexer(analyzer, state_manager)
 
     # Update global state for MCP server
-    cpp_mcp_server.analyzer = analyzer
-    cpp_mcp_server.state_manager = state_manager
-    cpp_mcp_server.analyzer_initialized = False
+    ctx.analyzer = analyzer
+    ctx.state_manager = state_manager
+    ctx.analyzer_initialized = False
 
     # Start indexing in background (non-blocking)
     state_manager.transition_to(AnalyzerState.INDEXING)
@@ -171,9 +172,9 @@ async def test_multiple_concurrent_queries_during_indexing(large_cpp_project):
     background_indexer = BackgroundIndexer(analyzer, state_manager)
 
     # Update global state
-    cpp_mcp_server.analyzer = analyzer
-    cpp_mcp_server.state_manager = state_manager
-    cpp_mcp_server.analyzer_initialized = False
+    ctx.analyzer = analyzer
+    ctx.state_manager = state_manager
+    ctx.analyzer_initialized = False
 
     # Start indexing
     state_manager.transition_to(AnalyzerState.INDEXING)
@@ -219,8 +220,8 @@ async def test_query_does_not_timeout_during_long_indexing(large_cpp_project):
     state_manager = AnalyzerStateManager()
     background_indexer = BackgroundIndexer(analyzer, state_manager)
 
-    cpp_mcp_server.analyzer = analyzer
-    cpp_mcp_server.state_manager = state_manager
+    ctx.analyzer = analyzer
+    ctx.state_manager = state_manager
 
     # Start indexing
     state_manager.transition_to(AnalyzerState.INDEXING)
@@ -261,8 +262,8 @@ async def test_wait_for_indexing_blocks_appropriately(large_cpp_project):
     state_manager = AnalyzerStateManager()
     background_indexer = BackgroundIndexer(analyzer, state_manager)
 
-    cpp_mcp_server.analyzer = analyzer
-    cpp_mcp_server.state_manager = state_manager
+    ctx.analyzer = analyzer
+    ctx.state_manager = state_manager
 
     # Start indexing
     state_manager.transition_to(AnalyzerState.INDEXING)
@@ -334,9 +335,9 @@ async def test_check_system_status_immediately_after_set_project_directory(large
     state_manager = AnalyzerStateManager()
 
     # Update global state for MCP server
-    cpp_mcp_server.analyzer = analyzer
-    cpp_mcp_server.state_manager = state_manager
-    cpp_mcp_server.analyzer_initialized = False
+    ctx.analyzer = analyzer
+    ctx.state_manager = state_manager
+    ctx.analyzer_initialized = False
 
     # Simulate what set_project_directory does:
     # It transitions to INDEXING state (the fix) before starting background indexing

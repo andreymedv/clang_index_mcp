@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 import clang_index_mcp._mcp.cpp_mcp_server as cpp_mcp_server_module
+from clang_index_mcp._mcp.context import ctx
 from clang_index_mcp._search.call_graph import CallSite
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager
@@ -757,18 +758,17 @@ class TestAutoExpansion:
     @staticmethod
     def _setup_mcp(analyzer):
         """Patch global MCP server state, return (module, cleanup_fn)."""
-        srv = cpp_mcp_server_module
-        saved = (srv.analyzer, srv.state_manager, srv.analyzer_initialized)
+        saved = (ctx.analyzer, ctx.state_manager, ctx.analyzer_initialized)
         sm = AnalyzerStateManager()
         sm.transition_to(AnalyzerState.INDEXED)
-        srv.analyzer = analyzer
-        srv.state_manager = sm
-        srv.analyzer_initialized = True
+        ctx.analyzer = analyzer
+        ctx.state_manager = sm
+        ctx.analyzer_initialized = True
 
         def restore():
-            srv.analyzer, srv.state_manager, srv.analyzer_initialized = saved
+            ctx.analyzer, ctx.state_manager, ctx.analyzer_initialized = saved
 
-        return srv, restore
+        return cpp_mcp_server_module, restore
 
     # ------------------------------------------------------------------
     # get_outgoing_calls (find_callees)

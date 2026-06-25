@@ -55,7 +55,6 @@ diagnostics.info(f"libclang runtime config: {get_libclang_runtime_info()}")
 try:
     # Try package import first (when run as module)
     from ..cpp_analyzer import CppAnalyzer
-    from .._core.session_manager import SessionManager
     from .state_manager import (
         AnalyzerState,
         AnalyzerStateManager,
@@ -66,7 +65,6 @@ try:
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer  # type: ignore[no-redef]
-    from session_manager import SessionManager  # type: ignore[no-redef]
     from state_manager import (  # type: ignore[no-redef]
         AnalyzerState,
         AnalyzerStateManager,
@@ -75,26 +73,10 @@ except ImportError:
     )
     from tool_call_logger import ToolCallLogger  # type: ignore[no-redef]  # noqa: F401
 
+from .context import ctx  # noqa: E402
+
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
-
-# Initialize analyzer as None - will be set when project directory is specified
-analyzer: Optional["CppAnalyzer"] = None
-
-# State management for analyzer lifecycle
-state_manager = AnalyzerStateManager()
-
-# Background indexer for async indexing
-background_indexer: Optional[BackgroundIndexer] = None
-
-# Session manager for persistence across restarts
-session_manager = SessionManager()
-
-# Track if analyzer has been initialized with a valid project
-analyzer_initialized = False
-
-# Tool call telemetry logger (enabled via MCP_TOOL_LOGGING=1)
-tool_call_logger: Optional[ToolCallLogger] = None
 
 # Valid search_scope values
 _VALID_SEARCH_SCOPES = ("project_code_only", "include_external_libraries")
@@ -206,12 +188,12 @@ def _count_results_from_text(result_text: str) -> int:
 def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextContent]) -> None:
     """Log a tool call for telemetry. Never raises."""
     try:
-        if tool_call_logger is None or not tool_call_logger.enabled:
+        if ctx.tool_call_logger is None or not ctx.tool_call_logger.enabled:
             return
         result_text = result[0].text if result else ""
         result_count = _count_results_from_text(result_text)
-        tool_call_logger.log_tool_call(
-            name, arguments, result_count, result_text, analyzer=analyzer
+        ctx.tool_call_logger.log_tool_call(
+            name, arguments, result_count, result_text, analyzer=ctx.analyzer
         )
     except Exception:
         pass  # Telemetry must never break tool calls
@@ -280,14 +262,14 @@ def _check_tool_readiness(name: str) -> Optional[List[TextContent]]:
     }
 
     if name in query_tools:
-        if analyzer is None:
+        if ctx.analyzer is None:
             return [
                 TextContent(
                     type="text",
                     text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.",
                 )
             ]
-        if not state_manager.is_ready_for_queries():
+        if not ctx.state_manager.is_ready_for_queries():
             return [
                 TextContent(
                     type="text",
@@ -300,7 +282,7 @@ def _check_tool_readiness(name: str) -> Optional[List[TextContent]]:
             return [TextContent(type="text", text=policy_message)]
 
     # Check for other tools (refresh_project, wait_for_indexing)
-    if name in ("refresh_project", "wait_for_indexing") and analyzer is None:
+    if name in ("refresh_project", "wait_for_indexing") and ctx.analyzer is None:
         # For refresh_project, we'll try to resume inside the handler
         if name == "wait_for_indexing":
             return [
@@ -410,9 +392,9 @@ def _try_resume_session(saved_session):
         diagnostics.info(f"Auto-resuming session via config: {config_file}")
         diagnostics.info(f"Resolved project root: {project_path}")
 
-        state_manager.transition_to(AnalyzerState.INITIALIZING)
+        ctx.state_manager.transition_to(AnalyzerState.INITIALIZING)
         new_analyzer = CppAnalyzer(project_path, config_file=config_file)
-        new_background_indexer = BackgroundIndexer(new_analyzer, state_manager)
+        new_background_indexer = BackgroundIndexer(new_analyzer, ctx.state_manager)
 
         cache_loaded = new_analyzer.context.cache_orchestrator.load_cache()
         if cache_loaded:
@@ -420,33 +402,32 @@ def _try_resume_session(saved_session):
                 f"Session restored from cache: {new_analyzer.context.symbol_store.class_name_count()} classes, "
                 f"{new_analyzer.context.symbol_store.function_name_count()} functions"
             )
-            state_manager.transition_to(AnalyzerState.INDEXED)
+            ctx.state_manager.transition_to(AnalyzerState.INDEXED)
             return new_analyzer, new_background_indexer, True
 
         diagnostics.info("No valid cache for saved session, will need to re-index")
-        state_manager.transition_to(AnalyzerState.UNINITIALIZED)
+        ctx.state_manager.transition_to(AnalyzerState.UNINITIALIZED)
         return new_analyzer, new_background_indexer, False
 
     except Exception as e:
         diagnostics.warning(f"Failed to resume session: {e}")
-        state_manager.transition_to(AnalyzerState.UNINITIALIZED)
+        ctx.state_manager.transition_to(AnalyzerState.UNINITIALIZED)
         return None, None, False
 
 
 def _shutdown_analyzer():
     """Interrupt and close the analyzer, releasing resources."""
-    global analyzer
-    if analyzer is None:
+    if ctx.analyzer is None:
         return
     try:
-        analyzer.interrupt()
+        ctx.analyzer.interrupt()
     except Exception:
         pass
     try:
-        analyzer.close()
+        ctx.analyzer.close()
     except Exception:
         pass
-    analyzer = None
+    ctx.analyzer = None
 
 
 async def _cleanup_resources():
@@ -455,10 +436,10 @@ async def _cleanup_resources():
 
     _shutdown_analyzer()
 
-    if background_indexer and background_indexer.is_indexing():
+    if ctx.background_indexer and ctx.background_indexer.is_indexing():
         diagnostics.debug("Canceling background indexing...")
         try:
-            await background_indexer.cancel()
+            await ctx.background_indexer.cancel()
         except Exception:
             pass
 
@@ -513,23 +494,23 @@ Examples:
 
 async def main():
     """Main entry point for the MCP server."""
-    global analyzer, analyzer_initialized, background_indexer
-
     _install_signal_handlers()
 
     disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
-    saved_session = None if disable_auto_resume else session_manager.load_session()
+    saved_session = None if disable_auto_resume else ctx.session_manager.load_session()
     if saved_session:
-        analyzer, background_indexer, analyzer_initialized = _try_resume_session(saved_session)
+        ctx.analyzer, ctx.background_indexer, ctx.analyzer_initialized = _try_resume_session(
+            saved_session
+        )
 
     parser = _create_argument_parser()
     args = parser.parse_args()
 
     try:
         if args.transport == "stdio":
-            await _run_stdio_transport()
+            await _run_stdio_transport(server)
         elif args.transport in ("http", "sse"):
-            await _run_http_transport(args.host, args.port, args.transport)
+            await _run_http_transport(server, args.host, args.port, args.transport)
         else:
             diagnostics.fatal(f"Unknown transport: {args.transport}")
             sys.exit(1)

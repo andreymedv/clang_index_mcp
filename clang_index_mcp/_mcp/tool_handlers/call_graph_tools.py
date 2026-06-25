@@ -6,18 +6,19 @@ from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent
 
-from .. import cpp_mcp_server as _server
+from ..context import ctx
+from ..cpp_mcp_server import _create_search_result, _parse_search_scope
 from ..response_formatters import suggestions
 
 
 async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     function_name = str(arguments["function_name"])
     class_name = str(arguments.get("class_name", ""))
     max_results = arguments.get("max_results", None)
-    project_only = _server._parse_search_scope(arguments)
+    project_only = _parse_search_scope(arguments)
     # Run synchronous method in executor to avoid blocking event loop
     results = await loop.run_in_executor(
         None,
@@ -69,9 +70,9 @@ async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextCon
     else:
         empty_suggestions = []  # genuinely no callers -> no hints
     # Wrap with appropriate metadata
-    enhanced_result = _server._create_search_result(
+    enhanced_result = _create_search_result(
         results.get("callers", []),
-        _server.state_manager,
+        ctx.state_manager,
         "find_incoming_calls",
         max_results,
         total_count,
@@ -91,13 +92,13 @@ async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextCon
 
 
 async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     function_name = str(arguments["function_name"])
     class_name = str(arguments.get("class_name", ""))
     max_results = arguments.get("max_results", None)
-    project_only = _server._parse_search_scope(arguments)
+    project_only = _parse_search_scope(arguments)
     # Run synchronous method in executor to avoid blocking event loop
     results = await loop.run_in_executor(
         None,
@@ -149,9 +150,9 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
     else:
         empty_suggestions = []  # genuinely calls nothing -> no hints
     # Wrap with appropriate metadata
-    enhanced_result = _server._create_search_result(
+    enhanced_result = _create_search_result(
         results.get("callees", []),
-        _server.state_manager,
+        ctx.state_manager,
         "get_outgoing_calls",
         max_results,
         total_count,
@@ -171,7 +172,7 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
 
 
 async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     function_name = arguments["function_name"]
@@ -189,14 +190,14 @@ async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_get_call_path(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     from_function = arguments["from_function"]
     to_function = arguments["to_function"]
     max_depth = arguments.get("max_depth", 10)
     # Run synchronous method in executor to avoid blocking event loop
-    with _server.state_manager.tool_execution():
+    with ctx.state_manager.tool_execution():
         paths = await loop.run_in_executor(
             None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
         )

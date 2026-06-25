@@ -5,12 +5,12 @@ from typing import Any, Dict, List
 
 from mcp.types import TextContent
 
-from .. import cpp_mcp_server as _server
+from ..context import ctx
 from ..._search.hierarchy_format import convert_hierarchy_format, format_hierarchy_error
 
 
 async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     class_name = str(arguments["class_name"])

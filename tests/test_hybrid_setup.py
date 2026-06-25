@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
 from clang_index_mcp._mcp.cpp_mcp_server import _handle_tool_call
+from clang_index_mcp._mcp.context import ctx
 
 
 @pytest.mark.asyncio
@@ -55,11 +56,11 @@ async def test_hybrid_project_setup():
 
         # 3. Mock dependencies in _handle_tool_call to avoid actual indexing
         with (
-            patch("clang_index_mcp._mcp.cpp_mcp_server.CppAnalyzer") as MockAnalyzer,
-            patch("clang_index_mcp._mcp.cpp_mcp_server.BackgroundIndexer"),
-            patch("clang_index_mcp._mcp.cpp_mcp_server.ToolCallLogger"),
-            patch("clang_index_mcp._mcp.cpp_mcp_server.state_manager") as mock_state_manager,
-            patch("clang_index_mcp._mcp.cpp_mcp_server.session_manager") as mock_session_manager,
+            patch("clang_index_mcp._mcp.tool_handlers.project_tools.CppAnalyzer") as MockAnalyzer,
+            patch("clang_index_mcp._mcp.tool_handlers.project_tools.BackgroundIndexer"),
+            patch("clang_index_mcp._mcp.tool_handlers.project_tools.ToolCallLogger"),
+            patch.object(ctx, "state_manager") as mock_state_manager,
+            patch.object(ctx, "session_manager") as mock_session_manager,
         ):
 
             # Setup mock analyzer
