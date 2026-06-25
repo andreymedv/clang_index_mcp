@@ -458,7 +458,7 @@ class CallGraphService:
 
         Returns None if no project-type template args are found.
         """
-        backend = getattr(self.cache_manager, "backend", None)
+        backend = self.cache_manager.backend
         if backend is None or not hasattr(backend, "get_template_mediated_call_sites"):
             return None
         rows = backend.get_template_mediated_call_sites(list(target_usrs), callee_usr)
