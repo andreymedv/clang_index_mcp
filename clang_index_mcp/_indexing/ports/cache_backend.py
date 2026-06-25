@@ -1,19 +1,25 @@
-"""Cache backend protocol/interface for C++ analyzer."""
+"""Cache backend port for the indexing use-case layer.
+
+This Protocol defines the interface that persistence backends must implement.
+It lives in the indexing layer so that use cases depend on an abstraction rather
+than on the persistence implementation.
+
+Escape hatch: ``get_connection()`` exposes the raw database connection for
+components that inherently require direct SQL access (e.g. dependency graph
+queries with complex joins).  Callers that can work through the higher-level
+methods above should prefer those instead.
+"""
 
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from .._persistence.symbol_info import SymbolInfo
+from ..._symbols.model import SymbolInfo
 
 
 @runtime_checkable
 class CacheBackend(Protocol):
-    """
-    Protocol defining the interface for cache backends.
-
-    Currently only the SQLite backend implements this interface.
-    """
+    """Protocol defining the interface for cache backends."""
 
     def save_cache(
         self,
@@ -27,7 +33,7 @@ class CacheBackend(Protocol):
         compile_commands_path: Optional[Path] = None,
         compile_commands_mtime: Optional[float] = None,
     ) -> bool:
-        """Save indexes to cache with configuration metadata"""
+        """Save indexes to cache with configuration metadata."""
         ...
 
     def load_cache(
@@ -38,7 +44,7 @@ class CacheBackend(Protocol):
         compile_commands_path: Optional[Path] = None,
         compile_commands_mtime: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Load cache if it exists and is valid, checking for configuration changes"""
+        """Load cache if it exists and is valid."""
         ...
 
     def save_file_cache(
@@ -51,17 +57,17 @@ class CacheBackend(Protocol):
         error_message: Optional[str] = None,
         retry_count: int = 0,
     ) -> bool:
-        """Save parsed symbols for a single file with compilation arguments hash"""
+        """Save parsed symbols for a single file."""
         ...
 
     def load_file_cache(
         self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Load cached data for a file if hash matches"""
+        """Load cached data for a file if hash matches."""
         ...
 
     def remove_file_cache(self, file_path: str) -> bool:
-        """Remove cached data for a deleted file"""
+        """Remove cached data for a deleted file."""
         ...
 
     def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
@@ -116,17 +122,19 @@ class CacheBackend(Protocol):
         """Rebuild FTS5 index from scratch."""
         ...
 
-    def _ensure_connected(self) -> None:
-        """Ensure connection is active, reconnect if needed."""
+    def ensure_schema_current(self) -> bool:
+        """Ensure database schema is current before spawning workers."""
+        ...
+
+    def close(self) -> None:
+        """Close the backend and release resources."""
         ...
 
     def get_connection(self) -> Optional[sqlite3.Connection]:
-        """Return the raw SQLite connection for components that need direct access.
+        """Return the raw database connection (escape hatch for complex SQL).
 
-        This is a transitional method for components like DependencyGraphBuilder
-        that inherently require raw SQL access. New code should use protocol
-        methods instead of direct connection access.
+        Components that inherently need direct SQL access (e.g. dependency
+        graph queries with joins) should use this.  Prefer the higher-level
+        methods above when possible.
         """
         ...
-
-    conn: Optional[sqlite3.Connection]

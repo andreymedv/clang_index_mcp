@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
 from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 def generate_test_symbols(count):

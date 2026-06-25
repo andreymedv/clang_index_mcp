@@ -22,7 +22,7 @@ if project_root not in sys.path:
 from clang_index_mcp._persistence.cache_manager import CacheManager
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 @pytest.mark.slow
@@ -132,7 +132,7 @@ class TestClass{i} {{
 
         # Benchmark cache save
         start = time.time()
-        analyzer.context.cache_orchestrator._save_cache()
+        analyzer.context.cache_orchestrator.save_cache()
         elapsed = time.time() - start
 
         assert elapsed < 5.0, f"Cache save should be <5s, was {elapsed:.2f}s"

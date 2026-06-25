@@ -1,7 +1,7 @@
 """
 Execution configuration for C++ Analyzer parallel processing.
 
-Encapsulates the worker pool strategy (processes vs threads),
+Encapsulates the process worker pool configuration,
 worker count, and pool lifecycle management.
 """
 
@@ -26,6 +26,4 @@ class ExecutionConfig:
         else:
             self.max_workers = cpu_count
 
-        self.use_processes: bool = os.environ.get("CPP_ANALYZER_USE_THREADS", "").lower() != "true"
-
-        self.worker_pool = WorkerPoolManager(self.max_workers, self.use_processes)
+        self.worker_pool = WorkerPoolManager(self.max_workers)

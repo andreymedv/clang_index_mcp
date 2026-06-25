@@ -159,7 +159,7 @@ public:
         assert stats.get("compile_commands_count", 0) == 1, "Should have exactly 1 compile command"
 
         # CRITICAL TEST: Verify that _find_cpp_files returns ONLY files from compile_commands.json
-        files_to_index = analyzer.context.compilation_env._find_cpp_files(include_dependencies=True)
+        files_to_index = analyzer.context.compilation_env.find_cpp_files(include_dependencies=True)
         assert (
             len(files_to_index) == 1
         ), f"Should find exactly 1 file from compile_commands.json, found {len(files_to_index)}"

@@ -16,8 +16,7 @@ If ProcessPoolExecutor shows **1.5x+ speedup**, Python's GIL is limiting paralle
 
 **Solution**:
 - ProcessPoolExecutor is now **enabled by default** (bypasses GIL)
-- Verify it's enabled: Check startup logs for "Concurrency mode: ProcessPool (GIL bypass)"
-- If using ThreadPool, remove `CPP_ANALYZER_USE_THREADS=true` environment variable
+- Verify it's enabled: Check startup logs for "Using ProcessPoolExecutor (spawn)"
 
 **Expected Results**:
 - CPU utilization should reach 80-100% on multi-core systems

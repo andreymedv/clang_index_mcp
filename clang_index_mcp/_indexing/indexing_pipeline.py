@@ -13,34 +13,47 @@ from typing import TYPE_CHECKING, Any, List, Optional
 from .._core import diagnostics
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._compilation.clang_parser import ClangParser
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._core.concurrency_context import ConcurrencyContext
+    from .._persistence.cache_manager import CacheManager
+    from .._persistence.cache_orchestrator import CacheOrchestrator
+    from .._symbols.symbol_extractor import SymbolExtractor
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class SingleFileIndexingPipeline:
     """Coordinates parsing and symbol extraction for a single C++ file."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        clang_parser: "ClangParser",
+        symbol_extractor: "SymbolExtractor",
+        compilation_env: "CompilationEnvironment",
+        cache_orchestrator: "CacheOrchestrator",
+        cache_manager: "CacheManager",
+        concurrency: "ConcurrencyContext",
+        symbol_store: "SymbolIndexStore",
+    ):
         """
         Initialize the single-file indexing pipeline.
 
         Args:
-            context: Shared project context with all required services.
+            clang_parser: Clang parser for translation unit parsing.
+            symbol_extractor: Symbol extraction from translation units.
+            compilation_env: Compilation environment for file scanning.
+            cache_orchestrator: Cache orchestration and header tracking.
+            cache_manager: SQLite-backed cache and persistence.
+            concurrency: Concurrency context with index_lock.
+            symbol_store: In-memory symbol indexes.
         """
-        self.context = context
-        assert context.clang_parser is not None
-        self.clang_parser = context.clang_parser
-        assert context.symbol_extractor is not None
-        self.symbol_extractor = context.symbol_extractor
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.cache_orchestrator is not None
-        self.cache_orchestrator = context.cache_orchestrator
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
-        assert context.concurrency is not None
-        self.concurrency = context.concurrency
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
+        self.clang_parser = clang_parser
+        self.symbol_extractor = symbol_extractor
+        self.compilation_env = compilation_env
+        self.cache_orchestrator = cache_orchestrator
+        self.cache_manager = cache_manager
+        self.concurrency = concurrency
+        self.symbol_store = symbol_store
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file.
@@ -57,11 +70,11 @@ class SingleFileIndexingPipeline:
             self.cache_manager.log_parse_error(file_path, FileNotFoundError(error_msg), "", None, 0)
             return (False, False)
 
-        current_hash = self.cache_orchestrator._get_file_hash(file_path)
+        current_hash = self.cache_orchestrator.get_file_hash(file_path)
         args = self.compilation_env.get_compile_args_for_file(Path(file_path))
-        compile_args_hash = self.compilation_env._compute_compile_args_hash(args)
+        compile_args_hash = self.compilation_env.compute_compile_args_hash(args)
 
-        cached = self.cache_orchestrator._try_load_cached_index(
+        cached = self.cache_orchestrator.try_load_cached_index(
             file_path, current_hash, compile_args_hash, force
         )
         if cached is not None:
@@ -70,7 +83,7 @@ class SingleFileIndexingPipeline:
         retry_count = self._compute_retry_count(file_path, current_hash, compile_args_hash, force)
 
         try:
-            tu, error_msg_opt = self.clang_parser._try_parse_with_fallback(file_path, args)
+            tu, error_msg_opt = self.clang_parser.try_parse_with_fallback(file_path, args)
             if not tu:
                 error_msg = error_msg_opt or "Unknown libclang error"
                 self._handle_index_file_failure(
@@ -98,7 +111,7 @@ class SingleFileIndexingPipeline:
         if force:
             return 0
 
-        cache_data = self.cache_orchestrator._load_file_cache(
+        cache_data = self.cache_orchestrator.load_file_cache(
             file_path, current_hash, compile_args_hash
         )
         if cache_data is not None and not cache_data["success"]:
@@ -130,7 +143,7 @@ class SingleFileIndexingPipeline:
         )
 
         # Save failure to cache
-        self.cache_orchestrator._save_file_cache(
+        self.cache_orchestrator.save_file_cache(
             file_path,
             [],
             current_hash,
@@ -145,7 +158,7 @@ class SingleFileIndexingPipeline:
     ) -> Optional[str]:
         """Extract and process diagnostics. Returns error message if any."""
         return (  # type: ignore[no-any-return]
-            self.clang_parser._handle_index_file_diagnostics(
+            self.clang_parser.handle_index_file_diagnostics(
                 file_path, tu, current_hash, compile_args_hash, retry_count
             )
         )
@@ -160,9 +173,9 @@ class SingleFileIndexingPipeline:
     ) -> tuple[bool, bool]:
         """Clear old entries, process TU, collect symbols, and save to cache."""
         with self.concurrency.get_lock():
-            self.symbol_store._clear_file_index_entries(file_path)
+            self.symbol_store.clear_file_index_entries(file_path)
 
-        extraction_result = self.symbol_extractor._index_translation_unit(tu, file_path)
+        extraction_result = self.symbol_extractor.index_translation_unit(tu, file_path)
         processed_count = len(extraction_result["processed"])
         if processed_count > 1:
             diagnostics.debug(
@@ -176,7 +189,7 @@ class SingleFileIndexingPipeline:
 
             self.symbol_store.set_file_hash(file_path, current_hash)
 
-        self.cache_orchestrator._save_file_cache(
+        self.cache_orchestrator.save_file_cache(
             file_path,
             collected_symbols,
             current_hash,
@@ -200,7 +213,7 @@ class SingleFileIndexingPipeline:
             file_path, error, current_hash, compile_args_hash, retry_count
         )
         error_msg = str(error)[:200]
-        self.cache_orchestrator._save_file_cache(
+        self.cache_orchestrator.save_file_cache(
             file_path,
             [],
             current_hash,

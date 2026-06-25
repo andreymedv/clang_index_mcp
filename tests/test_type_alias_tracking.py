@@ -16,6 +16,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from clang_index_mcp._search.type_alias_expander import expand_type_name
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
 
@@ -543,7 +544,7 @@ using WidgetAlias = Widget;
         analyzer.index_project()
 
         # Expand alias name
-        expanded = analyzer.context.query_engine.search_engine.expand_type_name("WidgetAlias")
+        expanded = expand_type_name("WidgetAlias", analyzer.cache_manager)
         assert "WidgetAlias" in expanded  # Original
         assert "Widget" in expanded  # Canonical
 
@@ -572,7 +573,7 @@ typedef Widget WidgetType;
         analyzer.index_project()
 
         # Expand canonical type
-        expanded = analyzer.context.query_engine.search_engine.expand_type_name("Widget")
+        expanded = expand_type_name("Widget", analyzer.cache_manager)
         assert "Widget" in expanded  # Original
         # Should include at least one alias
         assert "WidgetAlias" in expanded or "WidgetType" in expanded
@@ -600,7 +601,7 @@ class Widget {};
         analyzer.index_project()
 
         # Expand type with no aliases
-        expanded = analyzer.context.query_engine.search_engine.expand_type_name("Widget")
+        expanded = expand_type_name("Widget", analyzer.cache_manager)
         assert expanded == ["Widget"]
 
 

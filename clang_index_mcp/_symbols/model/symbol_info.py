@@ -1,4 +1,4 @@
-"""Symbol information data structure for C++ analysis."""
+"""Domain model for C++ symbol information."""
 
 import json
 from dataclasses import dataclass, field
@@ -229,4 +229,5 @@ def get_template_param_base_indices(info: "SymbolInfo") -> List[int]:
     for i, base in enumerate(info.base_classes):
         if base in param_names:
             indices.append(i)
+
     return indices

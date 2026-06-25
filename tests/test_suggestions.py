@@ -2,7 +2,7 @@
 Unit tests for clang_index_mcp/suggestions.py — conditional next-step suggestions.
 """
 
-from clang_index_mcp._core import suggestions
+from clang_index_mcp._mcp.response_formatters import suggestions
 from clang_index_mcp._mcp.state_manager import EnhancedQueryResult
 
 # ---------------------------------------------------------------------------

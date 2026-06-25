@@ -6,16 +6,16 @@ and call paths between functions.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
+from .._compilation.include_extractor import ClangIncludeExtractor
 from .._core import diagnostics
+from .._persistence.repositories.dependency_repository import SqliteDependencyRepository
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
-from .._symbols.symbol_extractor import _usr_to_display_name
-from .._persistence.symbol_info import build_location_objects, omit_empty
-
-if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+from .._persistence.persistence_context import PersistenceContext
+from .._symbols.usr_decoder import usr_to_display_name
+from .._symbols.model import build_location_objects, omit_empty
 
 
 class CallGraphService:
@@ -24,13 +24,12 @@ class CallGraphService:
     and call path queries.
     """
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(self, context: PersistenceContext):
         """
         Initialize CallGraphService.
 
         Args:
-            context: Shared project context for access to indexes,
-                     cache_manager, and search_functions.
+            context: Persistence context for access to cache_manager.
         """
         self.context = context
         assert context.cache_manager is not None
@@ -54,9 +53,9 @@ class CallGraphService:
         cache_manager = self.cache_manager
         conn = cache_manager.backend.get_connection()
         if conn is not None:
-            self.dependency_graph = DependencyGraphBuilder(
-                lambda: cache_manager.backend.get_connection()
-            )
+            repository = SqliteDependencyRepository(lambda: cache_manager.backend.get_connection())
+            extractor = ClangIncludeExtractor()
+            self.dependency_graph = DependencyGraphBuilder(repository, extractor)
             diagnostics.debug("Dependency graph builder initialized with dynamic connection")
         else:
             diagnostics.debug("Dependency graph not available (non-SQLite backend)")
@@ -77,41 +76,9 @@ class CallGraphService:
         diagnostics.debug(f"Processing {len(calls_buffer)} calls from buffer")
         diagnostics.debug(f"First call format: {calls_buffer[0]}")
 
-        for call_info in calls_buffer:
-            if len(call_info) == 7:
-                # v17.0 format
-                (
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    disp_name,
-                    tmpl_types,
-                ) = call_info
-                self.call_graph_analyzer.add_call(
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    display_name=disp_name,
-                    template_project_types=tmpl_types,
-                )
-            elif len(call_info) == 5:
-                # Phase 3 format
-                caller_usr, called_usr, call_file, call_line, call_column = call_info
-                self.call_graph_analyzer.add_call(
-                    caller_usr, called_usr, call_file, call_line, call_column
-                )
-            elif len(call_info) == 2:
-                # Legacy format
-                caller_usr, called_usr = call_info
-                self.call_graph_analyzer.add_call(caller_usr, called_usr)
-            else:
-                diagnostics.warning(f"Unexpected call_info format: {call_info}")
+        self.call_graph_analyzer.process_call_buffer(calls_buffer)
 
-    def _stream_call_sites(self, file_path: str, call_sites: List[Dict]):
+    def stream_call_sites(self, file_path: str, call_sites: List[Dict]):
         """Stream call sites to SQLite and update in-memory call graph."""
         diagnostics.debug(f"Streaming {len(call_sites)} call sites from {file_path} to SQLite")
         cache_manager = self.cache_manager
@@ -327,7 +294,7 @@ class CallGraphService:
             else:
                 callers_list.append(
                     {
-                        "qualified_name": _usr_to_display_name(caller_usr),
+                        "qualified_name": usr_to_display_name(caller_usr),
                         "is_project": False,
                     }
                 )
@@ -354,7 +321,7 @@ class CallGraphService:
                     "file": call_site.file,
                     "line": call_site.line,
                     "column": call_site.column,
-                    "caller": _usr_to_display_name(call_site.caller_usr),
+                    "caller": usr_to_display_name(call_site.caller_usr),
                 }
             )
 
@@ -433,7 +400,7 @@ class CallGraphService:
             else:
                 callees_list.append(
                     {
-                        "qualified_name": _usr_to_display_name(callee_usr),
+                        "qualified_name": usr_to_display_name(callee_usr),
                         "is_project": False,
                     }
                 )
@@ -504,7 +471,7 @@ class CallGraphService:
         if not rows:
             return None
         row = rows[0]
-        display_name = row.get("display_name") or _usr_to_display_name(callee_usr)
+        display_name = row.get("display_name") or usr_to_display_name(callee_usr)
         try:
             project_types = json.loads(row["template_project_types"])
         except (json.JSONDecodeError, TypeError):

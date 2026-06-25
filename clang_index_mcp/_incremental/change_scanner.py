@@ -215,7 +215,7 @@ class ChangeScanner:
                 continue
 
             try:
-                current_hash = self.analyzer.context.cache_orchestrator._get_file_hash(
+                current_hash = self.analyzer.context.cache_orchestrator.get_file_hash(
                     normalized_header
                 )
                 if current_hash != tracked_hash:
@@ -258,7 +258,7 @@ class ChangeScanner:
     def _compare_with_cached_hash(self, file_path: str, cached_hash: str) -> ChangeType:
         """Compare current file hash with cached hash."""
         try:
-            current_hash = self.analyzer.context.cache_orchestrator._get_file_hash(file_path)
+            current_hash = self.analyzer.context.cache_orchestrator.get_file_hash(file_path)
             if current_hash != cached_hash:
                 return ChangeType.MODIFIED
             return ChangeType.UNCHANGED
@@ -308,7 +308,7 @@ class ChangeScanner:
 
         # Calculate current hash
         try:
-            current_hash = self.analyzer.context.cache_orchestrator._get_file_hash(str(cc_path))
+            current_hash = self.analyzer.context.cache_orchestrator.get_file_hash(str(cc_path))
 
             # Compare with stored hash
             if current_hash != self.analyzer.context.cache_orchestrator.compile_commands_hash:

@@ -38,21 +38,19 @@ This document captures the functional requirements for the Clang Index MCP Serve
 **REQ-1.1.4**: The system SHALL distinguish between project code and dependency code.
 
 ### 1.2 Parallel Processing
-**REQ-1.2.1**: The system SHALL support multi-threaded indexing of source files.
+**REQ-1.2.1**: The system SHALL support parallel indexing of source files using worker processes.
 
-**REQ-1.2.2**: The system SHALL use thread-local libclang Index instances to ensure thread safety.
+**REQ-1.2.2**: The system SHALL use process-local libclang Index instances to ensure isolation.
 
-**REQ-1.2.3**: The system SHALL use configurable worker threads (1-16 workers, based on CPU count × 2).
+**REQ-1.2.3**: The system SHALL use configurable worker processes (1 to CPU count workers).
 
-**REQ-1.2.4**: The system SHALL protect shared indexes with thread-safe locking mechanisms.
+**REQ-1.2.4**: The system SHALL protect shared indexes with thread-safe locking mechanisms for use in the main process.
 
-**REQ-1.2.5**: The system SHALL use ProcessPoolExecutor by default to bypass Python's Global Interpreter Lock (GIL):
+**REQ-1.2.5**: The system SHALL use ProcessPoolExecutor to bypass Python's Global Interpreter Lock (GIL):
 - Provides true parallelism on multi-core systems (6-7x speedup on 4+ cores)
 - Each worker process has isolated memory space (no shared state)
 - Worker function (`_process_file_worker()`) defined at module level for pickling compatibility
-- Can be disabled via `CPP_ANALYZER_USE_THREADS=true` environment variable
-- Falls back to ThreadPoolExecutor when environment variable is set
-- Skips locking mechanisms in ProcessPoolExecutor mode (isolated memory makes locks unnecessary)
+- Uses the `spawn` multiprocessing start method for fork safety
 
 ---
 

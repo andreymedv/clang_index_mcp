@@ -197,20 +197,17 @@ def _init_worker():
 - Doesn't fix primary deadlock
 
 ### Option 4: Refactor Test to Avoid Fork
-**Rationale:** Use threading or async instead of ProcessPool in test
-
-```python
-# Use ThreadPoolExecutor instead of ProcessPoolExecutor for this test
-from concurrent.futures import ThreadPoolExecutor
-```
+**Rationale:** Test the concurrency mechanism directly without spawning real worker processes.
 
 **Pros:**
 - Avoids fork() entirely in test context
 - Simpler for testing concurrent access patterns
 
 **Cons:**
-- Changes what's being tested (threads vs processes)
+- Changes what's being tested
 - May not catch process-level concurrency issues
+
+**Note:** ThreadPoolExecutor is no longer used for production indexing; the analyzer always uses ProcessPoolExecutor with `spawn`.
 
 ## Recommended Action Plan
 

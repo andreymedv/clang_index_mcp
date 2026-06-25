@@ -176,7 +176,7 @@ class TestUnknownCursorKindHandling:
 
         # Should not raise exception - the ValueError should be caught internally
         # and processing should continue with children
-        analyzer.context.symbol_extractor._process_cursor(cursor)
+        analyzer.context.symbol_extractor.parser._process_cursor(cursor)
 
         # Verify get_children was called (to process children after error)
         cursor.get_children.assert_called()
@@ -231,7 +231,7 @@ class TestUnknownCursorKindHandling:
         parent_cursor.get_children = Mock(return_value=[child_cursor])
 
         # Processing should handle parent gracefully and still process children
-        analyzer.context.symbol_extractor._process_cursor(parent_cursor)
+        analyzer.context.symbol_extractor.parser._process_cursor(parent_cursor)
 
         # Verify that children were requested (parent error was handled)
         parent_cursor.get_children.assert_called()

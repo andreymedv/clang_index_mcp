@@ -1,48 +1,26 @@
 """
-C++ Analyzer — Thin Orchestrator Shell
+C++ Analyzer — Thin Orchestrator Facade
 
-This module provides the CppAnalyzer class, which serves as a thin orchestration
-layer over focused, independently-testable components. CppAnalyzer wires together:
-
-- ProjectContext: project identity, config, and shared references
-- SymbolIndexStore: in-memory symbol indexes (class_index, function_index, etc.)
-- CacheManager: SQLite-backed persistence and error tracking
-- CacheOrchestrator: header tracking, cache validation, and index lifecycle
-- CompilationEnvironment: compile commands and compilation arguments
-- QueryEngine: symbol search and retrieval
-- CallGraphService: call graph queries and dependency tracking
-- IndexingOrchestrator: project-level indexing coordination
-- IndexingPipeline: single-file parsing and symbol extraction
-- RefreshPipeline: incremental refresh and change detection
+This module provides the CppAnalyzer class, which serves as a thin facade
+over the CompositionRoot. CppAnalyzer exposes the public API for code analysis
+while delegating component wiring to the CompositionRoot.
 
 CppAnalyzer itself contains only:
-- __init__: component wiring
+- __init__: delegates to CompositionRoot
 - Lifecycle: close, __enter__, __exit__, __del__
 - Interrupt handling: interrupt, _is_interrupted
 - Thin public wrappers that delegate to the appropriate component
 
-External code should access components via analyzer.X (e.g. analyzer.cache_manager)
-or through the public wrapper methods (e.g. analyzer.search_classes()).
+External code should access components via analyzer.context (e.g.
+analyzer.context.symbol_store) or through the public wrapper methods
+(e.g. analyzer.search_classes()).
 """
 
 import sys
 from typing import Any, Dict, List, Optional
 
-from ._persistence.cache_orchestrator import CacheOrchestrator
-from ._search.call_graph_service import CallGraphService
-from ._compilation.clang_parser import ClangParser
-from ._compilation.compilation_environment import CompilationEnvironment
-from ._compilation.compile_commands_manager import CompileCommandsManager
+from .composition_root import CompositionRoot
 from ._symbols.indexing_callbacks import IndexingCallbacks
-from ._indexing.indexing_orchestrator import ProjectIndexingOrchestrator
-from ._indexing.indexing_pipeline import SingleFileIndexingPipeline
-from ._indexing.indexing_task_submitter import IndexingTaskSubmitter
-from .project_context import ProjectContext
-from ._indexing.worker_result_merger import WorkerResultMerger
-from ._search.query_engine import QueryEngine
-from ._indexing.refresh_pipeline import RefreshPipeline
-from ._symbols.symbol_extractor import SymbolExtractor
-from ._symbols.symbol_index_store import SymbolIndexStore
 
 # Handle both package and script imports
 try:
@@ -85,7 +63,7 @@ class CppAnalyzer:
                                    Used by worker processes to avoid race conditions.
                                    Workers should rely on main process to ensure schema is current.
             use_compile_commands_manager: If False, skip CompileCommandsManager initialization.
-                                         Used by worker processes that receive precomputed compile args (Task 3.2).
+                                         Used by worker processes that receive precomputed compile args.
 
         Note:
             Project identity is determined by (source_directory, config_file) pair.
@@ -93,123 +71,34 @@ class CppAnalyzer:
         """
         self._skip_schema_recreation = skip_schema_recreation
 
-        # ProjectContext is the shared dependency container.  Components that
-        # have been migrated receive the context; the rest still receive self
-        # (CppAnalyzer) and are attached to the context so that pipeline classes
-        # can access them uniformly.
-        self.context: ProjectContext = ProjectContext(
+        # Delegate all wiring to CompositionRoot
+        self._root = CompositionRoot(
             project_root,
             config_file=config_file,
             skip_schema_recreation=skip_schema_recreation,
-        )
-        # Expose core context attributes directly on CppAnalyzer for backward compatibility.
-        self.project_root = self.context.project_root
-        self.index = self.context.index
-        self.project_identity = self.context.project_identity
-        self.config = self.context.config
-        self.cache_manager = self.context.cache_manager
-        self.concurrency = self.context.concurrency
-        self.cancellation = self.context.cancellation
-        self.execution = self.context.execution
-        self.progress_reporter = self.context.progress_reporter
-
-        # Components migrated to ProjectContext are created with the context.
-        # Order matters: CompilationEnvironment needs symbol_store, QueryEngine
-        # needs both CompilationEnvironment and CallGraphService.
-        self.call_graph_service = CallGraphService(self.context)
-        self.context.call_graph_service = self.call_graph_service
-
-        self.symbol_store = SymbolIndexStore(self.context)
-        self.context.symbol_store = self.symbol_store
-
-        self.compilation_env = CompilationEnvironment(self.context)
-        self.context.compilation_env = self.compilation_env
-
-        self.query_engine = QueryEngine(self.context)
-        self.context.query_engine = self.query_engine
-
-        # Break circular dependency: CallGraphService needs symbol_store/query_engine.
-        self.call_graph_service.set_dependencies(self.symbol_store, self.query_engine)
-
-        self.cache_orchestrator = CacheOrchestrator(self.context)
-        self.context.cache_orchestrator = self.cache_orchestrator
-
-        # Wire call graph service to SQLite cache backend.
-        self.call_graph_service.setup_cache_backend()
-
-        # Keep cache_dir for compatibility.
-        self.cache_dir = self.cache_manager.cache_dir
-
-        # Task 3.2: Initialize compile commands manager only if needed.
-        # Workers skip this to save ~6-10 GB memory by using precomputed args.
-        if use_compile_commands_manager:
-            compile_commands_config = self.config.get_compile_commands_config()
-            self.compilation_env.compile_commands_manager = CompileCommandsManager(
-                self.project_root,
-                compile_commands_config,
-                cache_dir=self.cache_manager.cache_dir,
-                cache_backend=self.cache_manager.backend,
-            )
-
-        # Initialize dependency graph builder and restore header tracking.
-        self.call_graph_service.init_dependency_graph()
-        self.cache_orchestrator._calculate_compile_commands_hash()
-        self.cache_orchestrator._restore_or_reset_header_tracking()
-
-        # Parsing services.
-        self.clang_parser = ClangParser(self.context)
-        self.context.clang_parser = self.clang_parser
-
-        self.symbol_extractor = SymbolExtractor(self.context)
-        self.context.symbol_extractor = self.symbol_extractor
-
-        # Indexing/refresh pipelines receive the fully wired context.
-        self.task_submitter = IndexingTaskSubmitter(self.context, self.index_file)
-        self.worker_result_merger = WorkerResultMerger(self.context)
-        self.indexing_pipeline = SingleFileIndexingPipeline(self.context)
-        self.refresh_pipeline = RefreshPipeline(
-            self.context, self.task_submitter, self.worker_result_merger
-        )
-        self.context.refresh_pipeline = self.refresh_pipeline
-        self.indexing_orchestrator = ProjectIndexingOrchestrator(
-            self.context, self.task_submitter, self.worker_result_merger
+            use_compile_commands_manager=use_compile_commands_manager,
         )
 
-        diagnostics.debug(f"CppAnalyzer initialized for project: {self.project_root}")
-        diagnostics.debug(
-            f"Concurrency mode: {'ProcessPool (GIL bypass)' if self.context.use_processes else 'ThreadPool'} "
-            f"with {self.context.max_workers} workers"
-        )
-
-        # Print compile commands configuration status
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compilation_env.has_active_compile_commands():
-            compile_commands_config = self.config.get_compile_commands_config()
-            cc_path = self.project_root / compile_commands_config.compile_commands_path
-            if cc_path.exists():
-                # This message will be followed by actual load message from CompileCommandsManager
-                diagnostics.debug(
-                    f"Compile commands enabled: using {compile_commands_config.compile_commands_path}"
-                )
-            else:
-                diagnostics.debug(
-                    f"Compile commands enabled: {compile_commands_config.compile_commands_path} not found, will use fallback args"
-                )
-        elif self.compilation_env.compile_commands_manager is None:
-            diagnostics.debug("Worker mode: using precomputed compile args from main process")
-        else:
-            diagnostics.debug("Compile commands disabled in configuration")
+        # Public facade attributes — only those needed by external callers.
+        # Internal code should use analyzer.context.* to access components.
+        self.context = self._root.context
+        self.project_root = self._root.project_root
+        self.project_identity = self._root.project_identity
+        self.config = self._root.config
+        self.cache_manager = self._root.cache_manager
+        self.cache_dir = self._root.cache_manager.cache_dir
+        self.cache_orchestrator = self._root.cache_orchestrator
 
     def interrupt(self):
         """
         Interrupt any ongoing indexing operations.
         Sets the interrupted flag which is checked by indexing loops.
         """
-        self.cancellation.interrupt()
+        self._root.cancellation.interrupt()
 
     def _is_interrupted(self) -> bool:
         """Check if indexing has been interrupted."""
-        return self.cancellation.is_interrupted()
+        return self._root.cancellation.is_interrupted()
 
     def close(self):
         """
@@ -244,7 +133,7 @@ class CppAnalyzer:
 
     def get_compile_commands_stats(self) -> Dict[str, Any]:
         """Get compile commands statistics (delegates to compilation_env)."""
-        return self.compilation_env.get_compile_commands_stats()
+        return self._root.compilation_env.get_compile_commands_stats()
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
         """Index a single C++ file.
@@ -253,7 +142,7 @@ class CppAnalyzer:
             (success, was_cached) - success indicates if indexing succeeded,
                                    was_cached indicates if it was loaded from cache
         """
-        return self.indexing_pipeline.index_file(file_path, force)
+        return self._root.indexing_pipeline.index_file(file_path, force)
 
     def index_project(
         self,
@@ -272,8 +161,8 @@ class CppAnalyzer:
         Returns:
             Number of files indexed
         """
-        self.compilation_env.include_dependencies = include_dependencies
-        return self.indexing_orchestrator.index_project(
+        self._root.compilation_env.include_dependencies = include_dependencies
+        return self._root.indexing_orchestrator.index_project(
             include_dependencies,
             force=force,
             callbacks=callbacks,
@@ -281,7 +170,7 @@ class CppAnalyzer:
 
     def pop_last_fallback(self):
         """Return and clear the last fallback result (delegates to query_engine)."""
-        return self.query_engine.pop_last_fallback()
+        return self._root.query_engine.pop_last_fallback()
 
     def search_classes(
         self,
@@ -293,7 +182,7 @@ class CppAnalyzer:
         include_base_classes: bool = True,
     ):
         """Search for classes matching pattern (delegates to query_engine)."""
-        return self.query_engine.search_classes(
+        return self._root.query_engine.search_classes(
             pattern, project_only, file_name, namespace, max_results, include_base_classes
         )
 
@@ -309,7 +198,7 @@ class CppAnalyzer:
         include_attributes: bool = False,
     ):
         """Search for functions matching pattern (delegates to query_engine)."""
-        return self.query_engine.search_functions(
+        return self._root.query_engine.search_functions(
             pattern,
             project_only,
             class_name,
@@ -322,7 +211,7 @@ class CppAnalyzer:
 
     def get_stats(self) -> Dict[str, int]:
         """Get indexer statistics (delegates to query_engine)."""
-        return self.query_engine.get_stats()
+        return self._root.query_engine.get_stats()
 
     def refresh_if_needed(
         self,
@@ -337,24 +226,24 @@ class CppAnalyzer:
         Returns:
             Number of files refreshed
         """
-        return self.refresh_pipeline.refresh_if_needed(
-            self.compilation_env.include_dependencies,
+        return self._root.refresh_pipeline.refresh_if_needed(
+            self._root.compilation_env.include_dependencies,
             callbacks=callbacks,
         )
 
     def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific class (delegates to query_engine)."""
-        return self.query_engine.get_class_info(class_name)
+        return self._root.query_engine.get_class_info(class_name)
 
     def get_function_signature(
         self, function_name: str, class_name: Optional[str] = None
     ) -> List[str]:
         """Get signature details for functions (delegates to query_engine)."""
-        return self.query_engine.get_function_signature(function_name, class_name)
+        return self._root.query_engine.get_function_signature(function_name, class_name)
 
     def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
         """Get comprehensive type alias information (delegates to query_engine)."""
-        return self.query_engine.get_type_alias_info(type_name)
+        return self._root.query_engine.get_type_alias_info(type_name)
 
     def search_symbols(
         self,
@@ -366,7 +255,7 @@ class CppAnalyzer:
         signature_pattern: Optional[str] = None,
     ):
         """Search for all symbols (classes and functions) matching pattern (delegates to query_engine)."""
-        return self.query_engine.search_symbols(
+        return self._root.query_engine.search_symbols(
             pattern, project_only, symbol_types, namespace, max_results, signature_pattern
         )
 
@@ -374,19 +263,19 @@ class CppAnalyzer:
         self, class_name: str, project_only: bool = True
     ) -> List[Dict[str, Any]]:
         """Get all classes that derive from the given class (delegates to query_engine)."""
-        return self.query_engine.get_derived_classes(class_name, project_only)
+        return self._root.query_engine.get_derived_classes(class_name, project_only)
 
     def _check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
         """Check indirect inheritance through template parameters (delegates to query_engine)."""
-        return self.query_engine._check_template_param_inheritance(base_class, target_class)
+        return self._root.query_engine._check_template_param_inheritance(base_class, target_class)
 
     def _get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
         """Get template parameter indices that a template inherits from (delegates to query_engine)."""
-        return self.query_engine._get_template_param_inheritance_indices(template_name)
+        return self._root.query_engine._get_template_param_inheritance_indices(template_name)
 
     def _parse_template_args(self, args_str: str) -> List[str]:
         """Parse template arguments from a string (delegates to query_engine)."""
-        return self.query_engine._parse_template_args(args_str)
+        return self._root.query_engine._parse_template_args(args_str)
 
     def get_class_hierarchy(
         self,
@@ -396,7 +285,9 @@ class CppAnalyzer:
         direction: str = "both",
     ) -> Dict[str, Any]:
         """Get the inheritance graph for a class as a flat adjacency list (delegates to query_engine)."""
-        return self.query_engine.get_class_hierarchy(class_name, max_nodes, max_depth, direction)
+        return self._root.query_engine.get_class_hierarchy(
+            class_name, max_nodes, max_depth, direction
+        )
 
     def find_incoming_calls(
         self,
@@ -406,7 +297,7 @@ class CppAnalyzer:
         project_only: bool = True,
     ) -> Dict[str, Any]:
         """Find all functions that call the specified function."""
-        return self.call_graph_service.find_incoming_calls(
+        return self._root.call_graph_service.find_incoming_calls(
             function_name, class_name, include_call_sites, project_only
         )
 
@@ -414,27 +305,27 @@ class CppAnalyzer:
         self, function_name: str, class_name: str = "", project_only: bool = True
     ) -> Dict[str, Any]:
         """Find all functions called by the specified function."""
-        return self.call_graph_service.find_callees(function_name, class_name, project_only)
+        return self._root.call_graph_service.find_callees(function_name, class_name, project_only)
 
     def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
         """Get all call sites FROM a specific function."""
-        return self.call_graph_service.get_call_sites(function_name, class_name)
+        return self._root.call_graph_service.get_call_sites(function_name, class_name)
 
     def get_call_path(
         self, from_function: str, to_function: str, max_depth: int = 10
     ) -> List[List[str]]:
         """Find call paths from one function to another using BFS."""
-        return self.call_graph_service.get_call_path(from_function, to_function, max_depth)
+        return self._root.call_graph_service.get_call_path(from_function, to_function, max_depth)
 
     def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
         """Search for symbols within a specific file or files matching a glob pattern (delegates to query_engine)."""
-        return self.query_engine.find_in_file(file_path, pattern)
+        return self._root.query_engine.find_in_file(file_path, pattern)
 
     async def get_files_containing_symbol(
         self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
     ) -> Dict[str, Any]:
         """Get all files that contain references to or define a symbol (delegates to query_engine)."""
-        return await self.query_engine.get_files_containing_symbol(
+        return await self._root.query_engine.get_files_containing_symbol(
             symbol_name, symbol_kind, project_only
         )
 
@@ -484,7 +375,8 @@ if __name__ == "__main__":
     analyzer = CppAnalyzer(".")
 
     # Try to load from cache first
-    if not analyzer.cache_orchestrator._load_cache():
+    assert analyzer.cache_orchestrator is not None
+    if not analyzer.cache_orchestrator.load_cache():
         analyzer.index_project()
 
     stats = analyzer.get_stats()

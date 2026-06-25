@@ -1,12 +1,10 @@
 import threading
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError
 
 from .._core import diagnostics
-
-if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+from .._persistence.persistence_context import PersistenceContext
 
 
 class ClangParser:
@@ -14,12 +12,12 @@ class ClangParser:
     Handles libclang Index and TranslationUnit management.
     """
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(self, context: PersistenceContext):
         """
         Initialize ClangParser.
 
         Args:
-            context: Shared project context for access to config and cache_manager.
+            context: Persistence context for access to cache_manager.
         """
         self.context = context
         self._thread_local = threading.local()
@@ -32,7 +30,7 @@ class ClangParser:
             self._thread_local.index = index
         return index
 
-    def _try_parse_with_fallback(
+    def try_parse_with_fallback(
         self, file_path: str, args: List[str]
     ) -> Tuple[Optional[Any], Optional[str]]:
         """Try parsing with progressive fallback if initial attempt fails."""
@@ -132,7 +130,7 @@ class ClangParser:
 
         return "\n".join(messages)
 
-    def _handle_index_file_diagnostics(
+    def handle_index_file_diagnostics(
         self, file_path: str, tu: Any, current_hash: str, compile_args_hash: str, retry_count: int
     ) -> Optional[str]:
         """Extract and process diagnostics. Returns error message if any."""
