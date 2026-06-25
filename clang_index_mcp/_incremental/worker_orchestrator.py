@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type
 
 if TYPE_CHECKING:
-    from ..cpp_analyzer import CppAnalyzer
+    from .._contexts.incremental_context import IncrementalContext
     from .._symbols.indexing_callbacks import IndexingCallbacks
 
 
@@ -35,27 +35,24 @@ def create_executor(
 
 
 def process_future_result(
-    analyzer: "CppAnalyzer", result: Any, file_path: str
+    ctx: "IncrementalContext", result: Any, file_path: str
 ) -> Tuple[bool, bool]:
     """Process the result from a future and merge it into the analyzer."""
     from .._incremental.symbol_merger import merge_symbols
 
-    call_graph_service = analyzer.context.call_graph_service
-    assert call_graph_service is not None
-    cache_orchestrator = analyzer.context.cache_orchestrator
-    assert cache_orchestrator is not None
-    symbol_store = analyzer.context.symbol_store
-    assert symbol_store is not None
+    call_graph_analyzer = ctx.call_graph_analyzer
+    cache_orchestrator = ctx.cache_orchestrator
+    symbol_store = ctx.symbol_store
 
     # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
     _, success, was_cached, symbols, call_sites, processed_headers = result
 
     if success and symbols:
-        merge_symbols(analyzer, symbols)
+        merge_symbols(ctx, symbols)
 
     if call_sites:
         for cs_dict in call_sites:
-            call_graph_service.call_graph_analyzer.add_call(
+            call_graph_analyzer.add_call(
                 cs_dict["caller_usr"],
                 cs_dict["callee_usr"],
                 cs_dict["file"],
@@ -112,7 +109,7 @@ def report_progress(
 
 
 def submit_tasks(
-    analyzer: "CppAnalyzer",
+    ctx: "IncrementalContext",
     executor: Executor,
     file_list: List[str],
 ) -> Dict[Any, str]:
@@ -123,16 +120,11 @@ def submit_tasks(
     from .._indexing.worker_pool import _process_file_worker
     from .._incremental.compile_args_resolver import get_file_compile_args
 
-    project_root = str(analyzer.project_root)
-    config_file_str = (
-        str(analyzer.project_identity.config_file_path)
-        if analyzer.project_identity.config_file_path
-        else None
-    )
-    compilation_env = analyzer.context.compilation_env
-    assert compilation_env is not None
+    project_root = str(ctx.project_root)
+    config_file_str = ctx.config_file
+    compilation_env = ctx.compilation_env
     include_dependencies = compilation_env.include_dependencies
-    file_compile_args = get_file_compile_args(analyzer, file_list)
+    file_compile_args = get_file_compile_args(ctx, file_list)
 
     return {
         executor.submit(
@@ -151,12 +143,14 @@ def submit_tasks(
 
 
 def process_loop(
-    analyzer: "CppAnalyzer",
+    ctx: "IncrementalContext",
     executor: Executor,
     future_to_file: Dict[Any, str],
     start_time: float,
     total: int,
     callbacks: Optional["IndexingCallbacks"],
+    is_interrupted: Callable[[], bool],
+    shutdown_executor: Callable[[Executor, str], None],
 ) -> Tuple[int, int]:
     """Process results from futures in a loop."""
     from .._core import diagnostics
@@ -165,7 +159,7 @@ def process_loop(
     failed = 0
 
     for i, future in enumerate(as_completed(future_to_file)):
-        if getattr(analyzer, "_interrupted", False) is True:
+        if is_interrupted():
             for f in future_to_file:
                 f.cancel()
             diagnostics.info("Incremental refresh interrupted by request")
@@ -177,7 +171,7 @@ def process_loop(
         file_path = future_to_file[future]
         try:
             result = future.result()
-            success, was_cached = process_future_result(analyzer, result, file_path)
+            success, was_cached = process_future_result(ctx, result, file_path)
 
             if success:
                 analyzed += 1
@@ -197,10 +191,12 @@ def process_loop(
 
 
 def reanalyze_files(
-    analyzer: "CppAnalyzer",
+    ctx: "IncrementalContext",
     files: Set[str],
     start_time: float,
     callbacks: Optional["IndexingCallbacks"] = None,
+    is_interrupted: Optional[Callable[[], bool]] = None,
+    shutdown_executor: Optional[Callable[[Executor, str], None]] = None,
 ) -> int:
     """
     Re-analyze a set of files using parallel processing.
@@ -212,38 +208,70 @@ def reanalyze_files(
 
     from .._core import diagnostics
 
-    analyzed = 0
-    failed = 0
+    if is_interrupted is None:
+
+        def _never_interrupted() -> bool:
+            return False
+
+        is_interrupted = _never_interrupted
+    if shutdown_executor is None:
+
+        def _default_shutdown(executor: Executor, name: str) -> None:
+            try:
+                executor.shutdown(wait=False)
+            except Exception:
+                pass
+
+        shutdown_executor = _default_shutdown
+
     total = len(files)
     file_list = list(files)
 
-    max_workers = getattr(analyzer, "max_workers", None)
-    if max_workers is None or not isinstance(max_workers, int):
-        max_workers = os.cpu_count() or 4
-
+    max_workers = os.cpu_count() or 4
     mp_context, _, msg = create_executor(max_workers)
     diagnostics.debug(msg)
 
+    return _run_analysis_loop(
+        ctx, file_list, start_time, total, callbacks, is_interrupted, shutdown_executor, mp_context
+    )
+
+
+def _run_analysis_loop(
+    ctx: "IncrementalContext",
+    file_list: List[str],
+    start_time: float,
+    total: int,
+    callbacks: Optional["IndexingCallbacks"],
+    is_interrupted: Callable[[], bool],
+    shutdown_executor: Callable[[Executor, str], None],
+    mp_context: Optional[multiprocessing.context.BaseContext],
+) -> int:
+    """Execute the analysis loop with executor lifecycle management."""
+    from .._core import diagnostics
+
     executor: Optional[Executor] = None
+    max_workers = os.cpu_count() or 4
     try:
         if mp_context:
             executor = ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_context)
         else:
             executor = ProcessPoolExecutor(max_workers=max_workers)
 
-        future_to_file = submit_tasks(analyzer, executor, file_list)
-        analyzed, failed = process_loop(
-            analyzer,
+        future_to_file = submit_tasks(ctx, executor, file_list)
+        analyzed, _failed = process_loop(
+            ctx,
             executor,
             future_to_file,
             start_time,
             total,
             callbacks,
+            is_interrupted,
+            shutdown_executor,
         )
     except KeyboardInterrupt:
         diagnostics.info("\nIncremental refresh interrupted")
         if executor is not None:
-            analyzer._shutdown_executor(executor, name="Incremental Refresh")  # type: ignore[attr-defined]
+            shutdown_executor(executor, "Incremental Refresh")
         raise
     finally:
         if executor is not None:

@@ -203,3 +203,36 @@ class ProjectContext:
     def max_workers(self) -> int:
         """Convenience accessor for the worker pool size."""
         return self.runtime.execution.max_workers
+
+    def build_incremental_context(self):
+        """Build an IncrementalContext from the current project state.
+
+        Returns an IncrementalContext with all services needed by incremental
+        analysis modules, or None if required services are not yet initialized.
+        """
+        from ._contexts.incremental_context import IncrementalContext
+
+        compilation_env = self.compilation.compilation_env
+        symbol_store = self.symbols.symbol_store
+        cache_orchestrator = self.persistence.cache_orchestrator
+        call_graph_service = self.symbols.call_graph_service
+
+        if not all([compilation_env, symbol_store, cache_orchestrator, call_graph_service]):
+            return None
+
+        return IncrementalContext(
+            project_root=self.identity.project_root,
+            config=self.identity.config,
+            cache_manager=self.persistence.cache_manager,
+            cache_orchestrator=cache_orchestrator,
+            compilation_env=compilation_env,
+            symbol_store=symbol_store,
+            concurrency=self.runtime.concurrency,
+            call_graph_analyzer=call_graph_service.call_graph_analyzer,
+            dependency_graph=call_graph_service.dependency_graph,
+            config_file=(
+                str(self.identity.project_identity.config_file_path)
+                if self.identity.project_identity.config_file_path
+                else None
+            ),
+        )

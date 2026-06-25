@@ -122,7 +122,10 @@ int multiply(int a, int b) {
         analyzer.index_project()
 
         # Create incremental analyzer
-        incremental = IncrementalAnalyzer(analyzer)
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
 
         # Run incremental analysis - should detect no changes
         result = incremental.perform_incremental_analysis()
@@ -150,7 +153,10 @@ int multiply(int a, int b) {
 """)
 
         # Create incremental analyzer
-        incremental = IncrementalAnalyzer(analyzer)
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
 
         # Run incremental analysis
         result = incremental.perform_incremental_analysis()
@@ -192,7 +198,10 @@ int subtract(int a, int b) {  // New function
 """)
 
         # Create incremental analyzer
-        incremental = IncrementalAnalyzer(analyzer)
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
 
         # Run incremental analysis
         result = incremental.perform_incremental_analysis()
@@ -233,7 +242,10 @@ int divide(int a, int b) {
         analyzer.context.compile_commands_manager._load_compile_commands()
 
         # Create incremental analyzer
-        incremental = IncrementalAnalyzer(analyzer)
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
 
         # Run incremental analysis
         result = incremental.perform_incremental_analysis()
@@ -264,7 +276,10 @@ int divide(int a, int b) {
         self.utils_cpp.unlink()
 
         # Create incremental analyzer
-        incremental = IncrementalAnalyzer(analyzer)
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
 
         # Run incremental analysis
         result = incremental.perform_incremental_analysis()
@@ -298,7 +313,10 @@ int divide(int a, int b) {
         self.cc_file.write_text(json.dumps(cc_data, indent=2))
 
         # Create incremental analyzer
-        incremental = IncrementalAnalyzer(analyzer)
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
 
         # Run incremental analysis
         result = incremental.perform_incremental_analysis()
