@@ -8,9 +8,12 @@ from typing import Any, Dict, List
 
 from mcp.types import TextContent
 
-from .. import cpp_mcp_server as _server
-from ..state_manager import AnalyzerState, IndexingProgress
+from ..context import ctx
+from ..config_validation import _validate_config_file
+from ..state_manager import AnalyzerState, IndexingProgress, BackgroundIndexer
+from ..tool_call_logger import ToolCallLogger
 from ..._core import diagnostics
+from ...cpp_analyzer import CppAnalyzer
 from ..._symbols.indexing_callbacks import IndexingCallbacks
 
 
@@ -18,7 +21,7 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
     config_file_raw = arguments.get("config_file")
     auto_refresh = arguments.get("auto_refresh", True)
 
-    config_file, error_response = _server._validate_config_file(config_file_raw)
+    config_file, error_response = _validate_config_file(config_file_raw)
     if error_response:
         return error_response
     assert config_file is not None
@@ -56,16 +59,16 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
     # Re-initialize analyzer with new path and config
     # Transition to INDEXING state (allows immediate queries with partial results)
     # This prevents race condition where get_indexing_status fails if called immediately
-    _server.state_manager.transition_to(AnalyzerState.INDEXING)
-    _server.analyzer = _server.CppAnalyzer(project_path, config_file=config_file)
-    analyzer = _server.analyzer
+    ctx.state_manager.transition_to(AnalyzerState.INDEXING)
+    ctx.analyzer = CppAnalyzer(project_path, config_file=config_file)
+    analyzer = ctx.analyzer
     assert analyzer is not None
-    _server.background_indexer = _server.BackgroundIndexer(analyzer, _server.state_manager)
+    ctx.background_indexer = BackgroundIndexer(analyzer, ctx.state_manager)
 
     # Initialize tool call telemetry logger
     import uuid as _uuid
 
-    _server.tool_call_logger = _server.ToolCallLogger(analyzer.cache_dir, str(_uuid.uuid4()))
+    ctx.tool_call_logger = ToolCallLogger(analyzer.cache_dir, str(_uuid.uuid4()))
 
     # Start indexing in background (truly asynchronous, non-blocking)
     # The task will run independently while the MCP server continues to handle requests
@@ -99,12 +102,12 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
                     start_time=datetime.now(),
                     estimated_completion=None,  # Already complete
                 )
-                _server.state_manager.update_progress(progress)
+                ctx.state_manager.update_progress(progress)
 
-                _server.state_manager.transition_to(AnalyzerState.INDEXED)
+                ctx.state_manager.transition_to(AnalyzerState.INDEXED)
 
                 # Mark as initialized immediately
-                _server.analyzer_initialized = True
+                ctx.analyzer_initialized = True
 
                 diagnostics.info(
                     "Server ready (loaded from cache) - use sync_project with refresh_mode to detect file changes"
@@ -113,21 +116,21 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
 
             # SLOW PATH: Cache not valid, need to index from scratch
             diagnostics.info("No valid cache found, starting full indexing...")
-            await _server.background_indexer.start_indexing(force=False, include_dependencies=True)
+            await ctx.background_indexer.start_indexing(force=False, include_dependencies=True)
 
             # Indexing complete - mark as initialized
-            _server.analyzer_initialized = True
+            ctx.analyzer_initialized = True
 
         except Exception as e:
             diagnostics.error(f"Background indexing failed: {e}")
-            _server.state_manager.transition_to(AnalyzerState.ERROR)
+            ctx.state_manager.transition_to(AnalyzerState.ERROR)
             pass
 
     # Create background task (non-blocking)
     asyncio.create_task(run_background_indexing())
 
     # Save session for auto-resume on restart
-    _server.session_manager.save_session(config_file=config_file)
+    ctx.session_manager.save_session(config_file=config_file)
 
     # Build response message
     auto_refresh_msg = " Auto-refresh enabled." if auto_refresh else " Auto-refresh disabled."
@@ -147,23 +150,25 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
 
 async def _ensure_analyzer_resumed() -> bool:
     """Ensure analyzer is initialized, attempting auto-resume if needed."""
-    if _server.analyzer is not None:
+    if ctx.analyzer is not None:
         return True
 
     diagnostics.info("Attempting auto-resume of last used session...")
     disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
-    saved_session = None if disable_auto_resume else _server.session_manager.load_session()
+    saved_session = None if disable_auto_resume else ctx.session_manager.load_session()
     if saved_session:
-        _server.analyzer, _server.background_indexer, _server.analyzer_initialized = (
-            _server._try_resume_session(saved_session)
+        from ..cpp_mcp_server import _try_resume_session
+
+        ctx.analyzer, ctx.background_indexer, ctx.analyzer_initialized = _try_resume_session(
+            saved_session
         )
 
-    return _server.analyzer is not None
+    return ctx.analyzer is not None
 
 
 async def _run_background_refresh(refresh_mode: str):
     """Background task to perform project refresh (incremental or full)."""
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     try:
         loop = asyncio.get_event_loop()
@@ -171,11 +176,11 @@ async def _run_background_refresh(refresh_mode: str):
         # Create progress callback that updates state_manager (same as BackgroundIndexer)
         def progress_callback(progress: IndexingProgress):
             """Callback to update progress in state manager during refresh"""
-            _server.state_manager.update_progress(progress)
+            ctx.state_manager.update_progress(progress)
 
         def wait_for_tools():
             """Wrapper to match Callable[[], None] expected by analyzers"""
-            _server.state_manager.wait_for_tools_to_finish()
+            ctx.state_manager.wait_for_tools_to_finish()
 
         if refresh_mode == "incremental":
             diagnostics.info("Starting incremental refresh...")
@@ -187,12 +192,12 @@ async def _run_background_refresh(refresh_mode: str):
             None, lambda: analyzer.refresh_if_needed(callbacks)
         )
         diagnostics.info(f"Refresh complete: re-analyzed {modified_count} files")
-        _server.state_manager.transition_to(AnalyzerState.INDEXED)
+        ctx.state_manager.transition_to(AnalyzerState.INDEXED)
         return
 
     except Exception as e:
         diagnostics.error(f"Background refresh failed: {e}")
-        _server.state_manager.transition_to(AnalyzerState.ERROR)
+        ctx.state_manager.transition_to(AnalyzerState.ERROR)
         pass
 
 
@@ -218,7 +223,7 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
         )
 
     # Transition to REFRESHING state synchronously
-    _server.state_manager.transition_to(AnalyzerState.REFRESHING)
+    ctx.state_manager.transition_to(AnalyzerState.REFRESHING)
 
     # Create background task (non-blocking)
     asyncio.create_task(_run_background_refresh(refresh_mode))
@@ -236,10 +241,10 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
 
 async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextContent]:
     # Combined server diagnostics and indexing status
-    status_dict = _server.state_manager.get_status_dict()
+    status_dict = ctx.state_manager.get_status_dict()
     status_dict["analyzer_type"] = "python_enhanced"
 
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     if analyzer is None:
         return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
@@ -267,15 +272,15 @@ async def _handle_wait_for_indexing(arguments: Dict[str, Any]) -> List[TextConte
     # Internal handler - used by sync_project and tests
     timeout = arguments.get("timeout", 60.0)
 
-    if _server.state_manager.is_fully_indexed():
+    if ctx.state_manager.is_fully_indexed():
         return [TextContent(type="text", text="Indexing already complete.")]
 
     completed = await loop.run_in_executor(
-        None, lambda: _server.state_manager.wait_for_indexed(timeout)
+        None, lambda: ctx.state_manager.wait_for_indexed(timeout)
     )
 
     if completed:
-        progress = _server.state_manager.get_progress()
+        progress = ctx.state_manager.get_progress()
         indexed_count = progress.indexed_files if progress else 0
         failed_count = progress.failed_files if progress else 0
         return [

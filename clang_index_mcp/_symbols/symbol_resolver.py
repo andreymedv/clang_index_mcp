@@ -103,8 +103,8 @@ def get_symbol_by_usr(store: "SymbolIndexStore", usr: str) -> Optional["SymbolIn
     """
     if usr in store.usr_index:
         return store.usr_index[usr]
-    backend = getattr(store._cache_manager, "backend", None)
-    if backend is not None and hasattr(backend, "load_symbol_by_usr"):
+    backend = store._cache_manager.backend
+    if backend is not None:
         try:
             info: Optional["SymbolInfo"] = backend.load_symbol_by_usr(usr)
             return info
