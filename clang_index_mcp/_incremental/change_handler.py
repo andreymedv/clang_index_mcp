@@ -7,10 +7,10 @@ compile_commands.json changes, header changes, source changes, and removed files
 from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
-    from ..cpp_analyzer import CppAnalyzer
+    from .._contexts.incremental_context import IncrementalContext
 
 
-def handle_compile_commands_change(analyzer: "CppAnalyzer") -> Set[str]:
+def handle_compile_commands_change(ctx: "IncrementalContext") -> Set[str]:
     """
     Handle compile_commands.json change.
 
@@ -27,10 +27,9 @@ def handle_compile_commands_change(analyzer: "CppAnalyzer") -> Set[str]:
 
     diagnostics.info("Handling compile_commands.json change...")
 
-    cc_manager = analyzer.context.compile_commands_manager
+    cc_manager = ctx.compilation_env.compile_commands_manager
     assert cc_manager is not None
-    cache_orchestrator = analyzer.context.cache_orchestrator
-    assert cache_orchestrator is not None
+    cache_orchestrator = ctx.cache_orchestrator
 
     old_commands = cc_manager.file_to_command_map.copy()
 
@@ -75,7 +74,7 @@ def handle_compile_commands_change(analyzer: "CppAnalyzer") -> Set[str]:
     return files_to_analyze
 
 
-def handle_header_change(analyzer: "CppAnalyzer", header_path: str) -> Set[str]:
+def handle_header_change(ctx: "IncrementalContext", header_path: str) -> Set[str]:
     """
     Handle header file change.
 
@@ -86,13 +85,11 @@ def handle_header_change(analyzer: "CppAnalyzer", header_path: str) -> Set[str]:
 
     diagnostics.info(f"Handling header change: {header_path}")
 
-    call_graph_service = analyzer.context.call_graph_service
-    assert call_graph_service is not None
-    cache_orchestrator = analyzer.context.cache_orchestrator
-    assert cache_orchestrator is not None
+    dependency_graph = ctx.dependency_graph
+    cache_orchestrator = ctx.cache_orchestrator
 
-    if call_graph_service.dependency_graph:
-        dependents = call_graph_service.dependency_graph.find_transitive_dependents(header_path)
+    if dependency_graph:
+        dependents = dependency_graph.find_transitive_dependents(header_path)
         diagnostics.info(f"Header {header_path} affects {len(dependents)} files")
     else:
         diagnostics.warning("No dependency graph, cannot determine affected files")
@@ -102,7 +99,7 @@ def handle_header_change(analyzer: "CppAnalyzer", header_path: str) -> Set[str]:
     return dependents
 
 
-def handle_source_change(analyzer: "CppAnalyzer", source_path: str) -> None:
+def handle_source_change(ctx: "IncrementalContext", source_path: str) -> None:
     """
     Handle source file change.
 
@@ -114,13 +111,12 @@ def handle_source_change(analyzer: "CppAnalyzer", source_path: str) -> None:
     diagnostics.debug(f"Handling source change: {source_path}")
 
 
-def remove_file(analyzer: "CppAnalyzer", file_path: str) -> None:
+def remove_file(ctx: "IncrementalContext", file_path: str) -> None:
     """Remove a deleted file from cache, indexes, and dependency graph."""
     from .._core import diagnostics
 
     diagnostics.info(f"Removing deleted file: {file_path}")
-    cache_orchestrator = analyzer.context.cache_orchestrator
-    assert cache_orchestrator is not None
+    cache_orchestrator = ctx.cache_orchestrator
     try:
         cache_orchestrator.remove_deleted_file(file_path)
     except Exception as e:

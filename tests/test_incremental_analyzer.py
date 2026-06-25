@@ -17,6 +17,46 @@ def _fake_process_file_worker(spec):
     return (spec.file_path, success, False, [], [], {})
 
 
+def _make_mock_ctx(test_dir):
+    """Create a mock IncrementalContext with all required attributes."""
+    ctx = Mock()
+    ctx.project_root = test_dir
+    ctx.config = Mock()
+    ctx.config.get_compile_commands_config.return_value = CompileCommandsConfig(
+        compile_commands_path="compile_commands.json"
+    )
+    ctx.config_file = None
+    ctx.cache_manager = Mock()
+    ctx.cache_orchestrator = Mock()
+    ctx.cache_orchestrator.invalidate_header = Mock()
+    ctx.cache_orchestrator.clear_header_tracker = Mock()
+    ctx.cache_orchestrator.mark_header_completed = Mock()
+    ctx.cache_orchestrator.remove_deleted_file = Mock()
+    ctx.cache_orchestrator.compile_commands_hash = ""
+    ctx.compilation_env = Mock()
+    ctx.compilation_env.file_scanner = Mock()
+    ctx.compilation_env.compile_commands_manager = Mock()
+    ctx.compilation_env.compile_commands_manager.compute_commands_diff = Mock(
+        return_value=(set(), set(), set())
+    )
+    ctx.compilation_env.compile_commands_manager.store_command_hashes = Mock(return_value=0)
+    ctx.compilation_env.compile_commands_manager.get_compile_commands_hash = Mock(
+        return_value=""
+    )
+    ctx.symbol_store = Mock()
+    ctx.concurrency = Mock()
+    ctx.call_graph_analyzer = Mock()
+    ctx.dependency_graph = Mock()
+
+    # Mock cache backend
+    backend_mock = Mock()
+    backend_mock.set_compile_args_hash = Mock(return_value=True)
+    backend_mock.remove_file_cache = Mock()
+    ctx.cache_manager.backend = backend_mock
+
+    return ctx
+
+
 class TestAnalysisResult(unittest.TestCase):
     """Test cases for AnalysisResult class."""
 
@@ -49,44 +89,15 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         """Set up test fixtures."""
         self.test_dir = Path(tempfile.mkdtemp())
 
-        # Create mock analyzer with all required components
-        self.analyzer = Mock()
-        self.analyzer.project_root = self.test_dir
-        self.analyzer.config = Mock()
-        self.analyzer.cache_manager = Mock()
-        self.analyzer.context.file_scanner = Mock()
-        self.analyzer.context.cache_orchestrator.invalidate_header = Mock()
-        self.analyzer.context.cache_orchestrator.clear_header_tracker = Mock()
-        self.analyzer.context.cache_orchestrator.mark_header_completed = Mock()
-        self.analyzer.context.cache_orchestrator.remove_deleted_file = Mock()
-        self.analyzer.context.call_graph_service.dependency_graph = Mock()
-        self.analyzer.context.compile_commands_manager = Mock()
-        self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
-            return_value=(set(), set(), set())
-        )
-        self.analyzer.context.compile_commands_manager.store_command_hashes = Mock(return_value=0)
-        self.analyzer.context.compile_commands_manager.get_compile_commands_hash = Mock(
-            return_value=""
-        )
-        self.analyzer.context.cache_orchestrator.compile_commands_hash = ""
-
-        # Mock config
-        self.analyzer.config.get_compile_commands_config.return_value = CompileCommandsConfig(
-            compile_commands_path="compile_commands.json"
-        )
-
-        # Mock cache backend
-        backend_mock = Mock()
-        backend_mock.set_compile_args_hash = Mock(return_value=True)
-        backend_mock.remove_file_cache = Mock()
-        self.analyzer.cache_manager.backend = backend_mock
+        # Create mock context
+        self.ctx = _make_mock_ctx(self.test_dir)
 
         # Create incremental analyzer
-        self.incremental = IncrementalAnalyzer(self.analyzer)
+        self.incremental = IncrementalAnalyzer(self.ctx)
 
         # Patch process pool to use threads and worker to avoid pickling Mock objects.
         # This is a unit-testing seam: production always uses real ProcessPoolExecutor,
-        # but Mock analyzers cannot be pickled across processes.
+        # but Mock contexts cannot be pickled across processes.
         self._pool_patch = patch(
             "clang_index_mcp._incremental.worker_orchestrator.ProcessPoolExecutor",
             side_effect=lambda max_workers=None, mp_context=None: __import__(
@@ -144,7 +155,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # Mock dependency graph to return dependents
         dependent1 = str(self.test_dir / "main.cpp")
         dependent2 = str(self.test_dir / "test.cpp")
-        self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.return_value = {
+        self.ctx.dependency_graph.find_transitive_dependents.return_value = {
             dependent1,
             dependent2,
         }
@@ -156,7 +167,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
             # Should re-analyze both dependents
             self.assertEqual(result.files_analyzed, 2)
-            self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.assert_called_once_with(
+            self.ctx.dependency_graph.find_transitive_dependents.assert_called_once_with(
                 header_file
             )
 
@@ -195,7 +206,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
 
             # Should remove file from cache and dependencies
             self.assertEqual(result.files_removed, 1)
-            self.analyzer.context.cache_orchestrator.remove_deleted_file.assert_called_once_with(
+            self.ctx.cache_orchestrator.remove_deleted_file.assert_called_once_with(
                 removed_file
             )
 
@@ -224,13 +235,13 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         mock_command_map.__iter__ = lambda x: iter(new_commands)
         mock_command_map.__getitem__ = lambda x, key: new_commands[key]
 
-        self.analyzer.context.compile_commands_manager.file_to_command_map = mock_command_map
-        self.analyzer.context.compile_commands_manager._load_compile_commands = Mock()
-        self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
+        self.ctx.compilation_env.compile_commands_manager.file_to_command_map = mock_command_map
+        self.ctx.compilation_env.compile_commands_manager._load_compile_commands = Mock()
+        self.ctx.compilation_env.compile_commands_manager.compute_commands_diff = Mock(
             return_value=({file3}, {file2}, {file1})
         )
-        self.analyzer.context.compile_commands_manager.store_command_hashes = Mock()
-        self.analyzer.context.compile_commands_manager.get_compile_commands_hash = Mock(
+        self.ctx.compilation_env.compile_commands_manager.store_command_hashes = Mock()
+        self.ctx.compilation_env.compile_commands_manager.get_compile_commands_hash = Mock(
             return_value=""
         )
 
@@ -261,7 +272,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # Mock dependency graph
         dependent1 = str(self.test_dir / "test1.cpp")
         dependent2 = str(self.test_dir / "test2.cpp")
-        self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.return_value = {
+        self.ctx.dependency_graph.find_transitive_dependents.return_value = {
             dependent1,
             dependent2,
         }
@@ -282,7 +293,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
     def test_handle_header_change_without_dependency_graph(self):
         """Test header change handling when no dependency graph available."""
         # Disable dependency graph
-        self.analyzer.context.call_graph_service.dependency_graph = None
+        self.ctx.dependency_graph = None
 
         changeset = ChangeSet()
         header_file = str(self.test_dir / "utils.h")
@@ -315,7 +326,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
     def test_remove_file_handles_exceptions(self):
         """Test _remove_file handles exceptions gracefully."""
         # Mock orchestrator cleanup to raise exception
-        self.analyzer.context.cache_orchestrator.remove_deleted_file.side_effect = Exception(
+        self.ctx.cache_orchestrator.remove_deleted_file.side_effect = Exception(
             "Test error"
         )
 
@@ -325,7 +336,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         self.incremental._remove_file(removed_file)
 
         # Verify the orchestrator was invoked
-        self.analyzer.context.cache_orchestrator.remove_deleted_file.assert_called_once_with(
+        self.ctx.cache_orchestrator.remove_deleted_file.assert_called_once_with(
             removed_file
         )
 
@@ -336,7 +347,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         changeset.modified_headers = {header_file}
 
         # Mock dependency graph to return empty set
-        self.analyzer.context.call_graph_service.dependency_graph.find_transitive_dependents.return_value = set()
+        self.ctx.dependency_graph.find_transitive_dependents.return_value = set()
 
         with patch.object(self.incremental.scanner, "scan_for_changes") as mock_scan:
             mock_scan.return_value = changeset
@@ -344,7 +355,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             self.incremental.perform_incremental_analysis()
 
             # Verify header tracker was invalidated
-            self.analyzer.context.cache_orchestrator.invalidate_header.assert_called_once_with(header_file)
+            self.ctx.cache_orchestrator.invalidate_header.assert_called_once_with(header_file)
 
     def test_compile_commands_hash_updated(self):
         """Test compile_commands_hash is updated after change."""
@@ -356,12 +367,12 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         cc_file.write_text("[]")
 
         # Mock empty commands
-        self.analyzer.context.compile_commands_manager.file_to_command_map = {}
-        self.analyzer.context.compile_commands_manager.compute_commands_diff = Mock(
+        self.ctx.compilation_env.compile_commands_manager.file_to_command_map = {}
+        self.ctx.compilation_env.compile_commands_manager.compute_commands_diff = Mock(
             return_value=(set(), set(), set())
         )
-        self.analyzer.context.compile_commands_manager.store_command_hashes = Mock()
-        self.analyzer.context.compile_commands_manager.get_compile_commands_hash = Mock(
+        self.ctx.compilation_env.compile_commands_manager.store_command_hashes = Mock()
+        self.ctx.compilation_env.compile_commands_manager.get_compile_commands_hash = Mock(
             return_value="new_hash"
         )
 
@@ -371,7 +382,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             self.incremental.perform_incremental_analysis()
 
             # Verify hash was updated
-            self.assertEqual(self.analyzer.context.cache_orchestrator.compile_commands_hash, "new_hash")
+            self.assertEqual(self.ctx.cache_orchestrator.compile_commands_hash, "new_hash")
 
 
 if __name__ == "__main__":
