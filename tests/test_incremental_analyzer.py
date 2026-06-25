@@ -100,7 +100,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # but Mock contexts cannot be pickled across processes.
         self._pool_patch = patch(
             "clang_index_mcp._incremental.worker_orchestrator.ProcessPoolExecutor",
-            side_effect=lambda max_workers=None, mp_context=None: __import__(
+            side_effect=lambda max_workers=None, mp_context=None, initializer=None: __import__(
                 "concurrent.futures", fromlist=["ThreadPoolExecutor"]
             ).ThreadPoolExecutor(max_workers=max_workers or 2),
         )
