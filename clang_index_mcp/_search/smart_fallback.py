@@ -62,13 +62,13 @@ _SIGNATURE_INDICATORS = [
 ]
 
 # Additional indicators: pattern has spaces + identifiers (looks like type + name)
-_PROTOTYPE_PATTERN = re.compile(r"^[a-zA-Z_][\w:]*\s+[a-zA-Z_][\w:]*\s*\(", re.ASCII)
+PROTOTYPE_PATTERN = re.compile(r"^[a-zA-Z_][\w:]*\s+[a-zA-Z_][\w:]*\s*\(", re.ASCII)
 
 # C++ identifier pattern
 _IDENTIFIER_RE = re.compile(r"[a-zA-Z_]\w*(?:::[a-zA-Z_]\w*)*")
 
 
-def _looks_like_signature(pattern: str) -> bool:
+def looks_like_signature(pattern: str) -> bool:
     """Check if pattern looks like a C++ function signature rather than a name."""
     # Must have at least one space (type + name) or parentheses
     if "(" in pattern:
@@ -317,7 +317,7 @@ class SmartFallback:
         function_index: Dict[str, List[Any]],
     ) -> Optional[FallbackResult]:
         """Detect signature/prototype used as pattern instead of symbol name."""
-        if not _looks_like_signature(pattern):
+        if not looks_like_signature(pattern):
             return None
 
         extracted = _extract_identifier_from_signature(pattern)
