@@ -16,7 +16,7 @@ async def test_sync_project_after_failed_resume():
     saved_analyzer = ctx.analyzer
     saved_bg = ctx.background_indexer
     try:
-        with patch("clang_index_mcp._core.session_manager.SessionManager.load_session", return_value=mock_session), \
+        with patch("clang_index_mcp._persistence.session_manager.SessionManager.load_session", return_value=mock_session), \
              patch("clang_index_mcp._mcp.cpp_mcp_server._try_resume_session") as mock_resume, \
              patch.object(ctx, "state_manager") as mock_state_manager:
 
@@ -64,7 +64,7 @@ async def test_sync_project_auto_resumes_when_none():
     saved_analyzer = ctx.analyzer
     saved_bg = ctx.background_indexer
     try:
-        with patch("clang_index_mcp._core.session_manager.SessionManager.load_session", return_value=mock_session), \
+        with patch("clang_index_mcp._persistence.session_manager.SessionManager.load_session", return_value=mock_session), \
              patch("clang_index_mcp._mcp.cpp_mcp_server._try_resume_session") as mock_resume, \
              patch.object(ctx, "state_manager") as mock_state_manager:
 

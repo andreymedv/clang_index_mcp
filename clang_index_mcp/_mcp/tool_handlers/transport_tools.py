@@ -19,7 +19,7 @@ async def _run_stdio_transport(server):
 async def _run_http_transport(server, host, port, transport):
     """Run the server using HTTP or SSE transport."""
     try:
-        from ..._core.http_server import run_http_server
+        from ..transport.http_server import run_http_server
     except ImportError:
         from http_server import run_http_server  # type: ignore[no-redef]
 
