@@ -3,6 +3,11 @@
 This Protocol defines the interface that persistence backends must implement.
 It lives in the indexing layer so that use cases depend on an abstraction rather
 than on the persistence implementation.
+
+Escape hatch: ``get_connection()`` exposes the raw database connection for
+components that inherently require direct SQL access (e.g. dependency graph
+queries with complex joins).  Callers that can work through the higher-level
+methods above should prefer those instead.
 """
 
 import sqlite3
@@ -117,12 +122,19 @@ class CacheBackend(Protocol):
         """Rebuild FTS5 index from scratch."""
         ...
 
-    def _ensure_connected(self) -> None:
-        """Ensure connection is active, reconnect if needed."""
+    def ensure_schema_current(self) -> bool:
+        """Ensure database schema is current before spawning workers."""
+        ...
+
+    def close(self) -> None:
+        """Close the backend and release resources."""
         ...
 
     def get_connection(self) -> Optional[sqlite3.Connection]:
-        """Return the raw SQLite connection for components that need direct access."""
-        ...
+        """Return the raw database connection (escape hatch for complex SQL).
 
-    conn: Optional[sqlite3.Connection]
+        Components that inherently need direct SQL access (e.g. dependency
+        graph queries with joins) should use this.  Prefer the higher-level
+        methods above when possible.
+        """
+        ...

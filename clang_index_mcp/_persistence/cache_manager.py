@@ -135,24 +135,17 @@ class CacheManager:
         Returns:
             True if schema was recreated, False if it was already current.
         """
-        from .._persistence.sqlite_cache_backend import SqliteCacheBackend
-
-        if isinstance(self.backend, SqliteCacheBackend):
-            return self.backend.ensure_schema_current()
-        return False
+        return self.backend.ensure_schema_current()
 
     def close(self):
         """
         Close the cache manager and release all resources.
 
         This should be called when the CacheManager is no longer needed
-        to properly close the SQLite connection and avoid resource leaks.
+        to properly close the database connection and avoid resource leaks.
         """
         if hasattr(self, "backend") and self.backend is not None:
-            from .._persistence.sqlite_cache_backend import SqliteCacheBackend
-
-            if isinstance(self.backend, SqliteCacheBackend):
-                self.backend._close()
+            self.backend.close()
 
     def __enter__(self):
         """Context manager entry."""
