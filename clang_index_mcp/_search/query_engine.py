@@ -39,6 +39,8 @@ class QueryEngine:
         compilation_env: "CompilationEnvironment",
         call_graph_service: "CallGraphService",
         project_root: "Path",
+        search_engine: Optional[SearchEngine] = None,
+        smart_fallback: Optional[SmartFallback] = None,
     ):
         """
         Initialize query engine.
@@ -50,6 +52,8 @@ class QueryEngine:
             compilation_env: Compilation environment for compile args and file scanning.
             call_graph_service: Call graph and dependency tracking.
             project_root: Project root directory.
+            search_engine: Optional pre-built SearchEngine instance.
+            smart_fallback: Optional pre-built SmartFallback instance.
         """
         self.symbol_store = symbol_store
         self.cache_manager = cache_manager
@@ -57,11 +61,11 @@ class QueryEngine:
         self.compilation_env = compilation_env
         self.call_graph_service = call_graph_service
         self.project_root = project_root
-        self.search_engine = SearchEngine(
+        self.search_engine = search_engine or SearchEngine(
             symbol_store=symbol_store,
             cache_manager=cache_manager,
         )
-        self.smart_fallback = SmartFallback()
+        self.smart_fallback = smart_fallback or SmartFallback()
         self._last_fallback: Optional[FallbackResult] = None
 
     def _as_search_deps(self) -> SearchDependencies:
