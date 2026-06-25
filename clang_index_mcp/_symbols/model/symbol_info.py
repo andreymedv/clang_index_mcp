@@ -62,50 +62,6 @@ class SymbolInfo:
     # Definition tracking (exposed for LLM tools)
     is_definition: bool = False  # True if this cursor is a definition (has body)
 
-    def to_dict(self):
-        """Convert to dictionary for JSON serialization"""
-        return {
-            "name": self.name,
-            "qualified_name": self.qualified_name,
-            "kind": self.kind,
-            "file": self.file,
-            "line": self.line,
-            "column": self.column,
-            "signature": self.signature,
-            "is_project": self.is_project,
-            "namespace": self.namespace,
-            "access": self.access,
-            "parent_class": self.parent_class,
-            "base_classes": self.base_classes,
-            "usr": self.usr,
-            # Overload metadata (Phase 3)
-            "is_template_specialization": self.is_template_specialization,
-            # Template tracking (Template Search Support)
-            "is_template": self.is_template,
-            "template_kind": self.template_kind,
-            "template_parameters": self.template_parameters,
-            # Note: specialization_of should be resolved to qualified name at query time
-            # Here we output the USR as fallback if to_dict() is used directly
-            "specialization_of": self.primary_template_usr,
-            # Note: calls/called_by removed in v9.0 - use call graph API
-            # Line ranges (Phase 1)
-            "start_line": self.start_line,
-            "end_line": self.end_line,
-            "header_file": self.header_file,
-            "header_line": self.header_line,
-            "header_start_line": self.header_start_line,
-            "header_end_line": self.header_end_line,
-            # Documentation (Phase 2)
-            "brief": self.brief,
-            "doc_comment": self.doc_comment,
-            # Virtual/abstract indicators (Phase 5)
-            "is_virtual": self.is_virtual,
-            "is_pure_virtual": self.is_pure_virtual,
-            "is_const": self.is_const,
-            "is_static": self.is_static,
-            "is_definition": self.is_definition,
-        }
-
 
 # Constants for class-like symbol kinds
 CLASS_KINDS = ("class", "struct", "class_template", "partial_specialization")
@@ -143,59 +99,6 @@ def is_richer_definition(new_symbol: "SymbolInfo", existing_symbol: "SymbolInfo"
 
     # Tie: keep existing (stable)
     return False
-
-
-def build_location_objects(info: "SymbolInfo") -> dict:
-    """Build declaration/definition location objects from SymbolInfo for tool responses.
-
-    Replaces flat file/line/start_line/end_line/header_* fields with nested objects.
-
-    When the symbol has a split declaration/definition (e.g., declared in .h, defined in .cpp):
-        {"declaration": {"file": ..., "line": ..., "start_line": ..., "end_line": ...},
-         "definition":  {"file": ..., "line": ..., "start_line": ..., "end_line": ...}}
-
-    When there is only one location:
-        {"definition": {"file": ..., "line": ..., ...}}   -- if is_definition
-        {"declaration": {"file": ..., "line": ..., ...}}  -- if only a declaration
-
-    None values for start_line/end_line are omitted.
-    """
-
-    def _loc(file: str, line: int, start: Optional[int], end: Optional[int]) -> dict:
-        d: dict = {"file": file, "line": line}
-        if start is not None:
-            d["start_line"] = start
-        if end is not None:
-            d["end_line"] = end
-        return d
-
-    if info.header_file:
-        # Split case: info.file = declaration location, info.header_file = definition location
-        return {
-            "declaration": _loc(info.file, info.line, info.start_line, info.end_line),
-            "definition": _loc(
-                info.header_file,
-                info.header_line,  # type: ignore[arg-type]
-                info.header_start_line,
-                info.header_end_line,
-            ),
-        }
-    else:
-        loc = _loc(info.file, info.line, info.start_line, info.end_line)
-        if info.is_definition:
-            return {"definition": loc}
-        else:
-            return {"declaration": loc}
-
-
-def omit_empty(d: dict) -> dict:
-    """Filter None values from a response dict.
-
-    Keeps False, 0, empty strings, and empty lists (which may convey
-    meaningful information such as namespace="" for global scope).
-    Used to reduce token count in MCP tool responses.
-    """
-    return {k: v for k, v in d.items() if v is not None}
 
 
 def get_template_param_base_indices(info: "SymbolInfo") -> List[int]:
