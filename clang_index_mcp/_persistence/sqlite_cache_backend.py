@@ -12,6 +12,7 @@ from .._symbols.model import SymbolInfo
 from .._persistence import type_alias_repository
 from .._persistence.repositories.symbol_repository import SymbolRepository
 from .._persistence.repositories.call_site_repository import CallSiteRepository
+from .._persistence.repositories.file_metadata_repository import FileMetadataRepository
 
 # Handle both package and script imports
 try:
@@ -72,6 +73,7 @@ class SqliteCacheBackend:
         # Sub-repositories (delegate after connection is live)
         self._symbol_repo = SymbolRepository(self.get_connection)
         self._call_site_repo = CallSiteRepository(self.get_connection)
+        self._file_metadata_repo = FileMetadataRepository(self.get_connection)
 
     def _connect(self):
         """Open database connection with optimized settings."""
@@ -494,163 +496,32 @@ class SqliteCacheBackend:
         error_message: Optional[str] = None,
         retry_count: int = 0,
     ) -> bool:
-        """
-        Update or insert file metadata.
-
-        Args:
-            file_path: Absolute path to file
-            file_hash: MD5 hash of file contents
-            compile_args_hash: Hash of compilation arguments
-            symbol_count: Number of symbols in file
-            success: Whether parsing succeeded
-            error_message: Error message if parsing failed
-            retry_count: Number of retry attempts
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO file_metadata
-                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count,
-                     success, error_message, retry_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        file_path,
-                        file_hash,
-                        compile_args_hash,
-                        time.time(),
-                        symbol_count,
-                        success,
-                        error_message,
-                        retry_count,
-                    ),
-                )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Failed to update file metadata for {file_path}: {e}")
-            return False
+        self._ensure_connected()
+        return self._file_metadata_repo.update_file_metadata(
+            file_path,
+            file_hash,
+            compile_args_hash,
+            symbol_count,
+            success,
+            error_message,
+            retry_count,
+        )
 
     def get_file_metadata(self, file_path: str) -> Optional[Dict[str, Any]]:
-        """
-        Get metadata for a file.
-
-        Args:
-            file_path: Path to file
-
-        Returns:
-            Dict with file metadata if found, None otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                "SELECT * FROM file_metadata WHERE file_path = ?", (file_path,)
-            )
-
-            row = cursor.fetchone()
-            if row:
-                # Handle databases that may not have the new columns yet (before migration)
-                result = {
-                    "file_path": row["file_path"],
-                    "file_hash": row["file_hash"],
-                    "compile_args_hash": row["compile_args_hash"],
-                    "indexed_at": row["indexed_at"],
-                    "symbol_count": row["symbol_count"],
-                }
-                # Add new columns if they exist
-                try:
-                    result["success"] = bool(row["success"])
-                    result["error_message"] = row["error_message"]
-                    result["retry_count"] = row["retry_count"]
-                except (KeyError, IndexError):
-                    # Columns don't exist yet (pre-migration database)
-                    result["success"] = True
-                    result["error_message"] = None
-                    result["retry_count"] = 0
-                return result
-
-            return None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get file metadata for {file_path}: {e}")
-            return None
+        self._ensure_connected()
+        return self._file_metadata_repo.get_file_metadata(file_path)
 
     def load_all_file_hashes(self) -> Dict[str, str]:
-        """
-        Load all file hashes for cache validation.
-
-        Returns:
-            Dict mapping file_path to file_hash
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT file_path, file_hash FROM file_metadata")
-
-            return {row["file_path"]: row["file_hash"] for row in cursor.fetchall()}
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load file hashes: {e}")
-            return {}
+        self._ensure_connected()
+        return self._file_metadata_repo.load_all_file_hashes()
 
     def update_cache_metadata(self, key: str, value: str) -> bool:
-        """
-        Update cache metadata.
-
-        Args:
-            key: Metadata key
-            value: Metadata value (as JSON string for complex types)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    (key, value, time.time()),
-                )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Failed to update cache metadata {key}: {e}")
-            return False
+        self._ensure_connected()
+        return self._file_metadata_repo.update_cache_metadata(key, value)
 
     def get_cache_metadata(self, key: str) -> Optional[str]:
-        """
-        Get cache metadata value.
-
-        Args:
-            key: Metadata key
-
-        Returns:
-            Metadata value if found, None otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT value FROM cache_metadata WHERE key = ?", (key,))
-
-            row = cursor.fetchone()
-            return row["value"] if row else None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get cache metadata {key}: {e}")
-            return None
+        self._ensure_connected()
+        return self._file_metadata_repo.get_cache_metadata(key)
 
     def search_symbols_fts(
         self, pattern: str, kind: Optional[str] = None, project_only: bool = True
@@ -1736,110 +1607,20 @@ class SqliteCacheBackend:
         return type_alias_repository.get_type_alias_details(self._conn, alias_names)
 
     def get_all_cached_file_paths(self) -> Set[str]:
-        """
-        Return all file paths stored in file_metadata table.
-
-        Used by ChangeScanner to identify cached files for diff analysis.
-
-        Returns:
-            Set of file paths
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute("SELECT file_path FROM file_metadata")
-            return {row[0] for row in cursor.fetchall()}
-        except Exception as e:
-            diagnostics.warning(f"Failed to get cached file paths: {e}")
-            return set()
+        self._ensure_connected()
+        return self._file_metadata_repo.get_all_cached_file_paths()
 
     def set_compile_args_hash(self, file_path: str, args_hash: str) -> bool:
-        """
-        Store or update the compile arguments hash for a file.
-
-        Phase 1.4: Compile Commands Integration
-
-        Args:
-            file_path: Source file path
-            args_hash: Hash of the compile arguments
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute(
-                """
-                UPDATE file_metadata
-                SET compile_args_hash = ?
-                WHERE file_path = ?
-                """,
-                (args_hash, file_path),
-            )
-            if cursor.rowcount == 0:
-                self._conn.execute(
-                    """
-                    INSERT OR IGNORE INTO file_metadata
-                    (file_path, file_hash, compile_args_hash, indexed_at, symbol_count)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (file_path, "", args_hash, time.time(), 0),
-                )
-            self._conn.commit()
-            return True
-        except Exception as e:
-            diagnostics.warning(f"Failed to set compile args hash for {file_path}: {e}")
-            self._conn.rollback()
-            return False
+        self._ensure_connected()
+        return self._file_metadata_repo.set_compile_args_hash(file_path, args_hash)
 
     def get_compile_args_hash(self, file_path: str) -> Optional[str]:
-        """
-        Return the stored compile arguments hash for a file.
-
-        Phase 1.4: Compile Commands Integration
-
-        Args:
-            file_path: Source file path
-
-        Returns:
-            Args hash string or None if not found
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute(
-                """
-                SELECT compile_args_hash FROM file_metadata
-                WHERE file_path = ?
-                """,
-                (file_path,),
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
-        except Exception as e:
-            diagnostics.warning(f"Failed to get compile args hash for {file_path}: {e}")
-            return None
+        self._ensure_connected()
+        return self._file_metadata_repo.get_compile_args_hash(file_path)
 
     def clear_compile_args_hashes(self) -> int:
-        """
-        Clear all stored compile arguments hashes from file_metadata.
-
-        Phase 1.4: Compile Commands Integration
-
-        Returns:
-            Number of rows cleared
-        """
-        try:
-            self._ensure_connected()
-            cursor = self._conn.execute("""
-                UPDATE file_metadata
-                SET compile_args_hash = NULL
-                """)
-            cleared = cursor.rowcount or 0
-            self._conn.commit()
-            return cleared
-        except Exception as e:
-            diagnostics.warning(f"Failed to clear compile args hashes: {e}")
-            self._conn.rollback()
-            return 0
+        self._ensure_connected()
+        return self._file_metadata_repo.clear_compile_args_hashes()
 
     def get_all_alias_mappings(self) -> Dict[str, str]:
         """Get all alias → canonical mappings."""
