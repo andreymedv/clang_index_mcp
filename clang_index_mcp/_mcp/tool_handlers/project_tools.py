@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from mcp.types import TextContent
 
 from ..context import ctx
-from ..cpp_mcp_server import _validate_config_file
+from ..config_validation import _validate_config_file
 from ..state_manager import AnalyzerState, IndexingProgress, BackgroundIndexer
 from ..tool_call_logger import ToolCallLogger
 from ..._core import diagnostics

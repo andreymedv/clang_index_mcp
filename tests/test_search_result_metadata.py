@@ -151,7 +151,7 @@ class TestCreateSearchResultHelper:
 
     def test_empty_list_returns_suggestions_no_status(self, mock_state_manager):
         """Empty list should include suggestions but no status field"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         result = _create_search_result([], mock_state_manager, "search_classes")
         output = result.to_dict()
@@ -163,7 +163,7 @@ class TestCreateSearchResultHelper:
 
     def test_empty_dict_returns_suggestions_no_status(self, mock_state_manager):
         """Empty dict with empty lists should include suggestions but no status field"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         data = {"classes": [], "functions": []}
         result = _create_search_result(data, mock_state_manager, "search_symbols")
@@ -175,7 +175,7 @@ class TestCreateSearchResultHelper:
 
     def test_normal_list_returns_no_metadata(self, mock_state_manager):
         """List with 1-20 items should return no metadata"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         data = [{"name": f"Class{i}"} for i in range(15)]
         result = _create_search_result(data, mock_state_manager, "search_classes")
@@ -186,7 +186,7 @@ class TestCreateSearchResultHelper:
 
     def test_large_list_returns_large_status(self, mock_state_manager):
         """List with >20 items should trigger large status"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         data = [{"name": f"Class{i}"} for i in range(25)]
         result = _create_search_result(data, mock_state_manager, "search_classes")
@@ -197,7 +197,7 @@ class TestCreateSearchResultHelper:
 
     def test_truncated_returns_truncated_status(self, mock_state_manager):
         """When max_results causes truncation, should return truncated status"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         data = [{"name": f"Class{i}"} for i in range(10)]
         result = _create_search_result(
@@ -211,7 +211,7 @@ class TestCreateSearchResultHelper:
 
     def test_exactly_threshold_no_large_status(self, mock_state_manager):
         """Exactly 20 items should NOT trigger large status"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         data = [{"name": f"Class{i}"} for i in range(20)]
         result = _create_search_result(data, mock_state_manager, "search_classes")
@@ -221,7 +221,7 @@ class TestCreateSearchResultHelper:
 
     def test_max_results_not_exceeding_total_no_truncated(self, mock_state_manager):
         """When total_count <= max_results, should not show truncated"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         data = [{"name": f"Class{i}"} for i in range(5)]
         result = _create_search_result(
@@ -234,7 +234,7 @@ class TestCreateSearchResultHelper:
 
     def test_partial_indexing_takes_precedence(self):
         """Partial indexing status should take precedence over other conditions"""
-        from clang_index_mcp._mcp.cpp_mcp_server import _create_search_result
+        from clang_index_mcp._mcp.query_policy import _create_search_result
 
         state_manager = AnalyzerStateManager()
         state_manager.transition_to(AnalyzerState.INDEXING)

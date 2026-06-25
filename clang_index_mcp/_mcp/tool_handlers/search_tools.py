@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from mcp.types import TextContent
 
 from ..context import ctx
-from ..cpp_mcp_server import _create_search_result, _parse_search_scope
+from ..query_policy import _create_search_result, _parse_search_scope
 from ..state_manager import EnhancedQueryResult
 from ..response_formatters import suggestions
 
