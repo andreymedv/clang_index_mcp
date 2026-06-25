@@ -11,20 +11,20 @@ Key Features:
 - Unified ChangeSet representation
 
 Usage:
-    scanner = ChangeScanner(analyzer)
+    scanner = ChangeScanner(ctx)
     changes = scanner.scan_for_changes()
 
     if not changes.is_empty():
         # Process changes
         for added_file in changes.added_files:
-            analyzer.index_file(added_file)
+            ...
 """
 
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Set, cast
+from typing import TYPE_CHECKING, Optional, Set, cast
 
 from .._core.file_scanner import FileScanner
 
@@ -33,6 +33,9 @@ try:
     from .._core import diagnostics
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
+
+if TYPE_CHECKING:
+    from .._contexts.incremental_context import IncrementalContext
 
 
 class ChangeType(Enum):
@@ -130,17 +133,17 @@ class ChangeScanner:
     - compile_commands.json changes
     - Header file modifications
 
-    Uses CppAnalyzer's cache and file scanner to determine what changed.
+    Uses IncrementalContext's cache and file scanner to determine what changed.
     """
 
-    def __init__(self, analyzer):
+    def __init__(self, ctx: "IncrementalContext"):
         """
         Initialize change scanner.
 
         Args:
-            analyzer: CppAnalyzer instance with cache and file scanner
+            ctx: IncrementalContext with cache and file scanner
         """
-        self.analyzer = analyzer
+        self.ctx = ctx
 
     def scan_for_changes(self) -> ChangeSet:
         """
@@ -185,7 +188,7 @@ class ChangeScanner:
 
     def _scan_source_files(self, changeset: ChangeSet) -> None:
         """Detect added and modified source files, excluding headers."""
-        all_cpp_files = self.analyzer.context.file_scanner.find_cpp_files()
+        all_cpp_files = self.ctx.compilation_env.file_scanner.find_cpp_files()
         current_source_files = set()
         for file_path in all_cpp_files:
             if file_path.endswith(tuple(FileScanner.HEADER_EXTENSIONS)):
@@ -205,7 +208,8 @@ class ChangeScanner:
 
     def _scan_tracked_headers(self, changeset: ChangeSet) -> None:
         """Detect modified or deleted tracked headers."""
-        tracked_headers = self.analyzer.context.cache_orchestrator.get_processed_headers()
+        cache_orchestrator = self.ctx.cache_orchestrator
+        tracked_headers = cache_orchestrator.get_processed_headers()
         for header_path, tracked_hash in tracked_headers.items():
             normalized_header = os.path.realpath(header_path)
 
@@ -215,9 +219,7 @@ class ChangeScanner:
                 continue
 
             try:
-                current_hash = self.analyzer.context.cache_orchestrator.get_file_hash(
-                    normalized_header
-                )
+                current_hash = cache_orchestrator.get_file_hash(normalized_header)
                 if current_hash != tracked_hash:
                     changeset.modified_headers.add(normalized_header)
                     diagnostics.debug(f"Detected modified header: {normalized_header}")
@@ -244,21 +246,22 @@ class ChangeScanner:
     def _get_cached_hash(self, file_path: str) -> Optional[str]:
         """Get cached hash from database or in-memory cache. Returns None if not found."""
         try:
-            metadata = self.analyzer.cache_manager.backend.get_file_metadata(file_path)
+            backend = self.ctx.cache_manager.backend
+            metadata = backend.get_file_metadata(file_path)  # type: ignore[attr-defined]
             if metadata:
                 return str(metadata.get("file_hash", ""))
         except Exception as e:
             diagnostics.warning(f"Error getting metadata for {file_path}: {e}")
 
-        if self.analyzer.context.symbol_store.has_file_hash(file_path):
-            return str(self.analyzer.context.symbol_store.get_file_hash(file_path))
+        if self.ctx.symbol_store.has_file_hash(file_path):
+            return str(self.ctx.symbol_store.get_file_hash(file_path))
 
         return None
 
     def _compare_with_cached_hash(self, file_path: str, cached_hash: str) -> ChangeType:
         """Compare current file hash with cached hash."""
         try:
-            current_hash = self.analyzer.context.cache_orchestrator.get_file_hash(file_path)
+            current_hash = self.ctx.cache_orchestrator.get_file_hash(file_path)
             if current_hash != cached_hash:
                 return ChangeType.MODIFIED
             return ChangeType.UNCHANGED
@@ -279,10 +282,10 @@ class ChangeScanner:
         Algorithm:
             1. Query cache manager for file metadata (database)
             2. If not in database, fallback to in-memory file_hashes
-            3. If not in cache at all → ADDED
+            3. If not in cache at all -> ADDED
             4. If in cache, compare MD5 hash
-            5. Hash mismatch → MODIFIED
-            6. Hash match → UNCHANGED
+            5. Hash mismatch -> MODIFIED
+            6. Hash match -> UNCHANGED
         """
         cached_hash = self._get_cached_hash(file_path)
         if cached_hash is None:
@@ -298,20 +301,21 @@ class ChangeScanner:
         Returns:
             True if changed, False if unchanged or doesn't exist
         """
-        compile_commands_config = self.analyzer.config.get_compile_commands_config()
-        cc_path = self.analyzer.project_root / compile_commands_config.compile_commands_path
+        ctx = self.ctx
+        compile_commands_config = ctx.config.get_compile_commands_config()
+        cc_path = ctx.project_root / compile_commands_config.compile_commands_path
 
         if not cc_path.exists():
             # If file doesn't exist, check if it existed before
             # (stored hash is non-empty means it existed)
-            return bool(self.analyzer.context.cache_orchestrator.compile_commands_hash)
+            return bool(ctx.cache_orchestrator.compile_commands_hash)
 
         # Calculate current hash
         try:
-            current_hash = self.analyzer.context.cache_orchestrator.get_file_hash(str(cc_path))
+            current_hash = ctx.cache_orchestrator.get_file_hash(str(cc_path))
 
             # Compare with stored hash
-            if current_hash != self.analyzer.context.cache_orchestrator.compile_commands_hash:
+            if current_hash != ctx.cache_orchestrator.compile_commands_hash:
                 return True
 
             return False
@@ -332,10 +336,9 @@ class ChangeScanner:
         """
         try:
             # Query all files from file_metadata table
-            if hasattr(self.analyzer.cache_manager.backend, "get_all_cached_file_paths"):
-                return cast(
-                    Set[str], self.analyzer.cache_manager.backend.get_all_cached_file_paths()
-                )
+            backend = self.ctx.cache_manager.backend
+            if hasattr(backend, "get_all_cached_file_paths"):
+                return cast(Set[str], backend.get_all_cached_file_paths())
             else:
                 # Cached file list requires SQLite backend
                 # Return empty set (will trigger full re-analysis)

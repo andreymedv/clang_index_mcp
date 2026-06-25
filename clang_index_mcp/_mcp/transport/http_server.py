@@ -125,30 +125,33 @@ class MCPHTTPServer:
         # For SSE transport, wrap the app with a middleware that intercepts
         # /sse and /messages paths and delegates to raw ASGI handlers
         if self.transport_type == "sse":
-            original_app = app
-
-            async def sse_middleware(scope, receive, send):
-                """Middleware that intercepts SSE paths and delegates to raw ASGI handlers."""
-                if scope["type"] == "http":
-                    path = scope["path"]
-                    method = scope["method"]
-
-                    # Intercept GET /sse
-                    if path == "/sse" and method == "GET":
-                        await self.handle_sse_endpoint(scope, receive, send)
-                        return
-
-                    # Intercept POST /messages
-                    if path == "/messages" and method == "POST":
-                        await self.handle_messages_endpoint(scope, receive, send)
-                        return
-
-                # Pass through to Starlette for all other routes
-                await original_app(scope, receive, send)
-
-            return sse_middleware  # type: ignore[return-value]
+            return self._wrap_with_sse_middleware(app)  # type: ignore[return-value,no-any-return]
 
         return app
+
+    def _wrap_with_sse_middleware(self, original_app: Starlette):
+        """Wrap a Starlette app with SSE path interception middleware."""
+
+        async def sse_middleware(scope, receive, send):
+            """Middleware that intercepts SSE paths and delegates to raw ASGI handlers."""
+            if scope["type"] == "http":
+                path = scope["path"]
+                method = scope["method"]
+
+                if path == "/sse" and method == "GET":
+                    await self.handle_sse_endpoint(scope, receive, send)
+                    return
+
+                if path == "/messages" and method == "POST":
+                    await self.handle_messages_endpoint(scope, receive, send)
+                    return
+
+            try:
+                await original_app(scope, receive, send)
+            except asyncio.CancelledError:
+                logger.debug("Request cancelled during shutdown")
+
+        return sse_middleware
 
     async def handle_root(self, request: Request) -> Response:
         """Handle root endpoint - return server information."""
@@ -366,21 +369,26 @@ class MCPHTTPServer:
 
         logger.info("New SSE connection established")
 
-        async with self.sse_transport.connect_sse(scope, receive, send) as (
-            read_stream,
-            write_stream,
-        ):
-            try:
-                await self.mcp_server.run(
-                    read_stream,
-                    write_stream,
-                    self.mcp_server.create_initialization_options(),
-                    raise_exceptions=False,
-                )
-            except Exception as e:
-                logger.exception(f"Error in SSE session: {e}")
-            finally:
-                logger.info("SSE connection closed")
+        try:
+            async with self.sse_transport.connect_sse(scope, receive, send) as (
+                read_stream,
+                write_stream,
+            ):
+                try:
+                    await self.mcp_server.run(
+                        read_stream,
+                        write_stream,
+                        self.mcp_server.create_initialization_options(),
+                        raise_exceptions=False,
+                    )
+                except Exception as e:
+                    logger.exception(f"Error in SSE session: {e}")
+                finally:
+                    logger.info("SSE connection closed")
+        except asyncio.CancelledError:
+            logger.info("SSE connection cancelled (shutdown)")
+        except Exception as e:
+            logger.debug(f"SSE connection terminated: {e}")
 
     async def handle_messages_endpoint(self, scope, receive, send):
         """
@@ -393,6 +401,8 @@ class MCPHTTPServer:
 
         try:
             await self.sse_transport.handle_post_message(scope, receive, send)
+        except asyncio.CancelledError:
+            logger.debug("Message handling cancelled (shutdown)")
         except Exception as e:
             logger.exception(f"Error handling SSE message: {e}")
             # Send error response

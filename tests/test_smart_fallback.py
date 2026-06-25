@@ -15,7 +15,7 @@ from clang_index_mcp._search.smart_fallback import (
     _has_double_escapes,
     _has_unnecessary_anchors,
     _looks_like_short_regex,
-    _looks_like_signature,
+    looks_like_signature,
     _strip_anchors,
 )
 
@@ -55,39 +55,39 @@ def _make_index(*entries):
 
 class TestLooksLikeSignature:
     def test_function_with_parens(self):
-        assert _looks_like_signature("processData(int x)")
+        assert looks_like_signature("processData(int x)")
 
     def test_void_return_type(self):
-        assert _looks_like_signature("void processData")
+        assert looks_like_signature("void processData")
 
     def test_bool_return_type(self):
-        assert _looks_like_signature("bool isValid")
+        assert looks_like_signature("bool isValid")
 
     def test_const_reference(self):
-        assert _looks_like_signature("const IConfig &")
+        assert looks_like_signature("const IConfig &")
 
     def test_type_pointer(self):
-        assert _looks_like_signature("int* getData")
+        assert looks_like_signature("int* getData")
 
     def test_simple_name(self):
-        assert not _looks_like_signature("processData")
+        assert not looks_like_signature("processData")
 
     def test_qualified_name(self):
-        assert not _looks_like_signature("app::Handler::process")
+        assert not looks_like_signature("app::Handler::process")
 
     def test_regex_pattern(self):
-        assert not _looks_like_signature(".*Reporter")
+        assert not looks_like_signature(".*Reporter")
 
     def test_empty(self):
-        assert not _looks_like_signature("")
+        assert not looks_like_signature("")
 
     def test_single_keyword_no_space(self):
         """Single keyword without space is not a signature."""
-        assert not _looks_like_signature("void")
+        assert not looks_like_signature("void")
 
     def test_parens_only(self):
         """Just parentheses is a signature indicator."""
-        assert _looks_like_signature("()")
+        assert looks_like_signature("()")
 
 
 class TestExtractIdentifier:

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 from .._core import diagnostics
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
-from .._persistence.persistence_context import PersistenceContext
+from .._persistence.cache_manager import CacheManager
 from .._symbols.usr_decoder import usr_to_display_name
 from .._symbols.model import build_location_objects, omit_empty
 
@@ -22,16 +22,14 @@ class CallGraphService:
     and call path queries.
     """
 
-    def __init__(self, context: PersistenceContext):
+    def __init__(self, cache_manager: CacheManager):
         """
         Initialize CallGraphService.
 
         Args:
-            context: Persistence context for access to cache_manager.
+            cache_manager: Cache manager for persistent call site storage.
         """
-        self.context = context
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
+        self.cache_manager = cache_manager
 
         # Dependencies set after construction to break the circular dependency
         # between CallGraphService and SymbolIndexStore/QueryEngine.
