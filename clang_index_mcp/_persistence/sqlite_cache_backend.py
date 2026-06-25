@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._symbols.model import SymbolInfo
 from .._persistence import type_alias_repository
+from .._persistence.repositories.symbol_repository import SymbolRepository
 
 # Handle both package and script imports
 try:
@@ -66,6 +67,9 @@ class SqliteCacheBackend:
         with self._acquire_init_lock():
             self._connect()
             self._init_database()
+
+        # Sub-repositories (delegate after connection is live)
+        self._symbol_repo = SymbolRepository(self.get_connection)
 
     def _connect(self):
         """Open database connection with optimized settings."""
@@ -449,296 +453,34 @@ class SqliteCacheBackend:
         self._close()
 
     def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
-        """
-        Convert SymbolInfo to tuple for SQL insertion.
-
-        Args:
-            symbol: SymbolInfo object
-
-        Returns:
-            Tuple of values matching INSERT statement column order
-        """
-        now = time.time()
-
-        return (
-            symbol.usr,
-            symbol.name,
-            symbol.qualified_name,  # v10.0: Qualified Names Phase 1
-            symbol.kind,
-            symbol.file,
-            symbol.line,
-            symbol.column,
-            symbol.signature,
-            symbol.is_project,
-            symbol.namespace,
-            symbol.access,
-            symbol.parent_class,
-            json.dumps(symbol.base_classes),
-            # v9.0: calls/called_by removed - use call_sites table
-            symbol.is_template_specialization,  # v10.1: Phase 3 Qualified Names
-            # v13.0: Template tracking
-            symbol.is_template,
-            symbol.template_kind,
-            symbol.template_parameters,
-            symbol.primary_template_usr,
-            symbol.start_line,  # v5.0: Line ranges
-            symbol.end_line,  # v5.0: Line ranges
-            symbol.header_file,  # v5.0: Header location
-            symbol.header_line,  # v5.0: Header location
-            symbol.header_start_line,  # v5.0: Header location
-            symbol.header_end_line,  # v5.0: Header location
-            symbol.is_definition,  # v6.0: Definition tracking
-            # v14.0: Virtual/abstract indicators
-            symbol.is_virtual,
-            symbol.is_pure_virtual,
-            symbol.is_const,
-            symbol.is_static,
-            symbol.brief,  # v7.0: Documentation
-            symbol.doc_comment,  # v7.0: Documentation
-            now,  # created_at
-            now,  # updated_at
-        )
+        return self._symbol_repo._symbol_to_tuple(symbol)
 
     def _row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
-        """
-        Convert database row to SymbolInfo object.
-
-        Args:
-            row: SQLite row object
-
-        Returns:
-            SymbolInfo object
-        """
-        return SymbolInfo(
-            name=row["name"],
-            qualified_name=(
-                row["qualified_name"] if "qualified_name" in row.keys() else ""
-            ),  # v10.0: Qualified Names
-            kind=row["kind"],
-            file=row["file"],
-            line=row["line"],
-            column=row["column"],
-            signature=row["signature"] or "",
-            is_project=bool(row["is_project"]),
-            namespace=row["namespace"] or "",
-            access=row["access"] or "public",
-            parent_class=row["parent_class"] or "",
-            base_classes=json.loads(row["base_classes"]) if row["base_classes"] else [],
-            usr=row["usr"] or "",
-            # v10.1: Phase 3 Qualified Names - Overload metadata
-            is_template_specialization=(
-                bool(row["is_template_specialization"])
-                if "is_template_specialization" in row.keys()
-                else False
-            ),
-            # v13.0: Template tracking
-            is_template=(bool(row["is_template"]) if "is_template" in row.keys() else False),
-            template_kind=(row["template_kind"] if "template_kind" in row.keys() else None),
-            template_parameters=(
-                row["template_parameters"] if "template_parameters" in row.keys() else None
-            ),
-            primary_template_usr=(
-                row["primary_template_usr"] if "primary_template_usr" in row.keys() else None
-            ),
-            # v9.0: calls/called_by removed - use call graph API
-            # v5.0: Line ranges and header location
-            start_line=row["start_line"] if "start_line" in row.keys() else None,
-            end_line=row["end_line"] if "end_line" in row.keys() else None,
-            header_file=row["header_file"] if "header_file" in row.keys() else None,
-            header_line=row["header_line"] if "header_line" in row.keys() else None,
-            header_start_line=(
-                row["header_start_line"] if "header_start_line" in row.keys() else None
-            ),
-            header_end_line=row["header_end_line"] if "header_end_line" in row.keys() else None,
-            # v6.0: Definition tracking
-            is_definition=bool(row["is_definition"]) if "is_definition" in row.keys() else False,
-            # v14.0: Virtual/abstract indicators
-            is_virtual=bool(row["is_virtual"]) if "is_virtual" in row.keys() else False,
-            is_pure_virtual=(
-                bool(row["is_pure_virtual"]) if "is_pure_virtual" in row.keys() else False
-            ),
-            is_const=bool(row["is_const"]) if "is_const" in row.keys() else False,
-            is_static=bool(row["is_static"]) if "is_static" in row.keys() else False,
-            # v7.0: Documentation
-            brief=row["brief"] if "brief" in row.keys() else None,
-            doc_comment=row["doc_comment"] if "doc_comment" in row.keys() else None,
-        )
+        return self._symbol_repo._row_to_symbol(row)
 
     def save_symbol(self, symbol: SymbolInfo) -> bool:
-        """
-        Insert or update a single symbol.
-
-        Args:
-            symbol: SymbolInfo object to save
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    self._symbol_to_tuple(symbol),
-                )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"Failed to save symbol {symbol.usr}: {e}")
-            return False
+        self._ensure_connected()
+        return self._symbol_repo.save_symbol(symbol)
 
     def save_symbols_batch(self, symbols: List[SymbolInfo]) -> int:
-        """
-        Batch insert/update symbols using transaction.
-
-        Performance: ~10,000 symbols/sec vs ~100 symbols/sec for individual inserts.
-
-        Args:
-            symbols: List of SymbolInfo objects to save
-
-        Returns:
-            Number of symbols successfully saved
-        """
-        if not symbols:
-            return 0
-
-        try:
-            self._ensure_connected()
-
-            # Batch insert in a single transaction
-            with self._conn:
-                self._conn.executemany(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [self._symbol_to_tuple(s) for s in symbols],
-                )
-
-            return len(symbols)
-
-        except Exception as e:
-            diagnostics.error(f"Failed to batch save {len(symbols)} symbols: {e}")
-            return 0
+        self._ensure_connected()
+        return self._symbol_repo.save_symbols_batch(symbols)
 
     def load_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
-        """
-        Load a symbol by its USR.
-
-        Args:
-            usr: Unified Symbol Resolution ID
-
-        Returns:
-            SymbolInfo object if found, None otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
-
-            row = cursor.fetchone()
-            if row:
-                return self._row_to_symbol(row)
-
-            return None
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load symbol by USR {usr}: {e}")
-            return None
+        self._ensure_connected()
+        return self._symbol_repo.load_symbol_by_usr(usr)
 
     def load_symbols_by_name(self, name: str) -> List[SymbolInfo]:
-        """
-        Load all symbols matching a name.
-
-        Args:
-            name: Symbol name to search for
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
-
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load symbols by name {name}: {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.load_symbols_by_name(name)
 
     def count_symbols(self) -> int:
-        """
-        Get total symbol count.
-
-        Returns:
-            Number of symbols in database
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols")
-            result: int = cursor.fetchone()[0]
-            return result
-
-        except Exception as e:
-            diagnostics.error(f"Failed to count symbols: {e}")
-            return 0
+        self._ensure_connected()
+        return self._symbol_repo.count_symbols()
 
     def delete_symbols_by_file(self, file_path: str) -> int:
-        """
-        Delete all symbols from a specific file.
-
-        Args:
-            file_path: Path to file whose symbols should be deleted
-
-        Returns:
-            Number of symbols deleted
-        """
-        try:
-            self._ensure_connected()
-
-            # Get count before deletion
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
-            count = cursor.fetchone()[0]
-
-            if count == 0:
-                return 0
-
-            # Delete symbols
-            with self._conn:
-                self._conn.execute("DELETE FROM symbols WHERE file = ?", (file_path,))
-
-            diagnostics.debug(f"Deleted {count} symbols from {file_path}")
-            deleted: int = count
-            return deleted
-
-        except Exception as e:
-            diagnostics.error(f"Failed to delete symbols for file {file_path}: {e}")
-            return 0
+        self._ensure_connected()
+        return self._symbol_repo.delete_symbols_by_file(file_path)
 
     def update_file_metadata(
         self,
@@ -911,137 +653,22 @@ class SqliteCacheBackend:
     def search_symbols_fts(
         self, pattern: str, kind: Optional[str] = None, project_only: bool = True
     ) -> List[SymbolInfo]:
-        """
-        Fast full-text search using FTS5.
-
-        Pattern can be:
-        - Exact: "Vector"
-        - Prefix: "Vec*"
-        - Multiple terms: "Vector push"
-
-        Performance: 2-5ms for 100K symbols (vs 50ms with LIKE)
-
-        Args:
-            pattern: Search pattern (FTS5 MATCH syntax)
-            kind: Filter by symbol kind (class, function, etc.)
-            project_only: If True, only return project symbols
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            # Build query using FTS5
-            query = """
-                SELECT s.* FROM symbols s
-                WHERE s.usr IN (
-                    SELECT usr FROM symbols_fts
-                    WHERE name MATCH ?
-                )
-            """
-
-            params = [pattern]
-
-            if kind:
-                query += " AND s.kind = ?"
-                params.append(kind)
-
-            if project_only:
-                query += " AND s.is_project = 1"
-
-            cursor = self._conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"FTS5 search failed for pattern '{pattern}': {e}")
-            # Fall back to regex search
-            return self.search_symbols_regex(pattern, kind, project_only)
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_fts(pattern, kind, project_only)
 
     def search_symbols_regex(
         self, pattern: str, kind: Optional[str] = None, project_only: bool = True
     ) -> List[SymbolInfo]:
-        """
-        Regex search (fallback for complex patterns).
-
-        Slower than FTS5 but more flexible.
-        Performance: 10-50ms for 100K symbols
-
-        Args:
-            pattern: Regular expression pattern
-            kind: Filter by symbol kind
-            project_only: If True, only return project symbols
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            query = "SELECT * FROM symbols WHERE name REGEXP ?"
-            params = [pattern]
-
-            if kind:
-                query += " AND kind = ?"
-                params.append(kind)
-
-            if project_only:
-                query += " AND is_project = 1"
-
-            cursor = self._conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Regex search failed for pattern '{pattern}': {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_regex(pattern, kind, project_only)
 
     def search_symbols_by_file(self, file_path: str) -> List[SymbolInfo]:
-        """
-        Get all symbols defined in a specific file.
-
-        Args:
-            file_path: Path to source file
-
-        Returns:
-            List of SymbolInfo objects from that file
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
-
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to search symbols by file {file_path}: {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_by_file(file_path)
 
     def search_symbols_by_kind(self, kind: str, project_only: bool = True) -> List[SymbolInfo]:
-        """
-        Get all symbols of a specific kind.
-
-        Args:
-            kind: Symbol kind (class, function, method, etc.)
-            project_only: If True, only return project symbols
-
-        Returns:
-            List of matching SymbolInfo objects
-        """
-        try:
-            self._ensure_connected()
-
-            query = "SELECT * FROM symbols WHERE kind = ?"
-            params = [kind]
-
-            if project_only:
-                query += " AND is_project = 1"
-
-            cursor = self._conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to search symbols by kind {kind}: {e}")
-            return []
+        self._ensure_connected()
+        return self._symbol_repo.search_symbols_by_kind(kind, project_only)
 
     def get_symbol_stats(self) -> Dict[str, Any]:
         """
