@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from .._compilation.compilation_environment import CompilationEnvironment
     from .._core.concurrency_context import ConcurrencyContext
     from .._persistence.cache_orchestrator import CacheOrchestrator
-    from .._search.call_graph_service import CallGraphService
     from .._symbols.symbol_index_store import SymbolIndexStore
 
 
@@ -31,7 +30,7 @@ class SymbolExtractor:
         concurrency: "ConcurrencyContext",
         compilation_env: "CompilationEnvironment",
         cache_orchestrator: "CacheOrchestrator",
-        call_graph_service: "CallGraphService",
+        call_graph_service: Any,
         parser: SymbolParser,
     ):
         """
