@@ -16,6 +16,7 @@ from ._compilation.clang_parser import ClangParser
 from ._compilation.clang_symbol_parser import ClangSymbolParser
 from ._compilation.compile_commands_manager import CompileCommandsManager
 from ._compilation.compilation_environment import CompilationEnvironment
+from ._compilation.include_extractor import ClangIncludeExtractor
 from ._core import diagnostics
 from ._indexing.indexing_orchestrator import ProjectIndexingOrchestrator
 from ._indexing.indexing_pipeline import SingleFileIndexingPipeline
@@ -23,7 +24,10 @@ from ._indexing.indexing_task_submitter import IndexingTaskSubmitter
 from ._indexing.refresh_pipeline import RefreshPipeline
 from ._indexing.worker_result_merger import WorkerResultMerger
 from ._persistence.cache_orchestrator import CacheOrchestrator
+from ._persistence.repositories.dependency_repository import SqliteDependencyRepository
+from ._persistence.sqlite_cache_backend import SqliteCacheBackend
 from ._search.call_graph_service import CallGraphService
+from ._search.dependency_graph import DependencyGraphBuilder
 from ._search.query_engine import QueryEngine
 from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
@@ -146,7 +150,15 @@ class CompositionRoot:
             )
 
         # Initialize dependency graph and header tracking
-        self.call_graph_service.init_dependency_graph()
+        backend = self.cache_manager.backend
+        if isinstance(backend, SqliteCacheBackend):
+            repository = SqliteDependencyRepository(lambda: backend.get_connection())
+            extractor = ClangIncludeExtractor()
+            self.call_graph_service.set_dependency_graph(
+                DependencyGraphBuilder(repository, extractor)
+            )
+        else:
+            self.call_graph_service.set_dependency_graph(None)
         self.cache_orchestrator.calculate_compile_commands_hash()
         self.cache_orchestrator.restore_or_reset_header_tracking()
 
