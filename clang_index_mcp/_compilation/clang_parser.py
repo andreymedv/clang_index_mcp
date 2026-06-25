@@ -1,10 +1,9 @@
 import threading
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError
 
 from .._core import diagnostics
-from .._persistence.persistence_context import PersistenceContext
 
 
 class ClangParser:
@@ -12,14 +11,18 @@ class ClangParser:
     Handles libclang Index and TranslationUnit management.
     """
 
-    def __init__(self, context: PersistenceContext):
+    def __init__(
+        self,
+        log_parse_error: Callable[[str, Exception, str, Optional[str], int], Any],
+    ):
         """
         Initialize ClangParser.
 
         Args:
-            context: Persistence context for access to cache_manager.
+            log_parse_error: Callback to log parse errors to cache.
+                Signature: (file_path, error, file_hash, compile_args_hash, retry_count) -> Any
         """
-        self.context = context
+        self._log_parse_error = log_parse_error
         self._thread_local = threading.local()
 
     def _get_thread_index(self) -> Index:
@@ -145,7 +148,7 @@ class ClangParser:
             cache_error_msg = full_error_msg[:200]
 
             parse_error = Exception(full_error_msg)
-            self.context.cache_manager.log_parse_error(
+            self._log_parse_error(
                 file_path, parse_error, current_hash, compile_args_hash, retry_count
             )
 

@@ -162,8 +162,10 @@ class CompositionRoot:
         self.cache_orchestrator.calculate_compile_commands_hash()
         self.cache_orchestrator.restore_or_reset_header_tracking()
 
-        # 6. ClangParser (needs persistence context)
-        self.clang_parser = ClangParser(self.context.persistence)
+        # 6. ClangParser (uses cache_manager for error logging)
+        self.clang_parser = ClangParser(
+            log_parse_error=self.cache_manager.log_parse_error,
+        )
         self.context.compilation.clang_parser = self.clang_parser
 
         # 7. SymbolExtractor
