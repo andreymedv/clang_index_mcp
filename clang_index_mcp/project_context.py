@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from ._core.cancellation_coordinator import CancellationCoordinator
 from ._core.concurrency_context import ConcurrencyContext
-from ._core.error_tracking_adapter import ErrorTrackingAdapter
+from ._persistence.error_tracking_adapter import ErrorTrackingAdapter
 from ._contexts import ProjectIdentityContext
 from ._contexts.runtime_context import RuntimeContext
 from ._compilation.clang_parser import ClangParser
