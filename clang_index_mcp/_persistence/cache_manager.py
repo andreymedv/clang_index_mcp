@@ -32,6 +32,8 @@ class CacheManager:
         self,
         project_root_or_identity: Union[Path, ProjectIdentity],
         skip_schema_recreation: bool = False,
+        backend: Optional[CacheBackend] = None,
+        recovery: Optional["CacheRecoveryPort"] = None,
     ):
         """
         Initialize CacheManager with project identity.
@@ -40,6 +42,10 @@ class CacheManager:
             project_root_or_identity: Either a Path (backward compatibility) or ProjectIdentity
             skip_schema_recreation: If True, skip database recreation on schema mismatch.
                                    Used by worker processes to avoid race conditions.
+            backend: Optional pre-built cache backend. If None, a SqliteCacheBackend
+                    is created internally (backward compatibility).
+            recovery: Optional pre-built recovery/error-tracking adapter. If None,
+                     an ErrorTrackingAdapter is created internally.
 
         Backward Compatibility:
             Accepts Path for backward compatibility, automatically creates ProjectIdentity
@@ -59,11 +65,11 @@ class CacheManager:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
 
-        # Recovery/error tracking port (concrete implementation wired externally)
-        self.recovery: "CacheRecoveryPort" = ErrorTrackingAdapter()
+        # Recovery/error tracking port
+        self.recovery: "CacheRecoveryPort" = recovery or ErrorTrackingAdapter()
 
-        # Initialize SQLite cache backend
-        self.backend = self._create_backend()
+        # Cache backend (injected or self-created)
+        self.backend = backend if backend is not None else self._create_backend()
 
     @property
     def error_tracker(self):
@@ -74,6 +80,16 @@ class CacheManager:
     def recovery_manager(self):
         """Backward-compatible accessor for tests."""
         return self.recovery._recovery_manager
+
+    @staticmethod
+    def compute_cache_dir(project_identity: ProjectIdentity) -> Path:
+        """Compute the cache directory for a project identity."""
+        clang_index_mcp_root = Path(
+            __file__
+        ).parent.parent  # Go up from cache_manager.py to package root
+        cache_base = clang_index_mcp_root / ".mcp_cache"
+        cache_dir_name = project_identity.get_cache_directory_name()
+        return cache_base / cache_dir_name
 
     def _get_cache_dir(self) -> Path:
         """
@@ -86,17 +102,7 @@ class CacheManager:
         Returns:
             Path to cache directory
         """
-        # Use the MCP server directory for cache, not the project being analyzed
-        clang_index_mcp_root = Path(
-            __file__
-        ).parent.parent  # Go up from clang_index_mcp/cache_manager.py to root
-        cache_base = clang_index_mcp_root / ".mcp_cache"
-
-        # Use ProjectIdentity to get unique cache directory name
-        cache_dir_name = self.project_identity.get_cache_directory_name()
-        cache_dir = cache_base / cache_dir_name
-
-        return cache_dir
+        return CacheManager.compute_cache_dir(self.project_identity)
 
     def cache_exists(self) -> bool:
         """
