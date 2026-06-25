@@ -16,7 +16,7 @@ except ImportError:
 class SymbolRepository:
     """Handles symbol persistence: insert, batch write, search, and delete."""
 
-    def __init__(self, conn_getter: Callable[[], sqlite3.Connection]):
+    def __init__(self, conn_getter: Callable[[], Optional[sqlite3.Connection]]):
         """
         Args:
             conn_getter: Callable returning the current SQLite connection.
@@ -27,7 +27,9 @@ class SymbolRepository:
     @property
     def conn(self) -> sqlite3.Connection:
         """Get the current database connection."""
-        return self._conn_getter()
+        connection = self._conn_getter()
+        assert connection is not None, "Database connection not initialized"
+        return connection
 
     def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
         """Convert SymbolInfo to tuple for SQL insertion."""
@@ -203,7 +205,7 @@ class SymbolRepository:
         """Delete all symbols from a specific file."""
         try:
             cursor = self.conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
-            count = cursor.fetchone()[0]
+            count: int = cursor.fetchone()[0]
             if count == 0:
                 return 0
             with self.conn:
