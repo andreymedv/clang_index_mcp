@@ -431,6 +431,10 @@ class SqliteCacheBackend:
             finally:
                 self.conn = None
 
+    def close(self):
+        """Close database connection (CacheBackend protocol method)."""
+        self._close()
+
     def __enter__(self):
         """Context manager entry."""
         self._ensure_connected()
