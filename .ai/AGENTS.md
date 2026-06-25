@@ -146,7 +146,6 @@ Treat the following behaviors as critical unless the task explicitly requires ch
 - Cache data lives under `.mcp_cache/`.
 - `compile_commands.json` integration is enabled by default when available.
 - Useful environment variables:
-  - `CPP_ANALYZER_USE_THREADS=true` to disable process workers during debugging.
   - `MCP_DEBUG=1` for verbose logging.
   - `PYTHONUNBUFFERED=1` for unbuffered output.
   - `LIBCLANG_PATH=/path/to/libclang.so` to override libclang discovery.
@@ -175,7 +174,7 @@ Treat the following behaviors as critical unless the task explicitly requires ch
 - Prefer `rg` for search.
 - Use the existing `make` targets instead of inventing new workflows.
 - Prefer semantic MCP tools over raw text search when the server is already running and the task is code-understanding rather than implementation.
-- For debugging parse issues, thread mode is often easier to reason about than process mode.
+- For debugging parse issues, use `MCP_DEBUG=1` and inspect per-worker diagnostics; workers run in isolated `spawn` processes.
 - If `compile_commands.json` changes, expect analyzer state or caches to need refresh.
 
 ## Definition of Done

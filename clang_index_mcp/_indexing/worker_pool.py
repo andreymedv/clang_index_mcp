@@ -11,7 +11,6 @@ import time
 from concurrent.futures import (
     Executor,
     ProcessPoolExecutor,
-    ThreadPoolExecutor,
 )
 from typing import Any, Dict, List, Optional
 
@@ -47,7 +46,6 @@ def _process_file_worker(spec: IndexingTaskSpec):
 
     # Lazy import to avoid circular dependency at module level
     from ..cpp_analyzer import CppAnalyzer
-    from .._search.call_graph import CallGraphAnalyzer
 
     # Create a single analyzer instance per worker process (process-local)
     if _worker_analyzer is None:
@@ -71,13 +69,10 @@ def _process_file_worker(spec: IndexingTaskSpec):
     # Set per-call parameters
     context.compilation_env.include_dependencies = spec.include_dependencies
     # Reset stateful components to prevent data leakage between files
-    context.call_graph_service.call_graph_analyzer = CallGraphAnalyzer()
-
-    # Mark this instance as isolated (no shared memory, locks not needed)
-    context.concurrency._needs_locking = False
+    context.call_graph_service.call_graph_analyzer.clear()
 
     # Set precomputed compile args
-    context.compilation_env._provided_compile_args = spec.compile_args
+    context.compilation_env.provided_compile_args = spec.compile_args
 
     # Parse the file
     success, was_cached = _worker_analyzer.index_file(spec.file_path, spec.force)
@@ -108,29 +103,22 @@ def _process_file_worker(spec: IndexingTaskSpec):
 class WorkerPoolManager:
     """Manages a pool of workers for parallel C++ file indexing."""
 
-    def __init__(self, max_workers: int, use_processes: bool = True):
+    def __init__(self, max_workers: int):
         self.max_workers = max_workers
-        self.use_processes = use_processes
         self.executor: Optional[Executor] = None
         self.mp_context: Optional[Any] = None
 
     def setup(self) -> Executor:
-        """Initialize and return the appropriate executor."""
-        if self.use_processes:
-            try:
-                self.mp_context = multiprocessing.get_context("spawn")
-                diagnostics.debug(
-                    f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers"
-                )
-                self.executor = ProcessPoolExecutor(
-                    max_workers=self.max_workers, mp_context=self.mp_context
-                )
-            except Exception as e:
-                diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-                self.executor = ProcessPoolExecutor(max_workers=self.max_workers)
-        else:
-            diagnostics.debug(f"Using ThreadPoolExecutor with {self.max_workers} workers")
-            self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        """Initialize and return the process pool executor."""
+        try:
+            self.mp_context = multiprocessing.get_context("spawn")
+            diagnostics.debug(f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers")
+            self.executor = ProcessPoolExecutor(
+                max_workers=self.max_workers, mp_context=self.mp_context
+            )
+        except Exception as e:
+            diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
+            self.executor = ProcessPoolExecutor(max_workers=self.max_workers)
 
         return self.executor
 

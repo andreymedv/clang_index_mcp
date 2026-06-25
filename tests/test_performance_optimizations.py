@@ -2,7 +2,7 @@
 Tests for performance optimizations added in the optimize-slow-host-performance session.
 
 Tests cover:
-- ProcessPoolExecutor vs ThreadPoolExecutor
+- ProcessPoolExecutor configuration
 - Bulk symbol writes
 - compile_commands.json binary caching
 - Worker count optimization
@@ -30,7 +30,7 @@ sys.path.insert(0, str(project_root))
 try:
     from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
     from clang_index_mcp.cpp_analyzer import CppAnalyzer
-    from clang_index_mcp._persistence.symbol_info import SymbolInfo
+    from clang_index_mcp._symbols.model import SymbolInfo
 
     CLANG_AVAILABLE = True
 except SystemExit:
@@ -75,44 +75,19 @@ class TestProcessPoolExecutor(unittest.TestCase):
     """Test ProcessPoolExecutor configuration and fallback"""
 
     def test_default_uses_processpool(self):
-        """By default, use_processes should be True (ProcessPoolExecutor)"""
+        """By default, WorkerPoolManager should use ProcessPoolExecutor"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Ensure environment variable is not set
-            env_backup = os.environ.get("CPP_ANALYZER_USE_THREADS")
-            if "CPP_ANALYZER_USE_THREADS" in os.environ:
-                del os.environ["CPP_ANALYZER_USE_THREADS"]
+            analyzer = CppAnalyzer(tmpdir)
+            from clang_index_mcp._indexing.worker_pool import WorkerPoolManager
 
-            try:
-                analyzer = CppAnalyzer(tmpdir)
-                self.assertTrue(analyzer.context.use_processes, "Should use ProcessPoolExecutor by default")
-            finally:
-                if env_backup is not None:
-                    os.environ["CPP_ANALYZER_USE_THREADS"] = env_backup
+            self.assertIsInstance(
+                analyzer.context.execution.worker_pool, WorkerPoolManager
+            )
+            self.assertIsNone(analyzer.context.execution.worker_pool.executor)
+            executor = analyzer.context.execution.worker_pool.setup()
+            from concurrent.futures import ProcessPoolExecutor
 
-    def test_can_override_to_threadpool(self):
-        """CPP_ANALYZER_USE_THREADS=true should switch to ThreadPoolExecutor"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.environ["CPP_ANALYZER_USE_THREADS"] = "true"
-            try:
-                analyzer = CppAnalyzer(tmpdir)
-                self.assertFalse(
-                    analyzer.context.use_processes, "Should use ThreadPoolExecutor when env var set"
-                )
-            finally:
-                if "CPP_ANALYZER_USE_THREADS" in os.environ:
-                    del os.environ["CPP_ANALYZER_USE_THREADS"]
-
-    def test_case_insensitive_env_var(self):
-        """Environment variable should be case-insensitive"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for value in ["TRUE", "True", "true"]:
-                os.environ["CPP_ANALYZER_USE_THREADS"] = value
-                try:
-                    analyzer = CppAnalyzer(tmpdir)
-                    self.assertFalse(analyzer.context.use_processes, f"Should recognize '{value}' as true")
-                finally:
-                    if "CPP_ANALYZER_USE_THREADS" in os.environ:
-                        del os.environ["CPP_ANALYZER_USE_THREADS"]
+            self.assertIsInstance(executor, ProcessPoolExecutor)
 
 
 @unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")
@@ -142,7 +117,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
             analyzer = CppAnalyzer(tmpdir)
             analyzer.context.concurrency.init_thread_local_buffers()
 
-            result = analyzer.context.symbol_store._bulk_write_symbols()
+            result = analyzer.context.symbol_store.bulk_write_symbols()
             self.assertEqual(result, 0, "Should return 0 for empty buffers")
 
     def test_bulk_write_adds_symbols(self):
@@ -167,7 +142,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
             symbols.append(test_symbol)
 
             # Bulk write
-            added = analyzer.context.symbol_store._bulk_write_symbols()
+            added = analyzer.context.symbol_store.bulk_write_symbols()
 
             # Verify
             self.assertEqual(added, 1, "Should add 1 symbol")
@@ -207,7 +182,7 @@ class TestBulkSymbolWrites(unittest.TestCase):
             symbols.append(symbol2)
 
             # Bulk write
-            added = analyzer.context.symbol_store._bulk_write_symbols()
+            added = analyzer.context.symbol_store.bulk_write_symbols()
 
             # Should only add first symbol, deduplicate second
             self.assertEqual(added, 1, "Should deduplicate and add only 1 symbol")
@@ -246,17 +221,17 @@ class TestCompileCommandsBinaryCache(unittest.TestCase):
             test_file = Path(tmpdir) / "test.json"
             test_file.write_text('{"test": "data"}')
 
-            hash1 = manager._get_file_hash(test_file)
+            hash1 = manager.get_file_hash(test_file)
             self.assertIsInstance(hash1, str)
             self.assertGreater(len(hash1), 0)
 
             # Same file should give same hash
-            hash2 = manager._get_file_hash(test_file)
+            hash2 = manager.get_file_hash(test_file)
             self.assertEqual(hash1, hash2)
 
             # Different content should give different hash
             test_file.write_text('{"test": "different"}')
-            hash3 = manager._get_file_hash(test_file)
+            hash3 = manager.get_file_hash(test_file)
             self.assertNotEqual(hash1, hash3)
 
     def test_cache_save_and_load(self):

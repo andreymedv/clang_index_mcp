@@ -1,135 +1,22 @@
 """Search functionality for C++ symbols."""
 
-import json
-import re
 import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from .._core.regex_validator import RegexValidator
 from .._search.search_criteria import SearchCriteria
-from .._persistence.symbol_info import (
+from .._symbols.model import (
     SymbolInfo,
     build_location_objects,
     get_template_param_base_indices,
     is_richer_definition,
     omit_empty,
 )
+from .pattern_matcher import detect_pattern_type, matches_qualified_pattern
+from .prototype_builder import build_attributes, build_class_prototype, build_function_prototype
 
 if TYPE_CHECKING:
     from .._symbols.symbol_index_store import SymbolIndexStore
-
-
-def _build_function_prototype(info: SymbolInfo) -> Optional[str]:
-    """Build a C++ prototype string for a function/method.
-
-    Produces: "[access] [virtual|static] <signature with qualified name> [= 0]"
-    Examples:
-        "public virtual void app::Handler::processData(int, std::string) const = 0"
-        "public static void app::Util::create()"
-        "void globalFunc(int x)"
-
-    Access modifier is only included for class members (info.parent_class is set).
-    Returns None if info.signature is empty.
-    """
-    if not info.signature:
-        return None
-
-    prefix_parts = []
-
-    # Access modifier only for class members
-    if info.parent_class and info.access:
-        prefix_parts.append(info.access)
-
-    # Virtual/static qualifiers (mutually exclusive in valid C++)
-    if info.is_pure_virtual or info.is_virtual:
-        prefix_parts.append("virtual")
-    elif info.is_static:
-        prefix_parts.append("static")
-
-    # Substitute qualified name into signature (replaces simple name)
-    # info.signature uses simple name, e.g. "void processData(int x) const"
-    # Result: "void app::Handler::processData(int x) const"
-    sig = info.signature
-    if info.qualified_name and info.name and info.qualified_name != info.name:
-        target = info.name + "("
-        idx = sig.find(target)
-        if idx >= 0:
-            sig = sig[:idx] + info.qualified_name + "(" + sig[idx + len(target) :]
-
-    # Append "= 0" for pure virtual
-    if info.is_pure_virtual and "= 0" not in sig:
-        sig = sig.rstrip() + " = 0"
-
-    if prefix_parts:
-        return " ".join(prefix_parts) + " " + sig
-    return sig
-
-
-def _build_class_prototype(info: SymbolInfo) -> Optional[str]:
-    """Build a C++ class declaration prototype from SymbolInfo.
-
-    Produces: "[template<...>] class|struct qualified_name[ : Base1, Base2, ...]"
-    Examples:
-        "class app::Widget : BaseWidget, Serializable"
-        "template<typename T> class Container : Allocator<T>"
-        "struct Point"
-
-    Returns None if qualified_name is empty.
-    """
-    qname = info.qualified_name or info.name
-    if not qname:
-        return None
-
-    # Template prefix for class templates and partial specializations
-    template_prefix = ""
-    if info.template_kind and info.template_parameters:
-        try:
-            params = json.loads(info.template_parameters)
-            param_strs = []
-            for p in params:
-                kind = p.get("kind", "type")
-                name = p.get("name", "")
-                if kind == "type" or not kind:
-                    param_strs.append(f"typename {name}" if name else "typename")
-                else:
-                    # Non-type parameter: use name directly
-                    param_strs.append(name if name else "auto")
-            if param_strs:
-                template_prefix = "template<" + ", ".join(param_strs) + "> "
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    # Keyword: "struct" for structs, "class" for everything else
-    kind_str = "struct" if info.kind == "struct" else "class"
-
-    # Base classes (no access specifiers since we don't store them per-base)
-    bases_str = ""
-    if info.base_classes:
-        bases_str = " : " + ", ".join(info.base_classes)
-
-    return f"{template_prefix}{kind_str} {qname}{bases_str}"
-
-
-def _build_attributes(info: SymbolInfo) -> Optional[List[str]]:
-    """Build attributes list from boolean method/function flags.
-
-    Replaces is_virtual, is_pure_virtual, is_const, is_static, is_definition
-    with a compact list of applicable attribute names.
-    pure_virtual implies virtual, so only 'pure_virtual' is listed (not both).
-    Returns None when no attributes apply (omitted by omit_empty).
-    """
-    attrs = []
-    if info.is_pure_virtual:
-        attrs.append("pure_virtual")
-    elif info.is_virtual:
-        attrs.append("virtual")
-    if info.is_const:
-        attrs.append("const")
-    if info.is_static:
-        attrs.append("static")
-    if info.is_definition:
-        attrs.append("definition")
-    return attrs if attrs else None
 
 
 class SearchEngine:
@@ -153,7 +40,7 @@ class SearchEngine:
             self.function_index = symbol_store.function_index
             self.file_index = symbol_store.file_index
             self.usr_index = symbol_store.usr_index
-            self.index_lock = index_lock or symbol_store.context.concurrency.index_lock
+            self.index_lock = index_lock or symbol_store.index_lock
         else:
             assert class_index is not None
             assert function_index is not None
@@ -192,266 +79,6 @@ class SearchEngine:
             if primary_info:
                 return cast(str, primary_info.qualified_name or primary_info.name)
         return None
-
-    @staticmethod
-    def _is_pattern(text: str) -> bool:
-        """Check if text contains regex metacharacters that indicate it's a pattern.
-
-        Returns True if text contains regex special chars (*, +, ?, ., [, etc.)
-        Returns False for plain text (should use exact matching)
-        """
-        # Check for common regex metacharacters
-        # This list includes characters that users would use for pattern matching
-        regex_chars = r".*+?[]{}()|\^$"
-        return any(char in text for char in regex_chars)
-
-    @staticmethod
-    def _matches(pattern: str, name: str) -> bool:
-        """Check if name matches pattern using exact or pattern matching.
-
-        - If pattern is empty: match all (returns True)
-        - If pattern has no regex metacharacters: exact match (case-insensitive)
-        - If pattern has regex metacharacters: regex fullmatch (anchored pattern matching)
-
-        Using fullmatch instead of search provides more intuitive behavior:
-        - "View.*" matches "View", "ViewManager" (starts with View)
-        - "View.*" does NOT match "ListView" (doesn't start with View)
-        - ".*View.*" matches all of the above (contains View anywhere)
-        """
-        # Empty pattern matches all symbols (useful with file_name filter)
-        if not pattern:
-            return True
-
-        if SearchEngine._is_pattern(pattern):
-            # Pattern matching: use regex fullmatch (anchored at both ends)
-            regex = re.compile(pattern, re.IGNORECASE)
-            return regex.fullmatch(name) is not None
-        else:
-            # Exact matching: case-insensitive equality
-            return name.lower() == pattern.lower()
-
-    @staticmethod
-    def _normalize_template_whitespace(name: str) -> str:
-        """
-        Normalize whitespace in template arguments for consistent matching.
-
-        libclang stores template arguments with spaces around pointer/reference operators
-        (e.g., 'Container<Widget *>' not 'Container<Widget*>'), but users naturally
-        search without spaces. This method normalizes both to enable matching.
-
-        Args:
-            name: Type name or pattern that may contain template arguments
-
-        Returns:
-            Name with normalized whitespace in template arguments
-
-        Examples:
-            'Container<Widget *>' → 'Container<Widget*>'
-            'Container<Widget * const &>' → 'Container<Widget*const&>'
-            'std::vector<int *>' → 'std::vector<int*>'
-            'Container<Widget*>' → 'Container<Widget*>' (unchanged)
-
-        Note:
-            Only normalizes spaces around *, &, and && operators.
-            Preserves spaces in type names like 'unsigned int', 'const char'.
-        """
-        # Remove spaces before * and & operators
-        name = re.sub(r"\s+\*", "*", name)
-        name = re.sub(r"\s+&", "&", name)
-
-        # Remove spaces after * and & operators (but keep meaningful spaces)
-        # Use lookahead to avoid removing spaces before keywords/types
-        name = re.sub(r"\*\s+", "*", name)
-        name = re.sub(r"&\s+", "&", name)
-
-        return name
-
-    @staticmethod
-    def _detect_pattern_type(pattern: str) -> str:
-        """
-        Detect pattern type for qualified name search optimization.
-
-        Phase 2 (Qualified Names): Component-based pattern matching.
-
-        Returns:
-            "exact": Leading :: means exact match in global namespace (e.g., "::View")
-            "unqualified": No :: means match unqualified name only (e.g., "View")
-            "suffix": Contains :: means component-based suffix match (e.g., "ui::View")
-            "regex": Contains regex metacharacters (e.g., "app::.*::View")
-
-        Examples:
-            _detect_pattern_type("::View") → "exact"
-            _detect_pattern_type("View") → "unqualified"
-            _detect_pattern_type("ui::View") → "suffix"
-            _detect_pattern_type("app::.*::View") → "regex"
-
-        Task: T2.1.2 (Qualified Names Phase 2)
-        """
-        # Empty pattern handled by caller
-        if not pattern:
-            return "unqualified"
-
-        # Leading :: → exact match in global namespace
-        if pattern.startswith("::"):
-            return "exact"
-
-        # Check for regex metacharacters
-        regex_chars = set(".*+?[]{}()|\\^$")
-        if any(c in pattern for c in regex_chars):
-            return "regex"
-
-        # No :: → match unqualified name
-        if "::" not in pattern:
-            return "unqualified"
-
-        # Contains :: but not leading, no regex → component-based suffix match
-        return "suffix"
-
-    @staticmethod
-    def matches_qualified_pattern(qualified_name: str, pattern: str) -> bool:
-        """
-        Match qualified name against pattern using component-based suffix matching.
-
-        Phase 2 (Qualified Names): Intelligent pattern matching with 4 modes.
-
-        Matching Rules:
-            1. Leading "::" → exact match (global namespace)
-               "::View" matches only "View" (not "ns::View")
-
-            2. No "::" → match unqualified name only
-               "View" matches "View", "ns::View", "ns1::ns2::View"
-
-            3. "::" in pattern → component-based suffix match
-               "ui::View" matches "app::ui::View", "legacy::ui::View"
-               but NOT "myui::View" (component boundary respected)
-
-            4. Regex metacharacters → regex fullmatch
-               "app::.*::View" matches "app::core::View", "app::ui::View"
-
-        Args:
-            qualified_name: Fully qualified symbol name (e.g., "app::ui::View")
-            pattern: Search pattern (e.g., "ui::View", "::View", "View", ".*::View")
-
-        Returns:
-            True if qualified_name matches pattern, False otherwise
-
-        Examples:
-            matches_qualified_pattern("app::ui::View", "ui::View") → True (suffix)
-            matches_qualified_pattern("app::ui::View", "::View") → False (not global)
-            matches_qualified_pattern("app::ui::View", "View") → True (unqualified)
-            matches_qualified_pattern("app::ui::View", "app::.*::View") → True (regex)
-            matches_qualified_pattern("myui::View", "ui::View") → False (boundary)
-
-        Template whitespace normalization:
-            Handles libclang's spacing in template arguments:
-            - "Container<Widget *>" matches pattern "Container<Widget*>"
-            - "PointerHolder<Widget *>" matches pattern "PointerHolder<Widget*>"
-
-        Task: T2.1.1 (Qualified Names Phase 2)
-        """
-        # Empty pattern matches everything
-        if not pattern:
-            return True
-
-        # Normalize whitespace in template arguments for both name and pattern
-        # This allows "Container<Widget*>" to match "Container<Widget *>"
-        qualified_name = SearchEngine._normalize_template_whitespace(qualified_name)
-        pattern = SearchEngine._normalize_template_whitespace(pattern)
-
-        pattern_type = SearchEngine._detect_pattern_type(pattern)
-
-        # 1. Exact match: leading ::
-        if pattern_type == "exact":
-            # Remove leading :: from pattern and compare with qualified_name
-            return qualified_name == pattern[2:]
-
-        # 2. Regex match (case-insensitive for consistency with other modes)
-        if pattern_type == "regex":
-            try:
-                return bool(re.fullmatch(pattern, qualified_name, re.IGNORECASE))
-            except re.error:
-                # Invalid regex → no match
-                return False
-
-        # 3. Unqualified match: no ::
-        if pattern_type == "unqualified":
-            # Extract unqualified name from qualified_name
-            unqualified = qualified_name.split("::")[-1]
-            return unqualified.lower() == pattern.lower()
-
-        # 4. Suffix match: component-based
-        if pattern_type == "suffix":
-            q_parts = qualified_name.split("::")
-            p_parts = pattern.split("::")
-
-            # Pattern longer than name → cannot match
-            if len(p_parts) > len(q_parts):
-                return False
-
-            # Check that last N components match (case-insensitive)
-            q_suffix = q_parts[-len(p_parts) :]
-            return [p.lower() for p in q_suffix] == [p.lower() for p in p_parts]
-
-        # Fallback (should never reach here)
-        return False
-
-    def _collect_alias_expansions(self, type_name: str) -> List[str]:
-        """Collect all alias and canonical type expansions for a given type name."""
-        expanded_names = [type_name]
-
-        try:
-            canonical = self.cache_manager.get_canonical_for_alias(type_name)
-            if canonical and canonical != type_name:
-                expanded_names.append(canonical)
-
-            aliases = self.cache_manager.get_aliases_for_canonical(type_name)
-            for alias in aliases or []:
-                if alias not in expanded_names:
-                    expanded_names.append(alias)
-
-            if canonical:
-                aliases_of_canonical = self.cache_manager.get_aliases_for_canonical(canonical)
-                for alias in aliases_of_canonical or []:
-                    if alias not in expanded_names:
-                        expanded_names.append(alias)
-
-        except Exception as e:
-            from .._core import diagnostics
-
-            diagnostics.debug(f"Failed to expand type name '{type_name}': {e}")
-
-        return expanded_names
-
-    def expand_type_name(self, type_name: str) -> List[str]:
-        """
-        Expand a type name to include all equivalent type names (aliases and canonical).
-
-        Phase 1.3: Type Alias Tracking - Infrastructure for automatic search unification
-
-        This method enables future parameter type filtering to automatically find functions
-        using both aliases and canonical types. For example, searching for "ErrorCallback"
-        will also find functions using "std::function<void(const Error&)>".
-
-        Args:
-            type_name: Type name to expand (can be alias or canonical type)
-
-        Returns:
-            List of equivalent type names including:
-            - The original type name
-            - All aliases pointing to it (if it's a canonical type)
-            - The canonical type (if it's an alias)
-
-        Example:
-            type_name = "ErrorCallback"
-            returns ["ErrorCallback", "std::function<void(const Error&)>"]
-
-            type_name = "std::function<void(const Error&)>"
-            returns ["std::function<void(const Error&)>", "ErrorCallback"]
-        """
-        if not self.cache_manager:
-            return [type_name]
-
-        return self._collect_alias_expansions(type_name)
 
     @staticmethod
     def _matches_namespace(symbol_namespace: str, filter_namespace: str) -> bool:
@@ -501,7 +128,7 @@ class SearchEngine:
     ) -> bool:
         """Check if a class symbol matches the search criteria."""
         qualified_name = info.qualified_name if info.qualified_name else info.name
-        if not self.matches_qualified_pattern(qualified_name, pattern):
+        if not matches_qualified_pattern(qualified_name, pattern):
             return False
 
         if project_only and not info.is_project:
@@ -518,7 +145,7 @@ class SearchEngine:
     def _create_class_result(self, info: SymbolInfo, include_base_classes: bool) -> Dict[str, Any]:
         """Build a result dictionary for a class search hit."""
         entry = {
-            "prototype": _build_class_prototype(info),
+            "prototype": build_class_prototype(info),
             "qualified_name": info.qualified_name or info.name,
             "namespace": info.namespace,
             "kind": info.kind,
@@ -559,7 +186,7 @@ class SearchEngine:
         Task: T2.2.1 (Qualified Names Phase 2)
         """
         pattern = criteria.pattern
-        pattern_type = self._detect_pattern_type(pattern)
+        pattern_type = detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
@@ -601,10 +228,10 @@ class SearchEngine:
 
         # For backward compatibility: regex patterns can match EITHER qualified or unqualified name
         # This allows "test.*" to match both "testFunction" and "TestClass::testMethod"
-        matches = self.matches_qualified_pattern(qualified_name, pattern)
+        matches = matches_qualified_pattern(qualified_name, pattern)
         if not matches and pattern_type == "regex":
             # Also try matching against unqualified name for backward compatibility
-            matches = self.matches_qualified_pattern(info.name, pattern)
+            matches = matches_qualified_pattern(info.name, pattern)
 
         if not matches:
             return False
@@ -625,7 +252,7 @@ class SearchEngine:
         # Prototype supersedes raw signature: contains return type,
         # qualified name, params, const/virtual/static qualifiers.
         if signature_pattern is not None:
-            prototype = _build_function_prototype(info) or ""
+            prototype = build_function_prototype(info) or ""
             if signature_pattern.lower() not in prototype.lower():
                 return False
 
@@ -634,7 +261,7 @@ class SearchEngine:
     def _create_function_result(self, info: SymbolInfo, include_attributes: bool) -> Dict[str, Any]:
         """Build a result dictionary for a function search hit."""
         d: Dict[str, Any] = {
-            "prototype": _build_function_prototype(info),
+            "prototype": build_function_prototype(info),
             "qualified_name": info.qualified_name or info.name,
             "namespace": info.namespace,
             "kind": info.kind,
@@ -648,7 +275,7 @@ class SearchEngine:
             "doc_comment": info.doc_comment,
         }
         if include_attributes:
-            d["attributes"] = _build_attributes(info)
+            d["attributes"] = build_attributes(info)
         return omit_empty(d)
 
     def _search_functions_in_file_index(
@@ -743,7 +370,7 @@ class SearchEngine:
         Task: T2.2.2 (Qualified Names Phase 2)
         """
         pattern = criteria.pattern
-        pattern_type = self._detect_pattern_type(pattern)
+        pattern_type = detect_pattern_type(pattern)
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
@@ -930,7 +557,7 @@ class SearchEngine:
             candidate_qualified = (
                 candidate.qualified_name if candidate.qualified_name else candidate.name
             )
-            if self.matches_qualified_pattern(candidate_qualified, lookup_name):
+            if matches_qualified_pattern(candidate_qualified, lookup_name):
                 matching_candidates.append(candidate)
 
         if not matching_candidates:
@@ -1014,7 +641,7 @@ class SearchEngine:
                 methods.append(
                     omit_empty(
                         {
-                            "prototype": _build_function_prototype(func_info),
+                            "prototype": build_function_prototype(func_info),
                             "qualified_name": func_info.qualified_name or func_info.name,
                             "access": func_info.access,
                             "template_kind": func_info.template_kind,
@@ -1023,7 +650,7 @@ class SearchEngine:
                                 func_info.primary_template_usr
                             ),
                             **build_location_objects(func_info),
-                            "attributes": _build_attributes(func_info),
+                            "attributes": build_attributes(func_info),
                             "brief": func_info.brief,
                             "doc_comment": func_info.doc_comment,
                         }
@@ -1074,7 +701,7 @@ class SearchEngine:
 
         return omit_empty(
             {
-                "prototype": _build_class_prototype(info),
+                "prototype": build_class_prototype(info),
                 "qualified_name": info.qualified_name or info.name,
                 "namespace": info.namespace,
                 "kind": info.kind,
@@ -1158,7 +785,7 @@ class SearchEngine:
             for info in infos:
                 if is_qualified:
                     info_qualified = info.qualified_name if info.qualified_name else info.name
-                    if not self.matches_qualified_pattern(info_qualified, lookup_name):
+                    if not matches_qualified_pattern(info_qualified, lookup_name):
                         continue
 
                 if class_name is not None and not self._info_matches_class_filter(info, class_name):

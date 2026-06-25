@@ -149,7 +149,7 @@ pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
 2. CompileCommandsManager loads compile_commands.json (if available)
 3. FileScanner finds all C++ files
 4. Files filtered by config (exclude patterns)
-5. Parallel parsing with ProcessPoolExecutor (default) or ThreadPoolExecutor (if `CPP_ANALYZER_USE_THREADS=true`)
+5. Parallel parsing with ProcessPoolExecutor (spawn)
 6. CompileCommandsManager provides compilation args per file
 7. libclang parses each file → AST (with project-specific build args)
 8. AST traversal extracts symbols

@@ -191,7 +191,7 @@ make ie                         # install-editable
 - Each worker process gets isolated memory space (no shared state)
 - 6-7x speedup on 4+ core systems
 - Worker function: `_process_file_worker()` (module-level for pickling)
-- Disable with `CPP_ANALYZER_USE_THREADS=true` (falls back to ThreadPoolExecutor)
+- Uses the `spawn` multiprocessing start method for fork safety
 
 **2. Header Deduplication (First-Win Strategy)**
 - When using compile_commands.json, headers included by multiple sources are processed once
@@ -295,7 +295,6 @@ make ie                         # install-editable
 
 **Environment variables:**
 - `CPP_ANALYZER_CONFIG=/path/to/config.json`: Override configuration for CLI usage
-- `CPP_ANALYZER_USE_THREADS=true`: Disable ProcessPoolExecutor, use ThreadPoolExecutor
 - `MCP_DEBUG=1`: Enable debug logging
 - `PYTHONUNBUFFERED=1`: Unbuffered Python output
 - `LIBCLANG_PATH=/path/to/libclang.so`: Override libclang path
@@ -476,7 +475,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 8. **compile_commands.json:** If present, analyzer will use it for accurate compilation arguments. Restart analyzer after modifying compile_commands.json.
 
-8. **Multi-process mode:** Default mode bypasses GIL for true parallelism. If debugging parse issues, set `CPP_ANALYZER_USE_THREADS=true` to use ThreadPoolExecutor (easier to debug, but slower).
+8. **Multi-process mode:** Default mode bypasses GIL for true parallelism. Workers run in isolated `spawn` processes; use `MCP_DEBUG=1` and per-worker logs when debugging parse issues.
 
 9. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 17.0** includes virtual method indicators (is_virtual, is_pure_virtual, is_const, is_static), type_aliases table with template_params support, documentation fields (brief, doc_comment), call_sites table for line-level call graph tracking, and template-mediated call metadata (display_name, template_project_types).
 

@@ -12,9 +12,10 @@ import unittest
 # Add the clang_index_mcp directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from clang_index_mcp._search.pattern_matcher import is_pattern, matches
 from clang_index_mcp._search.search_criteria import SearchCriteria
 from clang_index_mcp._search.search_engine import SearchEngine
-from clang_index_mcp._persistence.symbol_info import SymbolInfo
+from clang_index_mcp._symbols.model import SymbolInfo
 
 
 class TestSearchEnginePatternDetection(unittest.TestCase):
@@ -42,7 +43,7 @@ class TestSearchEnginePatternDetection(unittest.TestCase):
         for pattern in patterns:
             with self.subTest(pattern=pattern):
                 self.assertTrue(
-                    SearchEngine._is_pattern(pattern),
+                    is_pattern(pattern),
                     f"Expected '{pattern}' to be detected as a pattern",
                 )
 
@@ -62,7 +63,7 @@ class TestSearchEnginePatternDetection(unittest.TestCase):
         for text in plain_texts:
             with self.subTest(text=text):
                 self.assertFalse(
-                    SearchEngine._is_pattern(text),
+                    is_pattern(text),
                     f"Expected '{text}' to be plain text, not a pattern",
                 )
 
@@ -88,7 +89,7 @@ class TestSearchEngineMatching(unittest.TestCase):
         ]
         for pattern, name, expected in test_cases:
             with self.subTest(pattern=pattern, name=name):
-                result = SearchEngine._matches(pattern, name)
+                result = matches(pattern, name)
                 self.assertEqual(
                     result,
                     expected,
@@ -131,7 +132,7 @@ class TestSearchEngineMatching(unittest.TestCase):
         ]
         for pattern, name, expected in test_cases:
             with self.subTest(pattern=pattern, name=name):
-                result = SearchEngine._matches(pattern, name)
+                result = matches(pattern, name)
                 self.assertEqual(
                     result,
                     expected,

@@ -15,7 +15,15 @@ from .._core import diagnostics
 from .._symbols.indexing_callbacks import IndexingCallbacks
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._core.cancellation_coordinator import CancellationCoordinator
+    from .._core.concurrency_context import ConcurrencyContext
+    from .._indexing.execution_config import ExecutionConfig
+    from .._indexing.indexing_progress_reporter import IndexingProgressReporter
+    from .._persistence.cache_manager import CacheManager
+    from .._persistence.cache_orchestrator import CacheOrchestrator
+    from .._symbols.symbol_extractor import SymbolExtractor
+    from .._symbols.symbol_index_store import SymbolIndexStore
 
 
 class ProjectIndexingOrchestrator:
@@ -23,40 +31,48 @@ class ProjectIndexingOrchestrator:
 
     def __init__(
         self,
-        context: "ProjectContext",
+        cancellation: "CancellationCoordinator",
+        concurrency: "ConcurrencyContext",
+        execution: "ExecutionConfig",
+        compilation_env: "CompilationEnvironment",
+        cache_orchestrator: "CacheOrchestrator",
+        cache_manager: "CacheManager",
+        symbol_extractor: "SymbolExtractor",
+        symbol_store: "SymbolIndexStore",
+        progress_reporter: "IndexingProgressReporter",
         task_submitter: Any,
         worker_result_merger: Any,
+        refresh_pipeline: Any = None,
     ):
         """
         Initialize the project indexing orchestrator.
 
         Args:
-            context: Shared project context with cancellation, concurrency,
-                     execution, compilation, cache, and symbol services.
+            cancellation: Cancellation coordinator for interrupting indexing.
+            concurrency: Concurrency context with index_lock.
+            execution: Execution configuration with worker pool.
+            compilation_env: Compilation environment for file scanning.
+            cache_orchestrator: Cache orchestration and header tracking.
+            cache_manager: SQLite-backed cache and persistence.
+            symbol_extractor: Symbol extraction from translation units.
+            symbol_store: In-memory symbol indexes.
+            progress_reporter: Progress reporting for indexing operations.
             task_submitter: IndexingTaskSubmitter instance.
             worker_result_merger: WorkerResultMerger instance.
+            refresh_pipeline: RefreshPipeline instance (optional, for cache initial index).
         """
-        self.context = context
-        assert context.cancellation is not None
-        self.cancellation = context.cancellation
-        assert context.concurrency is not None
-        self.concurrency = context.concurrency
-        assert context.execution is not None
-        self.execution = context.execution
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.cache_orchestrator is not None
-        self.cache_orchestrator = context.cache_orchestrator
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
-        assert context.symbol_extractor is not None
-        self.symbol_extractor = context.symbol_extractor
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
+        self.cancellation = cancellation
+        self.concurrency = concurrency
+        self.execution = execution
+        self.compilation_env = compilation_env
+        self.cache_orchestrator = cache_orchestrator
+        self.cache_manager = cache_manager
+        self.symbol_extractor = symbol_extractor
+        self.symbol_store = symbol_store
+        self.progress_reporter = progress_reporter
         self.task_submitter = task_submitter
         self.worker_result_merger = worker_result_merger
-        assert context.progress_reporter is not None
-        self.progress_reporter = context.progress_reporter
+        self.refresh_pipeline = refresh_pipeline
 
     def index_project(
         self,
@@ -77,7 +93,10 @@ class ProjectIndexingOrchestrator:
         """
         start_time = time.time()
 
-        cached_count = self.cache_orchestrator._handle_cache_initial_index(force)
+        refresh_fn = None
+        if self.refresh_pipeline is not None:
+            refresh_fn = self.refresh_pipeline.refresh_if_needed
+        cached_count = self.cache_orchestrator.handle_cache_initial_index(force, refresh_fn)
         if cached_count is not None:
             return cached_count  # type: ignore[no-any-return]
 
@@ -104,9 +123,7 @@ class ProjectIndexingOrchestrator:
                     callbacks.wait_for_tools()
 
                 file_path = future_to_file[future]
-                success, was_cached = self.worker_result_merger.get_worker_result(
-                    future, file_path, self.execution.use_processes
-                )
+                success, was_cached = self.worker_result_merger.get_worker_result(future, file_path)
 
                 idx_d, cache_d, fail_d = self._update_indexing_counts(success, was_cached)
                 indexed_count += idx_d
@@ -140,14 +157,14 @@ class ProjectIndexingOrchestrator:
     def _prepare_indexing_files(self, include_dependencies: bool) -> List[str]:
         """Find C++ files to index and log compilation environment."""
         diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
-        files = self.compilation_env._find_cpp_files(include_dependencies=include_dependencies)
+        files = self.compilation_env.find_cpp_files(include_dependencies=include_dependencies)
 
         if not files:
             diagnostics.warning("No C++ files found in project")
             return []
 
         diagnostics.debug(f"Found {len(files)} C++ files to index")
-        self.compilation_env._log_compilation_environment(files)
+        self.compilation_env.log_compilation_environment(files)
         return files  # type: ignore[no-any-return]
 
     def _finalize_indexing(
@@ -182,12 +199,12 @@ class ProjectIndexingOrchestrator:
                 f"Note: {failed_count} files failed to parse - this is normal for complex projects"
             )
 
-        self.symbol_extractor._resolve_deferred_instantiation_bases()
-        self.cache_orchestrator._save_cache()
-        self.cache_orchestrator._save_progress_summary(
+        self.symbol_extractor.resolve_deferred_instantiation_bases()
+        self.cache_orchestrator.save_cache()
+        self.cache_orchestrator.save_progress_summary(
             indexed_count, total_files, cache_hits, failed_count
         )
-        self.cache_orchestrator._save_header_tracking()
+        self.cache_orchestrator.save_header_tracking()
         self.cache_manager.backend.rebuild_fts()
 
         return indexed_count

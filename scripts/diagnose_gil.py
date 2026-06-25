@@ -3,7 +3,9 @@
 Diagnose if Python's Global Interpreter Lock (GIL) is limiting parallelism.
 
 This script compares ThreadPoolExecutor vs ProcessPoolExecutor performance
-to determine if the GIL is a bottleneck for C++ analysis.
+to determine if the GIL is a bottleneck for C++ analysis. The production
+indexer always uses ProcessPoolExecutor with the `spawn` start method; the
+ThreadPoolExecutor comparison here is purely diagnostic.
 
 The GIL allows only one Python thread to execute at a time, even on multi-core systems.
 While libclang (C library) releases the GIL during parsing, any Python code still
@@ -141,9 +143,11 @@ This happens because:
 3. ProcessPoolExecutor uses separate processes (no shared GIL)
 
 Recommendations if GIL is the bottleneck:
-- Switch to ProcessPoolExecutor for parallel parsing
-- Reduce worker count for ThreadPoolExecutor (less contention)
+- Use ProcessPoolExecutor for parallel parsing (this is the production default)
+- Reduce worker count if CPU contention or memory pressure is observed
 - Optimize Python code between libclang calls
+
+Note: The production indexer no longer supports a ThreadPoolExecutor mode.
     """)
 
 

@@ -321,44 +321,44 @@ class TestWhitespaceNormalization:
     """Tests for whitespace normalization in template arguments."""
 
     def test_normalize_whitespace_function(self):
-        """Test the _normalize_template_whitespace function directly."""
-        from clang_index_mcp._search.search_engine import SearchEngine
+        """Test the normalize_template_whitespace function directly."""
+        from clang_index_mcp._search.pattern_matcher import normalize_template_whitespace
 
         # Test pointer types
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget *>")
+            normalize_template_whitespace("Container<Widget *>")
             == "Container<Widget*>"
         )
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget*>")
+            normalize_template_whitespace("Container<Widget*>")
             == "Container<Widget*>"
         )
 
         # Test reference types
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget &>")
+            normalize_template_whitespace("Container<Widget &>")
             == "Container<Widget&>"
         )
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget&>")
+            normalize_template_whitespace("Container<Widget&>")
             == "Container<Widget&>"
         )
 
         # Test complex types
         assert (
-            SearchEngine._normalize_template_whitespace("Container<Widget * const &>")
+            normalize_template_whitespace("Container<Widget * const &>")
             == "Container<Widget*const&>"
         )
 
         # Test nested templates
         assert (
-            SearchEngine._normalize_template_whitespace("Container<std::vector<int *>>")
+            normalize_template_whitespace("Container<std::vector<int *>>")
             == "Container<std::vector<int*>>"
         )
 
         # Test multiple parameters (comma space is preserved)
         assert (
-            SearchEngine._normalize_template_whitespace("Pair<int *, double *>")
+            normalize_template_whitespace("Pair<int *, double *>")
             == "Pair<int*, double*>"
         )
 
@@ -1423,7 +1423,7 @@ class TestBaseClassResolutionFromIndex:
         # actually parsing, so we'll test the method directly with edge cases)
 
         # Empty primary_usr should return empty list
-        result = param_inheritance_analyzer.context.symbol_extractor._resolve_instantiation_base_classes(
+        result = param_inheritance_analyzer.context.symbol_extractor.parser._resolve_instantiation_base_classes(
             cursor=None, primary_template_usr=None  # Not used when primary_usr is None
         )
         assert result == [], "Should return empty list when primary_usr is None"

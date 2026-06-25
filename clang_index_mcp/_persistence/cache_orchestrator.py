@@ -7,40 +7,51 @@ Manages cache loading/saving, file caching, header tracking, and progress summar
 
 import json
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from .._core import diagnostics
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._persistence.header_tracker import HeaderProcessingTracker
 
 if TYPE_CHECKING:
-    from ..project_context import ProjectContext
+    from .._compilation.compilation_environment import CompilationEnvironment
+    from .._persistence.cache_manager import CacheManager
+    from .._search.call_graph_service import CallGraphService
+    from .._symbols.symbol_index_store import SymbolIndexStore
+    from ..cpp_analyzer_config import CppAnalyzerConfig
+    from pathlib import Path
 
 
 class CacheOrchestrator:
     """Manages cache operations and header tracking state."""
 
-    def __init__(self, context: "ProjectContext"):
+    def __init__(
+        self,
+        cache_manager: "CacheManager",
+        config: "CppAnalyzerConfig",
+        project_root: "Path",
+        symbol_store: "SymbolIndexStore",
+        compilation_env: "CompilationEnvironment",
+        call_graph_service: "CallGraphService",
+    ):
         """
         Initialize cache orchestrator.
 
         Args:
-            context: Shared project context with cache, config, and symbol services.
+            cache_manager: SQLite-backed cache and persistence.
+            config: Project configuration.
+            project_root: Project root directory.
+            symbol_store: In-memory symbol indexes.
+            compilation_env: Compilation environment for file scanning.
+            call_graph_service: Call graph and dependency tracking.
         """
-        self.context = context
-        assert context.cache_manager is not None
-        self.cache_manager = context.cache_manager
-        assert context.config is not None
-        self.config = context.config
-        assert context.project_root is not None
-        self.project_root = context.project_root
-        self.cache_dir = context.cache_manager.cache_dir
-        assert context.symbol_store is not None
-        self.symbol_store = context.symbol_store
-        assert context.compilation_env is not None
-        self.compilation_env = context.compilation_env
-        assert context.call_graph_service is not None
-        self.call_graph_service = context.call_graph_service
+        self.cache_manager = cache_manager
+        self.config = config
+        self.project_root = project_root
+        self.cache_dir = cache_manager.cache_dir
+        self.symbol_store = symbol_store
+        self.compilation_env = compilation_env
+        self.call_graph_service = call_graph_service
 
         self.cache_loaded = False
         self.last_index_time = 0.0
@@ -127,11 +138,11 @@ class CacheOrchestrator:
         except Exception as e:
             diagnostics.warning(f"Failed to remove {file_path} from header tracker: {e}")
 
-    def _get_file_hash(self, file_path: str) -> str:
+    def get_file_hash(self, file_path: str) -> str:
         """Get hash of file contents for change detection"""
         return self.cache_manager.get_file_hash(file_path)
 
-    def _calculate_compile_commands_hash(self):
+    def calculate_compile_commands_hash(self):
         """
         Calculate and store MD5 hash of compile_commands.json file.
 
@@ -155,7 +166,7 @@ class CacheOrchestrator:
             self.compilation_env.compile_commands_manager.get_compile_commands_hash()
         )
 
-    def _restore_or_reset_header_tracking(self):
+    def restore_or_reset_header_tracking(self):
         """
         Restore header tracking from cache or reset if compile_commands.json changed.
 
@@ -211,7 +222,7 @@ class CacheOrchestrator:
             # On error, start fresh
             self.clear_header_tracker()
 
-    def _save_header_tracking(self):
+    def save_header_tracking(self):
         """
         Save header tracking state to disk cache.
 
@@ -258,7 +269,7 @@ class CacheOrchestrator:
         except Exception as e:
             diagnostics.warning(f"Failed to save header tracking cache: {e}")
 
-    def _save_file_cache(
+    def save_file_cache(
         self,
         file_path: str,
         symbols: List[Any],
@@ -273,7 +284,7 @@ class CacheOrchestrator:
             file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
         )
 
-    def _load_file_cache(
+    def load_file_cache(
         self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Load cached data for a file if still valid
@@ -283,7 +294,7 @@ class CacheOrchestrator:
         """
         return self.cache_manager.load_file_cache(file_path, current_hash, compile_args_hash)
 
-    def _try_load_cached_index(
+    def try_load_cached_index(
         self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
     ) -> Optional[Tuple[bool, bool]]:
         """Try to load index from per-file cache. Returns result tuple or None if not cached."""
@@ -292,7 +303,7 @@ class CacheOrchestrator:
         if force:
             return None
 
-        cache_data = self._load_file_cache(file_path, current_hash, compile_args_hash)
+        cache_data = self.load_file_cache(file_path, current_hash, compile_args_hash)
         if cache_data is None:
             return None
 
@@ -306,29 +317,37 @@ class CacheOrchestrator:
                 return (False, True)
             return None
 
-        self.symbol_store._apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
+        self.symbol_store.apply_cached_symbols(file_path, cache_data["symbols"], current_hash)
         return (True, True)
 
-    def _handle_cache_initial_index(self, force: bool) -> Optional[int]:
-        """Try to load from cache if not forcing."""
+    def handle_cache_initial_index(
+        self,
+        force: bool,
+        refresh_fn: Optional[Callable[[bool], int]] = None,
+    ) -> Optional[int]:
+        """Try to load from cache if not forcing.
+
+        Args:
+            force: If True, skip cache loading.
+            refresh_fn: Optional callable that performs incremental refresh.
+                       Accepts include_dependencies flag, returns number of refreshed files.
+        """
         from .._core import diagnostics
 
-        if not force and self._load_cache():
-            assert self.context.refresh_pipeline is not None
-            refreshed = self.context.refresh_pipeline.refresh_if_needed(
-                include_dependencies=self.compilation_env.include_dependencies,
-            )
-            if refreshed > 0:
-                diagnostics.debug(f"Using cached index (updated {refreshed} files)")
+        if not force and self.load_cache():
+            if refresh_fn is not None:
+                refreshed = refresh_fn(self.compilation_env.include_dependencies)
+                if refreshed > 0:
+                    diagnostics.debug(f"Using cached index (updated {refreshed} files)")
+                else:
+                    diagnostics.debug("Using cached index")
             else:
                 diagnostics.debug("Using cached index")
             return int(self.symbol_store.indexed_file_count)  # type: ignore[no-any-return]
         return None
 
-    def _save_cache(self):
+    def save_cache(self):
         """Save index to cache file"""
-        from .._core import diagnostics
-
         # Get current config file info
         config_path = self.config.config_path
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
@@ -360,24 +379,8 @@ class CacheOrchestrator:
             validation_context=validation_context,
         )
 
-        # Phase 3/4: Save call sites to database
-        # In ProcessPoolExecutor mode (default): call_sites are already streamed to SQLite
-        # as they arrive from workers (Phase 4 optimization), so this set is empty.
-        # In ThreadPoolExecutor mode: call_sites are accumulated in memory, so we need
-        # to save them here. This is still needed for backwards compatibility.
-        call_sites = self.call_graph_service.call_graph_analyzer.get_all_call_sites()
-        if call_sites:
-            diagnostics.debug(
-                f"Saving {len(call_sites)} call sites to database (ThreadPoolExecutor mode)"
-            )
-            saved_count = self.cache_manager.backend.save_call_sites_batch(call_sites)
-            if saved_count != len(call_sites):
-                diagnostics.warning(f"Only saved {saved_count}/{len(call_sites)} call sites")
-
-    def _load_cache(self) -> bool:
+    def load_cache(self) -> bool:
         """Load index from cache file"""
-        from .._core import diagnostics
-
         # Get current config file info
         config_path = self.config.config_path
         config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
@@ -409,8 +412,8 @@ class CacheOrchestrator:
             return False
 
         try:
-            self.symbol_store._populate_indexes_from_cache(cache_data)
-            self.symbol_store._rebuild_auxiliary_structures()
+            self.symbol_store.populate_indexes_from_cache(cache_data)
+            self.symbol_store.rebuild_auxiliary_structures()
 
             # Memory optimization: call sites are now loaded LAZILY on-demand
             # instead of loading all at startup (saves ~150-200 MB for large projects)
@@ -428,7 +431,7 @@ class CacheOrchestrator:
             self.cache_loaded = False
             return False
 
-    def _save_progress_summary(
+    def save_progress_summary(
         self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0
     ):
         """Save a summary of indexing progress"""

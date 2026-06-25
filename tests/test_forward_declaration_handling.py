@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from clang_index_mcp._persistence.symbol_info import SymbolInfo, is_richer_definition
+from clang_index_mcp._symbols.model import SymbolInfo, is_richer_definition
 
 
 @pytest.fixture
