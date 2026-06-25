@@ -6,16 +6,17 @@ from typing import Any, Dict, List
 
 from mcp.types import TextContent
 
-from .. import cpp_mcp_server as _server
+from ..context import ctx
+from ..cpp_mcp_server import _create_search_result, _parse_search_scope
 from ..state_manager import EnhancedQueryResult
 from ..response_formatters import suggestions
 
 
 async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
-    project_only = _server._parse_search_scope(arguments)
+    project_only = _parse_search_scope(arguments)
     pattern = arguments["symbol_name"]
     file_name = arguments.get("file_name", None)
     namespace = arguments.get("namespace", None)
@@ -23,7 +24,7 @@ async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]
     include_base_classes = arguments.get("include_base_classes", True)
 
     # Run synchronous method in executor to avoid blocking event loop
-    with _server.state_manager.tool_execution():
+    with ctx.state_manager.tool_execution():
         raw_results = await loop.run_in_executor(
             None,
             lambda: analyzer.search_classes(
@@ -44,8 +45,8 @@ async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]
         results, total_count = raw_results, None
 
     # Wrap with appropriate metadata based on special conditions
-    enhanced_result = _server._create_search_result(
-        results, _server.state_manager, "search_classes", max_results, total_count, fallback
+    enhanced_result = _create_search_result(
+        results, ctx.state_manager, "search_classes", max_results, total_count, fallback
     )
     if results:
         enhanced_result.next_steps = suggestions.for_search_classes(
@@ -58,10 +59,10 @@ async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
-    project_only = _server._parse_search_scope(arguments)
+    project_only = _parse_search_scope(arguments)
     class_name = arguments.get("class_name", None)
     file_name = arguments.get("file_name", None)
     namespace = arguments.get("namespace", None)
@@ -71,7 +72,7 @@ async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextConten
     include_attributes = arguments.get("include_attributes", False)
 
     # Run synchronous method in executor to avoid blocking event loop
-    with _server.state_manager.tool_execution():
+    with ctx.state_manager.tool_execution():
         raw_results = await loop.run_in_executor(
             None,
             lambda: analyzer.search_functions(
@@ -94,8 +95,8 @@ async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextConten
         results, total_count = raw_results, None
 
     # Wrap with appropriate metadata based on special conditions
-    enhanced_result = _server._create_search_result(
-        results, _server.state_manager, "search_functions", max_results, total_count, fallback
+    enhanced_result = _create_search_result(
+        results, ctx.state_manager, "search_functions", max_results, total_count, fallback
     )
     if results:
         enhanced_result.next_steps = suggestions.for_search_functions(results)
@@ -103,7 +104,7 @@ async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextConten
 
 
 async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     class_name = str(arguments["class_name"])
@@ -111,7 +112,7 @@ async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]
     result = await loop.run_in_executor(None, lambda: analyzer.get_class_info(class_name))
     # Wrap with metadata (even if not found)
     enhanced_result = EnhancedQueryResult.create_from_state(
-        result, _server.state_manager, "get_class_info"
+        result, ctx.state_manager, "get_class_info"
     )
     if result and "error" not in (result or {}):
         enhanced_result.next_steps = suggestions.for_get_class_info(result)
@@ -119,7 +120,7 @@ async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]
 
 
 async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     type_name = arguments["type_name"]
@@ -127,17 +128,17 @@ async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextCon
     result = await loop.run_in_executor(None, lambda: analyzer.get_type_alias_info(type_name))
     # Wrap with metadata
     enhanced_result = EnhancedQueryResult.create_from_state(
-        result, _server.state_manager, "get_type_alias_info"
+        result, ctx.state_manager, "get_type_alias_info"
     )
     return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
 
 async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     pattern = arguments["symbol_name"]
-    project_only = _server._parse_search_scope(arguments)
+    project_only = _parse_search_scope(arguments)
     symbol_types = arguments.get("symbol_types", None)
     namespace = arguments.get("namespace", None)
     max_results = arguments.get("max_results", None)
@@ -161,20 +162,20 @@ async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]
     else:
         results, total_count = raw_results, None
     # Wrap with appropriate metadata based on special conditions
-    enhanced_result = _server._create_search_result(
-        results, _server.state_manager, "search_symbols", max_results, total_count, fallback
+    enhanced_result = _create_search_result(
+        results, ctx.state_manager, "search_symbols", max_results, total_count, fallback
     )
     return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
 
 
 async def _handle_find_in_file(arguments: Dict[str, Any]) -> List[TextContent]:
-    analyzer = _server.analyzer
+    analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
     file_path = arguments["file_path"]
     pattern = arguments["pattern"]
     # Run synchronous method in executor to avoid blocking event loop
-    with _server.state_manager.tool_execution():
+    with ctx.state_manager.tool_execution():
         results = await loop.run_in_executor(
             None, lambda: analyzer.find_in_file(file_path, pattern)
         )
@@ -183,8 +184,8 @@ async def _handle_find_in_file(arguments: Dict[str, Any]) -> List[TextContent]:
     result_list = results.get("results", []) if isinstance(results, dict) else []
     # Wrap with appropriate metadata based on special conditions
     # Use _create_search_result with the result list for counting
-    enhanced_result = _server._create_search_result(
-        result_list, _server.state_manager, "find_in_file", None, None
+    enhanced_result = _create_search_result(
+        result_list, ctx.state_manager, "find_in_file", None, None
     )
     # But return the full results dict (with matched_files, suggestions, etc.)
     # Merge the metadata into the results dict

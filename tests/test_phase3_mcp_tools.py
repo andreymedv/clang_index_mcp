@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import clang_index_mcp._mcp.cpp_mcp_server as cpp_mcp_server_module
+from clang_index_mcp._mcp.context import ctx
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager
 
@@ -325,23 +326,21 @@ class TestMCPHandlerResponseFormat:
     @pytest.fixture
     def setup_clang_index_mcp(self, indexed_analyzer):
         """Set global MCP server state for handler-level tests."""
-        srv = cpp_mcp_server_module
-
-        original_analyzer = srv.analyzer
-        original_state = srv.state_manager
-        original_initialized = srv.analyzer_initialized
+        original_analyzer = ctx.analyzer
+        original_state = ctx.state_manager
+        original_initialized = ctx.analyzer_initialized
 
         state_manager = AnalyzerStateManager()
         state_manager.transition_to(AnalyzerState.INDEXED)
-        srv.analyzer = indexed_analyzer
-        srv.state_manager = state_manager
-        srv.analyzer_initialized = True
+        ctx.analyzer = indexed_analyzer
+        ctx.state_manager = state_manager
+        ctx.analyzer_initialized = True
 
-        yield srv
+        yield cpp_mcp_server_module
 
-        srv.analyzer = original_analyzer
-        srv.state_manager = original_state
-        srv.analyzer_initialized = original_initialized
+        ctx.analyzer = original_analyzer
+        ctx.state_manager = original_state
+        ctx.analyzer_initialized = original_initialized
 
     @pytest.mark.asyncio
     async def test_get_call_sites_returns_dict_not_list(self, setup_clang_index_mcp):

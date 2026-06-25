@@ -6,27 +6,24 @@ import signal
 import threading
 
 from ..._core import diagnostics
-from .. import cpp_mcp_server as _server
 
 
-async def _run_stdio_transport():
+async def _run_stdio_transport(server):
     """Run the server using stdio transport."""
     from mcp.server.stdio import stdio_server
 
     async with stdio_server() as (read_stream, write_stream):
-        await _server.server.run(
-            read_stream, write_stream, _server.server.create_initialization_options()
-        )
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-async def _run_http_transport(host, port, transport):
+async def _run_http_transport(server, host, port, transport):
     """Run the server using HTTP or SSE transport."""
     try:
         from ..._core.http_server import run_http_server
     except ImportError:
         from http_server import run_http_server  # type: ignore[no-redef]
 
-    await run_http_server(_server.server, host, port, transport)
+    await run_http_server(server, host, port, transport)
 
 
 def _install_signal_handlers():

@@ -1,6 +1,6 @@
 """Query policy helpers for the C++ MCP server."""
 
-from .. import cpp_mcp_server as _server
+from ..context import ctx
 from ..state_manager import QueryBehaviorPolicy
 from ..._core import diagnostics
 
@@ -61,23 +61,23 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
         - If allowed=True, query can proceed (message will be empty)
         - If allowed=False, query should be blocked/rejected (message contains error/wait info)
     """
-    if _server.state_manager.is_fully_indexed():
+    if ctx.state_manager.is_fully_indexed():
         return (True, "")
 
-    if not _server.state_manager.is_ready_for_queries():
+    if not ctx.state_manager.is_ready_for_queries():
         return (True, "")
 
-    if _server.analyzer is None:
+    if ctx.analyzer is None:
         return (True, "")
 
-    policy = _parse_query_policy(_server.analyzer.config.get_query_behavior_policy())
+    policy = _parse_query_policy(ctx.analyzer.config.get_query_behavior_policy())
 
     if policy == QueryBehaviorPolicy.ALLOW_PARTIAL:
         return (True, "")
 
     if policy == QueryBehaviorPolicy.BLOCK:
-        message = _build_block_message(_server.state_manager.get_progress())
-        completed = _server.state_manager.wait_for_indexed(timeout=30.0)
+        message = _build_block_message(ctx.state_manager.get_progress())
+        completed = ctx.state_manager.wait_for_indexed(timeout=30.0)
         if completed:
             return (True, "")
         return (
@@ -87,6 +87,6 @@ def check_query_policy(tool_name: str) -> tuple[bool, str]:
         )
 
     if policy == QueryBehaviorPolicy.REJECT:
-        return (False, _build_reject_message(_server.state_manager.get_progress()))
+        return (False, _build_reject_message(ctx.state_manager.get_progress()))
 
     return (True, "")
