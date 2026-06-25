@@ -8,9 +8,7 @@ and call paths between functions.
 import json
 from typing import Any, Dict, List, Optional, Set
 
-from .._compilation.include_extractor import ClangIncludeExtractor
 from .._core import diagnostics
-from .._persistence.repositories.dependency_repository import SqliteDependencyRepository
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
 from .._persistence.persistence_context import PersistenceContext
@@ -48,15 +46,11 @@ class CallGraphService:
         self.symbol_store = symbol_store
         self.query_engine = query_engine
 
-    def init_dependency_graph(self) -> None:
-        """Initialize the dependency graph builder after cache_manager is available."""
-        cache_manager = self.cache_manager
-        conn = cache_manager.backend.get_connection()
-        if conn is not None:
-            repository = SqliteDependencyRepository(lambda: cache_manager.backend.get_connection())
-            extractor = ClangIncludeExtractor()
-            self.dependency_graph = DependencyGraphBuilder(repository, extractor)
-            diagnostics.debug("Dependency graph builder initialized with dynamic connection")
+    def set_dependency_graph(self, builder: Optional[DependencyGraphBuilder]) -> None:
+        """Set the dependency graph builder, wired by the composition root."""
+        self.dependency_graph = builder
+        if builder is not None:
+            diagnostics.debug("Dependency graph builder initialized")
         else:
             diagnostics.debug("Dependency graph not available (non-SQLite backend)")
 
