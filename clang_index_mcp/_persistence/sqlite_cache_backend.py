@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .._symbols.model import SymbolInfo
 from .._persistence import type_alias_repository
 from .._persistence.repositories.symbol_repository import SymbolRepository
+from .._persistence.repositories.call_site_repository import CallSiteRepository
 
 # Handle both package and script imports
 try:
@@ -70,6 +71,7 @@ class SqliteCacheBackend:
 
         # Sub-repositories (delegate after connection is live)
         self._symbol_repo = SymbolRepository(self.get_connection)
+        self._call_site_repo = CallSiteRepository(self.get_connection)
 
     def _connect(self):
         """Open database connection with optimized settings."""
@@ -1675,288 +1677,34 @@ class SqliteCacheBackend:
     # Phase 3: Call Sites Methods (v8.0)
 
     def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
-        """
-        Batch insert call sites using transaction.
-
-        Args:
-            call_sites: List of dicts with keys:
-                - caller_usr: USR of calling function
-                - callee_usr: USR of called function
-                - file: Source file containing call
-                - line: Line number of call
-                - column: Column number (optional)
-
-        Returns:
-            Number of call sites successfully saved
-        """
-        if not call_sites:
-            return 0
-
-        try:
-            self._ensure_connected()
-
-            current_time = time.time()
-
-            # Prepare tuples for batch insert
-            values = [
-                (
-                    cs["caller_usr"],
-                    cs["callee_usr"],
-                    cs["file"],
-                    cs["line"],
-                    cs.get("column"),
-                    cs.get("display_name"),
-                    cs.get("template_project_types"),
-                    current_time,
-                )
-                for cs in call_sites
-            ]
-
-            # Batch insert in a single transaction
-            with self._conn:
-                self._conn.executemany(
-                    """
-                    INSERT INTO call_sites (
-                        caller_usr, callee_usr, file, line, column,
-                        display_name, template_project_types, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    values,
-                )
-
-            return len(call_sites)
-
-        except Exception as e:
-            diagnostics.error(f"Failed to batch save {len(call_sites)} call sites: {e}")
-            return 0
+        self._ensure_connected()
+        return self._call_site_repo.save_call_sites_batch(call_sites)
 
     def get_call_sites_for_caller(self, caller_usr: str) -> List[Dict[str, Any]]:
-        """
-        Get all call sites from a specific caller function.
-
-        Args:
-            caller_usr: USR of the calling function
-
-        Returns:
-            List of call site dicts with keys: callee_usr, file, line, column
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                """
-                SELECT callee_usr, file, line, column,
-                       display_name, template_project_types
-                FROM call_sites
-                WHERE caller_usr = ?
-                ORDER BY file, line
-                """,
-                (caller_usr,),
-            )
-
-            return [
-                {
-                    "callee_usr": row["callee_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                    "display_name": row["display_name"],
-                    "template_project_types": row["template_project_types"],
-                }
-                for row in cursor.fetchall()
-            ]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get call sites for caller {caller_usr}: {e}")
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.get_call_sites_for_caller(caller_usr)
 
     def get_call_sites_for_callee(self, callee_usr: str) -> List[Dict[str, Any]]:
-        """
-        Get all call sites to a specific callee function.
-
-        Args:
-            callee_usr: USR of the called function
-
-        Returns:
-            List of call site dicts with keys: caller_usr, file, line, column
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute(
-                """
-                SELECT caller_usr, file, line, column,
-                       display_name, template_project_types
-                FROM call_sites
-                WHERE callee_usr = ?
-                ORDER BY file, line
-                """,
-                (callee_usr,),
-            )
-
-            return [
-                {
-                    "caller_usr": row["caller_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                    "display_name": row["display_name"],
-                    "template_project_types": row["template_project_types"],
-                }
-                for row in cursor.fetchall()
-            ]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get call sites for callee {callee_usr}: {e}")
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.get_call_sites_for_callee(callee_usr)
 
     def get_template_mediated_call_sites(
         self, caller_usrs: List[str], callee_usr: str
     ) -> List[Dict[str, Any]]:
-        """
-        Get call sites between specific callers and a callee that have template metadata.
-
-        Args:
-            caller_usrs: List of caller USRs
-            callee_usr: USR of the called function
-
-        Returns:
-            List of call site dicts with template_project_types set
-        """
-        if not caller_usrs:
-            return []
-        try:
-            self._ensure_connected()
-            placeholders = ",".join("?" for _ in caller_usrs)
-            cursor = self._conn.execute(
-                f"""
-                SELECT caller_usr, callee_usr, file, line, column,
-                       display_name, template_project_types
-                FROM call_sites
-                WHERE caller_usr IN ({placeholders})
-                  AND callee_usr = ?
-                  AND template_project_types IS NOT NULL
-                ORDER BY file, line
-                """,
-                (*caller_usrs, callee_usr),
-            )
-            return [
-                {
-                    "caller_usr": row["caller_usr"],
-                    "callee_usr": row["callee_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                    "display_name": row["display_name"],
-                    "template_project_types": row["template_project_types"],
-                }
-                for row in cursor.fetchall()
-            ]
-        except Exception as e:
-            diagnostics.error(
-                f"Failed to get template-mediated call sites for callee {callee_usr}: {e}"
-            )
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.get_template_mediated_call_sites(caller_usrs, callee_usr)
 
     def delete_call_sites_by_file(self, file_path: str) -> int:
-        """
-        Delete all call sites from a specific file.
-
-        Args:
-            file_path: Path to file whose call sites should be deleted
-
-        Returns:
-            Number of call sites deleted
-        """
-        try:
-            self._ensure_connected()
-
-            # Get count before deletion
-            cursor = self._conn.execute(
-                "SELECT COUNT(*) FROM call_sites WHERE file = ?", (file_path,)
-            )
-            count: int = cursor.fetchone()[0]
-
-            if count == 0:
-                return 0
-
-            # Delete call sites
-            with self._conn:
-                self._conn.execute("DELETE FROM call_sites WHERE file = ?", (file_path,))
-
-            return count
-
-        except Exception as e:
-            diagnostics.error(f"Failed to delete call sites for file {file_path}: {e}")
-            return 0
+        self._ensure_connected()
+        return self._call_site_repo.delete_call_sites_by_file(file_path)
 
     def delete_call_sites_by_usr(self, usr: str) -> int:
-        """
-        Delete all call sites where the given USR appears as either caller or callee.
-
-        Used during incremental refresh when removing symbols.
-
-        Args:
-            usr: USR of the symbol to remove from call graph
-
-        Returns:
-            Number of call sites deleted
-        """
-        try:
-            self._ensure_connected()
-
-            # Get count before deletion
-            cursor = self._conn.execute(
-                "SELECT COUNT(*) FROM call_sites WHERE caller_usr = ? OR callee_usr = ?",
-                (usr, usr),
-            )
-            count: int = cursor.fetchone()[0]
-
-            if count == 0:
-                return 0
-
-            # Delete call sites where USR is either caller or callee
-            with self._conn:
-                self._conn.execute(
-                    "DELETE FROM call_sites WHERE caller_usr = ? OR callee_usr = ?", (usr, usr)
-                )
-
-            return count
-
-        except Exception as e:
-            diagnostics.error(f"Failed to delete call sites for USR {usr}: {e}")
-            return 0
+        self._ensure_connected()
+        return self._call_site_repo.delete_call_sites_by_usr(usr)
 
     def load_all_call_sites(self) -> List[Dict[str, Any]]:
-        """
-        Load all call sites from the database.
-
-        Returns:
-            List of call site dicts with keys: caller_usr, callee_usr, file, line, column
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("""
-                SELECT caller_usr, callee_usr, file, line, column
-                FROM call_sites
-                ORDER BY file, line
-                """)
-
-            return [
-                {
-                    "caller_usr": row["caller_usr"],
-                    "callee_usr": row["callee_usr"],
-                    "file": row["file"],
-                    "line": row["line"],
-                    "column": row["column"],
-                }
-                for row in cursor.fetchall()
-            ]
-
-        except Exception as e:
-            diagnostics.error(f"Failed to load call sites from database: {e}")
-            return []
+        self._ensure_connected()
+        return self._call_site_repo.load_all_call_sites()
 
     # -------------------------------------------------------------------------
     # Type Aliases Storage and Lookup (Phase 1.3: Type Alias Tracking)
