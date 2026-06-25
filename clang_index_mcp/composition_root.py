@@ -89,8 +89,8 @@ class CompositionRoot:
 
         # Wire services in dependency order
 
-        # 1. CallGraphService (needs persistence context)
-        self.call_graph_service = CallGraphService(self.context.persistence)
+        # 1. CallGraphService (needs cache_manager for call site storage)
+        self.call_graph_service = CallGraphService(self.cache_manager)
         self.context.symbols.call_graph_service = self.call_graph_service
 
         # 2. SymbolIndexStore (needs concurrency and call graph)
