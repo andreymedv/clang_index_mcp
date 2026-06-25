@@ -13,6 +13,7 @@ from .._persistence import type_alias_repository
 from .._persistence.repositories.symbol_repository import SymbolRepository
 from .._persistence.repositories.call_site_repository import CallSiteRepository
 from .._persistence.repositories.file_metadata_repository import FileMetadataRepository
+from .._persistence.repositories.maintenance_service import MaintenanceService
 
 # Handle both package and script imports
 try:
@@ -74,6 +75,7 @@ class SqliteCacheBackend:
         self._symbol_repo = SymbolRepository(self.get_connection)
         self._call_site_repo = CallSiteRepository(self.get_connection)
         self._file_metadata_repo = FileMetadataRepository(self.get_connection)
+        self._maintenance = MaintenanceService(self.get_connection)
 
     def _connect(self):
         """Open database connection with optimized settings."""
@@ -544,652 +546,67 @@ class SqliteCacheBackend:
         return self._symbol_repo.search_symbols_by_kind(kind, project_only)
 
     def get_symbol_stats(self) -> Dict[str, Any]:
-        """
-        Get detailed symbol statistics.
-
-        Returns:
-            Dict with statistics about symbols in database
-        """
-        try:
-            self._ensure_connected()
-
-            stats = {}
-
-            # Total symbol count
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols")
-            stats["total_symbols"] = cursor.fetchone()[0]
-
-            # Count by kind
-            cursor = self._conn.execute("""
-                SELECT kind, COUNT(*) as count
-                FROM symbols
-                GROUP BY kind
-                ORDER BY count DESC
-            """)
-            stats["by_kind"] = {row["kind"]: row["count"] for row in cursor.fetchall()}
-
-            # Project vs dependencies
-            cursor = self._conn.execute("""
-                SELECT is_project, COUNT(*) as count
-                FROM symbols
-                GROUP BY is_project
-            """)
-            for row in cursor.fetchall():
-                if row["is_project"]:
-                    stats["project_symbols"] = row["count"]
-                else:
-                    stats["dependency_symbols"] = row["count"]
-
-            # File count
-            cursor = self._conn.execute("SELECT COUNT(*) FROM file_metadata")
-            stats["total_files"] = cursor.fetchone()[0]
-
-            # Database size
-            cursor = self._conn.execute("PRAGMA page_count")
-            page_count = cursor.fetchone()[0]
-            cursor = self._conn.execute("PRAGMA page_size")
-            page_size = cursor.fetchone()[0]
-            stats["db_size_bytes"] = page_count * page_size
-            stats["db_size_mb"] = stats["db_size_bytes"] / (1024 * 1024)
-
-            return stats
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get symbol stats: {e}")
-            return {}
+        self._ensure_connected()
+        return self._maintenance.get_symbol_stats()
 
     def verify_integrity(self) -> bool:
-        """
-        Verify database integrity.
-
-        Returns:
-            True if database is healthy, False if corrupted
-        """
-        try:
-            self._ensure_connected()
-
-            cursor = self._conn.execute("PRAGMA integrity_check")
-            result = cursor.fetchone()[0]
-
-            if result == "ok":
-                diagnostics.debug("Database integrity check: OK")
-                return True
-            else:
-                diagnostics.error(f"Database integrity check failed: {result}")
-                return False
-
-        except Exception as e:
-            diagnostics.error(f"Failed to check integrity: {e}")
-            return False
-
-    # =========================================================================
-    # Database Maintenance Methods
-    # =========================================================================
+        self._ensure_connected()
+        return self._maintenance.verify_integrity()
 
     def vacuum(self) -> bool:
-        """
-        Reclaim space from deleted records and defragment database.
-
-        VACUUM rebuilds the database file, repacking it into a minimal amount
-        of disk space. This is useful after large deletions.
-
-        Performance: Can take several seconds for large databases (100K+ symbols).
-        Best run during idle time or as part of scheduled maintenance.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            # Get size before vacuum
-            stats_before = self.get_symbol_stats()
-            size_before_mb = stats_before.get("db_size_mb", 0)
-
-            diagnostics.info(f"Running VACUUM (database size: {size_before_mb:.2f} MB)...")
-            start_time = time.time()
-
-            # Run VACUUM (cannot be in transaction)
-            self._conn.execute("VACUUM")
-
-            elapsed = time.time() - start_time
-
-            # Get size after vacuum
-            stats_after = self.get_symbol_stats()
-            size_after_mb = stats_after.get("db_size_mb", 0)
-            space_saved = size_before_mb - size_after_mb
-
-            diagnostics.info(
-                f"VACUUM complete in {elapsed:.2f}s. "
-                f"Size: {size_before_mb:.2f} MB → {size_after_mb:.2f} MB "
-                f"(saved {space_saved:.2f} MB)"
-            )
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"VACUUM failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.vacuum()
 
     def optimize(self) -> bool:
-        """
-        Optimize FTS5 indexes by rebuilding them.
-
-        This is useful after large bulk inserts or updates to ensure
-        optimal search performance.
-
-        Performance: Can take 1-2 seconds for 100K symbols.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.info("Optimizing FTS5 indexes...")
-            start_time = time.time()
-
-            # Optimize FTS5 table
-            self._conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')")
-
-            elapsed = time.time() - start_time
-            diagnostics.info(f"FTS5 optimization complete in {elapsed:.2f}s")
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"FTS5 optimization failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.optimize()
 
     def rebuild_fts(self) -> bool:
-        """
-        Rebuild FTS5 index from scratch.
-
-        This is needed after force re-indexing because INSERT OR REPLACE
-        on the symbols table causes rowid changes, and FTS5 internal tables
-        accumulate stale entries that are not cleaned up by the DELETE trigger.
-
-        Unlike 'optimize' which only merges b-tree segments, 'rebuild'
-        completely recreates the FTS index from the content table, removing
-        all stale data and reclaiming space.
-
-        Performance: Can take 1-2 seconds for 100K symbols.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.debug("Rebuilding FTS5 index...")
-            start_time = time.time()
-
-            # Rebuild FTS5 table completely
-            self._conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')")
-
-            elapsed = time.time() - start_time
-            diagnostics.debug(f"FTS5 rebuild complete in {elapsed:.2f}s")
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"FTS5 rebuild failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.rebuild_fts()
 
     def analyze(self) -> bool:
-        """
-        Update query planner statistics for optimal query performance.
-
-        ANALYZE gathers statistics about tables and indexes that SQLite's
-        query optimizer uses to make better decisions about query plans.
-
-        Performance: Fast, typically < 100ms for 100K symbols.
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.info("Running ANALYZE...")
-            start_time = time.time()
-
-            # Analyze all tables
-            self._conn.execute("ANALYZE")
-
-            elapsed = time.time() - start_time
-            diagnostics.info(f"ANALYZE complete in {elapsed:.2f}s")
-
-            return True
-
-        except Exception as e:
-            diagnostics.error(f"ANALYZE failed: {e}")
-            return False
+        self._ensure_connected()
+        return self._maintenance.analyze()
 
     def auto_maintenance(
         self, vacuum_threshold_mb: float = 100.0, vacuum_min_waste_mb: float = 10.0
     ) -> Dict[str, Any]:
-        """
-        Run automatic maintenance based on database health.
-
-        Decision rules:
-        1. Always run ANALYZE (fast, always beneficial)
-        2. Run OPTIMIZE if FTS5 table exists (improves search)
-        3. Run VACUUM only if:
-           - Database > vacuum_threshold_mb AND
-           - Estimated waste > vacuum_min_waste_mb
-
-        Args:
-            vacuum_threshold_mb: Only vacuum if DB exceeds this size
-            vacuum_min_waste_mb: Only vacuum if waste exceeds this amount
-
-        Returns:
-            Dict with maintenance actions taken and results
-        """
-        try:
-            diagnostics.info("Running auto-maintenance...")
-            results: Dict[str, Any] = {
-                "analyze": False,
-                "optimize": False,
-                "vacuum": False,
-                "vacuum_skipped_reason": None,
-            }
-
-            # Always run ANALYZE (fast)
-            results["analyze"] = self.analyze()
-
-            # Always run OPTIMIZE (relatively fast, improves search)
-            results["optimize"] = self.optimize()
-
-            # Conditionally run VACUUM
-            stats = self.get_symbol_stats()
-            db_size_mb = stats.get("db_size_mb", 0)
-
-            if db_size_mb < vacuum_threshold_mb:
-                results["vacuum_skipped_reason"] = (
-                    f"Database too small ({db_size_mb:.2f} MB < {vacuum_threshold_mb} MB)"
-                )
-                diagnostics.info(results["vacuum_skipped_reason"])
-            else:
-                # Estimate wasted space (rough heuristic)
-                # Get page count and freelist count
-                cursor = self._conn.execute("PRAGMA freelist_count")
-                freelist_count = cursor.fetchone()[0]
-                cursor = self._conn.execute("PRAGMA page_size")
-                page_size = cursor.fetchone()[0]
-
-                waste_mb = (freelist_count * page_size) / (1024 * 1024)
-
-                if waste_mb >= vacuum_min_waste_mb:
-                    diagnostics.info(
-                        f"Running VACUUM (DB: {db_size_mb:.2f} MB, waste: {waste_mb:.2f} MB)"
-                    )
-                    results["vacuum"] = self.vacuum()
-                else:
-                    results["vacuum_skipped_reason"] = (
-                        f"Insufficient waste ({waste_mb:.2f} MB < {vacuum_min_waste_mb} MB)"
-                    )
-                    diagnostics.info(results["vacuum_skipped_reason"])
-
-            diagnostics.info(f"Auto-maintenance complete: {results}")
-            return results
-
-        except Exception as e:
-            diagnostics.error(f"Auto-maintenance failed: {e}")
-            return {"error": str(e)}
-
-    # =========================================================================
-    # Health Check Methods
-    # =========================================================================
+        self._ensure_connected()
+        return self._maintenance.auto_maintenance(vacuum_threshold_mb, vacuum_min_waste_mb)
 
     def check_integrity(self, full: bool = False) -> Tuple[bool, str]:
-        """
-        Check database integrity with detailed reporting.
-
-        Args:
-            full: If True, run full integrity check (slower but more thorough)
-
-        Returns:
-            Tuple of (is_healthy: bool, message: str)
-        """
-        try:
-            self._ensure_connected()
-
-            diagnostics.info(f"Running {'full' if full else 'quick'} integrity check...")
-            start_time = time.time()
-
-            if full:
-                # Full integrity check
-                cursor = self._conn.execute("PRAGMA integrity_check")
-            else:
-                # Quick check (faster)
-                cursor = self._conn.execute("PRAGMA quick_check")
-
-            results = [row[0] for row in cursor.fetchall()]
-            elapsed = time.time() - start_time
-
-            if results == ["ok"]:
-                message = f"Integrity check passed in {elapsed:.2f}s"
-                diagnostics.info(message)
-                return True, message
-            else:
-                message = f"Integrity check FAILED: {', '.join(results[:5])}"
-                if len(results) > 5:
-                    message += f" (and {len(results) - 5} more issues)"
-                diagnostics.error(message)
-                return False, message
-
-        except Exception as e:
-            message = f"Integrity check error: {e}"
-            diagnostics.error(message)
-            return False, message
+        self._ensure_connected()
+        return self._maintenance.check_integrity(full)
 
     def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
-        """Check FTS5 index health and update health dict."""
-        try:
-            cursor = self._conn.execute("SELECT COUNT(*) FROM symbols_fts")
-            fts_count = cursor.fetchone()[0]
-            symbol_count = stats.get("total_symbols", 0)
-
-            fts_health = {"fts_count": fts_count, "symbol_count": symbol_count, "status": "ok"}
-
-            if fts_count != symbol_count:
-                warning = (
-                    f"FTS5 count mismatch: {fts_count} FTS vs {symbol_count} symbols. "
-                    "Consider running optimize()."
-                )
-                health["warnings"].append(warning)
-                fts_health["status"] = "warning"
-
-            health["checks"]["fts_index"] = fts_health
-
-        except Exception as e:
-            health["errors"].append(f"FTS5 check failed: {e}")
-            health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
+        self._maintenance._check_fts5_health(health, stats)
 
     def _check_wal_mode(self, health: Dict[str, Any]) -> None:
-        """Check WAL journal mode and update health dict."""
-        try:
-            cursor = self._conn.execute("PRAGMA journal_mode")
-            journal_mode = cursor.fetchone()[0].lower()
-
-            wal_health = {
-                "journal_mode": journal_mode,
-                "status": "ok" if journal_mode == "wal" else "warning",
-            }
-
-            if journal_mode != "wal":
-                warning = f"Journal mode is '{journal_mode}', expected 'wal' for best performance"
-                health["warnings"].append(warning)
-
-            health["checks"]["wal_mode"] = wal_health
-
-        except Exception as e:
-            health["errors"].append(f"WAL check failed: {e}")
+        self._maintenance._check_wal_mode(health)
 
     @staticmethod
     def _determine_overall_status(health: Dict[str, Any]) -> None:
-        """Set overall health status based on errors and warnings."""
-        if health["errors"]:
-            health["status"] = "error"
-        elif health["warnings"]:
-            health["status"] = "warning"
-        else:
-            health["status"] = "healthy"
+        MaintenanceService._determine_overall_status(health)
 
     def get_health_status(self) -> Dict[str, Any]:
-        """
-        Get comprehensive database health status.
-
-        Returns:
-            Dict with health metrics and status
-        """
-        try:
-            self._ensure_connected()
-
-            health: Dict[str, Any] = {
-                "status": "unknown",
-                "checks": {},
-                "warnings": [],
-                "errors": [],
-            }
-
-            # 1. Integrity check
-            is_healthy, message = self.check_integrity(full=False)
-            health["checks"]["integrity"] = {"passed": is_healthy, "message": message}
-            if not is_healthy:
-                health["errors"].append(f"Integrity: {message}")
-
-            # 2. Database size check
-            stats = self.get_symbol_stats()
-            db_size_mb = stats.get("db_size_mb", 0)
-            health["checks"]["size"] = {"db_size_mb": db_size_mb, "status": "ok"}
-
-            if db_size_mb > 500:
-                warning = f"Database is very large ({db_size_mb:.2f} MB)"
-                health["warnings"].append(warning)
-                health["checks"]["size"]["status"] = "warning"
-
-            # 3. FTS5 index health
-            self._check_fts5_health(health, stats)
-
-            # 4. WAL mode check
-            self._check_wal_mode(health)
-
-            # 5. Table statistics
-            health["checks"]["tables"] = self._get_table_sizes()
-
-            self._determine_overall_status(health)
-
-            return health
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get health status: {e}")
-            return {"status": "error", "errors": [str(e)]}
+        self._ensure_connected()
+        return self._maintenance.get_health_status()
 
     def _get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Get size information for all tables.
-
-        Returns:
-            Dict mapping table names to size info
-        """
-        try:
-            tables = {}
-
-            # Get list of tables
-            cursor = self._conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            )
-            table_names = [row[0] for row in cursor.fetchall()]
-
-            for table_name in table_names:
-                try:
-                    # Get row count
-                    cursor = self._conn.execute(f"SELECT COUNT(*) FROM {table_name}")
-                    row_count = cursor.fetchone()[0]
-
-                    tables[table_name] = {"row_count": row_count, "status": "ok"}
-
-                except Exception as e:
-                    tables[table_name] = {"error": str(e), "status": "error"}
-
-            return tables
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get table sizes: {e}")
-            return {}
+        return self._maintenance._get_table_sizes()
 
     def get_cache_stats(self) -> Dict[str, Any]:
-        """
-        Get comprehensive cache statistics (enhanced version).
-
-        Returns:
-            Dict with detailed cache statistics
-        """
-        try:
-            self._ensure_connected()
-
-            stats = {}
-
-            # Basic symbol stats (reuse existing method)
-            symbol_stats = self.get_symbol_stats()
-            stats.update(symbol_stats)
-
-            # File statistics
-            cursor = self._conn.execute("""
-                SELECT
-                    COUNT(*) as total_files,
-                    SUM(symbol_count) as total_symbols_from_files,
-                    AVG(symbol_count) as avg_symbols_per_file,
-                    MAX(symbol_count) as max_symbols_in_file
-                FROM file_metadata
-            """)
-            row = cursor.fetchone()
-            stats["file_stats"] = {
-                "total_files": row[0] or 0,
-                "total_symbols_from_files": row[1] or 0,
-                "avg_symbols_per_file": round(row[2], 2) if row[2] else 0,
-                "max_symbols_in_file": row[3] or 0,
-            }
-
-            # Top files by symbol count
-            cursor = self._conn.execute("""
-                SELECT file_path, symbol_count
-                FROM file_metadata
-                ORDER BY symbol_count DESC
-                LIMIT 10
-            """)
-            stats["top_files"] = [
-                {"file": row[0], "symbol_count": row[1]} for row in cursor.fetchall()
-            ]
-
-            # Cache metadata
-            cursor = self._conn.execute("SELECT key, value FROM cache_metadata")
-            stats["metadata"] = {row[0]: row[1] for row in cursor.fetchall()}
-
-            # Performance metrics
-            stats["performance"] = {
-                "db_path": str(self.db_path),
-                "connection_timeout": self._connection_timeout,
-                "last_access_age_seconds": time.time() - self._last_access,
-            }
-
-            return stats
-
-        except Exception as e:
-            diagnostics.error(f"Failed to get cache stats: {e}")
-            return {}
+        self._ensure_connected()
+        return self._maintenance.get_cache_stats(
+            db_path=str(self.db_path),
+            connection_timeout=self._connection_timeout,
+            last_access=self._last_access,
+        )
 
     def monitor_performance(self, operation: str = "search") -> Dict[str, float]:
-        """
-        Monitor database performance with sample queries.
-
-        Args:
-            operation: Type of operation to test ('search', 'load', 'write')
-
-        Returns:
-            Dict with performance metrics (times in milliseconds)
-        """
-        try:
-            self._ensure_connected()
-
-            metrics = {}
-
-            if operation == "search":
-                # Test FTS5 search performance
-                start = time.time()
-                cursor = self._conn.execute(
-                    "SELECT COUNT(*) FROM symbols_fts WHERE name MATCH 'test*'"
-                )
-                cursor.fetchone()
-                metrics["fts_search_ms"] = (time.time() - start) * 1000
-
-                # Test regular search
-                start = time.time()
-                cursor = self._conn.execute("SELECT COUNT(*) FROM symbols WHERE name LIKE 'test%'")
-                cursor.fetchone()
-                metrics["like_search_ms"] = (time.time() - start) * 1000
-
-            elif operation == "load":
-                # Test symbol load by USR
-                # Get a random USR first
-                cursor = self._conn.execute("SELECT usr FROM symbols LIMIT 1")
-                row = cursor.fetchone()
-                if row:
-                    usr = row[0]
-                    start = time.time()
-                    cursor = self._conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
-                    cursor.fetchone()
-                    metrics["load_by_usr_ms"] = (time.time() - start) * 1000
-
-            elif operation == "write":
-                # Test write performance (rollback to avoid changes)
-                # Build a raw tuple matching the symbols table column order
-                # instead of creating a domain SymbolInfo object.
-                test_tuple = (
-                    "perf_test_usr",  # usr
-                    "PerfTestSymbol",  # name
-                    "",  # qualified_name
-                    "function",  # kind
-                    "/test/perf.cpp",  # file
-                    1,  # line
-                    1,  # column
-                    "void PerfTestSymbol",  # signature
-                    True,  # is_project
-                    "",  # namespace
-                    "public",  # access
-                    "",  # parent_class
-                    "[]",  # base_classes
-                    False,  # is_template_specialization
-                    False,  # is_template
-                    None,  # template_kind
-                    None,  # template_parameters
-                    None,  # primary_template_usr
-                    1,  # start_line
-                    1,  # end_line
-                    None,  # header_file
-                    None,  # header_line
-                    None,  # header_start_line
-                    None,  # header_end_line
-                    True,  # is_definition
-                    False,  # is_virtual
-                    False,  # is_pure_virtual
-                    False,  # is_const
-                    False,  # is_static
-                    None,  # brief
-                    None,  # doc_comment
-                    time.time(),  # created_at
-                    time.time(),  # updated_at
-                )
-
-                start = time.time()
-                # Use savepoint to rollback
-                self._conn.execute("SAVEPOINT perf_test")
-                self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    test_tuple,
-                )
-                self._conn.execute("ROLLBACK TO perf_test")
-                metrics["write_symbol_ms"] = (time.time() - start) * 1000
-
-            return metrics
-
-        except Exception as e:
-            diagnostics.error(f"Performance monitoring failed: {e}")
-            return {}
+        self._ensure_connected()
+        return self._maintenance.monitor_performance(operation)
 
     # =========================================================================
     # CacheBackend Protocol Adapter Methods
