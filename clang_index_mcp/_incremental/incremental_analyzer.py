@@ -11,7 +11,7 @@ Key Features:
 - Provides detailed analysis results
 
 Usage:
-    incremental = IncrementalAnalyzer(analyzer)
+    incremental = IncrementalAnalyzer(ctx)
     result = incremental.perform_incremental_analysis()
 
     if result.files_analyzed > 0:
@@ -20,7 +20,7 @@ Usage:
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Set
+from typing import TYPE_CHECKING, Callable, Optional, Set
 
 # Handle both package and script imports
 try:
@@ -36,7 +36,9 @@ except ImportError:
     from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
-    from ..cpp_analyzer import CppAnalyzer
+    from concurrent.futures import Executor
+
+    from .._contexts.incremental_context import IncrementalContext
 
 
 @dataclass
@@ -73,7 +75,7 @@ class IncrementalAnalyzer:
     This is the main entry point for all incremental updates. It:
     1. Scans for changes using ChangeScanner
     2. Determines affected files using DependencyGraphBuilder
-    3. Coordinates re-analysis via CppAnalyzer
+    3. Coordinates re-analysis via worker pool
     4. Provides detailed results
 
     The analysis prioritizes changes to minimize redundant work:
@@ -82,15 +84,24 @@ class IncrementalAnalyzer:
     - Source changes are isolated
     """
 
-    def __init__(self, analyzer: "CppAnalyzer"):
+    def __init__(
+        self,
+        ctx: "IncrementalContext",
+        is_interrupted: Optional[Callable[[], bool]] = None,
+        shutdown_executor: Optional[Callable[["Executor", str], None]] = None,
+    ):
         """
         Initialize incremental analyzer.
 
         Args:
-            analyzer: CppAnalyzer instance with all components initialized
+            ctx: IncrementalContext with all required services
+            is_interrupted: Callback to check if analysis was interrupted
+            shutdown_executor: Callback to shut down an executor
         """
-        self.analyzer = analyzer
-        self.scanner = ChangeScanner(analyzer)
+        self.ctx = ctx
+        self.scanner = ChangeScanner(ctx)
+        self._is_interrupted = is_interrupted or (lambda: False)
+        self._shutdown_executor = shutdown_executor
 
     def perform_incremental_analysis(
         self,
@@ -193,89 +204,19 @@ class IncrementalAnalyzer:
 
     def _handle_compile_commands_change(self) -> Set[str]:
         """Handle compile_commands.json change."""
-        return change_handler.handle_compile_commands_change(self.analyzer)
+        return change_handler.handle_compile_commands_change(self.ctx)
 
     def _handle_header_change(self, header_path: str) -> Set[str]:
         """Handle header file change."""
-        return change_handler.handle_header_change(self.analyzer, header_path)
+        return change_handler.handle_header_change(self.ctx, header_path)
 
     def _handle_source_change(self, source_path: str) -> None:
         """Handle source file change."""
-        return change_handler.handle_source_change(self.analyzer, source_path)
+        return change_handler.handle_source_change(self.ctx, source_path)
 
     def _remove_file(self, file_path: str) -> None:
         """Remove a deleted file from cache, indexes, and dependency graph."""
-        return change_handler.remove_file(self.analyzer, file_path)
-
-    def _remove_symbol_from_index(self, symbol) -> None:
-        """Remove a symbol from the appropriate index (class or function)."""
-        from .._incremental.symbol_merger import remove_symbol_from_index
-
-        return remove_symbol_from_index(self.analyzer, symbol)
-
-    def _handle_definition_wins(self, symbol, existing) -> bool:
-        """Apply 'definition wins' rule for duplicate symbols."""
-        from .._incremental.symbol_merger import handle_definition_wins
-
-        return handle_definition_wins(self.analyzer, symbol, existing)
-
-    def _add_symbol_to_indices(self, symbol) -> None:
-        """Add a symbol to the analyzer's indices."""
-        from .._incremental.symbol_merger import add_symbol_to_indices
-
-        return add_symbol_to_indices(self.analyzer, symbol)
-
-    def _merge_symbols(self, symbols) -> None:
-        """Merge symbols from a worker process into the main analyzer index."""
-        from .._incremental.symbol_merger import merge_symbols
-
-        return merge_symbols(self.analyzer, symbols)
-
-    def _get_file_compile_args(self, file_list):
-        """Precompute compile arguments for a list of files."""
-        from .._incremental.compile_args_resolver import get_file_compile_args
-
-        return get_file_compile_args(self.analyzer, file_list)
-
-    def _create_executor(self, max_workers: int):
-        """Create a process pool executor and its spawn context."""
-        return worker_orchestrator.create_executor(max_workers)
-
-    def _process_future_result(self, result, file_path: str):
-        """Process the result from a future and merge it into the analyzer."""
-        return worker_orchestrator.process_future_result(self.analyzer, result, file_path)
-
-    def _report_progress(
-        self,
-        progress_callback,
-        i: int,
-        total: int,
-        analyzed: int,
-        failed: int,
-        start_time: float,
-        file_path: str,
-    ) -> None:
-        """Calculate and report indexing progress via callback."""
-        return worker_orchestrator.report_progress(
-            progress_callback, i, total, analyzed, failed, start_time, file_path
-        )
-
-    def _submit_tasks(self, executor, file_list):
-        """Submit re-analysis tasks to the process pool executor."""
-        return worker_orchestrator.submit_tasks(self.analyzer, executor, file_list)
-
-    def _process_loop(
-        self,
-        executor,
-        future_to_file,
-        start_time: float,
-        total: int,
-        callbacks: Optional[IndexingCallbacks],
-    ):
-        """Process results from futures in a loop."""
-        return worker_orchestrator.process_loop(
-            self.analyzer, executor, future_to_file, start_time, total, callbacks
-        )
+        return change_handler.remove_file(self.ctx, file_path)
 
     def _reanalyze_files(
         self,
@@ -284,4 +225,11 @@ class IncrementalAnalyzer:
         callbacks: Optional[IndexingCallbacks] = None,
     ) -> int:
         """Re-analyze a set of files using parallel processing."""
-        return worker_orchestrator.reanalyze_files(self.analyzer, files, start_time, callbacks)
+        return worker_orchestrator.reanalyze_files(
+            self.ctx,
+            files,
+            start_time,
+            callbacks,
+            is_interrupted=self._is_interrupted,
+            shutdown_executor=self._shutdown_executor,
+        )

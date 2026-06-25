@@ -89,8 +89,8 @@ class CompositionRoot:
 
         # Wire services in dependency order
 
-        # 1. CallGraphService (needs persistence context)
-        self.call_graph_service = CallGraphService(self.context.persistence)
+        # 1. CallGraphService (needs cache_manager for call site storage)
+        self.call_graph_service = CallGraphService(self.cache_manager)
         self.context.symbols.call_graph_service = self.call_graph_service
 
         # 2. SymbolIndexStore (needs concurrency and call graph)
@@ -162,8 +162,10 @@ class CompositionRoot:
         self.cache_orchestrator.calculate_compile_commands_hash()
         self.cache_orchestrator.restore_or_reset_header_tracking()
 
-        # 6. ClangParser (needs persistence context)
-        self.clang_parser = ClangParser(self.context.persistence)
+        # 6. ClangParser (uses cache_manager for error logging)
+        self.clang_parser = ClangParser(
+            log_parse_error=self.cache_manager.log_parse_error,
+        )
         self.context.compilation.clang_parser = self.clang_parser
 
         # 7. SymbolExtractor

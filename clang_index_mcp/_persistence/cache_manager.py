@@ -9,7 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from .._core.error_tracking_adapter import ErrorTrackingAdapter
+from .error_tracking_adapter import ErrorTrackingAdapter
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._persistence.project_identity import ProjectIdentity
