@@ -4,8 +4,10 @@ Worker pool and parallel execution management for C++ Analyzer.
 
 import atexit
 import gc
+import io
 import multiprocessing
 import os
+import signal
 import sys
 import time
 from concurrent.futures import (
@@ -27,12 +29,36 @@ except ImportError:
 _worker_analyzer = None
 
 
+def _init_worker():
+    """Initializer for each worker process.
+
+    Ignores SIGINT so that Ctrl+C in the parent does not produce
+    KeyboardInterrupt tracebacks in workers.  The parent controls
+    worker lifetime via SIGTERM/SIGKILL.
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 def _cleanup_worker_analyzer():
-    """Ensure worker analyzer resources are released on process exit."""
+    """Ensure worker analyzer resources are released on process exit.
+
+    Suppresses stderr during close to avoid noisy libclang cleanup
+    errors (_CXString.__del__, cursor visitor assertions) that occur
+    when the interpreter is shutting down and C-level objects are
+    garbage-collected after libclang's shared library may already be
+    partially torn down.
+    """
     global _worker_analyzer
     if _worker_analyzer is not None:
-        _worker_analyzer.close()
-        _worker_analyzer = None
+        saved = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            _worker_analyzer.close()
+        except Exception:
+            pass
+        finally:
+            sys.stderr = saved
+            _worker_analyzer = None
 
 
 def _process_file_worker(spec: IndexingTaskSpec):
@@ -94,8 +120,13 @@ def _process_file_worker(spec: IndexingTaskSpec):
     # Clean up worker indexes to prevent memory leaks (Issue #14)
     context.symbol_store.clear_all_indexes()
 
-    # Force garbage collection to free TranslationUnit objects
-    gc.collect()
+    # Force garbage collection to free TranslationUnit objects.
+    # Wrap in try/except because libclang's __del__ methods may raise
+    # if the C library state is inconsistent after a partial parse.
+    try:
+        gc.collect()
+    except Exception:
+        pass
 
     return (spec.file_path, success, was_cached, symbols, call_sites, processed_headers)
 
@@ -114,11 +145,16 @@ class WorkerPoolManager:
             self.mp_context = multiprocessing.get_context("spawn")
             diagnostics.debug(f"Using ProcessPoolExecutor (spawn) with {self.max_workers} workers")
             self.executor = ProcessPoolExecutor(
-                max_workers=self.max_workers, mp_context=self.mp_context
+                max_workers=self.max_workers,
+                mp_context=self.mp_context,
+                initializer=_init_worker,
             )
         except Exception as e:
             diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
-            self.executor = ProcessPoolExecutor(max_workers=self.max_workers)
+            self.executor = ProcessPoolExecutor(
+                max_workers=self.max_workers,
+                initializer=_init_worker,
+            )
 
         return self.executor
 
