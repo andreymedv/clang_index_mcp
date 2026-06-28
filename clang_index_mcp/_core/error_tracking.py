@@ -105,6 +105,18 @@ class ErrorTracker:
 
         return False
 
+    def _get_recent_errors(self) -> tuple[list[ErrorRecord], int]:
+        """Get recent errors within the time window and total operation count.
+
+        Returns:
+            Tuple of (recent_errors list, recent_operations count)
+        """
+        now = time.time()
+        cutoff = now - self.window_seconds
+        recent_errors = [e for e in self.error_history if e.timestamp >= cutoff]
+        recent_operations = sum(self.operation_counts.values())
+        return recent_errors, recent_operations
+
     def _should_trigger_fallback(self) -> bool:
         """
         Check if fallback should be triggered based on error rate.
@@ -112,13 +124,7 @@ class ErrorTracker:
         Returns:
             True if fallback should be triggered, False otherwise
         """
-        # Remove old errors outside the time window
-        now = time.time()
-        cutoff = now - self.window_seconds
-
-        # Count errors and operations in window
-        recent_errors = [e for e in self.error_history if e.timestamp >= cutoff]
-        recent_operations = sum(self.operation_counts.values())
+        recent_errors, recent_operations = self._get_recent_errors()
 
         if recent_operations == 0:
             return False
@@ -153,11 +159,7 @@ class ErrorTracker:
         Returns:
             Error rate (0.0 to 1.0)
         """
-        now = time.time()
-        cutoff = now - self.window_seconds
-
-        recent_errors = [e for e in self.error_history if e.timestamp >= cutoff]
-        recent_operations = sum(self.operation_counts.values())
+        recent_errors, recent_operations = self._get_recent_errors()
 
         if recent_operations == 0:
             return 0.0
@@ -171,10 +173,7 @@ class ErrorTracker:
         Returns:
             Dict with error statistics
         """
-        now = time.time()
-        cutoff = now - self.window_seconds
-
-        recent_errors = [e for e in self.error_history if e.timestamp >= cutoff]
+        recent_errors, _ = self._get_recent_errors()
 
         # Count by error type
         error_by_type: Dict[str, int] = {}

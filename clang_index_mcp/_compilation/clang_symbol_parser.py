@@ -14,6 +14,7 @@ from .._symbols.cursor_utils import extract_namespace, get_qualified_name
 from .._symbols.documentation_extractor import extract_documentation
 from .._symbols.signature_builder import build_human_readable_signature
 from .._symbols.usr_decoder import usr_to_display_name
+from .template_resolver import TemplateResolver
 
 if TYPE_CHECKING:
     from .._compilation.compilation_environment import CompilationEnvironment
@@ -113,72 +114,6 @@ class ClangSymbolParser(SymbolParser):
 
         return base_classes
 
-    @staticmethod
-    def _extract_template_args_from_displayname(displayname: str) -> List[str]:
-        """Extract template arguments from a displayname like 'MyTemplate<Arg1, Arg2>'."""
-        if "<" not in displayname:
-            return []
-
-        args_start = displayname.find("<")
-        args_end = displayname.rfind(">")
-        if args_start >= args_end:
-            return []
-
-        args_str = displayname[args_start + 1 : args_end]
-
-        template_args: List[str] = []
-        depth = 0
-        current = ""
-        for c in args_str:
-            if c == "<":
-                depth += 1
-                current += c
-            elif c == ">":
-                depth -= 1
-                current += c
-            elif c == "," and depth == 0:
-                template_args.append(current.strip())
-                current = ""
-            else:
-                current += c
-        if current.strip():
-            template_args.append(current.strip())
-
-        return template_args
-
-    def _build_param_to_arg_mapping(
-        self, template_params: List[Dict[str, Any]], template_args: List[str]
-    ) -> Dict[str, str]:
-        """Build mapping from template parameter names to template arguments."""
-        param_to_arg = {}
-        for i, param in enumerate(template_params):
-            if i < len(template_args):
-                param_name = param.get("name", "")
-                if param_name:
-                    param_to_arg[param_name] = template_args[i]
-        return param_to_arg
-
-    def _substitute_template_args_in_bases(
-        self,
-        base_classes: List[str],
-        param_to_arg: Dict[str, str],
-        template_args: List[str],
-    ) -> List[str]:
-        """Resolve base classes by substituting parameter names with actual arguments."""
-        resolved = []
-        for base in base_classes:
-            if base in param_to_arg:
-                resolved.append(param_to_arg[base])
-            else:
-                match = re.match(r"type-parameter-(\d+)-(\d+)", base)
-                if match:
-                    param_index = int(match.group(2))
-                    if param_index < len(template_args):
-                        resolved.append(template_args[param_index])
-                else:
-                    resolved.append(base)
-        return resolved
-
     def _find_primary_template_info(self, primary_template_usr: str) -> Optional[Any]:
         """Look up the primary template in class_index by USR."""
         with self.index_lock:
@@ -205,7 +140,7 @@ class ClangSymbolParser(SymbolParser):
         if not primary_template_usr:
             return []
 
-        template_args = self._extract_template_args_from_displayname(cursor.displayname)
+        template_args = TemplateResolver.extract_args_from_displayname(cursor.displayname)
         if not template_args:
             return []
 
@@ -217,9 +152,9 @@ class ClangSymbolParser(SymbolParser):
         if not template_params:
             return []
 
-        param_to_arg = self._build_param_to_arg_mapping(template_params, template_args)
+        param_to_arg = TemplateResolver.build_param_mapping(template_params, template_args)
 
-        return self._substitute_template_args_in_bases(
+        return TemplateResolver.substitute_in_bases(
             primary_info.base_classes, param_to_arg, template_args
         )
 
@@ -540,7 +475,7 @@ class ClangSymbolParser(SymbolParser):
                 if not base_classes and primary_usr:
                     base_classes = self._resolve_instantiation_base_classes(cursor, primary_usr)
                     if not base_classes:
-                        targs = self._extract_template_args_from_displayname(cursor.displayname)
+                        targs = TemplateResolver.extract_args_from_displayname(cursor.displayname)
                         if targs:
                             stored_template_args = json.dumps(targs)
 
