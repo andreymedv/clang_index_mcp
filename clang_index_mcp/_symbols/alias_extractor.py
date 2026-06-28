@@ -6,24 +6,61 @@ cursors and produces the normalized dictionaries consumed by SymbolExtractor.
 
 import json
 import time
-from typing import Any, Dict, List, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List
 
 from clang.cindex import CursorKind
 
 from .cursor_utils import extract_namespace, get_qualified_name
 
 
-def _extract_location_info(cursor: Any) -> Tuple[str, int, int]:
-    """Extract file path, line, and column from a cursor's location."""
-    file_path = str(cursor.location.file.name) if cursor.location.file else ""
-    line = cursor.location.line
-    column = cursor.location.column
-    return file_path, line, column
+@dataclass
+class AliasInfoBase:
+    """Base information extracted from any type alias cursor."""
+
+    alias_name: str
+    qualified_name: str
+    target_type: str
+    canonical_type: str
+    file_path: str
+    line: int
+    column: int
+
+    @classmethod
+    def from_cursor(cls, cursor: Any, target_type: str, canonical_type: str) -> "AliasInfoBase":
+        """Create AliasInfoBase from cursor with extracted type information."""
+        alias_name = cursor.spelling
+        qualified_name = get_qualified_name(cursor)
+        file_path = str(cursor.location.file.name) if cursor.location.file else ""
+        line = cursor.location.line
+        column = cursor.location.column
+
+        return cls(
+            alias_name=alias_name,
+            qualified_name=qualified_name,
+            target_type=target_type,
+            canonical_type=canonical_type,
+            file_path=file_path,
+            line=line,
+            column=column,
+        )
 
 
-def extract_template_alias_info(
-    cursor: Any,
-) -> Tuple[str, str, str, str, str, int, int, List[dict]]:
+@dataclass
+class TemplateAliasInfo(AliasInfoBase):
+    """Information extracted from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
+
+    template_params: List[dict]
+
+
+@dataclass
+class SimpleAliasInfo(AliasInfoBase):
+    """Information extracted from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
+
+    alias_kind: str
+
+
+def extract_template_alias_info(cursor: Any) -> TemplateAliasInfo:
     """Extract alias info from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
     template_params = []
     type_alias_decl = None
@@ -55,23 +92,23 @@ def extract_template_alias_info(
         target_type = ""
         canonical_type = ""
 
-    file_path, line, column = _extract_location_info(cursor)
+    file_path = str(cursor.location.file.name) if cursor.location.file else ""
+    line = cursor.location.line
+    column = cursor.location.column
 
-    return (
-        alias_name,
-        qualified_name,
-        target_type,
-        canonical_type,
-        file_path,
-        line,
-        column,
-        template_params,
+    return TemplateAliasInfo(
+        alias_name=alias_name,
+        qualified_name=qualified_name,
+        target_type=target_type,
+        canonical_type=canonical_type,
+        file_path=file_path,
+        line=line,
+        column=column,
+        template_params=template_params,
     )
 
 
-def extract_simple_alias_info(
-    cursor: Any,
-) -> Tuple[str, str, str, str, str, int, int, str]:
+def extract_simple_alias_info(cursor: Any) -> SimpleAliasInfo:
     """Extract alias info from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
     alias_name = cursor.spelling
     qualified_name = get_qualified_name(cursor)
@@ -91,17 +128,19 @@ def extract_simple_alias_info(
     else:
         alias_kind = "unknown"
 
-    file_path, line, column = _extract_location_info(cursor)
+    file_path = str(cursor.location.file.name) if cursor.location.file else ""
+    line = cursor.location.line
+    column = cursor.location.column
 
-    return (
-        alias_name,
-        qualified_name,
-        target_type,
-        canonical_type,
-        file_path,
-        line,
-        column,
-        alias_kind,
+    return SimpleAliasInfo(
+        alias_name=alias_name,
+        qualified_name=qualified_name,
+        target_type=target_type,
+        canonical_type=canonical_type,
+        file_path=file_path,
+        line=line,
+        column=column,
+        alias_kind=alias_kind,
     )
 
 
@@ -110,40 +149,26 @@ def extract_alias_info(cursor: Any) -> Dict[str, Any]:
     is_template_alias = cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL
 
     if is_template_alias:
-        (
-            alias_name,
-            qualified_name,
-            target_type,
-            canonical_type,
-            file_path,
-            line,
-            column,
-            template_params,
-        ) = extract_template_alias_info(cursor)
+        template_info = extract_template_alias_info(cursor)
         alias_kind = "using"
+        template_params = template_info.template_params
+        base_info: AliasInfoBase = template_info
     else:
-        (
-            alias_name,
-            qualified_name,
-            target_type,
-            canonical_type,
-            file_path,
-            line,
-            column,
-            alias_kind,
-        ) = extract_simple_alias_info(cursor)
+        simple_info = extract_simple_alias_info(cursor)
+        alias_kind = simple_info.alias_kind
         template_params = []
+        base_info = simple_info
 
-    namespace = extract_namespace(qualified_name)
+    namespace = extract_namespace(base_info.qualified_name)
 
     return {
-        "alias_name": alias_name,
-        "qualified_name": qualified_name,
-        "target_type": target_type,
-        "canonical_type": canonical_type,
-        "file": file_path,
-        "line": line,
-        "column": column,
+        "alias_name": base_info.alias_name,
+        "qualified_name": base_info.qualified_name,
+        "target_type": base_info.target_type,
+        "canonical_type": base_info.canonical_type,
+        "file": base_info.file_path,
+        "line": base_info.line,
+        "column": base_info.column,
         "alias_kind": alias_kind,
         "namespace": namespace,
         "is_template_alias": is_template_alias,
