@@ -48,6 +48,29 @@ def _project_root_str(context: SearchDependencies) -> Optional[str]:
     return str(root) if root is not None else None
 
 
+def _search_all_symbols(pattern: str, search_engine: SearchEngine) -> tuple[list[dict], list[dict]]:
+    """Search for both classes and functions with the given pattern.
+
+    Args:
+        pattern: Symbol name pattern to search for.
+        search_engine: Search engine instance.
+
+    Returns:
+        Tuple of (all_classes, all_functions) lists.
+    """
+    class_criteria = SearchCriteria(pattern=pattern, project_only=False)
+    all_classes = search_engine.search_classes(class_criteria)
+    if isinstance(all_classes, tuple):
+        all_classes = all_classes[0]
+
+    function_criteria = SearchCriteria(pattern=pattern, project_only=False)
+    all_functions = search_engine.search_functions(function_criteria)
+    if isinstance(all_functions, tuple):
+        all_functions = all_functions[0]
+
+    return all_classes, all_functions
+
+
 def find_in_files_glob(
     glob_pattern: str,
     symbol_pattern: str,
@@ -70,15 +93,7 @@ def find_in_files_glob(
             "message": f"No files found matching glob pattern '{glob_pattern}'",
         }
 
-    class_criteria = SearchCriteria(pattern=symbol_pattern, project_only=False)
-    all_classes = search_engine.search_classes(class_criteria)
-    if isinstance(all_classes, tuple):
-        all_classes = all_classes[0]
-
-    function_criteria = SearchCriteria(pattern=symbol_pattern, project_only=False)
-    all_functions = search_engine.search_functions(function_criteria)
-    if isinstance(all_functions, tuple):
-        all_functions = all_functions[0]
+    all_classes, all_functions = _search_all_symbols(symbol_pattern, search_engine)
 
     matched_files_set = set(matched_files)
     results = filter_results_by_files(all_classes + all_functions, matched_files_set)
@@ -130,15 +145,7 @@ def find_in_file_exact(
     results = []
     matched_file = None
 
-    class_criteria = SearchCriteria(pattern=pattern, project_only=False)
-    all_classes = search_engine.search_classes(class_criteria)
-    if isinstance(all_classes, tuple):
-        all_classes = all_classes[0]
-
-    function_criteria = SearchCriteria(pattern=pattern, project_only=False)
-    all_functions = search_engine.search_functions(function_criteria)
-    if isinstance(all_functions, tuple):
-        all_functions = all_functions[0]
+    all_classes, all_functions = _search_all_symbols(pattern, search_engine)
 
     abs_file_path = resolve_file_path(file_path, _project_root_str(context))
 
