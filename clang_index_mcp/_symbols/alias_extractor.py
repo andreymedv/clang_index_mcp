@@ -13,6 +13,14 @@ from clang.cindex import CursorKind
 from .cursor_utils import extract_namespace, get_qualified_name
 
 
+def _extract_location_info(cursor: Any) -> Tuple[str, int, int]:
+    """Extract file path, line, and column from a cursor's location."""
+    file_path = str(cursor.location.file.name) if cursor.location.file else ""
+    line = cursor.location.line
+    column = cursor.location.column
+    return file_path, line, column
+
+
 def extract_template_alias_info(
     cursor: Any,
 ) -> Tuple[str, str, str, str, str, int, int, List[dict]]:
@@ -47,9 +55,7 @@ def extract_template_alias_info(
         target_type = ""
         canonical_type = ""
 
-    file_path = str(cursor.location.file.name) if cursor.location.file else ""
-    line = cursor.location.line
-    column = cursor.location.column
+    file_path, line, column = _extract_location_info(cursor)
 
     return (
         alias_name,
@@ -85,9 +91,7 @@ def extract_simple_alias_info(
     else:
         alias_kind = "unknown"
 
-    file_path = str(cursor.location.file.name) if cursor.location.file else ""
-    line = cursor.location.line
-    column = cursor.location.column
+    file_path, line, column = _extract_location_info(cursor)
 
     return (
         alias_name,
