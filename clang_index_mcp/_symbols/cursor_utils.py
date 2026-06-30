@@ -5,14 +5,12 @@ logger.  Extracting them from SymbolExtractor breaks circular dependencies
 between the main extractor and smaller focused extractors (e.g. alias extraction).
 """
 
-from typing import Any
-
-from clang.cindex import CursorKind
+from clang.cindex import Cursor, CursorKind
 
 from .._core import diagnostics
 
 
-def get_qualified_name(cursor: Any) -> str:
+def get_qualified_name(cursor: Cursor) -> str:
     """Build fully qualified name by walking up semantic parent chain."""
     parts = []
     current = cursor

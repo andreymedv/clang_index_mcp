@@ -7,17 +7,19 @@ separate makes it testable without instantiating the full SymbolExtractor.
 
 from typing import Any, List
 
+from clang.cindex import Cursor
+
 from .._core import diagnostics
 
 
-def get_type_spelling(cursor: Any):
+def get_type_spelling(cursor: Cursor):
     """Safely get cursor.type.spelling, returning None if unavailable."""
     if not cursor.type:
         return None
     return cursor.type.spelling or None
 
 
-def get_return_type(cursor: Any) -> str:
+def get_return_type(cursor: Cursor) -> str:
     """Safely get cursor.result_type.spelling."""
     try:
         if cursor.result_type and cursor.result_type.spelling:
@@ -89,7 +91,7 @@ def assemble_signature(return_type: str, name: str, params_str: str, qualifiers:
     return f"{name}({params_str}){qualifiers}"
 
 
-def fallback_signature(cursor: Any) -> str:
+def fallback_signature(cursor: Cursor) -> str:
     """Return cursor.type.spelling as a fallback, or empty string on failure."""
     try:
         return cursor.type.spelling if cursor.type else ""
@@ -97,7 +99,7 @@ def fallback_signature(cursor: Any) -> str:
         return ""
 
 
-def get_params_str(cursor: Any, type_spelling: str) -> str:
+def get_params_str(cursor: Cursor, type_spelling: str) -> str:
     """Get parameter string from cursor arguments or type spelling fallback."""
     try:
         args = list(cursor.get_arguments())
@@ -108,7 +110,7 @@ def get_params_str(cursor: Any, type_spelling: str) -> str:
         return extract_params_from_type_spelling(type_spelling)
 
 
-def _try_build_human_readable_signature(cursor: Any) -> str:
+def _try_build_human_readable_signature(cursor: Cursor) -> str:
     """Attempt to build signature without exception handling."""
     type_spelling = get_type_spelling(cursor)
     if type_spelling is None:
@@ -122,7 +124,7 @@ def _try_build_human_readable_signature(cursor: Any) -> str:
     return assemble_signature(return_type, name, params_str, qualifiers)
 
 
-def build_human_readable_signature(cursor: Any) -> str:
+def build_human_readable_signature(cursor: Cursor) -> str:
     """Build a human-readable function signature from a libclang cursor."""
     try:
         return _try_build_human_readable_signature(cursor)

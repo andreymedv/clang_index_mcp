@@ -8,7 +8,9 @@ and cache persistence.
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
+
+from clang.cindex import TranslationUnit
 
 from .._core import diagnostics
 
@@ -154,7 +156,12 @@ class SingleFileIndexingPipeline:
         )
 
     def _handle_index_file_diagnostics(
-        self, file_path: str, tu: Any, current_hash: str, compile_args_hash: str, retry_count: int
+        self,
+        file_path: str,
+        tu: TranslationUnit,
+        current_hash: str,
+        compile_args_hash: str,
+        retry_count: int,
     ) -> Optional[str]:
         """Extract and process diagnostics. Returns error message if any."""
         return (  # type: ignore[no-any-return]
@@ -166,7 +173,7 @@ class SingleFileIndexingPipeline:
     def _finalize_index_success(
         self,
         file_path: str,
-        tu,
+        tu: TranslationUnit,
         current_hash: str,
         compile_args_hash: str,
         cache_error_msg: Optional[str],

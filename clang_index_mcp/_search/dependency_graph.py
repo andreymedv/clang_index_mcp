@@ -13,7 +13,9 @@ Key Features:
 The builder now depends on ports rather than concrete SQLite/libclang types.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Set, Union
+
+from clang.cindex import TranslationUnit
 
 if TYPE_CHECKING:
     from .._search.ports.dependency_repository import DependencyRepository
@@ -46,7 +48,7 @@ class DependencyGraphBuilder:
         self._repository = repository
         self._include_extractor = include_extractor
 
-    def extract_includes_from_tu(self, tu: Any, source_file: str) -> List[str]:
+    def extract_includes_from_tu(self, tu: TranslationUnit, source_file: str) -> List[str]:
         """Extract all includes from a translation unit."""
         return self._include_extractor.extract_includes(tu, source_file)
 

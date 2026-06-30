@@ -1,7 +1,7 @@
 import threading
 from typing import Any, Callable, List, Optional, Tuple
 
-from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError
+from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError, Diagnostic
 
 from .._core import diagnostics
 
@@ -35,7 +35,7 @@ class ClangParser:
 
     def try_parse_with_fallback(
         self, file_path: str, args: List[str]
-    ) -> Tuple[Optional[Any], Optional[str]]:
+    ) -> Tuple[Optional[TranslationUnit], Optional[str]]:
         """Try parsing with progressive fallback if initial attempt fails."""
         index = self._get_thread_index()
         parse_options_attempts = [
@@ -65,7 +65,7 @@ class ClangParser:
         return None, error_msg
 
     @staticmethod
-    def _is_system_header_diagnostic(diag: Any) -> bool:
+    def _is_system_header_diagnostic(diag: Diagnostic) -> bool:
         """Check if a diagnostic originates from a system header."""
         if not diag.location.file:
             return False
@@ -85,7 +85,9 @@ class ClangParser:
 
         return any(pattern in file_path for pattern in system_patterns)
 
-    def _extract_diagnostics(self, tu: Any) -> Tuple[List[Any], List[Any]]:
+    def _extract_diagnostics(
+        self, tu: TranslationUnit
+    ) -> Tuple[List[Diagnostic], List[Diagnostic]]:
         """Extract error and warning diagnostics from translation unit."""
         error_diagnostics = []
         warning_diagnostics = []
@@ -108,7 +110,7 @@ class ClangParser:
         return error_diagnostics, warning_diagnostics
 
     @staticmethod
-    def _format_diagnostics(diagnostics_list: List[Any], max_count: int = 5) -> str:
+    def _format_diagnostics(diagnostics_list: List[Diagnostic], max_count: int = 5) -> str:
         """Format libclang diagnostics into a readable string."""
         if not diagnostics_list:
             return ""
@@ -134,7 +136,12 @@ class ClangParser:
         return "\n".join(messages)
 
     def handle_index_file_diagnostics(
-        self, file_path: str, tu: Any, current_hash: str, compile_args_hash: str, retry_count: int
+        self,
+        file_path: str,
+        tu: TranslationUnit,
+        current_hash: str,
+        compile_args_hash: str,
+        retry_count: int,
     ) -> Optional[str]:
         """Extract and process diagnostics. Returns error message if any."""
         error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)

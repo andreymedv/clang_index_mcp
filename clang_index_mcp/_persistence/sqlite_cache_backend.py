@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._symbols.model import SymbolInfo
+from .._symbols.ports.parser import TypeAliasRecord
 from .._persistence import type_alias_repository
 from .._persistence.repositories.symbol_repository import SymbolRepository
 from .._persistence.repositories.call_site_repository import CallSiteRepository
@@ -998,7 +999,7 @@ class SqliteCacheBackend:
     # Type Aliases Storage and Lookup (Phase 1.3: Type Alias Tracking)
     # -------------------------------------------------------------------------
 
-    def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
+    def save_type_aliases_batch(self, aliases: List[TypeAliasRecord]) -> int:
         """Batch insert type aliases using transaction."""
         self._ensure_connected()
         return type_alias_repository.save_type_aliases_batch(self._conn, aliases)

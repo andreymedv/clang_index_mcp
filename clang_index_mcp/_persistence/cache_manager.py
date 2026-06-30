@@ -14,6 +14,7 @@ from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._persistence.project_identity import ProjectIdentity
 from .._symbols.model import SymbolInfo
+from .._symbols.ports.parser import TypeAliasRecord
 
 if TYPE_CHECKING:
     from .._persistence.ports.recovery import CacheRecoveryPort
@@ -612,14 +613,14 @@ class CacheManager:
     # Type Aliases (Phase 1.3: Type Alias Tracking)
     # -------------------------------------------------------------------------
 
-    def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
+    def save_type_aliases_batch(self, aliases: List[TypeAliasRecord]) -> int:
         """
         Batch save type aliases to cache.
 
         Phase 1.3: Type Alias Tracking - Wrapper for backend storage
 
         Args:
-            aliases: List of alias dictionaries
+            aliases: List of alias records
 
         Returns:
             Number of aliases successfully saved

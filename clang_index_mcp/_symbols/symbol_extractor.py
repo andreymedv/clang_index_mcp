@@ -10,6 +10,8 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
+from clang.cindex import TranslationUnit
+
 from .._core import diagnostics
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import ParseResult, SymbolParser
@@ -194,7 +196,7 @@ class SymbolExtractor:
             except Exception as e:
                 diagnostics.warning(f"Error marking header {header} as completed: {e}")
 
-    def _update_dependency_graph(self, tu: Any, source_file: str):
+    def _update_dependency_graph(self, tu: TranslationUnit, source_file: str):
         """Extract and update dependencies for the given translation unit."""
         if self.dependency_graph is not None:
             try:
@@ -210,7 +212,7 @@ class SymbolExtractor:
         calls_buffer.extend(result.call_sites)
         aliases_buffer.extend(result.type_aliases)
 
-    def index_translation_unit(self, tu: Any, source_file: str) -> Dict[str, Any]:
+    def index_translation_unit(self, tu: TranslationUnit, source_file: str) -> Dict[str, Any]:
         """Process translation unit, extracting symbols from source and project headers."""
         processed_files: Set[str] = set()
         skipped_headers: Set[str] = set()

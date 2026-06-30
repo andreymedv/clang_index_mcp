@@ -7,10 +7,11 @@ cursors and produces the normalized dictionaries consumed by SymbolExtractor.
 import json
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import List
 
-from clang.cindex import CursorKind
+from clang.cindex import Cursor, CursorKind
 
+from .._symbols.ports.parser import TypeAliasRecord
 from .cursor_utils import extract_namespace, get_qualified_name
 
 
@@ -27,7 +28,7 @@ class AliasInfoBase:
     column: int
 
     @classmethod
-    def from_cursor(cls, cursor: Any, target_type: str, canonical_type: str) -> "AliasInfoBase":
+    def from_cursor(cls, cursor: Cursor, target_type: str, canonical_type: str) -> "AliasInfoBase":
         """Create AliasInfoBase from cursor with extracted type information."""
         alias_name = cursor.spelling
         qualified_name = get_qualified_name(cursor)
@@ -60,7 +61,7 @@ class SimpleAliasInfo(AliasInfoBase):
     alias_kind: str
 
 
-def extract_template_alias_info(cursor: Any) -> TemplateAliasInfo:
+def extract_template_alias_info(cursor: Cursor) -> TemplateAliasInfo:
     """Extract alias info from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
     template_params = []
     type_alias_decl = None
@@ -108,7 +109,7 @@ def extract_template_alias_info(cursor: Any) -> TemplateAliasInfo:
     )
 
 
-def extract_simple_alias_info(cursor: Any) -> SimpleAliasInfo:
+def extract_simple_alias_info(cursor: Cursor) -> SimpleAliasInfo:
     """Extract alias info from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
     alias_name = cursor.spelling
     qualified_name = get_qualified_name(cursor)
@@ -144,7 +145,7 @@ def extract_simple_alias_info(cursor: Any) -> SimpleAliasInfo:
     )
 
 
-def extract_alias_info(cursor: Any) -> Dict[str, Any]:
+def extract_alias_info(cursor: Cursor) -> TypeAliasRecord:
     """Extract type alias information from TYPEDEF_DECL, TYPE_ALIAS_DECL, or TYPE_ALIAS_TEMPLATE_DECL cursor."""
     is_template_alias = cursor.kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL
 
@@ -161,17 +162,17 @@ def extract_alias_info(cursor: Any) -> Dict[str, Any]:
 
     namespace = extract_namespace(base_info.qualified_name)
 
-    return {
-        "alias_name": base_info.alias_name,
-        "qualified_name": base_info.qualified_name,
-        "target_type": base_info.target_type,
-        "canonical_type": base_info.canonical_type,
-        "file": base_info.file_path,
-        "line": base_info.line,
-        "column": base_info.column,
-        "alias_kind": alias_kind,
-        "namespace": namespace,
-        "is_template_alias": is_template_alias,
-        "template_params": json.dumps(template_params) if template_params else None,
-        "created_at": time.time(),
-    }
+    return TypeAliasRecord(
+        alias_name=base_info.alias_name,
+        qualified_name=base_info.qualified_name,
+        target_type=base_info.target_type,
+        canonical_type=base_info.canonical_type,
+        file=base_info.file_path,
+        line=base_info.line,
+        column=base_info.column,
+        alias_kind=alias_kind,
+        namespace=namespace,
+        is_template_alias=is_template_alias,
+        template_params=json.dumps(template_params) if template_params else None,
+        created_at=time.time(),
+    )
