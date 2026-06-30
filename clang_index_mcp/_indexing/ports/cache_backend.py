@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from ..._symbols.model import SymbolInfo
+from ..._symbols.ports.parser import TypeAliasRecord
 
 
 @runtime_checkable
@@ -64,7 +65,7 @@ class CacheBackend(Protocol):
         """Remove cached data for a deleted file."""
         ...
 
-    def save_type_aliases_batch(self, aliases: List[Dict[str, Any]]) -> int:
+    def save_type_aliases_batch(self, aliases: List[TypeAliasRecord]) -> int:
         """Batch insert type aliases using transaction."""
         ...
 
