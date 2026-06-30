@@ -9,9 +9,10 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from .._core import diagnostics
+from .._symbols.ports.parser import TypeAliasRecord
 
 
-def save_type_aliases_batch(conn: sqlite3.Connection, aliases: List[Dict[str, Any]]) -> int:
+def save_type_aliases_batch(conn: sqlite3.Connection, aliases: List[TypeAliasRecord]) -> int:
     """Batch insert type aliases using a transaction."""
     if not aliases:
         return 0
@@ -28,18 +29,18 @@ def save_type_aliases_batch(conn: sqlite3.Connection, aliases: List[Dict[str, An
                 """,
                 [
                     (
-                        alias["alias_name"],
-                        alias["qualified_name"],
-                        alias["target_type"],
-                        alias["canonical_type"],
-                        alias["file"],
-                        alias["line"],
-                        alias["column"],
-                        alias["alias_kind"],
-                        alias["namespace"],
-                        1 if alias.get("is_template_alias", False) else 0,
-                        alias.get("template_params"),
-                        alias["created_at"],
+                        alias.alias_name,
+                        alias.qualified_name,
+                        alias.target_type,
+                        alias.canonical_type,
+                        alias.file,
+                        alias.line,
+                        alias.column,
+                        alias.alias_kind,
+                        alias.namespace,
+                        1 if alias.is_template_alias else 0,
+                        alias.template_params,
+                        alias.created_at,
                     )
                     for alias in aliases
                 ],

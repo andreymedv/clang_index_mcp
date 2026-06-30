@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Set
 
 from .._symbols.model import SymbolInfo
+from .._symbols.ports.parser import CallSiteRecord
 
 
 class CallSite:
@@ -184,37 +185,21 @@ class CallGraphAnalyzer:
         # The calls/called_by fields were removed from SymbolInfo
         pass
 
-    def process_call_buffer(self, calls_buffer: List[Any]) -> None:
+    def process_call_buffer(self, calls_buffer: List[CallSiteRecord]) -> None:
         """Process buffered call records produced during indexing."""
         if not calls_buffer:
             return
 
-        for call_info in calls_buffer:
-            if len(call_info) == 7:
-                (
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    disp_name,
-                    tmpl_types,
-                ) = call_info
-                self.add_call(
-                    caller_usr,
-                    called_usr,
-                    call_file,
-                    call_line,
-                    call_column,
-                    display_name=disp_name,
-                    template_project_types=tmpl_types,
-                )
-            elif len(call_info) == 5:
-                caller_usr, called_usr, call_file, call_line, call_column = call_info
-                self.add_call(caller_usr, called_usr, call_file, call_line, call_column)
-            elif len(call_info) == 2:
-                caller_usr, called_usr = call_info
-                self.add_call(caller_usr, called_usr)
+        for record in calls_buffer:
+            self.add_call(
+                record.caller_usr,
+                record.callee_usr,
+                record.file,
+                record.line,
+                record.column,
+                display_name=record.display_name,
+                template_project_types=record.template_project_types,
+            )
 
     def restore_call_sites(self, call_sites_data: List[Dict[str, Any]]):
         """

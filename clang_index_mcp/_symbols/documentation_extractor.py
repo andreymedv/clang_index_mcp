@@ -5,12 +5,14 @@ from clang cursors and normalizes them, so SymbolExtractor does not need to own
 every small AST helper.
 """
 
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
+
+from clang.cindex import Cursor
 
 from .._core import diagnostics
 
 
-def extract_brief_comment(cursor: Any) -> Optional[str]:
+def extract_brief_comment(cursor: Cursor) -> Optional[str]:
     """Extract and truncate brief comment from cursor."""
     brief_comment = cursor.brief_comment
     if not brief_comment:
@@ -21,7 +23,7 @@ def extract_brief_comment(cursor: Any) -> Optional[str]:
     return brief
 
 
-def extract_raw_doc_comment(cursor: Any) -> Optional[str]:
+def extract_raw_doc_comment(cursor: Cursor) -> Optional[str]:
     """Extract and truncate full documentation comment from cursor."""
     raw_comment = cursor.raw_comment
     if not raw_comment:
@@ -43,7 +45,7 @@ def extract_brief_from_doc(doc_comment: str) -> Optional[str]:
     return None
 
 
-def extract_documentation(cursor: Any) -> Dict[str, Optional[str]]:
+def extract_documentation(cursor: Cursor) -> Dict[str, Optional[str]]:
     """Extract documentation from cursor comments."""
     result: Dict[str, Optional[str]] = {"brief": None, "doc_comment": None}
 

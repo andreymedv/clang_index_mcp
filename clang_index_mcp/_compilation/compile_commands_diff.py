@@ -15,6 +15,11 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
     from file_utils import hash_compile_args  # type: ignore[no-redef]
 
+try:
+    from .._indexing.ports.cache_backend import CacheBackend
+except ImportError:
+    CacheBackend = Any  # type: ignore[misc,assignment]
+
 
 def compute_commands_diff(
     old_commands: Dict[str, List[str]], new_commands: Dict[str, List[str]]
@@ -45,7 +50,9 @@ def hash_args(args: List[str]) -> str:
     return hash_compile_args(args, normalize_order=False)
 
 
-def store_command_hashes(commands: Dict[str, List[str]], cache_backend: Optional[Any]) -> int:
+def store_command_hashes(
+    commands: Dict[str, List[str]], cache_backend: Optional[CacheBackend]
+) -> int:
     """Store argument hashes for the given compile commands in SQLite."""
     if cache_backend is None:
         return 0
@@ -61,7 +68,7 @@ def store_command_hashes(commands: Dict[str, List[str]], cache_backend: Optional
     return stored
 
 
-def get_stored_args_hash(file_path: str, cache_backend: Optional[Any]) -> str:
+def get_stored_args_hash(file_path: str, cache_backend: Optional[CacheBackend]) -> str:
     """Return the stored argument hash for a file, or empty string."""
     if cache_backend is None:
         return ""
@@ -69,7 +76,9 @@ def get_stored_args_hash(file_path: str, cache_backend: Optional[Any]) -> str:
     return result or ""
 
 
-def has_args_changed(file_path: str, current_args: List[str], cache_backend: Optional[Any]) -> bool:
+def has_args_changed(
+    file_path: str, current_args: List[str], cache_backend: Optional[CacheBackend]
+) -> bool:
     """Return True if the stored argument hash differs from the current args."""
     stored_hash = get_stored_args_hash(file_path, cache_backend)
     if not stored_hash:
@@ -77,7 +86,7 @@ def has_args_changed(file_path: str, current_args: List[str], cache_backend: Opt
     return stored_hash != hash_args(current_args)
 
 
-def clear_stored_command_hashes(cache_backend: Optional[Any]) -> int:
+def clear_stored_command_hashes(cache_backend: Optional[CacheBackend]) -> int:
     """Clear all stored compilation argument hashes."""
     if cache_backend is None:
         return 0
