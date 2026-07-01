@@ -236,7 +236,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         mock_command_map.__getitem__ = lambda x, key: new_commands[key]
 
         self.ctx.compilation_env.compile_commands_manager.file_to_command_map = mock_command_map
-        self.ctx.compilation_env.compile_commands_manager._load_compile_commands = Mock()
+        self.ctx.compilation_env.compile_commands_manager.load_compile_commands = Mock()
         self.ctx.compilation_env.compile_commands_manager.compute_commands_diff = Mock(
             return_value=({file3}, {file2}, {file1})
         )
