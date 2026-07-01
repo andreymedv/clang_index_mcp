@@ -459,12 +459,6 @@ class SqliteCacheBackend:
         """Destructor to ensure connection is closed on garbage collection."""
         self._close()
 
-    def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
-        return self._symbol_repo._symbol_to_tuple(symbol)
-
-    def _row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
-        return self._symbol_repo._row_to_symbol(row)
-
     def save_symbol(self, symbol: SymbolInfo) -> bool:
         self._ensure_connected()
         return self._symbol_repo.save_symbol(symbol)
@@ -749,7 +743,7 @@ class SqliteCacheBackend:
         function_index = defaultdict(list)
 
         for row in cursor:
-            symbol = self._row_to_symbol(row)
+            symbol = self._symbol_repo.row_to_symbol(row)
             if symbol.kind in (
                 "class",
                 "struct",
