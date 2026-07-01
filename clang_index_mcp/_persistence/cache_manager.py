@@ -34,7 +34,7 @@ class CacheManager:
         project_root_or_identity: Union[Path, ProjectIdentity],
         skip_schema_recreation: bool = False,
         backend: Optional[CacheBackend] = None,
-        recovery: Optional[CacheRecoveryPort] = None,
+        recovery: Optional["CacheRecoveryPort"] = None,
     ):
         """
         Initialize CacheManager with project identity.
@@ -78,7 +78,7 @@ class CacheManager:
         return cache_dir
 
     @staticmethod
-    def _init_recovery(recovery: Optional[CacheRecoveryPort]) -> CacheRecoveryPort:
+    def _init_recovery(recovery: Optional["CacheRecoveryPort"]) -> "CacheRecoveryPort":
         """Return the injected recovery adapter or create a default one."""
         return recovery or ErrorTrackingAdapter()
 
