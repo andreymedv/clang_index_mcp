@@ -1673,16 +1673,16 @@ class TestTemplateSpecializationLookup:
         assert qname in hierarchy["classes"]  # queried class must be in the dict
 
     def test_extract_simple_name_strips_template_args(self):
-        """_extract_simple_name should strip template arguments."""
-        from clang_index_mcp._search.search_engine import SearchEngine
+        """extract_simple_name should strip template arguments."""
+        from clang_index_mcp._search.symbol_name_utils import extract_simple_name
 
-        assert SearchEngine._extract_simple_name("Container<int>") == "Container"
-        assert SearchEngine._extract_simple_name("ns::Container<int>") == "Container"
-        assert SearchEngine._extract_simple_name("std::map<int, std::string>") == "map"
-        assert SearchEngine._extract_simple_name("Widget") == "Widget"
-        assert SearchEngine._extract_simple_name("ns::Widget") == "Widget"
+        assert extract_simple_name("Container<int>") == "Container"
+        assert extract_simple_name("ns::Container<int>") == "Container"
+        assert extract_simple_name("std::map<int, std::string>") == "map"
+        assert extract_simple_name("Widget") == "Widget"
+        assert extract_simple_name("ns::Widget") == "Widget"
         # operator< should NOT be mangled (doesn't end with >)
-        assert SearchEngine._extract_simple_name("operator<") == "operator<"
+        assert extract_simple_name("operator<") == "operator<"
 
 
 # =============================================================================

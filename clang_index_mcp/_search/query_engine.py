@@ -256,7 +256,7 @@ class QueryEngine:
         """Get all files that contain references to or define a symbol."""
         return await get_files_containing_symbol(symbol_name, symbol_kind, project_only, self)
 
-    def _check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
+    def check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
         """Check if a class indirectly inherits from target_class through template parameter inheritance."""
         from .._search import template_analyzer
 
@@ -264,7 +264,7 @@ class QueryEngine:
             base_class, target_class, self.symbol_store, self.concurrency.index_lock
         )
 
-    def _get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
+    def get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
         """Get the template parameter indices that a template inherits from."""
         from .._search import template_analyzer
 
@@ -272,7 +272,7 @@ class QueryEngine:
             template_name, self.symbol_store, self.concurrency.index_lock
         )
 
-    def _parse_template_args(self, args_str: str) -> List[str]:
+    def parse_template_args(self, args_str: str) -> List[str]:
         """Parse template arguments from a string like 'A, B<C, D>, E'."""
         from .._search import template_analyzer
 

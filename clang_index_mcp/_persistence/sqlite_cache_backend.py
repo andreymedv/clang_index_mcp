@@ -459,12 +459,6 @@ class SqliteCacheBackend:
         """Destructor to ensure connection is closed on garbage collection."""
         self._close()
 
-    def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
-        return self._symbol_repo._symbol_to_tuple(symbol)
-
-    def _row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
-        return self._symbol_repo._row_to_symbol(row)
-
     def save_symbol(self, symbol: SymbolInfo) -> bool:
         self._ensure_connected()
         return self._symbol_repo.save_symbol(symbol)
@@ -580,22 +574,13 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._maintenance.check_integrity(full)
 
-    def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
-        self._maintenance._check_fts5_health(health, stats)
-
-    def _check_wal_mode(self, health: Dict[str, Any]) -> None:
-        self._maintenance._check_wal_mode(health)
-
-    @staticmethod
-    def _determine_overall_status(health: Dict[str, Any]) -> None:
-        MaintenanceService._determine_overall_status(health)
-
     def get_health_status(self) -> Dict[str, Any]:
         self._ensure_connected()
         return self._maintenance.get_health_status()
 
-    def _get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
-        return self._maintenance._get_table_sizes()
+    def get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
+        self._ensure_connected()
+        return self._maintenance.get_table_sizes()
 
     def get_cache_stats(self) -> Dict[str, Any]:
         self._ensure_connected()
@@ -758,7 +743,7 @@ class SqliteCacheBackend:
         function_index = defaultdict(list)
 
         for row in cursor:
-            symbol = self._row_to_symbol(row)
+            symbol = self._symbol_repo.row_to_symbol(row)
             if symbol.kind in (
                 "class",
                 "struct",

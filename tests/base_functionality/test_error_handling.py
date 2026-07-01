@@ -23,6 +23,7 @@ if project_root not in sys.path:
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
 from clang_index_mcp._core.error_tracking import ErrorRecord, ErrorTracker
+from clang_index_mcp._persistence.error_tracking_adapter import ErrorTrackingAdapter
 from clang_index_mcp._persistence.recovery import RecoveryManager
 from clang_index_mcp._symbols.model import SymbolInfo
 
@@ -210,6 +211,16 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         self.temp_project_dir = Path(self.temp_dir)
         self.cache_managers = []  # Track cache managers for cleanup
 
+        # Create real error-tracking collaborators and inject them into CacheManager
+        self.error_tracker = ErrorTracker(
+            window_seconds=60.0, fallback_threshold=0.05
+        )
+        self.recovery_manager = RecoveryManager()
+        self.recovery_adapter = ErrorTrackingAdapter(
+            error_tracker=self.error_tracker,
+            recovery_manager=self.recovery_manager,
+        )
+
     def tearDown(self):
         """Clean up test fixtures"""
         # Close all cache managers to avoid resource leaks
@@ -225,7 +236,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
     def _create_cache_manager(self):
         """Create a CacheManager and track it for cleanup."""
-        cm = CacheManager(self.temp_project_dir)
+        cm = CacheManager(self.temp_project_dir, recovery=self.recovery_adapter)
         self.cache_managers.append(cm)
         return cm
 
@@ -285,11 +296,11 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
             )
 
             # Check if fallback triggered
-            if cache_manager.error_tracker.fallback_triggered:
+            if self.error_tracker.fallback_triggered:
                 break
 
         # Fallback should be triggered
-        self.assertTrue(cache_manager.error_tracker.fallback_triggered)
+        self.assertTrue(self.error_tracker.fallback_triggered)
 
         # Should now be using JSON backend
 
@@ -299,7 +310,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
 
         # Record successful operations to avoid immediate fallback
         for i in range(100):
-            cache_manager.error_tracker.record_operation("test_op")
+            self.error_tracker.record_operation("test_op")
 
         # Get DB path
         db_path = cache_manager.cache_dir / "symbols.db"
@@ -309,8 +320,8 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         cache_manager.backend.save_cache = Mock(side_effect=corruption_error)
 
         # Mock recovery manager
-        cache_manager.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
-        cache_manager.recovery_manager.attempt_repair = Mock(return_value=True)
+        self.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
+        self.recovery_manager.attempt_repair = Mock(return_value=True)
 
         # Attempt save (will trigger error handling)
         result = cache_manager.save_cache(
@@ -320,8 +331,8 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         # Verify recovery was attempted
         # Note: Recovery is only triggered for database corruption with "corrupt" in message
         if "corrupt" in str(corruption_error).lower():
-            cache_manager.recovery_manager.backup_database.assert_called_once()
-            cache_manager.recovery_manager.attempt_repair.assert_called_once()
+            self.recovery_manager.backup_database.assert_called_once()
+            self.recovery_manager.attempt_repair.assert_called_once()
         else:
             # If not triggered, just verify error was tracked
             summary = cache_manager.get_error_summary()
@@ -361,6 +372,12 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         self.temp_project_dir = Path(self.temp_dir)
         self.cache_managers = []  # Track cache managers for cleanup
 
+        # Create a real recovery adapter so CacheManager does not build its own
+        self.recovery_manager = RecoveryManager()
+        self.recovery_adapter = ErrorTrackingAdapter(
+            recovery_manager=self.recovery_manager,
+        )
+
     def tearDown(self):
         """Clean up test fixtures"""
         # Close all cache managers to avoid resource leaks
@@ -376,7 +393,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
 
     def _create_cache_manager(self):
         """Create a CacheManager and track it for cleanup."""
-        cm = CacheManager(self.temp_project_dir)
+        cm = CacheManager(self.temp_project_dir, recovery=self.recovery_adapter)
         self.cache_managers.append(cm)
         return cm
 
@@ -388,7 +405,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         cache_manager.backend.save_cache = Mock(side_effect=PermissionError("Access denied"))
 
         # Mock clear cache to succeed
-        cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
+        self.recovery_manager.clear_cache = Mock(return_value=True)
 
         # Attempt operation
         result = cache_manager.save_cache(
@@ -399,7 +416,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         self.assertFalse(result, "Should return False on permission error")
 
         # Recovery should be attempted (clear_cache is called for PermissionError)
-        cache_manager.recovery_manager.clear_cache.assert_called_once()
+        self.recovery_manager.clear_cache.assert_called_once()
 
     def test_disk_full_error_handling(self):
         """Test handling of disk full errors"""
@@ -411,7 +428,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         )
 
         # Mock clear cache to succeed
-        cache_manager.recovery_manager.clear_cache = Mock(return_value=True)
+        self.recovery_manager.clear_cache = Mock(return_value=True)
 
         # Attempt operation
         result = cache_manager.save_cache(
@@ -422,7 +439,7 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         self.assertFalse(result, "Should return False on disk full error")
 
         # Recovery should be attempted (clear_cache is called for OSError)
-        cache_manager.recovery_manager.clear_cache.assert_called_once()
+        self.recovery_manager.clear_cache.assert_called_once()
 
     def test_locked_database_retry(self):
         """Test handling of database locked errors"""
