@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from .._symbols.model import SymbolInfo, build_location_objects, omit_empty
 from .._search.pattern_matcher import matches_qualified_pattern
-from .._search.search_engine import SearchEngine
+from .._search.symbol_name_utils import extract_simple_name
 
 
 def check_template_param_inheritance(
@@ -298,7 +298,7 @@ def get_derived_classes(
     derived_classes = []
 
     # Normalize class_name: extract simple name from qualified name
-    simple_name = SearchEngine._extract_simple_name(class_name)
+    simple_name = extract_simple_name(class_name)
 
     # Issue #99 Phase 3: Check if this is a template and get all specializations
     template_patterns = get_template_patterns(simple_name, symbol_store, index_lock)
