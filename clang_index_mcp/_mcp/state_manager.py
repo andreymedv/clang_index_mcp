@@ -284,8 +284,6 @@ class BackgroundIndexer:
             # This sets the interrupt flag which the analyzer checks during indexing
             if hasattr(self.analyzer, "interrupt"):
                 self.analyzer.interrupt()
-            elif hasattr(self.analyzer, "_interrupt_indexing"):
-                self.analyzer._interrupt_indexing = True
 
             # Cancel the task
             self._indexing_task.cancel()
