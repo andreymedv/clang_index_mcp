@@ -580,22 +580,13 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._maintenance.check_integrity(full)
 
-    def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
-        self._maintenance._check_fts5_health(health, stats)
-
-    def _check_wal_mode(self, health: Dict[str, Any]) -> None:
-        self._maintenance._check_wal_mode(health)
-
-    @staticmethod
-    def _determine_overall_status(health: Dict[str, Any]) -> None:
-        MaintenanceService._determine_overall_status(health)
-
     def get_health_status(self) -> Dict[str, Any]:
         self._ensure_connected()
         return self._maintenance.get_health_status()
 
-    def _get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
-        return self._maintenance._get_table_sizes()
+    def get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
+        self._ensure_connected()
+        return self._maintenance.get_table_sizes()
 
     def get_cache_stats(self) -> Dict[str, Any]:
         self._ensure_connected()
