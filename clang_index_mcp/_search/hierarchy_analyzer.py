@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._symbols.model import SymbolInfo
 from .._search.pattern_matcher import matches_qualified_pattern
-from .._search.search_engine import SearchEngine
+from .._search.symbol_name_utils import extract_simple_name, strip_template_args
 from .._search.template_analyzer import get_derived_classes
 
 
@@ -22,9 +22,9 @@ def resolve_base_key(raw: str, symbol_store, index_lock) -> str:
     if is_dependent:
         return raw
     has_targs = "<" in raw
-    lookup = SearchEngine._strip_template_args(raw) if has_targs else raw
+    lookup = strip_template_args(raw) if has_targs else raw
     is_qual = "::" in lookup
-    simple = SearchEngine._extract_simple_name(lookup)
+    simple = extract_simple_name(lookup)
     with index_lock:
         infos = symbol_store.get_classes_by_name(simple)
         for info in infos:
@@ -40,9 +40,9 @@ def resolve_base_key(raw: str, symbol_store, index_lock) -> str:
 def lookup_class_infos(key: str, symbol_store, index_lock) -> List[SymbolInfo]:
     """Look up SymbolInfo objects for a class name/key."""
     has_targs = "<" in key
-    lookup = SearchEngine._strip_template_args(key) if has_targs else key
+    lookup = strip_template_args(key) if has_targs else key
     is_qual = "::" in lookup
-    simple = SearchEngine._extract_simple_name(lookup)
+    simple = extract_simple_name(lookup)
     with index_lock:
         infos = list(symbol_store.get_classes_by_name(simple))
     if is_qual:
