@@ -33,7 +33,7 @@ def handle_compile_commands_change(ctx: "IncrementalContext") -> Set[str]:
 
     old_commands = cc_manager.file_to_command_map.copy()
 
-    cc_manager._load_compile_commands()
+    cc_manager.load_compile_commands()
     new_commands = cc_manager.file_to_command_map
 
     files_to_analyze: Set[str]

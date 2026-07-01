@@ -94,7 +94,7 @@ class CompileCommandsManager:
 
         # Load compile commands if enabled
         if self.enabled:
-            self._load_compile_commands()
+            self.load_compile_commands()
 
     # ------------------------------------------------------------------
     # Compile-commands diff and argument-hash wrappers
@@ -204,7 +204,7 @@ class CompileCommandsManager:
     # ------------------------------------------------------------------
     # Compile commands parsing wrappers
     # ------------------------------------------------------------------
-    def _load_compile_commands(self) -> bool:
+    def load_compile_commands(self) -> bool:
         """Load compile commands from compile_commands.json file."""
         success, compile_commands, file_to_command_map, last_modified = (
             compile_commands_parser.load_compile_commands(
@@ -317,7 +317,7 @@ class CompileCommandsManager:
             return False
 
         # Reload the commands
-        success = self._load_compile_commands()
+        success = self.load_compile_commands()
         if success:
             diagnostics.debug("Refreshed compile_commands.json cache")
 
