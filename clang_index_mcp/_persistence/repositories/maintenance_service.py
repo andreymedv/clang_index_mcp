@@ -270,14 +270,14 @@ class MaintenanceService:
                 health["checks"]["size"]["status"] = "warning"
             self._check_fts5_health(health, stats)
             self._check_wal_mode(health)
-            health["checks"]["tables"] = self._get_table_sizes()
+            health["checks"]["tables"] = self.get_table_sizes()
             self._determine_overall_status(health)
             return health
         except Exception as e:
             diagnostics.error(f"Failed to get health status: {e}")
             return {"status": "error", "errors": [str(e)]}
 
-    def _get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
+    def get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
         """Get size information for all tables."""
         try:
             tables: Dict[str, Dict[str, Any]] = {}
