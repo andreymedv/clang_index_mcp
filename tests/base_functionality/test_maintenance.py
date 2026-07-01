@@ -285,8 +285,8 @@ class TestHealthCheckMethods(unittest.TestCase):
         # Populate database
         self._populate_symbols(100)
 
-        # Get table sizes (private method, but useful to test)
-        tables = self.backend._get_table_sizes()
+        # Get table sizes
+        tables = self.backend.get_table_sizes()
 
         # Verify structure
         self.assertIsInstance(tables, dict, "Should return dict")

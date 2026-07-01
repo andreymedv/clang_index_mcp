@@ -265,17 +265,17 @@ class CppAnalyzer:
         """Get all classes that derive from the given class (delegates to query_engine)."""
         return self._root.query_engine.get_derived_classes(class_name, project_only)
 
-    def _check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
+    def check_template_param_inheritance(self, base_class: str, target_class: str) -> bool:
         """Check indirect inheritance through template parameters (delegates to query_engine)."""
-        return self._root.query_engine._check_template_param_inheritance(base_class, target_class)
+        return self._root.query_engine.check_template_param_inheritance(base_class, target_class)
 
-    def _get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
+    def get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
         """Get template parameter indices that a template inherits from (delegates to query_engine)."""
-        return self._root.query_engine._get_template_param_inheritance_indices(template_name)
+        return self._root.query_engine.get_template_param_inheritance_indices(template_name)
 
-    def _parse_template_args(self, args_str: str) -> List[str]:
+    def parse_template_args(self, args_str: str) -> List[str]:
         """Parse template arguments from a string (delegates to query_engine)."""
-        return self._root.query_engine._parse_template_args(args_str)
+        return self._root.query_engine.parse_template_args(args_str)
 
     def get_class_hierarchy(
         self,

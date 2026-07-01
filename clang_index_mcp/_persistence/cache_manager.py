@@ -52,35 +52,35 @@ class CacheManager:
             Accepts Path for backward compatibility, automatically creates ProjectIdentity
             with no config file.
         """
-        # Handle both Path and ProjectIdentity for backward compatibility
-        if isinstance(project_root_or_identity, ProjectIdentity):
-            self.project_identity = project_root_or_identity
-            self.project_root = project_root_or_identity.source_directory
-        else:
-            # Backward compatibility: Path provided
-            self.project_root = Path(project_root_or_identity)
-            self.project_identity = ProjectIdentity(self.project_root, None)
-
+        self.project_root, self.project_identity = self._resolve_project_identity(
+            project_root_or_identity
+        )
         self._skip_schema_recreation = skip_schema_recreation
-        self.cache_dir = self._get_cache_dir()
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = self._ensure_cache_dir()
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
-
-        # Recovery/error tracking port
-        self.recovery: "CacheRecoveryPort" = recovery or ErrorTrackingAdapter()
-
-        # Cache backend (injected or self-created)
+        self.recovery = self._init_recovery(recovery)
         self.backend = backend if backend is not None else self._create_backend()
 
-    @property
-    def error_tracker(self):
-        """Backward-compatible accessor for tests."""
-        return self.recovery._error_tracker
+    @staticmethod
+    def _resolve_project_identity(
+        project_root_or_identity: Union[Path, ProjectIdentity],
+    ) -> tuple[Path, ProjectIdentity]:
+        """Normalize constructor input into (project_root, project_identity)."""
+        if isinstance(project_root_or_identity, ProjectIdentity):
+            return project_root_or_identity.source_directory, project_root_or_identity
+        project_root = Path(project_root_or_identity)
+        return project_root, ProjectIdentity(project_root, None)
 
-    @property
-    def recovery_manager(self):
-        """Backward-compatible accessor for tests."""
-        return self.recovery._recovery_manager
+    def _ensure_cache_dir(self) -> Path:
+        """Compute and create the cache directory for this project."""
+        cache_dir = self._get_cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+
+    @staticmethod
+    def _init_recovery(recovery: Optional["CacheRecoveryPort"]) -> "CacheRecoveryPort":
+        """Return the injected recovery adapter or create a default one."""
+        return recovery or ErrorTrackingAdapter()
 
     @staticmethod
     def compute_cache_dir(project_identity: ProjectIdentity) -> Path:

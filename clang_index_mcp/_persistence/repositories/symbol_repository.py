@@ -31,7 +31,7 @@ class SymbolRepository:
         assert connection is not None, "Database connection not initialized"
         return connection
 
-    def _symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
+    def symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
         """Convert SymbolInfo to tuple for SQL insertion."""
         now = time.time()
         return (
@@ -70,7 +70,7 @@ class SymbolRepository:
             now,
         )
 
-    def _row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
+    def row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
         """Convert database row to SymbolInfo object."""
         return SymbolInfo(
             name=row["name"],
@@ -136,7 +136,7 @@ class SymbolRepository:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    self._symbol_to_tuple(symbol),
+                    self.symbol_to_tuple(symbol),
                 )
             return True
         except Exception as e:
@@ -163,7 +163,7 @@ class SymbolRepository:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [self._symbol_to_tuple(s) for s in symbols],
+                    [self.symbol_to_tuple(s) for s in symbols],
                 )
             return len(symbols)
         except Exception as e:
@@ -176,7 +176,7 @@ class SymbolRepository:
             cursor = self.conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
             row = cursor.fetchone()
             if row:
-                return self._row_to_symbol(row)
+                return self.row_to_symbol(row)
             return None
         except Exception as e:
             diagnostics.error(f"Failed to load symbol by USR {usr}: {e}")
@@ -186,7 +186,7 @@ class SymbolRepository:
         """Load all symbols matching a name."""
         try:
             cursor = self.conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
+            return [self.row_to_symbol(row) for row in cursor.fetchall()]
         except Exception as e:
             diagnostics.error(f"Failed to load symbols by name {name}: {e}")
             return []
@@ -235,7 +235,7 @@ class SymbolRepository:
             if project_only:
                 query += " AND s.is_project = 1"
             cursor = self.conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
+            return [self.row_to_symbol(row) for row in cursor.fetchall()]
         except Exception as e:
             diagnostics.error(f"FTS5 search failed for pattern '{pattern}': {e}")
             return self.search_symbols_regex(pattern, kind, project_only)
@@ -253,7 +253,7 @@ class SymbolRepository:
             if project_only:
                 query += " AND is_project = 1"
             cursor = self.conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
+            return [self.row_to_symbol(row) for row in cursor.fetchall()]
         except Exception as e:
             diagnostics.error(f"Regex search failed for pattern '{pattern}': {e}")
             return []
@@ -262,7 +262,7 @@ class SymbolRepository:
         """Get all symbols defined in a specific file."""
         try:
             cursor = self.conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
+            return [self.row_to_symbol(row) for row in cursor.fetchall()]
         except Exception as e:
             diagnostics.error(f"Failed to search symbols by file {file_path}: {e}")
             return []
@@ -275,7 +275,7 @@ class SymbolRepository:
             if project_only:
                 query += " AND is_project = 1"
             cursor = self.conn.execute(query, params)
-            return [self._row_to_symbol(row) for row in cursor.fetchall()]
+            return [self.row_to_symbol(row) for row in cursor.fetchall()]
         except Exception as e:
             diagnostics.error(f"Failed to search symbols by kind {kind}: {e}")
             return []

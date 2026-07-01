@@ -14,6 +14,7 @@ from .._symbols.model import (
 )
 from .pattern_matcher import detect_pattern_type, matches_qualified_pattern
 from .prototype_builder import build_attributes, build_class_prototype, build_function_prototype
+from .symbol_name_utils import extract_simple_name, strip_template_args
 
 if TYPE_CHECKING:
     from .._symbols.symbol_index_store import SymbolIndexStore
@@ -376,7 +377,7 @@ class SearchEngine:
 
         class_name = criteria.class_name
         if class_name:
-            class_name = self._extract_simple_name(class_name)
+            class_name = extract_simple_name(class_name)
 
         if criteria.file_name:
             results = self._search_functions_in_file_index(
@@ -489,46 +490,11 @@ class SearchEngine:
             # Return a copy to prevent concurrent modification during iteration
             return list(self.file_index.get(file_path, []))
 
-    @staticmethod
-    def _strip_template_args(name: str) -> str:
-        """Strip template argument suffix from a name.
-
-        Examples:
-            "Container<int>" → "Container"
-            "ns::Container<int>" → "ns::Container"
-            "std::map<int, std::string>" → "std::map"
-            "Widget" → "Widget" (unchanged)
-        """
-        idx = name.find("<")
-        if idx == -1:
-            return name
-        return name[:idx]
-
-    @staticmethod
-    def _extract_simple_name(qualified_name: str) -> str:
-        """Extract simple name from qualified name, ignoring template arguments.
-
-        Examples:
-            "myapp::builders::Widget" → "Widget"
-            "std::vector" → "vector"
-            "Container<int>" → "Container"
-            "ns::Container<int>" → "Container"
-            "Widget" → "Widget" (already simple)
-        """
-        name = qualified_name
-        # Strip template argument suffix: "Container<int>" → "Container"
-        # Guard with endswith(">") to avoid mangling "operator<" or "operator<="
-        if "<" in name and name.endswith(">"):
-            name = name[: name.index("<")]
-        if "::" not in name:
-            return name
-        return name.split("::")[-1]
-
     def _find_class_candidate(
         self, class_name: str, lookup_name: str, is_qualified: bool, has_template_args: bool
     ) -> Union[SymbolInfo, Dict[str, Any], None]:
         """Find the best matching SymbolInfo for a class name, or an ambiguity error."""
-        simple_name = self._extract_simple_name(lookup_name)
+        simple_name = extract_simple_name(lookup_name)
 
         # Try direct lookup first (fast path)
         infos = self.class_index.get(simple_name, [])
@@ -671,7 +637,7 @@ class SearchEngine:
         with self.index_lock:
             # Strip template arguments for lookup
             has_template_args = "<" in class_name
-            lookup_name = self._strip_template_args(class_name) if has_template_args else class_name
+            lookup_name = strip_template_args(class_name) if has_template_args else class_name
 
             is_qualified = "::" in lookup_name
             candidate = self._find_class_candidate(
@@ -684,7 +650,7 @@ class SearchEngine:
                 return candidate  # Ambiguity error
 
             info: SymbolInfo = candidate
-            simple_name = self._extract_simple_name(info.name)
+            simple_name = extract_simple_name(info.name)
 
             # For method lookup, we need to match parent_class
             # parent_class is stored as simple name (from cursor.spelling)
@@ -770,15 +736,13 @@ class SearchEngine:
         signatures = []
 
         has_template_args = "<" in function_name
-        lookup_name = (
-            self._strip_template_args(function_name) if has_template_args else function_name
-        )
+        lookup_name = strip_template_args(function_name) if has_template_args else function_name
 
         is_qualified = "::" in lookup_name
-        simple_name = self._extract_simple_name(lookup_name)
+        simple_name = extract_simple_name(lookup_name)
 
         if class_name:
-            class_name = self._extract_simple_name(class_name)
+            class_name = extract_simple_name(class_name)
 
         with self.index_lock:
             infos = self._lookup_function_infos(simple_name)
