@@ -29,14 +29,14 @@ def analyzer(template_param_project):
 
 
 class TestTemplateParamInheritanceTracking:
-    """Tests for detecting template parameter inheritance via _get_template_param_inheritance_indices."""
+    """Tests for detecting template parameter inheritance via get_template_param_inheritance_indices."""
 
     def test_template_param_indices_detection(self, analyzer):
-        """Test that _get_template_param_inheritance_indices correctly detects template param bases."""
+        """Test that get_template_param_inheritance_indices correctly detects template param bases."""
         analyzer.index_project()
 
         # TemplateInheritsParam should inherit from param 0 (T)
-        indices = analyzer._get_template_param_inheritance_indices("ns::TemplateInheritsParam")
+        indices = analyzer.get_template_param_inheritance_indices("ns::TemplateInheritsParam")
         assert 0 in indices, f"TemplateInheritsParam should inherit from param 0, got {indices}"
 
     def test_template_multiple_bases_indices_detection(self, analyzer):
@@ -45,7 +45,7 @@ class TestTemplateParamInheritanceTracking:
 
         # TemplateMultipleBases inherits from T (param 0) and AnotherBase
         # Only T should be detected as template param base
-        indices = analyzer._get_template_param_inheritance_indices("ns::TemplateMultipleBases")
+        indices = analyzer.get_template_param_inheritance_indices("ns::TemplateMultipleBases")
         assert 0 in indices, f"TemplateMultipleBases should inherit from param 0, got {indices}"
         # Should only have index 0 (the template param), not other indices
         assert len(indices) == 1, f"Should only have one template param base, got {indices}"
@@ -120,47 +120,47 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
 
 class TestParseTemplateArgs:
-    """Tests for the _parse_template_args helper method."""
+    """Tests for the parse_template_args helper method."""
 
     def test_simple_args(self, analyzer):
         """Test parsing simple template arguments."""
-        args = analyzer._parse_template_args("A, B, C")
+        args = analyzer.parse_template_args("A, B, C")
         assert args == ["A", "B", "C"]
 
     def test_nested_templates(self, analyzer):
         """Test parsing nested template arguments."""
-        args = analyzer._parse_template_args("A<B, C>, D")
+        args = analyzer.parse_template_args("A<B, C>, D")
         assert args == ["A<B, C>", "D"]
 
     def test_deeply_nested(self, analyzer):
         """Test parsing deeply nested template arguments."""
-        args = analyzer._parse_template_args("A<B<C, D>, E>, F")
+        args = analyzer.parse_template_args("A<B<C, D>, E>, F")
         assert args == ["A<B<C, D>, E>", "F"]
 
     def test_single_arg(self, analyzer):
         """Test parsing single template argument."""
-        args = analyzer._parse_template_args("SomeClass")
+        args = analyzer.parse_template_args("SomeClass")
         assert args == ["SomeClass"]
 
     def test_qualified_names(self, analyzer):
         """Test parsing qualified names as arguments."""
-        args = analyzer._parse_template_args("ns::A, ns::B<ns::C>")
+        args = analyzer.parse_template_args("ns::A, ns::B<ns::C>")
         assert args == ["ns::A", "ns::B<ns::C>"]
 
 
 class TestCheckTemplateParamInheritance:
-    """Tests for _check_template_param_inheritance helper method."""
+    """Tests for check_template_param_inheritance helper method."""
 
     def test_no_template_returns_false(self, analyzer):
         """Test that non-template base class returns False."""
-        result = analyzer._check_template_param_inheritance("BaseClass", "SomeTarget")
+        result = analyzer.check_template_param_inheritance("BaseClass", "SomeTarget")
         assert result is False
 
     def test_unknown_template_returns_false(self, analyzer):
         """Test that unknown template returns False."""
         # Need to index first to populate template_param_bases
         analyzer.index_project()
-        result = analyzer._check_template_param_inheritance(
+        result = analyzer.check_template_param_inheritance(
             "UnknownTemplate<SomeClass>", "SomeClass"
         )
         assert result is False
@@ -171,7 +171,7 @@ class TestCheckTemplateParamInheritance:
 
         # After indexing, TemplateInheritsParam should be in template_param_bases
         # So TemplateInheritsParam<BaseClass> should inherit from BaseClass
-        result = analyzer._check_template_param_inheritance(
+        result = analyzer.check_template_param_inheritance(
             "ns::TemplateInheritsParam<ns::BaseClass>", "ns::BaseClass"
         )
         assert result is True, "Should detect inheritance through template param"
@@ -181,7 +181,7 @@ class TestCheckTemplateParamInheritance:
         analyzer.index_project()
 
         # Should match even with different qualification
-        result = analyzer._check_template_param_inheritance(
+        result = analyzer.check_template_param_inheritance(
             "ns::TemplateInheritsParam<ns::BaseClass>", "BaseClass"
         )
         assert result is True, "Should detect inheritance with simple name target"
