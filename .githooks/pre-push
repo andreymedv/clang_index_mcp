@@ -86,8 +86,3 @@ else
 fi
 
 echo -e "${GREEN}=== All pre-push checks passed ===${NC}"
-
-# Delegate to beads (bd) if available
-if command -v bd >/dev/null 2>&1; then
-    bd hooks run pre-push "$@"
-fi
