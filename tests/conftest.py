@@ -42,6 +42,11 @@ from tests.utils.test_helpers import (
     temp_project,
 )
 
+def _cache_base_dir() -> Path:
+    """Return the analyzer's actual cache base directory."""
+    return Path(__file__).parent.parent / "clang_index_mcp" / ".mcp_cache"
+
+
 # ============================================================================
 # Session-scoped Fixtures (Created once per test session)
 # ============================================================================
@@ -62,6 +67,32 @@ def session_temp_dir():
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_cache_dirs_session():
+    """
+    Session-level safety net: remove any cache dirs left behind after the suite.
+
+    Per-test cleanup handles most cases, but module-scoped fixtures and tests
+    run outside the pytest fixture lifecycle can leave directories behind.
+    This fixture captures the initial state of clang_index_mcp/.mcp_cache at
+    session start and removes any directories that appear by session end.
+    """
+    cache_base = _cache_base_dir()
+    initial_cache_dirs = set(cache_base.iterdir()) if cache_base.exists() else set()
+
+    yield
+
+    if not cache_base.exists():
+        return
+
+    for cache_dir in cache_base.iterdir():
+        if cache_dir not in initial_cache_dirs:
+            try:
+                shutil.rmtree(cache_dir, ignore_errors=True)
+            except Exception:
+                pass  # Best-effort cleanup
+
+
 # ============================================================================
 # Function-scoped Fixtures (Created for each test function)
 # ============================================================================
@@ -76,12 +107,11 @@ def cleanup_cache_dirs(request):
     .mcp_cache/ directories created during tests are properly cleaned up,
     preventing cache pollution between tests.
     """
-    # Get initial set of cache dirs before test runs
-    project_root = Path(__file__).parent.parent
-    cache_base = project_root / ".mcp_cache"
-    initial_cache_dirs = set()
-    if cache_base.exists():
-        initial_cache_dirs = set(cache_base.iterdir())
+    # Get initial set of cache dirs before test runs.
+    # The analyzer stores caches under the clang_index_mcp package root,
+    # not the repository root, so point at the actual cache base.
+    cache_base = _cache_base_dir()
+    initial_cache_dirs = set(cache_base.iterdir()) if cache_base.exists() else set()
 
     # Run the test
     yield
@@ -181,14 +211,9 @@ def analyzer(temp_project_dir):
     yield analyzer_instance
     # Close analyzer and clean up cache
     if hasattr(analyzer_instance, "cache_manager"):
+        cache_dir = analyzer_instance.cache_manager.cache_dir
         analyzer_instance.cache_manager.close()
-    # Clean up cache directory
-    project_root = Path(__file__).parent.parent
-    cache_base = project_root / ".mcp_cache"
-    if cache_base.exists():
-        # Clean up all cache directories related to this temp project
-        project_name = Path(temp_project_dir).name
-        for cache_dir in cache_base.glob(f"{project_name}_*"):
+        if cache_dir.exists():
             shutil.rmtree(cache_dir, ignore_errors=True)
 
 
@@ -250,14 +275,9 @@ void globalFunction();
     yield analyzer_instance
     # Close analyzer and clean up cache
     if hasattr(analyzer_instance, "cache_manager"):
+        cache_dir = analyzer_instance.cache_manager.cache_dir
         analyzer_instance.cache_manager.close()
-    # Clean up cache directory
-    project_root = Path(__file__).parent.parent
-    cache_base = project_root / ".mcp_cache"
-    if cache_base.exists():
-        # Clean up all cache directories related to this temp project
-        project_name = Path(temp_project_dir).name
-        for cache_dir in cache_base.glob(f"{project_name}_*"):
+        if cache_dir.exists():
             shutil.rmtree(cache_dir, ignore_errors=True)
 
 

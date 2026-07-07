@@ -1,6 +1,7 @@
 """Test script to verify compile_commands cache works with multiple builds."""
 
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -112,6 +113,15 @@ def test_multiple_builds():
         print("\n✅ SUCCESS: Different builds get different compile_commands caches!")
         print(f"   Debug uses:   {debug_cc_cache.name}")
         print(f"   Release uses: {release_cc_cache.name}")
+
+        # Clean up analyzer caches so running this script standalone doesn't
+        # leave directories behind in clang_index_mcp/.mcp_cache.
+        for an in (debug_analyzer, release_analyzer):
+            if hasattr(an, "cache_manager"):
+                cache_dir = an.cache_manager.cache_dir
+                an.cache_manager.close()
+                if cache_dir.exists():
+                    shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
