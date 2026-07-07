@@ -87,7 +87,3 @@ run_informational_check "type check (make type-check)" make type-check
 
 echo -e "${GREEN}=== Pre-commit checks passed ===${NC}"
 echo "Note: Tests will run on push (pre-push hook)"
-
-if command -v bd >/dev/null 2>&1; then
-    bd hooks run pre-commit "$@"
-fi
