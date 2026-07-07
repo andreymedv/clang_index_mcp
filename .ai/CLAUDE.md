@@ -53,6 +53,8 @@ pytest tests/test_compile_commands_manager.py::test_specific
 pytest -v -s                    # Verbose with print statements
 ```
 
+> **Note for AI assistants:** `make test` runs the full pytest suite. Its duration is host-dependent and can be long enough to exceed default command/tool timeouts. Run it as a background task if needed, and consult the local agent memory for host-specific timeout and agent-harness instructions.
+
 ### Code Quality
 ```bash
 make lint                       # Run flake8 (max-line-length=100)
