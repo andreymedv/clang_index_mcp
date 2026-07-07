@@ -44,7 +44,14 @@ def analyzer(template_project_path):
     """Create and index template test project."""
     analyzer = CppAnalyzer(project_root=str(template_project_path))
     analyzer.index_project(force=True)
-    return analyzer
+    try:
+        yield analyzer
+    finally:
+        if hasattr(analyzer, "cache_manager"):
+            cache_dir = analyzer.cache_manager.cache_dir
+            analyzer.cache_manager.close()
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 class TestTemplateIndexing:
@@ -1066,7 +1073,14 @@ def param_inheritance_analyzer(param_inheritance_project):
     """Create and index parameter inheritance test project."""
     analyzer = CppAnalyzer(project_root=str(param_inheritance_project))
     analyzer.index_project(force=True)
-    return analyzer
+    try:
+        yield analyzer
+    finally:
+        if hasattr(analyzer, "cache_manager"):
+            cache_dir = analyzer.cache_manager.cache_dir
+            analyzer.cache_manager.close()
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 class TestTemplateBaseClassImprovement:
@@ -1323,7 +1337,14 @@ def embedded_type_param_analyzer(embedded_type_param_project):
     """Create and index embedded type-parameter test project."""
     analyzer = CppAnalyzer(project_root=str(embedded_type_param_project))
     analyzer.index_project(force=True)
-    return analyzer
+    try:
+        yield analyzer
+    finally:
+        if hasattr(analyzer, "cache_manager"):
+            cache_dir = analyzer.cache_manager.cache_dir
+            analyzer.cache_manager.close()
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 class TestEmbeddedTypeParameterSubstitution:

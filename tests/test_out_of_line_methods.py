@@ -10,6 +10,7 @@ resolved via semantic_parent or qualified_name prefix matching.
 """
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -121,7 +122,10 @@ def analyzer(tmp_path_factory):
     yield a
 
     if hasattr(a, "cache_manager"):
+        cache_dir = a.cache_manager.cache_dir
         a.cache_manager.close()
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 # =============================================================================
