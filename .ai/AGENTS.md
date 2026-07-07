@@ -73,6 +73,7 @@ git config core.hooksPath .githooks
 - Alternatively, `pre-commit run` (supported)
 
 **Pre-push hook** (full validation, runs before push):
+- Skipped when the push only deletes remote refs (e.g. `git push --delete origin branch`)
 - `make test` (blocking)
 - `make format-check` (blocking)
 - `make lint` (blocking)
