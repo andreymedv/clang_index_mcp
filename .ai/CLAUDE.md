@@ -182,6 +182,18 @@ make ie                         # install-editable
   │  └────────────────────────────────────────── CacheManager
   │                                              └─ SQLiteCacheBackend (FTS5)
   └───────────────────────────────────────────── FileScanner
+
+Refactored into packages:
+- `_mcp/` — MCP server, tool registry, and consolidated tools
+- `_indexing/` — indexing orchestration, pipeline, refresh, worker pool
+- `_symbols/` — symbol model, extraction, parser port
+- `_compilation/` — libclang parsing, compile commands, compilation environment
+- `_search/` — query engine, search engine, call graph, hierarchy, dependency graph
+- `_persistence/` — SQLite backend, repositories, cache manager, project identity, header tracker
+- `_incremental/` — incremental analysis and change scanning
+- `_core/` — shared utilities, file scanner, concurrency, cancellation
+- `composition_root.py` — dependency wiring
+- `cpp_analyzer.py` — thin public facade
 ```
 
 ### Key Architectural Decisions
@@ -198,14 +210,14 @@ make ie                         # install-editable
 - First source file to include a header "claims" it via `HeaderProcessingTracker`
 - 5-10x performance improvement for commonly-included headers
 - Identity tracked by header path only (not compile args)
-- See clang_index_mcp/header_tracker.py
+- See clang_index_mcp/_persistence/header_tracker.py
 
 **3. Incremental Analysis Architecture**
 - Tracks file changes via MD5 hashing (content-based, platform-independent)
 - Builds dependency graphs to cascade header changes to dependent sources
 - Detects compile_commands.json changes and re-analyzes affected files
 - Provides 30-300x speedup for partial refreshes
-- See clang_index_mcp/incremental_analyzer.py, clang_index_mcp/change_scanner.py
+- See clang_index_mcp/_incremental/incremental_analyzer.py, clang_index_mcp/_incremental/change_scanner.py
 - **Resource Management and File Descriptor Handling**
 - **CRITICAL:** TranslationUnit objects are deleted immediately after symbol extraction
 - `del tu` + `gc.collect()` forces cleanup of libclang C++ resources (file descriptors)
@@ -213,22 +225,23 @@ make ie                         # install-editable
 - Singleton analyzer per worker process (not per file) reduces SQLite connections
 - File descriptors remain stable at ~10-15 during indexing (tested with 5700+ files)
 - **Historical Issue:** self.translation_units dict was removed (write-only, caused 516+ FD leak)
-- See clang_index_mcp/cpp_analyzer.py:3322 (explicit TU deletion), :161-191 (worker cleanup)
-- See clang_index_mcp/header_tracker.py
+- See `clang_index_mcp/_indexing/indexing_pipeline.py` (`SingleFileIndexingPipeline._finalize_index_success()`) for explicit TU deletion
+- See `clang_index_mcp/_indexing/worker_pool.py` (`_process_file_worker()`) for worker cleanup
+- See `clang_index_mcp/_persistence/header_tracker.py`
 
 **5. SQLite Cache with FTS5**
 - Symbol storage in SQLite with full-text search (2-5ms for 100K symbols)
 - WAL mode for concurrent multi-process access
 - Automatic VACUUM, OPTIMIZE, and ANALYZE maintenance
 - Cache per project configuration: (source_dir, config_file) → unique cache dir
-- See clang_index_mcp/sqlite_cache_backend.py, clang_index_mcp/schema.sql
+- See clang_index_mcp/_persistence/sqlite_cache_backend.py, clang_index_mcp/_persistence/schema.sql
 
 **6. Compile Commands Integration**
 - Parses compile_commands.json for accurate per-file compilation arguments
 - Binary caching (.mcp_cache/<project>/compile_commands/<hash>.cache) for 10-100x faster startup
 - Optional orjson for 3-5x faster JSON parsing (pip install .[performance])
 - Fallback to hardcoded args if compile_commands.json not found
-- See clang_index_mcp/compile_commands_manager.py
+- See clang_index_mcp/_compilation/compile_commands_manager.py
 
 **7. No Runtime Monitoring of compile_commands.json**
 - Only checked on analyzer startup (not during runtime)
@@ -240,7 +253,7 @@ make ie                         # install-editable
 - Eliminates race conditions in multi-process mode (was causing ~5000 writes for large projects)
 - Cached as header_tracker.json in project cache directory
 - Includes compile_commands.json hash for invalidation on config changes
-- See clang_index_mcp/header_tracker.py, cpp_analyzer.py:_save_header_tracking()
+- See clang_index_mcp/_persistence/header_tracker.py and clang_index_mcp/_persistence/cache_orchestrator.py (`save_header_tracking()`)
 
 **9. libclang Error Recovery**
 - Leverages libclang's built-in error recovery for non-fatal parse errors
@@ -248,7 +261,7 @@ make ie                         # install-editable
 - Only TranslationUnitLoadError (no TU created) causes true failure
 - Errors logged as warnings, cached with error_message for diagnostics
 - Provides 90%+ symbol extraction vs 0% for files with minor issues
-- See cpp_analyzer.py:index_file() error handling
+- See clang_index_mcp/_indexing/indexing_pipeline.py (`SingleFileIndexingPipeline.index_file()`) for error handling
 
 **10. AST Traversal Optimization (System Header Skipping)**
 - Early exit from AST traversal when encountering non-project file cursors
@@ -256,29 +269,39 @@ make ie                         # install-editable
 - Provides 5-7x speedup on large projects (3.5 hours → ~30-60 minutes for 5700 files)
 - Safe because: symbol extraction already filtered, dependency discovery uses tu.get_includes() API
 - Only traverses AST nodes from project files and files with active call tracking
-- See cpp_analyzer.py:_process_cursor() early exit optimization (line ~2551-2553)
+- See `clang_index_mcp/_compilation/clang_symbol_parser.py` (`ClangSymbolParser._process_cursor()`) for the early-exit optimization
 
-**11. SQLite PRAGMAs:** Applied per-connection in `_set_connection_pragmas()` (WAL, 64MB cache, 256MB mmap). CRITICAL: must be applied to every connection — workers with `skip_schema_recreation=True` bypassed schema init and missed PRAGMAs (>8x perf regression). See `sqlite_cache_backend.py:_set_connection_pragmas()`.
+**11. SQLite PRAGMAs:** Applied per-connection in `_set_connection_pragmas()` (WAL, 64MB cache, 256MB mmap). CRITICAL: must be applied to every connection — workers with `skip_schema_recreation=True` bypassed schema init and missed PRAGMAs (>8x perf regression). See `clang_index_mcp/_persistence/sqlite_cache_backend.py` (`SqliteCacheBackend._set_connection_pragmas()`).
 
-**12. Call Graph in SQLite only:** No in-memory call_graph dicts (was ~2 GB RAM). Workers stream call_sites directly to SQLite; find_callers/find_callees query on-demand. See `clang_index_mcp/call_graph.py`.
+**12. Call Graph in SQLite only:** No in-memory call_graph dicts (was ~2 GB RAM). Workers stream call_sites directly to SQLite; find_callers/find_callees query on-demand. See `clang_index_mcp/_search/call_graph.py`.
 
-**13. Template-Mediated Calls:** `std::make_shared<T>()` tracked via template arg type extraction at parse time. `is_template_mediated: True` flag in find_callees results. See `_extract_template_call_info()`.
+**13. Template-Mediated Calls:** `std::make_shared<T>()` tracked via template arg type extraction at parse time. `is_template_mediated: True` flag in find_callees results. See `clang_index_mcp/_compilation/clang_symbol_parser.py` (`ClangSymbolParser._extract_template_call_info()`).
 
 
 ### Critical Code Locations
 
-- **MCP Tools Definition:** clang_index_mcp/cpp_mcp_server.py:127-312 (`list_tools()`)
-- **Core Analyzer:** clang_index_mcp/cpp_analyzer.py:512 (CppAnalyzer class)
-- **Symbol Extraction:** clang_index_mcp/cpp_analyzer.py:2536 (`_process_cursor()` recursive AST traversal)
-- **Type Alias Extraction:** clang_index_mcp/cpp_analyzer.py:2393 (`_extract_alias_info()` handles TYPE_ALIAS_DECL and TYPE_ALIAS_TEMPLATE_DECL, extracts template parameters)
-- **Documentation Extraction (Phase 2):** clang_index_mcp/cpp_analyzer.py:2044 (`_extract_documentation()` brief and doc_comment extraction)
-- **Virtual Method Extraction (Phase 5):** clang_index_mcp/cpp_analyzer.py:2536 (`_process_cursor()` internals: cursor.is_virtual_method(), is_pure_virtual_method(), is_const_method(), is_static_method())
-- **Parallel Worker:** clang_index_mcp/cpp_analyzer.py:86-193 (`_process_file_worker()` with singleton-per-process pattern and atexit cleanup)
-- **Call Graph Analysis (Phase 4):** clang_index_mcp/call_graph.py (SQLite-only queries, no in-memory dicts)
-- **SQLite FTS5:** clang_index_mcp/sqlite_cache_backend.py, clang_index_mcp/schema.sql (v17.0 — see schema.sql for current column list)
-- **Header Tracking:** clang_index_mcp/header_tracker.py (HeaderProcessingTracker)
-- **Incremental Logic:** clang_index_mcp/incremental_analyzer.py
-- **Compile Commands:** clang_index_mcp/compile_commands_manager.py
+- **MCP Server Entry Point:** `clang_index_mcp/_mcp/cpp_mcp_server.py`
+- **Public Tool Schemas:** `clang_index_mcp/_mcp/consolidated_tools.py` (`list_tools_b()`)
+- **Internal Tool Handlers:** `clang_index_mcp/_mcp/tool_handlers/*.py`
+- **Analyzer Facade:** `clang_index_mcp/cpp_analyzer.py` (`CppAnalyzer`)
+- **Dependency Wiring:** `clang_index_mcp/composition_root.py` (`CompositionRoot`)
+- **Project Context / DI Container:** `clang_index_mcp/project_context.py` (`ProjectContext`)
+- **Full-Project Indexing:** `clang_index_mcp/_indexing/indexing_orchestrator.py` (`ProjectIndexingOrchestrator`)
+- **Single-File Indexing Pipeline:** `clang_index_mcp/_indexing/indexing_pipeline.py` (`SingleFileIndexingPipeline`)
+- **Worker Pool:** `clang_index_mcp/_indexing/worker_pool.py` (`_process_file_worker()`)
+- **Symbol Extraction Coordination:** `clang_index_mcp/_symbols/symbol_extractor.py` (`SymbolExtractor.index_translation_unit()`)
+- **AST Traversal:** `clang_index_mcp/_compilation/clang_symbol_parser.py` (`ClangSymbolParser._process_cursor()`)
+- **Type Alias Extraction:** `clang_index_mcp/_symbols/alias_extractor.py` (`extract_alias_info()`)
+- **Documentation Extraction:** `clang_index_mcp/_symbols/documentation_extractor.py` (`extract_documentation()`)
+- **Virtual Method Indicators:** `clang_index_mcp/_compilation/clang_symbol_parser.py` (method indicator extraction in `_process_cursor()`)
+- **Symbol Model:** `clang_index_mcp/_symbols/model/symbol_info.py` (`SymbolInfo`)
+- **Symbol Index Store:** `clang_index_mcp/_symbols/symbol_index_store.py` (`SymbolIndexStore`)
+- **Call Graph Analysis:** `clang_index_mcp/_search/call_graph.py`, `clang_index_mcp/_search/call_graph_service.py`
+- **SQLite Backend:** `clang_index_mcp/_persistence/sqlite_cache_backend.py`
+- **Schema:** `clang_index_mcp/_persistence/schema.sql` (v17.0)
+- **Header Tracking:** `clang_index_mcp/_persistence/header_tracker.py` (`HeaderProcessingTracker`)
+- **Incremental Logic:** `clang_index_mcp/_incremental/incremental_analyzer.py`
+- **Compile Commands:** `clang_index_mcp/_compilation/compile_commands_manager.py`
 
 ## Configuration
 
@@ -381,22 +404,24 @@ The `diagnose_parse_errors.py` script tests parsing with different libclang opti
 ## Common Workflows
 
 ### Adding a New MCP Tool
-1. Define tool schema in `cpp_mcp_server.py` `list_tools()` function
-2. Add handler in `cpp_mcp_server.py` `call_tool()` function
-3. Implement analyzer method in `cpp_analyzer.py`
-4. Add tests in `tests/test_*.py`
-5. Update this CLAUDE.md if architecturally significant
+1. Define the public tool schema in `clang_index_mcp/_mcp/consolidated_tools.py` (`list_tools_b()`)
+2. Add the consolidated handler in `clang_index_mcp/_mcp/consolidated_tools.py` (`handle_tool_call_b()`)
+3. Add the internal handler in `clang_index_mcp/_mcp/tool_handlers/*.py` and register it via `ToolRegistry`
+4. Implement analyzer logic in `clang_index_mcp/_search/query_engine.py`, `clang_index_mcp/_search/call_graph_service.py`, or `clang_index_mcp/_symbols/symbol_extractor.py` as appropriate
+5. Add tests in `tests/test_*.py`
+6. Update this CLAUDE.md if architecturally significant
 
 ### Modifying Symbol Extraction Logic
-1. Edit `cpp_analyzer.py` `_process_cursor()` (recursive AST walker)
-2. Update `symbol_info.py` if changing SymbolInfo structure
-3. If changing SQLite schema:
-   - Update `clang_index_mcp/schema.sql` with new columns/tables
-   - Increment schema version in schema.sql (e.g., "4.0" → "5.0")
-   - Update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`
+1. Edit `clang_index_mcp/_compilation/clang_symbol_parser.py` (`ClangSymbolParser._process_cursor()` recursive AST walker)
+2. Update `clang_index_mcp/_symbols/model/symbol_info.py` if changing `SymbolInfo` structure
+3. Update extractors in `clang_index_mcp/_symbols/` (`alias_extractor.py`, `documentation_extractor.py`, etc.) as needed
+4. If changing SQLite schema:
+   - Update `clang_index_mcp/_persistence/schema.sql` with new columns/tables
+   - Increment the schema version in `schema.sql`
+   - Update `CURRENT_SCHEMA_VERSION` in `clang_index_mcp/_persistence/sqlite_cache_backend.py`
    - Database will automatically recreate on version mismatch (development mode)
-4. Run `make test` to verify no regressions
-5. Test with example project: `python -m clang_index_mcp` + set examples/compile_commands_example/
+5. Run `make test` to verify no regressions
+6. Test with example project: `python -m clang_index_mcp` + set `examples/compile_commands_example/`
 
 ### Cache Invalidation and Corruption Recovery
 
@@ -479,7 +504,7 @@ If auto-download fails, manually download from https://github.com/llvm/llvm-proj
 
 9. **SQLite cache:** Lives in `.mcp_cache/` (multi-config support). Compile commands cache stored in `.mcp_cache/<project>/compile_commands/`. Safe to delete for fresh indexing. WAL mode enables concurrent access. **Schema version 17.0** includes virtual method indicators (is_virtual, is_pure_virtual, is_const, is_static), type_aliases table with template_params support, documentation fields (brief, doc_comment), call_sites table for line-level call graph tracking, and template-mediated call metadata (display_name, template_project_types).
 
-10. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
+10. **Development mode auto-recreation:** During development, the SQLite database is automatically recreated when the schema version changes. This simplifies development by avoiding migration complexity. When you change `clang_index_mcp/_persistence/schema.sql`, just increment the version number and update `CURRENT_SCHEMA_VERSION` in `clang_index_mcp/_persistence/sqlite_cache_backend.py`. On next run, the old database will be deleted and recreated with the new schema.
 
 11. **Parse error recovery:** The analyzer leverages libclang's error recovery to extract symbols from files with non-fatal parsing errors. Files with syntax or semantic errors will log warnings but continue processing, extracting partial symbols from the usable AST. Only true fatal errors (no TranslationUnit created) cause file rejection. This means you get partial results instead of nothing for files with minor issues.
 

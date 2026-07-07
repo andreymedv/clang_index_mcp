@@ -124,13 +124,21 @@ This ensures local checks match GitHub CI exactly.
 
 Most changes will touch one of these areas:
 
-- `clang_index_mcp/cpp_mcp_server.py`: MCP tool schemas and request handlers.
-- `clang_index_mcp/cpp_analyzer.py`: core indexing pipeline, AST traversal, symbol extraction, and worker logic.
-- `clang_index_mcp/call_graph.py`: SQLite-backed call graph storage and queries.
-- `clang_index_mcp/sqlite_cache_backend.py`: schema management, SQLite tuning, and persistence behavior.
-- `clang_index_mcp/incremental_analyzer.py`: change detection and incremental refresh behavior.
-- `clang_index_mcp/compile_commands_manager.py`: compile_commands.json loading and lookup.
-- `clang_index_mcp/header_tracker.py`: header deduplication logic.
+- `clang_index_mcp/_mcp/cpp_mcp_server.py`: MCP server entry point and tool dispatch.
+- `clang_index_mcp/_mcp/consolidated_tools.py`: public MCP tool schemas (10 consolidated tools).
+- `clang_index_mcp/_mcp/tool_handlers/*.py`: internal tool handlers.
+- `clang_index_mcp/cpp_analyzer.py`: thin facade over the analyzer.
+- `clang_index_mcp/composition_root.py`: dependency wiring.
+- `clang_index_mcp/_indexing/indexing_orchestrator.py`: full-project indexing flow.
+- `clang_index_mcp/_indexing/indexing_pipeline.py`: single-file indexing pipeline.
+- `clang_index_mcp/_symbols/symbol_extractor.py`: symbol extraction coordination.
+- `clang_index_mcp/_compilation/clang_symbol_parser.py`: libclang AST traversal.
+- `clang_index_mcp/_search/call_graph.py`, `clang_index_mcp/_search/call_graph_service.py`: SQLite-backed call graph storage and queries.
+- `clang_index_mcp/_persistence/sqlite_cache_backend.py`: schema management, SQLite tuning, and persistence behavior.
+- `clang_index_mcp/_persistence/schema.sql`: database schema.
+- `clang_index_mcp/_incremental/incremental_analyzer.py`: change detection and incremental refresh behavior.
+- `clang_index_mcp/_compilation/compile_commands_manager.py`: compile_commands.json loading and lookup.
+- `clang_index_mcp/_persistence/header_tracker.py`: header deduplication logic.
 
 Treat the following behaviors as critical unless the task explicitly requires changing them:
 
@@ -154,9 +162,9 @@ Treat the following behaviors as critical unless the task explicitly requires ch
 
 - Preserve the current code style and naming patterns.
 - Keep schema changes coordinated:
-  - Update `clang_index_mcp/schema.sql`.
+  - Update `clang_index_mcp/_persistence/schema.sql`.
   - Increment the schema version there.
-  - Update `CURRENT_SCHEMA_VERSION` in `clang_index_mcp/sqlite_cache_backend.py`.
+  - Update `CURRENT_SCHEMA_VERSION` in `clang_index_mcp/_persistence/sqlite_cache_backend.py`.
 - Add or update tests whenever behavior changes.
 - Update documentation when user-visible behavior, architecture, or workflows change.
 - Do not revert unrelated user changes in the worktree.
