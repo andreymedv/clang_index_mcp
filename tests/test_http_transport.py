@@ -59,11 +59,17 @@ async def http_server():
     # Start server in background task
     server_task = asyncio.create_task(http_srv.start())
 
-    # Wait a bit for server to start
-    await asyncio.sleep(1.5)
-
-    # Yield base URL for tests
+    # Poll the root endpoint until the server is ready
     base_url = f"http://{TEST_HOST}:{port}"
+    async with httpx.AsyncClient() as client:
+        for _ in range(50):
+            try:
+                response = await client.get(base_url, timeout=0.1)
+                if response.status_code == 200:
+                    break
+            except (httpx.ConnectError, httpx.NetworkError):
+                pass
+            await asyncio.sleep(0.05)
 
     yield base_url
 
@@ -74,9 +80,6 @@ async def http_server():
         await server_task
     except asyncio.CancelledError:
         pass
-
-    # Give time for port to be released and sockets to close
-    await asyncio.sleep(1.0)
 
 
 @pytest.mark.asyncio
