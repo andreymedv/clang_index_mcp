@@ -257,12 +257,18 @@ This is documented in detail in the "Configuration File Locations" section above
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `CLANG_INDEX_CACHE_DIR` | string | `.mcp_cache` | Custom cache directory location |
+| `CLANG_INDEX_CACHE_DIR` | string | `.mcp_cache` | Custom cache directory location (legacy/user-facing alias) |
+| `MCP_CACHE_BASE_DIR` | string | (none) | Override the parent directory for all project caches |
 
 **CLANG_INDEX_CACHE_DIR**:
 - **Default**: `.mcp_cache` (relative to MCP server root)
 - **Use Case**: Custom cache location (e.g., faster SSD, network storage)
 - **Note**: Cache location must be on a local filesystem (not NFS)
+
+**MCP_CACHE_BASE_DIR**:
+- **Default**: unset (falls back to `CLANG_INDEX_CACHE_DIR`, then to the default `.mcp_cache`)
+- **Use Case**: Run multiple isolated analyzer instances or parallel test workers against separate cache roots without changing the per-project cache naming.
+- **Note**: This overrides the *base* directory; per-project subdirectories are still created underneath it. If both variables are set, `MCP_CACHE_BASE_DIR` wins.
 
 **Example**:
 ```bash

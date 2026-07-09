@@ -19,30 +19,34 @@ import pytest
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
+@pytest.fixture(scope="module")
+def macro_alias_project(tmp_path_factory):
+    """Create a module-scoped test project with macro-generated type aliases."""
+    tmp_path = tmp_path_factory.mktemp("macro_alias")
+    fixture_dir = os.path.join(os.path.dirname(__file__), "fixtures", "macro_alias")
+
+    # Copy all files
+    for filename in os.listdir(fixture_dir):
+        src = os.path.join(fixture_dir, filename)
+        dst = os.path.join(tmp_path, filename)
+        shutil.copy2(src, dst)
+
+    return str(tmp_path)
+
+
+@pytest.fixture(scope="module")
+def analyzer(macro_alias_project):
+    """Create and initialize a module-scoped analyzer for the test project."""
+    analyzer = CppAnalyzer(macro_alias_project)
+    analyzer.index_project()
+    try:
+        yield analyzer
+    finally:
+        analyzer.close()
+
+
 class TestMacroTypeAlias:
     """Test suite for macro-generated type alias indexing."""
-
-    @pytest.fixture
-    def macro_alias_project(self, tmp_path):
-        """Create a test project with macro-generated type aliases."""
-        # Copy the macro_alias fixtures to temp directory
-        fixture_dir = os.path.join(os.path.dirname(__file__), "fixtures", "macro_alias")
-
-        # Copy all files
-        for filename in os.listdir(fixture_dir):
-            src = os.path.join(fixture_dir, filename)
-            dst = os.path.join(tmp_path, filename)
-            shutil.copy2(src, dst)
-
-        return str(tmp_path)
-
-    @pytest.fixture
-    def analyzer(self, macro_alias_project):
-        """Create and initialize analyzer for the test project."""
-        analyzer = CppAnalyzer(macro_alias_project)
-        analyzer.index_project()
-        yield analyzer
-        analyzer.close()
 
     def test_macro_type_alias_indexed(self, analyzer):
         """Test that macro-expanded type aliases are indexed."""
@@ -120,24 +124,6 @@ class TestMacroTypeAlias:
 
 class TestMacroTypeAliasDebug:
     """Debug tests to understand the issue."""
-
-    @pytest.fixture
-    def macro_alias_project(self, tmp_path):
-        """Create a test project with macro-generated type aliases."""
-        fixture_dir = os.path.join(os.path.dirname(__file__), "fixtures", "macro_alias")
-        for filename in os.listdir(fixture_dir):
-            src = os.path.join(fixture_dir, filename)
-            dst = os.path.join(tmp_path, filename)
-            shutil.copy2(src, dst)
-        return str(tmp_path)
-
-    @pytest.fixture
-    def analyzer(self, macro_alias_project):
-        """Create and initialize analyzer for the test project."""
-        analyzer = CppAnalyzer(macro_alias_project)
-        analyzer.index_project()
-        yield analyzer
-        analyzer.close()
 
     def test_debug_all_indexed_aliases(self, analyzer):
         """Debug: Print all indexed type aliases."""

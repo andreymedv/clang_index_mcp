@@ -85,10 +85,18 @@ class CacheManager:
     @staticmethod
     def compute_cache_dir(project_identity: ProjectIdentity) -> Path:
         """Compute the cache directory for a project identity."""
-        clang_index_mcp_root = Path(
-            __file__
-        ).parent.parent  # Go up from cache_manager.py to package root
-        cache_base = clang_index_mcp_root / ".mcp_cache"
+        import os
+
+        # MCP_CACHE_BASE_DIR takes precedence; CLANG_INDEX_CACHE_DIR is the
+        # legacy/user-facing alias and is honored when the newer variable is unset.
+        env_base = os.environ.get("MCP_CACHE_BASE_DIR") or os.environ.get("CLANG_INDEX_CACHE_DIR")
+        if env_base:
+            cache_base = Path(env_base)
+        else:
+            clang_index_mcp_root = Path(
+                __file__
+            ).parent.parent  # Go up from cache_manager.py to package root
+            cache_base = clang_index_mcp_root / ".mcp_cache"
         cache_dir_name = project_identity.get_cache_directory_name()
         return cache_base / cache_dir_name
 
