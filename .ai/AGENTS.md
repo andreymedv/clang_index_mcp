@@ -32,7 +32,8 @@ python scripts/test_installation.py
 Primary validation commands:
 
 ```bash
-make test
+make test-fast   # preferred: parallel-safe tests + serial tests
+make test        # sequential fallback (slower, used for coverage/debugging)
 make check
 make lint
 make format
@@ -51,7 +52,8 @@ make dev
 ## Testing Constraints
 
 - Never run multiple `pytest` processes at the same time in this repository. The SQLite cache can conflict across concurrent test runs.
-- If code changes touch analyzer behavior, prefer running `make test`.
+- `make test-fast` is safe to use: it runs one xdist invocation followed by one sequential invocation, never two pytest processes concurrently.
+- If code changes touch analyzer behavior, prefer running `make test-fast` (or `make test` if you need the slower sequential/coverage run).
 - If code changes affect formatting, linting, or typing expectations, run the relevant `make` target or `make check`.
 - If you could not run the appropriate validation, say so explicitly in the final response.
 
@@ -74,7 +76,7 @@ git config core.hooksPath .githooks
 
 **Pre-push hook** (full validation, runs before push):
 - Skipped when the push only deletes remote refs (e.g. `git push --delete origin branch`)
-- `make test` (blocking)
+- `make test-fast` (blocking)
 - `make format-check` (blocking)
 - `make lint` (blocking)
 - `make type-check` (informational)
@@ -158,6 +160,7 @@ Treat the following behaviors as critical unless the task explicitly requires ch
   - `MCP_DEBUG=1` for verbose logging.
   - `PYTHONUNBUFFERED=1` for unbuffered output.
   - `LIBCLANG_PATH=/path/to/libclang.so` to override libclang discovery.
+  - `MCP_CACHE_BASE_DIR=/path/to/cache` to override the parent directory for all project caches (useful for test/CI isolation).
 
 ## Change Guidelines
 

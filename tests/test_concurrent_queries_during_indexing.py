@@ -472,6 +472,7 @@ def test_no_runtime_error_during_concurrent_search(large_cpp_project):
             pytest.fail(f"Unexpected error during {source}: {err}")
 
 
+@pytest.mark.serial
 def test_lock_performance_impact_is_minimal(large_cpp_project):
     """
     Test that adding index_lock does not significantly slow down queries

@@ -59,7 +59,7 @@ jobs:
           pip install .[dev]
 
       - name: Run tests
-        run: make test
+        run: make test-fast
 
   build:
     name: Build Package

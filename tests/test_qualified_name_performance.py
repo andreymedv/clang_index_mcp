@@ -16,6 +16,7 @@ Benchmarks cover:
 - Large dataset performance
 """
 
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -29,17 +30,17 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 class TestQualifiedSearchPerformance:
     """Benchmark qualified pattern search performance."""
 
-    @pytest.fixture
-    def large_project(self):
-        """Create a large test project with many classes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create test files with many classes in various namespaces
-            for i in range(50):  # 50 files
-                test_file = Path(tmpdir) / f"file{i}.cpp"
-                content = []
-                for j in range(20):  # 20 classes per file = 1000 total classes
-                    ns = f"ns{i % 10}"  # 10 different namespaces
-                    content.append(f"""
+    @pytest.fixture(scope="module")
+    def large_project(self, tmp_path_factory):
+        """Create a large test project with many classes once per module."""
+        tmpdir = tmp_path_factory.mktemp("large_project")
+        # Create test files with many classes in various namespaces
+        for i in range(50):  # 50 files
+            test_file = tmpdir / f"file{i}.cpp"
+            content = []
+            for j in range(20):  # 20 classes per file = 1000 total classes
+                ns = f"ns{i % 10}"  # 10 different namespaces
+                content.append(f"""
 namespace {ns} {{
     class Class{i}_{j} {{
     public:
@@ -48,11 +49,18 @@ namespace {ns} {{
     }};
 }}
 """)
-                test_file.write_text("\n".join(content))
+            test_file.write_text("\n".join(content))
 
-            analyzer = CppAnalyzer(tmpdir)
-            analyzer.index_project()
+        analyzer = CppAnalyzer(str(tmpdir))
+        analyzer.index_project()
+        try:
             yield analyzer
+        finally:
+            if hasattr(analyzer, "cache_manager"):
+                cache_dir = analyzer.cache_manager.cache_dir
+                analyzer.cache_manager.close()
+                if cache_dir.exists():
+                    shutil.rmtree(cache_dir, ignore_errors=True)
 
     def test_unqualified_search_performance(self, large_project):
         """Unqualified pattern search should complete quickly."""
@@ -220,6 +228,7 @@ namespace ns{i} {{
 
             print(f"\n  Small project indexing: {elapsed*1000:.0f}ms ({len(results)} classes)")
 
+    @pytest.mark.serial
     def test_incremental_refresh_performance(self):
         """Incremental refresh should be faster than full reindex."""
         with tempfile.TemporaryDirectory() as tmpdir:

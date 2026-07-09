@@ -6,6 +6,7 @@ Problem: When template<T> class Foo : public T, and class Bar : Foo<Base>,
          get_derived_classes("Base") should find Bar through indirect inheritance.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -14,18 +15,32 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._symbols.model import SymbolInfo, get_template_param_base_indices
 
 
-@pytest.fixture
-def template_param_project():
-    """Get path to template parameter inheritance fixtures."""
+@pytest.fixture(scope="module")
+def template_param_project(tmp_path_factory):
+    """Copy template parameter inheritance fixtures to a module-private temp directory."""
     fixtures_path = Path(__file__).parent / "fixtures" / "template_param_inheritance"
-    return fixtures_path
+    project_path = tmp_path_factory.mktemp("template_param_inheritance")
+    for item in fixtures_path.iterdir():
+        if item.is_dir():
+            shutil.copytree(item, project_path / item.name)
+        else:
+            shutil.copy2(item, project_path / item.name)
+    return project_path
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def analyzer(template_param_project):
-    """Create a fresh analyzer instance for testing."""
+    """Create and index a module-scoped analyzer for testing."""
     analyzer = CppAnalyzer(str(template_param_project))
-    return analyzer
+    analyzer.index_project()
+    try:
+        yield analyzer
+    finally:
+        if hasattr(analyzer, "cache_manager"):
+            cache_dir = analyzer.cache_manager.cache_dir
+            analyzer.cache_manager.close()
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 class TestTemplateParamInheritanceTracking:
@@ -33,7 +48,6 @@ class TestTemplateParamInheritanceTracking:
 
     def test_template_param_indices_detection(self, analyzer):
         """Test that get_template_param_inheritance_indices correctly detects template param bases."""
-        analyzer.index_project()
 
         # TemplateInheritsParam should inherit from param 0 (T)
         indices = analyzer.get_template_param_inheritance_indices("ns::TemplateInheritsParam")
@@ -41,7 +55,6 @@ class TestTemplateParamInheritanceTracking:
 
     def test_template_multiple_bases_indices_detection(self, analyzer):
         """Test detection for templates with multiple bases including template param."""
-        analyzer.index_project()
 
         # TemplateMultipleBases inherits from T (param 0) and AnotherBase
         # Only T should be detected as template param base
@@ -56,7 +69,6 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
     def test_direct_inheritance_still_works(self, analyzer):
         """Verify direct inheritance detection still works."""
-        analyzer.index_project()
 
         # DirectDerived directly inherits from BaseClass
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
@@ -68,7 +80,6 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
     def test_indirect_inheritance_through_template_param(self, analyzer):
         """Test that classes inheriting via template param are found."""
-        analyzer.index_project()
 
         # DerivedFromTemplate inherits from TemplateInheritsParam<BaseClass>
         # Since TemplateInheritsParam<T> : public T, this means
@@ -82,7 +93,6 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
     def test_indirect_inheritance_with_multiple_bases(self, analyzer):
         """Test template with multiple bases including template param."""
-        analyzer.index_project()
 
         # DerivedFromTemplateMulti inherits from TemplateMultipleBases<BaseClass>
         # TemplateMultipleBases<T> : public T, public AnotherBase
@@ -96,7 +106,6 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
     def test_unrelated_class_not_included(self, analyzer):
         """Verify unrelated classes are not included."""
-        analyzer.index_project()
 
         derived = analyzer.get_derived_classes("BaseClass", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
@@ -107,7 +116,6 @@ class TestGetDerivedClassesWithTemplateParamInheritance:
 
     def test_qualified_name_search(self, analyzer):
         """Test with qualified class name."""
-        analyzer.index_project()
 
         # Search using qualified name
         derived = analyzer.get_derived_classes("ns::BaseClass", project_only=False)
@@ -159,7 +167,6 @@ class TestCheckTemplateParamInheritance:
     def test_unknown_template_returns_false(self, analyzer):
         """Test that unknown template returns False."""
         # Need to index first to populate template_param_bases
-        analyzer.index_project()
         result = analyzer.check_template_param_inheritance(
             "UnknownTemplate<SomeClass>", "SomeClass"
         )
@@ -167,7 +174,6 @@ class TestCheckTemplateParamInheritance:
 
     def test_matching_template_arg(self, analyzer):
         """Test matching when template arg equals target."""
-        analyzer.index_project()
 
         # After indexing, TemplateInheritsParam should be in template_param_bases
         # So TemplateInheritsParam<BaseClass> should inherit from BaseClass
@@ -178,7 +184,6 @@ class TestCheckTemplateParamInheritance:
 
     def test_simple_name_match(self, analyzer):
         """Test matching with simple names."""
-        analyzer.index_project()
 
         # Should match even with different qualification
         result = analyzer.check_template_param_inheritance(
@@ -198,7 +203,6 @@ class TestTemplateParamNameCollision:
 
     def test_template_param_not_false_positive_in_derived(self, analyzer):
         """template<typename Base> class Adapter : Base should NOT be derived from struct Base."""
-        analyzer.index_project()
 
         derived = analyzer.get_derived_classes("Base", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
@@ -212,7 +216,6 @@ class TestTemplateParamNameCollision:
 
     def test_real_derivation_still_found_alongside_collision(self, analyzer):
         """RealDerivedFromBase actually derives from struct Base - must still be found."""
-        analyzer.index_project()
 
         derived = analyzer.get_derived_classes("Base", project_only=False)
         derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
@@ -224,7 +227,6 @@ class TestTemplateParamNameCollision:
 
     def test_indirect_inheritance_still_works_with_collision(self, analyzer):
         """Indirect inheritance through template instantiation should still work."""
-        analyzer.index_project()
 
         # DerivedFromTemplate inherits from TemplateInheritsParam<BaseClass>
         # which inherits from its template param T=BaseClass
@@ -308,7 +310,6 @@ class TestGetTemplateParamBaseIndices:
 
     def test_get_class_info_has_template_param_base_indices(self, analyzer):
         """get_class_info() should include template_param_base_indices field."""
-        analyzer.index_project()
 
         info = analyzer.get_class_info("ns::Adapter")
         assert info is not None
