@@ -42,9 +42,27 @@ from tests.utils.test_helpers import (
     temp_project,
 )
 
+
 def _cache_base_dir() -> Path:
     """Return the analyzer's actual cache base directory."""
-    return Path(__file__).parent.parent / "clang_index_mcp" / ".mcp_cache"
+    env_base = os.environ.get("MCP_CACHE_BASE_DIR")
+    if env_base:
+        base = Path(env_base)
+    else:
+        base = Path(__file__).parent.parent / "clang_index_mcp" / ".mcp_cache"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+# Isolate caches per pytest-xdist worker. Spawned analyzer worker processes
+# inherit the environment variable, so they write to the same worker-private base.
+# The base name keeps the '.mcp_cache' substring so tests that assert on the path
+# continue to pass.
+_xdist_worker = os.environ.get("PYTEST_XDIST_WORKER_ID") or os.environ.get("PYTEST_XDIST_WORKER")
+if _xdist_worker and "MCP_CACHE_BASE_DIR" not in os.environ:
+    os.environ["MCP_CACHE_BASE_DIR"] = str(
+        Path(tempfile.gettempdir()) / f".mcp_cache_{_xdist_worker}"
+    )
 
 
 # ============================================================================
