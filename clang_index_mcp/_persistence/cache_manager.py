@@ -87,7 +87,9 @@ class CacheManager:
         """Compute the cache directory for a project identity."""
         import os
 
-        env_base = os.environ.get("MCP_CACHE_BASE_DIR")
+        # MCP_CACHE_BASE_DIR takes precedence; CLANG_INDEX_CACHE_DIR is the
+        # legacy/user-facing alias and is honored when the newer variable is unset.
+        env_base = os.environ.get("MCP_CACHE_BASE_DIR") or os.environ.get("CLANG_INDEX_CACHE_DIR")
         if env_base:
             cache_base = Path(env_base)
         else:
