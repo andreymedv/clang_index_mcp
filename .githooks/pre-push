@@ -4,7 +4,7 @@
 # before allowing push to remote.
 #
 # Enforced (blocks push on failure):
-#   - make test        (pytest suite)
+#   - make test-fast   (pytest suite, parallel-safe + serial stages)
 #   - make format-check (black formatting)
 #   - make lint        (flake8)
 #   - make type-check  (mypy)
@@ -63,8 +63,8 @@ fi
 # === ENFORCED CHECKS (block push on failure) ===
 
 # Run tests
-echo -e "${YELLOW}Running tests (make test)...${NC}"
-if make test; then
+echo -e "${YELLOW}Running tests (make test-fast)...${NC}"
+if make test-fast; then
     echo -e "${GREEN}Tests passed!${NC}"
 else
     echo -e "${RED}Tests FAILED. Push aborted.${NC}"
