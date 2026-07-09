@@ -160,6 +160,7 @@ Treat the following behaviors as critical unless the task explicitly requires ch
   - `MCP_DEBUG=1` for verbose logging.
   - `PYTHONUNBUFFERED=1` for unbuffered output.
   - `LIBCLANG_PATH=/path/to/libclang.so` to override libclang discovery.
+  - `MCP_CACHE_BASE_DIR=/path/to/cache` to override the parent directory for all project caches (useful for test/CI isolation).
 
 ## Change Guidelines
 
