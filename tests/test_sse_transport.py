@@ -59,15 +59,20 @@ async def sse_server():
 
     # Poll the root endpoint until the server is ready
     base_url = f"http://{TEST_HOST}:{port}"
+    ready = False
     async with httpx.AsyncClient() as client:
-        for _ in range(50):
+        for _ in range(60):
             try:
-                response = await client.get(base_url, timeout=0.1)
+                response = await client.get(base_url, timeout=0.5)
                 if response.status_code == 200:
+                    ready = True
                     break
-            except (httpx.ConnectError, httpx.NetworkError):
+            except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException):
                 pass
             await asyncio.sleep(0.05)
+
+    if not ready:
+        pytest.fail(f"SSE server failed to start on {base_url}")
 
     yield base_url
 
