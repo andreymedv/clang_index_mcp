@@ -1,4 +1,4 @@
-.PHONY: help setup clean test test-coverage lint format check install run dev
+.PHONY: help setup clean test test-fast test-coverage lint format check install run dev
 
 # Detect operating system
 ifeq ($(OS),Windows_NT)
@@ -70,6 +70,13 @@ install-editable: ## Install package in editable mode for development
 test: ## Run all tests
 	@echo "$(BLUE)Running tests...$(NC)"
 	$(PYTHON) -m pytest -v
+	@echo "$(GREEN)Tests complete!$(NC)"
+
+test-fast: ## Run tests in parallel where safe, then serial tests
+	@echo "$(BLUE)Running tests in parallel mode...$(NC)"
+	$(PYTHON) -m pytest -q -n auto -m "not serial" --no-cov -p no:cacheprovider
+	@echo "$(BLUE)Running serial tests...$(NC)"
+	$(PYTHON) -m pytest -q -m "serial" --no-cov -p no:cacheprovider
 	@echo "$(GREEN)Tests complete!$(NC)"
 
 test-coverage: ## Run tests with coverage report
