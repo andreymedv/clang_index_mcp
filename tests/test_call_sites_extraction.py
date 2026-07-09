@@ -13,6 +13,7 @@ Tests call site tracking with line-level precision, covering:
 """
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -24,19 +25,32 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager
 
 
-@pytest.fixture
-def phase3_fixtures_dir(tmp_path):
-    """Get path to Phase 3 test fixtures."""
+@pytest.fixture(scope="module")
+def phase3_fixtures_dir(tmp_path_factory):
+    """Copy Phase 3 test fixtures to a module-private temp directory."""
     fixtures_path = Path(__file__).parent / "fixtures" / "phase3_samples"
-    return fixtures_path
+    project_path = tmp_path_factory.mktemp("phase3_samples")
+    for item in fixtures_path.iterdir():
+        if item.is_dir():
+            shutil.copytree(item, project_path / item.name)
+        else:
+            shutil.copy2(item, project_path / item.name)
+    return project_path
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def analyzer(phase3_fixtures_dir):
-    """Create a fresh analyzer instance for testing."""
-    # CppAnalyzer takes project directory, not cache_dir
+    """Create and index a module-scoped analyzer for the Phase 3 fixtures."""
     analyzer = CppAnalyzer(str(phase3_fixtures_dir))
-    return analyzer
+    analyzer.index_project()
+    try:
+        yield analyzer
+    finally:
+        if hasattr(analyzer, "cache_manager"):
+            cache_dir = analyzer.cache_manager.cache_dir
+            analyzer.cache_manager.close()
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 class TestBasicCallSiteExtraction:
