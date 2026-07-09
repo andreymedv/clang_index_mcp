@@ -245,6 +245,7 @@ void func5() { func4(); func3(); }
 
 @pytest.mark.slow
 @pytest.mark.benchmark
+@pytest.mark.serial
 class TestCacheBenchmarks:
     """Benchmarks for cache backend performance"""
 

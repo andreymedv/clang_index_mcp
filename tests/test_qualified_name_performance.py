@@ -228,6 +228,7 @@ namespace ns{i} {{
 
             print(f"\n  Small project indexing: {elapsed*1000:.0f}ms ({len(results)} classes)")
 
+    @pytest.mark.serial
     def test_incremental_refresh_performance(self):
         """Incremental refresh should be faster than full reindex."""
         with tempfile.TemporaryDirectory() as tmpdir:
