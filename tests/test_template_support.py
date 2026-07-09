@@ -13,16 +13,21 @@ import pytest
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
-@pytest.fixture
-def template_project_path(tmp_path):
-    """Copy template test project to a temp dir and generate compile_commands.json there.
+@pytest.fixture(scope="module")
+def template_project_path(tmp_path_factory):
+    """Copy template test project to a temp dir once per module.
 
     Writing into the fixture source directory would dirty the git working tree on every
-    test run, so we copy the sources to tmp_path instead.
+    test run, so we copy the sources to a temp dir instead and share the indexed result
+    across all tests in the module.
     """
     src_path = Path(__file__).parent / "fixtures/template_test_project"
-    project_path = tmp_path / "template_test_project"
-    shutil.copytree(src_path, project_path)
+    project_path = tmp_path_factory.mktemp("template_test_project")
+    for item in src_path.iterdir():
+        if item.is_dir():
+            shutil.copytree(item, project_path / item.name)
+        else:
+            shutil.copy2(item, project_path / item.name)
 
     files = ["main.cpp", "templates.h", "advanced_templates.h", "namespaced_templates.h"]
     compile_commands = [
@@ -39,9 +44,9 @@ def template_project_path(tmp_path):
     return project_path
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def analyzer(template_project_path):
-    """Create and index template test project."""
+    """Create and index template test project once per module."""
     analyzer = CppAnalyzer(project_root=str(template_project_path))
     analyzer.index_project(force=True)
     try:
@@ -972,14 +977,15 @@ class TestSpecializationLinkingEdgeCases:
 # ============================================================================
 
 
-@pytest.fixture
-def param_inheritance_project(tmp_path):
+@pytest.fixture(scope="module")
+def param_inheritance_project(tmp_path_factory):
     """
-    Create a test project with templates that inherit from template parameters.
+    Create a test project with templates that inherit from template parameters once per module.
 
     This tests the improvement where base_classes shows 'ParamName' instead of
     'type-parameter-0-0', making output LLM-friendly.
     """
+    tmp_path = tmp_path_factory.mktemp("param_inheritance")
     # Create header with template inheriting from parameter
     header = tmp_path / "param_inheritance.h"
     header.write_text("""
@@ -1068,9 +1074,9 @@ int main() {
     return tmp_path
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def param_inheritance_analyzer(param_inheritance_project):
-    """Create and index parameter inheritance test project."""
+    """Create and index parameter inheritance test project once per module."""
     analyzer = CppAnalyzer(project_root=str(param_inheritance_project))
     analyzer.index_project(force=True)
     try:
