@@ -74,9 +74,9 @@ test: ## Run all tests
 
 test-fast: ## Run tests in parallel where safe, then serial tests
 	@echo "$(BLUE)Running tests in parallel mode...$(NC)"
-	$(PYTHON) -m pytest -q -n auto -m "not serial" --no-cov -p no:cacheprovider
+	$(PYTHON) -m pytest -q -n auto -m "not serial" --no-cov -p no:cacheprovider --capture=no
 	@echo "$(BLUE)Running serial tests...$(NC)"
-	$(PYTHON) -m pytest -q -m "serial" --no-cov -p no:cacheprovider
+	$(PYTHON) -m pytest -q -m "serial" --no-cov -p no:cacheprovider --capture=no
 	@echo "$(GREEN)Tests complete!$(NC)"
 
 test-coverage: ## Run tests with coverage report

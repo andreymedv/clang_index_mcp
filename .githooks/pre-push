@@ -38,9 +38,19 @@ fi
 # Skip checks when pushing only ref deletions. Git passes each proposed ref on
 # stdin as: <local_ref> <local_sha1> <remote_ref> <remote_sha1>. For deletions,
 # <local_ref> is the literal string "(delete)".
+#
+# Use a short read timeout so the hook does not hang in agentic/non-interactive
+# environments that do not forward or close stdin for the pre-push hook.
 delete_count=0
 ref_count=0
-while read -r local_ref _ _ _; do
+while true; do
+    local_ref=""
+    if ! IFS= read -r -t 2 local_ref _ _ _; then
+        break
+    fi
+    if [ -z "$local_ref" ]; then
+        continue
+    fi
     ref_count=$((ref_count + 1))
     if [ "$local_ref" = "(delete)" ]; then
         delete_count=$((delete_count + 1))
@@ -51,6 +61,11 @@ if [ "$ref_count" -gt 0 ] && [ "$ref_count" -eq "$delete_count" ]; then
     echo -e "${GREEN}Push only deletes remote refs; skipping pre-push checks.${NC}"
     exit 0
 fi
+
+# Detach stdin before running the test suite. pytest-xdist inherits the Git
+# stdin pipe and can deadlock while waiting for it to close; redirecting stdin
+# to /dev/null avoids that.
+exec 0</dev/null
 
 # Check that pytest is available
 if ! python3 -m pytest --version >/dev/null 2>&1; then
