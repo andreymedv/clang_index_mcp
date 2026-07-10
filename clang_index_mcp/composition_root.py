@@ -10,7 +10,7 @@ CppAnalyzer delegates to CompositionRoot for initialization, keeping itself
 as a thin facade over the composed services.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from ._compilation.clang_parser import ClangParser
 from ._compilation.clang_symbol_parser import ClangSymbolParser
@@ -23,6 +23,7 @@ from ._indexing.indexing_pipeline import SingleFileIndexingPipeline
 from ._indexing.indexing_task_submitter import IndexingTaskSubmitter
 from ._indexing.refresh_pipeline import RefreshPipeline
 from ._indexing.worker_result_merger import WorkerResultMerger
+from ._persistence.cache_manager import CacheManager
 from ._persistence.cache_orchestrator import CacheOrchestrator
 from ._persistence.repositories.dependency_repository import SqliteDependencyRepository
 from ._persistence.sqlite_cache_backend import SqliteCacheBackend
@@ -31,7 +32,19 @@ from ._search.dependency_graph import DependencyGraphBuilder
 from ._search.query_engine import QueryEngine
 from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
+from ._symbols.ports.parser import TypeAliasRecord
 from .project_context import ProjectContext
+
+
+class AliasPersistenceAdapter:
+    """Adapts CacheManager.save_type_aliases_batch to the AliasPersistence port."""
+
+    def __init__(self, cache_manager: CacheManager):
+        self._cache_manager = cache_manager
+
+    def save_aliases(self, aliases: List[TypeAliasRecord]) -> int:
+        """Persist aliases via the cache manager."""
+        return self._cache_manager.save_type_aliases_batch(aliases)
 
 
 class CompositionRoot:
@@ -93,11 +106,10 @@ class CompositionRoot:
         self.call_graph_service = CallGraphService(self.cache_manager)
         self.context.symbols.call_graph_service = self.call_graph_service
 
-        # 2. SymbolIndexStore (needs concurrency and call graph)
+        # 2. SymbolIndexStore (needs lock provider and call graph)
         self.symbol_store = SymbolIndexStore(
-            get_lock=self.concurrency.get_lock,
-            index_lock=self.concurrency.index_lock,
-            get_thread_local_buffers=self.concurrency.get_thread_local_buffers,
+            lock_provider=self.concurrency.index_lock,
+            alias_persistence=AliasPersistenceAdapter(self.cache_manager),
             cache_manager=self.cache_manager,
             call_graph_port=self.call_graph_service.call_graph_analyzer,
         )
@@ -171,7 +183,6 @@ class CompositionRoot:
         # 7. SymbolExtractor
         self.symbol_extractor = SymbolExtractor(
             symbol_store=self.symbol_store,
-            concurrency=self.concurrency,
             compilation_env=self.compilation_env,
             cache_orchestrator=self.cache_orchestrator,
             call_graph_service=self.call_graph_service,
@@ -191,7 +202,6 @@ class CompositionRoot:
             compilation_env=self.compilation_env,
         )
         self.worker_result_merger = WorkerResultMerger(
-            concurrency=self.concurrency,
             symbol_store=self.symbol_store,
             call_graph_service=self.call_graph_service,
             cache_orchestrator=self.cache_orchestrator,
@@ -202,7 +212,6 @@ class CompositionRoot:
             compilation_env=self.compilation_env,
             cache_orchestrator=self.cache_orchestrator,
             cache_manager=self.cache_manager,
-            concurrency=self.concurrency,
             symbol_store=self.symbol_store,
         )
         self.refresh_pipeline = RefreshPipeline(
