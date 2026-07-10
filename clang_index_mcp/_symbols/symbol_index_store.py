@@ -6,17 +6,19 @@ and index maintenance operations.
 """
 
 import dataclasses
-import threading
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from .._persistence.cache_manager import CacheManager
 
 from .._core import diagnostics
 from .._symbols.model import CLASS_KINDS, SymbolInfo, is_richer_definition
 from .._symbols import symbol_resolver, template_symbol_indexer
+from .._symbols.ports.alias_persistence import AliasPersistence
 from .._symbols.ports.call_graph import CallGraphPort
-
-if TYPE_CHECKING:
-    from .._persistence.cache_manager import CacheManager
+from .._symbols.ports.lock_provider import LockProvider
+from .._symbols.ports.parser import CallSiteRecord, TypeAliasRecord
 
 
 class SymbolIndexStore:
@@ -27,9 +29,8 @@ class SymbolIndexStore:
 
     def __init__(
         self,
-        get_lock: Callable[[], Any],
-        index_lock: threading.RLock,
-        get_thread_local_buffers: Callable[[], Any],
+        lock_provider: LockProvider,
+        alias_persistence: AliasPersistence,
         cache_manager: "CacheManager",
         call_graph_port: CallGraphPort,
     ):
@@ -37,16 +38,15 @@ class SymbolIndexStore:
         Initialize SymbolIndexStore.
 
         Args:
-            get_lock: Callable that returns a threading lock for thread-safe operations.
-            index_lock: The shared index lock for read/write operations.
-            get_thread_local_buffers: Callable that returns thread-local buffers for bulk writes.
-            cache_manager: Cache manager for saving type aliases.
+            lock_provider: Lock used to protect read/write operations on the index.
+            alias_persistence: Port for persisting type aliases during bulk writes.
+            cache_manager: Cache manager for backend symbol fallback.
             call_graph_port: Port for call graph updates.
         """
         self.call_graph_port = call_graph_port
-        self._get_lock = get_lock
-        self.index_lock = index_lock
-        self._get_thread_local_buffers = get_thread_local_buffers
+        self._lock_provider = lock_provider
+        self.index_lock = lock_provider
+        self._alias_persistence = alias_persistence
         self._cache_manager = cache_manager
 
         # Indexes for fast lookup
@@ -170,7 +170,7 @@ class SymbolIndexStore:
                 usr_updates[symbol.usr] = symbol
 
         # Apply all updates with a single lock acquisition
-        with self._get_lock():
+        with self._lock_provider:
             # Clear old entries for this file
             self.clear_file_index_entries(file_path)
 
@@ -286,27 +286,35 @@ class SymbolIndexStore:
         # Rebuild call graph from all symbols
         self.call_graph_port.rebuild_from_symbols(all_symbols)
 
-    def bulk_write_symbols(self) -> int:
+    def bulk_write_symbols(
+        self,
+        symbols: List[SymbolInfo],
+        calls: List[CallSiteRecord],
+        aliases: List[TypeAliasRecord],
+    ) -> int:
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
 
-        Takes all symbols collected in thread-local buffers during parsing and adds
-        them to the shared indexes in one atomic operation, reducing lock contention.
+        The caller (e.g. SymbolExtractor) supplies the parsed symbols, call sites and
+        type aliases explicitly. All updates are applied under one lock acquisition.
+
+        Args:
+            symbols: Symbols collected during AST traversal.
+            calls: Call-site records collected during AST traversal.
+            aliases: Type-alias records collected during AST traversal.
 
         Returns:
-            Number of symbols actually added (after deduplication)
+            Number of symbols actually added (after deduplication).
         """
-        symbols_buffer, calls_buffer, aliases_buffer = self._get_thread_local_buffers()
-
-        if not symbols_buffer and not calls_buffer and not aliases_buffer:
+        if not symbols and not calls and not aliases:
             return 0
 
         added_count = 0
 
-        # Single lock acquisition for all symbols (conditional based on execution mode)
-        with self._get_lock():
+        # Single lock acquisition for all updates
+        with self._lock_provider:
             # Add all collected symbols
-            for info in symbols_buffer:
+            for info in symbols:
                 # USR-based deduplication with definition-wins logic
                 if info.usr and info.usr in self.usr_index:
                     existing_symbol = self.usr_index[info.usr]
@@ -328,24 +336,19 @@ class SymbolIndexStore:
                 added_count += 1
 
             # Add all collected call relationships
-            self.call_graph_port.process_call_buffer(calls_buffer)
+            self.call_graph_port.process_call_buffer(calls)
 
-            # Add all collected type aliases
-            if aliases_buffer:
-                diagnostics.debug(f"Processing {len(aliases_buffer)} type aliases from buffer")
-                saved_count = self._cache_manager.save_type_aliases_batch(aliases_buffer)
+            # Persist all collected type aliases
+            if aliases:
+                diagnostics.debug(f"Processing {len(aliases)} type aliases from buffer")
+                saved_count = self._alias_persistence.save_aliases(aliases)
                 diagnostics.debug(f"Saved {saved_count} type aliases to cache")
-
-        # Clear buffers for next use
-        symbols_buffer.clear()
-        calls_buffer.clear()
-        aliases_buffer.clear()
 
         return added_count
 
     def remove_file(self, file_path: str) -> None:
         """Remove all symbols and metadata for a deleted file from the in-memory indexes."""
-        with self.index_lock:
+        with self._lock_provider:
             self._remove_file_from_indexes(file_path)
             self.file_hashes.pop(file_path, None)
 
@@ -417,7 +420,7 @@ class SymbolIndexStore:
         Delegates to the internal merge logic with deduplication.
         Used by incremental analyzer for individual symbol additions.
         """
-        with self.index_lock:
+        with self._lock_provider:
             self.merge_symbol_into_indexes(symbol)
 
     def remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
@@ -425,7 +428,7 @@ class SymbolIndexStore:
 
         Used by incremental analyzer for individual symbol removals.
         """
-        with self.index_lock:
+        with self._lock_provider:
             self._remove_symbol_from_indexes(symbol)
 
     # ------------------------------------------------------------------
