@@ -24,6 +24,7 @@
 .claude/skills/**/__pycache__/
 .idea/
 .kimi/
+.vscode/
 .mcp.json
 .mcp_cache/*
 clang_index_mcp/.mcp_cache/*
