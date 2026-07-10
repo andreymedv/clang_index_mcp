@@ -94,39 +94,20 @@ class TestProcessPoolExecutor(unittest.TestCase):
 class TestBulkSymbolWrites(unittest.TestCase):
     """Test bulk symbol write optimization"""
 
-    def test_thread_local_buffers_initialization(self):
-        """Thread-local buffers should initialize correctly"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            analyzer = CppAnalyzer(tmpdir)
-
-            # Initialize buffers
-            analyzer.context.concurrency.init_thread_local_buffers()
-
-            # Check buffers exist and are empty
-            symbols, calls, aliases = analyzer.context.concurrency.get_thread_local_buffers()
-            self.assertIsInstance(symbols, list)
-            self.assertIsInstance(calls, list)
-            self.assertIsInstance(aliases, list)
-            self.assertEqual(len(symbols), 0)
-            self.assertEqual(len(calls), 0)
-            self.assertEqual(len(aliases), 0)
-
     def test_bulk_write_with_empty_buffers(self):
         """Bulk write with empty buffers should return 0"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer.context.concurrency.init_thread_local_buffers()
 
-            result = analyzer.context.symbol_store.bulk_write_symbols()
+            result = analyzer.context.symbol_store.bulk_write_symbols([], [], [])
             self.assertEqual(result, 0, "Should return 0 for empty buffers")
 
     def test_bulk_write_adds_symbols(self):
         """Bulk write should add symbols to indexes"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer.context.concurrency.init_thread_local_buffers()
 
-            # Create test symbols
+            # Create test symbol
             test_symbol = SymbolInfo(
                 name="TestClass",
                 kind="class",
@@ -137,12 +118,8 @@ class TestBulkSymbolWrites(unittest.TestCase):
                 usr="c:@S@TestClass",
             )
 
-            # Add to buffer
-            symbols, _, _ = analyzer.context.concurrency.get_thread_local_buffers()
-            symbols.append(test_symbol)
-
             # Bulk write
-            added = analyzer.context.symbol_store.bulk_write_symbols()
+            added = analyzer.context.symbol_store.bulk_write_symbols([test_symbol], [], [])
 
             # Verify
             self.assertEqual(added, 1, "Should add 1 symbol")
@@ -153,7 +130,6 @@ class TestBulkSymbolWrites(unittest.TestCase):
         """Bulk write should deduplicate symbols with same USR"""
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = CppAnalyzer(tmpdir)
-            analyzer.context.concurrency.init_thread_local_buffers()
 
             # Create duplicate symbols
             symbol1 = SymbolInfo(
@@ -176,13 +152,8 @@ class TestBulkSymbolWrites(unittest.TestCase):
                 usr="c:@S@TestClass",
             )
 
-            # Add both to buffer
-            symbols, _, _ = analyzer.context.concurrency.get_thread_local_buffers()
-            symbols.append(symbol1)
-            symbols.append(symbol2)
-
-            # Bulk write
-            added = analyzer.context.symbol_store.bulk_write_symbols()
+            # Bulk write both
+            added = analyzer.context.symbol_store.bulk_write_symbols([symbol1, symbol2], [], [])
 
             # Should only add first symbol, deduplicate second
             self.assertEqual(added, 1, "Should deduplicate and add only 1 symbol")
@@ -334,47 +305,6 @@ class TestOrjsonSupport(unittest.TestCase):
             self.assertTrue(len(manager.compile_commands) > 0)
 
 
-@unittest.skipUnless(CLANG_AVAILABLE, "libclang not available")
-class TestThreadLocalBuffers(unittest.TestCase):
-    """Test thread-local buffer functionality"""
-
-    def test_buffers_are_thread_local(self):
-        """Buffers should be separate per thread"""
-        import threading
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            analyzer = CppAnalyzer(tmpdir)
-            results = {}
-
-            def worker(thread_id):
-                analyzer.context.concurrency.init_thread_local_buffers()
-                symbols, calls, aliases = analyzer.context.concurrency.get_thread_local_buffers()
-                # Add unique symbol to this thread's buffer
-                symbols.append(
-                    SymbolInfo(
-                        name=f"Class{thread_id}",
-                        kind="class",
-                        file="test.cpp",
-                        line=thread_id,
-                        column=1,
-                        is_project=True,
-                        usr=f"c:@S@Class{thread_id}",
-                    )
-                )
-                results[thread_id] = len(symbols)
-
-            # Run in multiple threads
-            threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-
-            # Each thread should have had 1 symbol in its buffer
-            for thread_id, count in results.items():
-                self.assertEqual(count, 1, f"Thread {thread_id} should have 1 symbol")
-
-
 def run_tests():
     """Run all performance optimization tests"""
     loader = unittest.TestLoader()
@@ -386,7 +316,6 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestBulkSymbolWrites))
     suite.addTests(loader.loadTestsFromTestCase(TestCompileCommandsBinaryCache))
     suite.addTests(loader.loadTestsFromTestCase(TestOrjsonSupport))
-    suite.addTests(loader.loadTestsFromTestCase(TestThreadLocalBuffers))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

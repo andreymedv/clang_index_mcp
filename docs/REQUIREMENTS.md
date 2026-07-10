@@ -1716,9 +1716,9 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-11.2.3**: Header identity for deduplication SHALL be based solely on the header's file path (absolute path).
 
-**REQ-11.2.4**: The system SHALL maintain a thread-safe tracker of processed headers to coordinate first-win logic across concurrent source file analyses.
+**REQ-11.2.4**: The system SHALL maintain a concurrent tracker of processed headers to coordinate first-win logic across concurrent source file analyses.
 
-**REQ-11.2.5**: The header tracker SHALL prevent race conditions when multiple threads attempt to claim the same header simultaneously.
+**REQ-11.2.5**: The header tracker SHALL prevent race conditions when multiple concurrent analyses attempt to claim the same header.
 
 **Rationale**: First-win strategy provides significant performance improvement (5-10×) for projects with headers included by multiple source files, while maintaining correctness through USR-based symbol deduplication.
 
@@ -1760,13 +1760,13 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-11.5.5**: The header tracker cache SHALL be stored in the project-specific cache directory (`.mcp_cache/{project}/header_tracker.json`).
 
-### 11.6 Thread Safety
+### 11.6 Concurrency Safety
 
-**REQ-11.6.1**: The header processing tracker SHALL use a threading Lock to protect all access to internal state (`_processed`, `_in_progress`).
+**REQ-11.6.1**: The header processing tracker SHALL use a Lock to protect all access to internal state (`_processed`, `_in_progress`).
 
 **REQ-11.6.2**: The `try_claim_header()` operation SHALL be atomic: checking processed state, checking in-progress state, and claiming the header must occur within a single lock acquisition.
 
-**REQ-11.6.3**: Multiple threads analyzing different source files simultaneously SHALL correctly coordinate header extraction without race conditions.
+**REQ-11.6.3**: Multiple parallel analyses of different source files SHALL correctly coordinate header extraction without race conditions.
 
 **REQ-11.6.4**: The system SHALL ensure that each header is extracted exactly once, even under high concurrency (e.g., 16 parallel workers).
 
@@ -1839,7 +1839,7 @@ These requirements imply the following testing needs:
 9. **Configuration Tests**: Verify configuration loading and merging
 10. **Integration Tests**: Verify end-to-end workflows with real C++ projects
 11. **Tools During Analysis Tests**: Verify querying during indexing, partial results with metadata, state transitions, background indexing, notification warnings, race condition fix, and concurrent query safety
-12. **Header Extraction Tests**: Verify header discovery, first-win strategy, change detection, thread safety, and performance improvements
+12. **Header Extraction Tests**: Verify header discovery, first-win strategy, change detection, concurrency safety, and performance improvements
 
 ---
 
@@ -1858,7 +1858,7 @@ These requirements imply the following testing needs:
     - REQ-10.6: New MCP Tools (10 requirements - get_indexing_status, wait_for_indexing)
     - REQ-10.7: Query Behavior Policy (7 requirements)
     - REQ-10.8: Notification Requirements (7 requirements)
-    - REQ-10.9: Thread Safety During Queries (5 requirements)
+    - REQ-10.9: Concurrency Safety During Queries (5 requirements)
     - REQ-10.10: Backward Compatibility (5 requirements)
     - REQ-10.11: Race Condition Fix (5 requirements)
     - REQ-10.12: Performance Requirements (5 requirements)
@@ -1873,7 +1873,7 @@ These requirements imply the following testing needs:
     - REQ-10.3: Header Change Detection (4 requirements)
     - REQ-10.4: compile_commands.json Versioning (4 requirements)
     - REQ-10.5: Header Tracking Persistence (5 requirements)
-    - REQ-10.6: Thread Safety (4 requirements)
+    - REQ-10.6: Concurrency Safety (4 requirements)
     - REQ-10.7: Symbol Deduplication (4 requirements)
     - REQ-10.8: Cache Structure Extensions (3 requirements)
     - REQ-10.9: Performance Requirements (3 requirements)

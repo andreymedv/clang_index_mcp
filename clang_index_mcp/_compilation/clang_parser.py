@@ -1,4 +1,3 @@
-import threading
 from typing import Any, Callable, List, Optional, Tuple
 
 from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError, Diagnostic
@@ -9,6 +8,11 @@ from .._core import diagnostics
 class ClangParser:
     """
     Handles libclang Index and TranslationUnit management.
+
+    This parser is intentionally not thread-safe: one instance must be used
+    by a single indexing thread/process. The analyzer already creates a
+    separate ClangParser per worker process, so no thread-local caching is
+    required.
     """
 
     def __init__(
@@ -23,21 +27,12 @@ class ClangParser:
                 Signature: (file_path, error, file_hash, compile_args_hash, retry_count) -> Any
         """
         self._log_parse_error = log_parse_error
-        self._thread_local = threading.local()
-
-    def _get_thread_index(self) -> Index:
-        """Return a thread-local libclang Index instance."""
-        index = getattr(self._thread_local, "index", None)
-        if index is None:
-            index = Index.create()
-            self._thread_local.index = index
-        return index
+        self._index: Index = Index.create()
 
     def try_parse_with_fallback(
         self, file_path: str, args: List[str]
     ) -> Tuple[Optional[TranslationUnit], Optional[str]]:
         """Try parsing with progressive fallback if initial attempt fails."""
-        index = self._get_thread_index()
         parse_options_attempts = [
             (
                 TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
@@ -50,7 +45,7 @@ class ClangParser:
         last_error = None
         for options, description in parse_options_attempts:
             try:
-                tu = index.parse(file_path, args=args, options=options)
+                tu = self._index.parse(file_path, args=args, options=options)
                 if tu:
                     if description != "full detailed processing":
                         diagnostics.debug(f"{file_path}: parsed with {description}")

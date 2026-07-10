@@ -41,7 +41,7 @@ This document describes the architecture for extracting C++ symbols from header 
 
 ## Architecture Components
 
-### Component 1: Thread-Safe Header Processing Tracker
+### Component 1: Header Processing Tracker
 
 A lightweight tracker that coordinates which headers have been processed to prevent redundant work.
 
@@ -50,7 +50,7 @@ A lightweight tracker that coordinates which headers have been processed to prev
 ```python
 class HeaderProcessingTracker:
     """
-    Thread-safe tracker using only header path as key.
+    Header processing tracker using only header path as key.
     Assumes: same compile_commands.json version → same header parsing results
     """
 
@@ -71,7 +71,7 @@ class HeaderProcessingTracker:
    - **First-Win Logic:** Returns `True` if this caller should process the header
    - Returns `False` if already processed or being processed
    - **Automatic Invalidation:** If header file hash changed, re-processes it
-   - Thread-safe via lock
+   - Process-local with lock for defensive main-process use
 
 2. `mark_completed(header_path: str, file_hash: str)`
    - Marks header as fully processed
@@ -500,12 +500,12 @@ For a project with:
 
 ### Edge Case 1: Concurrent Source Analysis
 
-**Scenario:** Multiple threads/processes analyzing different sources simultaneously
+**Scenario:** Multiple worker processes analyzing different sources in parallel
 
 **Handling:**
-- `try_claim_header()` uses lock for thread-safety
-- First thread to claim header wins
-- Other threads skip and continue
+- `try_claim_header()` uses lock for defensive coordination
+- First worker to claim header wins
+- Other workers skip and continue
 - **Safe:** No duplicate extraction, no race conditions
 
 ### Edge Case 2: Header File Deleted
@@ -544,7 +544,7 @@ For a project with:
 1. **HeaderProcessingTracker Tests:**
    - Test `try_claim_header()` first-win logic
    - Test hash-based invalidation
-   - Test thread-safety with concurrent claims
+   - Test coordination with concurrent claims
 
 2. **Compile Commands Hash Tests:**
    - Test hash calculation
@@ -661,6 +661,6 @@ This architecture provides efficient header symbol extraction for `compile_comma
 2. **Simplified tracking:** Header path as sole key, compile commands hash for versioning
 3. **Safe assumptions:** Documented and acceptable for code analysis use case
 4. **Automatic invalidation:** File hash and compile commands changes trigger re-processing
-5. **Thread-safe:** Lock-based coordination for concurrent analysis
+5. **Concurrent-safe:** Lock-based coordination for parallel analysis
 
 The approach balances **correctness**, **performance**, and **simplicity**, with clear documentation of trade-offs and future enhancement paths.

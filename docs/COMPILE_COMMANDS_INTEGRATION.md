@@ -247,7 +247,7 @@ To optimize performance when multiple source files include the same header, the 
 **How it works:**
 - Header tracking is based on the header's file path
 - File hash (MD5) is stored to detect changes
-- Thread-safe coordination prevents race conditions during parallel analysis
+- Parallel-worker coordination prevents race conditions during parallel analysis
 
 ### Header Change Detection
 
@@ -347,11 +347,11 @@ public:
 
 The first-win strategy eliminates redundant processing, providing significant performance improvements for large projects with shared headers.
 
-### Thread Safety
+### Parallel-Worker Coordination
 
-Header extraction is fully thread-safe:
-- Atomic claim operations using threading.Lock
-- Race condition prevention when multiple threads analyze sources simultaneously
+Header extraction is coordinated across parallel workers:
+- Atomic claim operations using `threading.Lock` (defensive; each worker is single-threaded)
+- Race condition prevention when multiple worker processes analyze sources in parallel
 - Guarantee: Each header processed exactly once, even with 16+ parallel workers
 
 ### Assumptions and Limitations
