@@ -184,7 +184,7 @@ sequenceDiagram
 
     MP->>WP: submit(IndexingTaskSpec)
     Note over WP: parse + AST traversal
-    WP->>WP: fill thread-local buffers
+    WP->>WP: collect parse result
     WP->>WP: bulk_write_symbols() to local indexes
     WP->>DB: save_type_aliases_batch()
     WP->>DB: save_file_cache()
@@ -217,7 +217,7 @@ Call sites go through the main process because they require atomic per-file repl
 ### Lock Minimization
 
 - Workers parse and extract independently. They never hold the main process `index_lock`.
-- `SymbolExtractor` uses thread-local buffers during AST traversal and acquires a lock only once for `bulk_write_symbols()`.
+- `SymbolExtractor` collects parser results during AST traversal and applies them in a single `bulk_write_symbols()` call under one lock acquisition.
 - The main process `index_lock` is held only for the brief merge of one file's results.
 - SQLite WAL mode separates readers from writers; a busy handler resolves short conflicts.
 
@@ -226,7 +226,7 @@ Call sites go through the main process because they require atomic per-file repl
 | Primitive | Type | Protects | Location |
 |---|---|---|---|
 | `ConcurrencyContext.index_lock` | `threading.RLock` | Main process `SymbolIndexStore` | `_core/concurrency_context.py` |
-| Worker-local lock | `threading.RLock` | Worker-local `SymbolIndexStore` | per-worker `ConcurrencyContext` |
+| Worker-local lock | `threading.RLock` | Worker-local `SymbolIndexStore` (single indexing thread per worker) | per-worker `ConcurrencyContext` |
 | `AnalyzerStateManager._lock` | `threading.Lock` | State + active tool counter | `_mcp/state_manager.py` |
 | `_tools_event` | `threading.Event` | Tool-call priority over indexing | `_mcp/state_manager.py` |
 | `_indexed_event` | `threading.Event` | Completion signal for indexing | `_mcp/state_manager.py` |

@@ -17,7 +17,6 @@ from .._core import diagnostics
 if TYPE_CHECKING:
     from .._compilation.clang_parser import ClangParser
     from .._compilation.compilation_environment import CompilationEnvironment
-    from .._core.concurrency_context import ConcurrencyContext
     from .._persistence.cache_manager import CacheManager
     from .._persistence.cache_orchestrator import CacheOrchestrator
     from .._symbols.symbol_extractor import SymbolExtractor
@@ -34,7 +33,6 @@ class SingleFileIndexingPipeline:
         compilation_env: "CompilationEnvironment",
         cache_orchestrator: "CacheOrchestrator",
         cache_manager: "CacheManager",
-        concurrency: "ConcurrencyContext",
         symbol_store: "SymbolIndexStore",
     ):
         """
@@ -46,7 +44,6 @@ class SingleFileIndexingPipeline:
             compilation_env: Compilation environment for file scanning.
             cache_orchestrator: Cache orchestration and header tracking.
             cache_manager: SQLite-backed cache and persistence.
-            concurrency: Concurrency context with index_lock.
             symbol_store: In-memory symbol indexes.
         """
         self.clang_parser = clang_parser
@@ -54,7 +51,6 @@ class SingleFileIndexingPipeline:
         self.compilation_env = compilation_env
         self.cache_orchestrator = cache_orchestrator
         self.cache_manager = cache_manager
-        self.concurrency = concurrency
         self.symbol_store = symbol_store
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
@@ -179,7 +175,7 @@ class SingleFileIndexingPipeline:
         cache_error_msg: Optional[str],
     ) -> tuple[bool, bool]:
         """Clear old entries, process TU, collect symbols, and save to cache."""
-        with self.concurrency.get_lock():
+        with self.symbol_store.index_lock:
             self.symbol_store.clear_file_index_entries(file_path)
 
         extraction_result = self.symbol_extractor.index_translation_unit(tu, file_path)
@@ -190,7 +186,7 @@ class SingleFileIndexingPipeline:
                 f"({processed_count - 1} headers extracted, {len(extraction_result['skipped'])} skipped)"
             )
 
-        with self.concurrency.get_lock():
+        with self.symbol_store.index_lock:
             collected_symbols = self.symbol_store.get_symbols_in_file(file_path).copy()
             del tu
 

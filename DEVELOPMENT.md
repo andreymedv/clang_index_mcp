@@ -175,7 +175,7 @@ pip install pytest pytest-cov pytest-asyncio black flake8 mypy pre-commit
 
 - **Lazy Initialization**: Indexing deferred until first query
 - **Index Pattern**: Pre-built O(1) lookup dictionaries
-- **Factory Pattern**: Thread-local Index creation
+- **Factory Pattern**: Per-parser Index creation
 - **Observer Pattern**: Cache invalidation on file changes
 - **Strategy Pattern**: Platform-specific library loading
 
@@ -219,7 +219,7 @@ For comprehensive details, see `HEADER_EXTRACTION_ARCHITECTURE.md`.
 
 #### Design Patterns Used
 
-**Thread-Safe Tracker with Lock-Based Coordination**
+**First-Win Header Tracker with Lock-Based Coordination**
 ```python
 class HeaderProcessingTracker:
     def __init__(self):
@@ -238,7 +238,7 @@ class HeaderProcessingTracker:
             return True
 ```
 
-**Why**: Prevents race conditions when multiple threads analyze different sources simultaneously.
+**Why**: Prevents race conditions when multiple worker processes analyze sources in parallel.
 
 **Closure-Based Filtering (Callback Pattern)**
 ```python
@@ -806,7 +806,7 @@ rm -rf .mcp_cache/your_project_*
 **Solutions**:
 - Increase `max_file_size_mb` filter
 - Exclude large dependency directories
-- Reduce parallel thread count
+- Reduce `max_workers`
 - Process files in batches
 
 ### Windows Path Issues

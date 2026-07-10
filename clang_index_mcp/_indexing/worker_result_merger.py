@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Tuple
 from .._core import diagnostics
 
 if TYPE_CHECKING:
-    from .._core.concurrency_context import ConcurrencyContext
     from .._persistence.cache_orchestrator import CacheOrchestrator
     from .._search.call_graph_service import CallGraphService
     from .._symbols.symbol_index_store import SymbolIndexStore
@@ -22,7 +21,6 @@ class WorkerResultMerger:
 
     def __init__(
         self,
-        concurrency: "ConcurrencyContext",
         symbol_store: "SymbolIndexStore",
         call_graph_service: "CallGraphService",
         cache_orchestrator: "CacheOrchestrator",
@@ -31,12 +29,10 @@ class WorkerResultMerger:
         Initialize the worker result merger.
 
         Args:
-            concurrency: Concurrency context with index_lock.
             symbol_store: In-memory symbol indexes.
             call_graph_service: Call graph and dependency tracking.
             cache_orchestrator: Cache orchestration and header tracking.
         """
-        self.concurrency = concurrency
         self.symbol_store = symbol_store
         self.call_graph_service = call_graph_service
         self.cache_orchestrator = cache_orchestrator
@@ -46,7 +42,7 @@ class WorkerResultMerger:
         _, success, was_cached, symbols, call_sites, processed_headers = result
 
         if success and symbols:
-            with self.concurrency.index_lock:
+            with self.symbol_store.index_lock:
                 # CRITICAL: Clear old entries for this file FIRST (before adding new symbols)
                 # This ensures that modified files don't have duplicate/stale symbols
                 self.symbol_store.clear_file_index_entries(file_path)
