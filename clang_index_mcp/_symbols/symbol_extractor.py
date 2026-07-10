@@ -14,12 +14,11 @@ from clang.cindex import TranslationUnit
 
 from .._core import diagnostics
 from .._symbols.model import SymbolInfo
-from .._symbols.ports.parser import ParseResult, SymbolParser
+from .._symbols.ports.parser import SymbolParser
 from .._compilation.template_resolver import TemplateResolver
 
 if TYPE_CHECKING:
     from .._compilation.compilation_environment import CompilationEnvironment
-    from .._core.concurrency_context import ConcurrencyContext
     from .._persistence.cache_orchestrator import CacheOrchestrator
     from .._symbols.symbol_index_store import SymbolIndexStore
 
@@ -30,7 +29,6 @@ class SymbolExtractor:
     def __init__(
         self,
         symbol_store: "SymbolIndexStore",
-        concurrency: "ConcurrencyContext",
         compilation_env: "CompilationEnvironment",
         cache_orchestrator: "CacheOrchestrator",
         call_graph_service: Any,
@@ -41,7 +39,6 @@ class SymbolExtractor:
 
         Args:
             symbol_store: In-memory symbol indexes.
-            concurrency: Concurrency context with index_lock.
             compilation_env: Compilation environment for file scanning.
             cache_orchestrator: Cache orchestration and header tracking.
             call_graph_service: Call graph and dependency tracking.
@@ -49,14 +46,9 @@ class SymbolExtractor:
         """
         self.parser = parser
         self.symbol_store = symbol_store
-        self.concurrency = concurrency
         self.compilation_env = compilation_env
         self.cache_orchestrator = cache_orchestrator
         self.call_graph_service = call_graph_service
-
-    @property
-    def index_lock(self):
-        return self.concurrency.index_lock
 
     @property
     def class_index(self):
@@ -86,7 +78,7 @@ class SymbolExtractor:
 
     def _find_primary_template_info(self, primary_template_usr: str) -> Optional[Any]:
         """Look up the primary template in class_index by USR."""
-        with self.index_lock:
+        with self.symbol_store.index_lock:
             for name, infos in self.class_index.items():
                 for info in infos:
                     if info.usr == primary_template_usr:
@@ -205,13 +197,6 @@ class SymbolExtractor:
             except Exception as e:
                 diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
 
-    def _apply_parse_result(self, result: ParseResult) -> None:
-        """Copy parser results into thread-local buffers for bulk writing."""
-        symbols_buffer, calls_buffer, aliases_buffer = self.concurrency.get_thread_local_buffers()
-        symbols_buffer.extend(result.symbols)
-        calls_buffer.extend(result.call_sites)
-        aliases_buffer.extend(result.type_aliases)
-
     def index_translation_unit(self, tu: TranslationUnit, source_file: str) -> Dict[str, Any]:
         """Process translation unit, extracting symbols from source and project headers."""
         processed_files: Set[str] = set()
@@ -236,10 +221,8 @@ class SymbolExtractor:
                 skipped_headers.add(file_path)
                 return False
 
-        self.concurrency.init_thread_local_buffers()
         result = self.parser.parse(tu, source_file, should_extract_from_file)
-        self._apply_parse_result(result)
-        self.symbol_store.bulk_write_symbols()
+        self.symbol_store.bulk_write_symbols(result.symbols, result.call_sites, result.type_aliases)
 
         self._finalize_header_status(result.processed_headers)
         self._update_dependency_graph(tu, source_file)
