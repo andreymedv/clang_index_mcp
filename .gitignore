@@ -1,6 +1,5 @@
 
 !.claude/skills/
-!.mcp_cache/.gitkeep
 !.test-projects/README.md
 !.test-scenarios/*.yaml
 !.test-scenarios/README.md
@@ -15,17 +14,13 @@
 # Python build artifacts
 # Test projects (managed by /test-mcp skill)
 # Test results (optional - can be kept for history)
-# Tool definition backups (created by optimize.py)
 # Virtual environment
 *.egg-info/
 *.py[cod]
-.aider*
 .claude/
-.claude/skills/**/__pycache__/
 .idea/
 .kimi/
 .vscode/
-.mcp.json
 .mcp_cache/*
 clang_index_mcp/.mcp_cache/*
 .test-projects/
@@ -35,9 +30,7 @@ __pycache__/
 benchmark_results.jsonl
 build/
 dist/
-lib/**/libclang*
 mcp_env/
-clang_index_mcp/consolidated_tools.py.bak
 clang_index_mcp/libclang/
 mock_test_results.json
 tests/pytest.log
