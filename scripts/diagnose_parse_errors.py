@@ -44,17 +44,18 @@ def diagnose_file(project_path: str, file_path: str):
     # Create analyzer to get compilation arguments
     print("1. Initializing analyzer...")
     analyzer = CppAnalyzer(str(project_path))
-    print(f"   Compile commands enabled: {analyzer.compile_commands_manager.enabled}")
-    print(
-        f"   Clang resource dir: {analyzer.compile_commands_manager.clang_resource_dir or 'NOT FOUND'}"
-    )
+    ccm = analyzer.context.compile_commands_manager
+    compile_commands_enabled = analyzer.context.is_compile_commands_enabled()
+    print(f"   Compile commands enabled: {compile_commands_enabled}")
+    clang_resource_dir = ccm.clang_resource_dir if ccm is not None else None
+    print(f"   Clang resource dir: {clang_resource_dir or 'NOT FOUND'}")
     print()
 
     # Get compilation arguments
     print("2. Getting compilation arguments...")
-    args = analyzer.compile_commands_manager.get_compile_args_with_fallback(file_path)
+    args = ccm.get_compile_args_with_fallback(file_path)
 
-    is_from_compile_commands = analyzer.compile_commands_manager.is_file_supported(file_path)
+    is_from_compile_commands = ccm.is_file_supported(file_path)
     source = "compile_commands.json" if is_from_compile_commands else "fallback (hardcoded)"
     print(f"   Source: {source}")
     print(f"   Number of args: {len(args)}")
@@ -118,7 +119,7 @@ def diagnose_file(project_path: str, file_path: str):
         print()
         print("   Possible issues:")
         print("   1. Missing system headers")
-        if not analyzer.compile_commands_manager.clang_resource_dir:
+        if not clang_resource_dir:
             print("      → Clang resource directory not detected")
             print("      → Install clang: sudo apt-get install clang (Linux)")
             print("                       brew install llvm (macOS)")
