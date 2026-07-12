@@ -36,9 +36,8 @@ def analyze_template_indexing():
 
     # Index the test project
     print("\n1. Indexing project...")
-    result = analyzer.index_project(force=True)
+    total_files = analyzer.index_project(force=True)
     print("   Indexing completed")
-    total_files = result.get("total_files", 0) if isinstance(result, dict) else "unknown"
     print(f"   Total files: {total_files}")
 
     # Get cache database path
@@ -98,16 +97,6 @@ def analyze_template_indexing():
 
     print(f"\n   Total functions found: {len(functions)}")
 
-    # Debug: Check class_index contents
-    print("\n\n4.5. DEBUG: Checking class_index contents...")
-    print(f"   class_index keys: {list(analyzer.class_index.keys())}")
-    if "Container" in analyzer.class_index:
-        print(f"   Container entries in class_index: {len(analyzer.class_index['Container'])}")
-        for info in analyzer.class_index["Container"]:
-            print(f"     - {info.name} (kind={info.kind}, USR={info.usr})")
-    else:
-        print("   'Container' not found in class_index!")
-
     # Search via analyzer
     print("\n\n5. Testing search functionality...")
 
@@ -149,21 +138,6 @@ def analyze_template_indexing():
     print(f"   Found {len(derived)} derived classes:")
     for d in derived:
         print(f"     - {d['name']} inherits from {d.get('base_classes', [])}")
-
-    # Test _find_template_specializations directly
-    print("\n\n7. Testing _find_template_specializations() method...")
-
-    print("\n   Finding all specializations of 'Container':")
-    specs = analyzer._find_template_specializations("Container")
-    print(f"   Found {len(specs)} specializations:")
-    for spec in specs:
-        print(f"     - {spec.name} (kind={spec.kind}, USR={spec.usr})")
-
-    print("\n   Finding all specializations of 'Pair':")
-    specs = analyzer._find_template_specializations("Pair")
-    print(f"   Found {len(specs)} specializations:")
-    for spec in specs:
-        print(f"     - {spec.name} (kind={spec.kind}, USR={spec.usr})")
 
     conn.close()
 
