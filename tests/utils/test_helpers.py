@@ -139,6 +139,35 @@ def temp_compile_commands(project_root: Path, files: List[Dict[str, Any]]) -> Pa
     return compile_commands_path
 
 
+# Source files in tests/fixtures/template_test_project (no committed compile_commands.json)
+TEMPLATE_TEST_PROJECT_FILES = [
+    "main.cpp",
+    "templates.h",
+    "advanced_templates.h",
+    "namespaced_templates.h",
+]
+
+
+def write_template_compile_commands(project_path: Path) -> Path:
+    """
+    Write a host-local compile_commands.json for the template test project.
+
+    Paths are derived from project_path so the fixture stays free of absolute
+    host paths. Prefer arguments[] over a command string so no host-specific
+    compiler binary path is required.
+    """
+    project_path = project_path.resolve()
+    entries = [
+        {
+            "file": name,
+            "directory": str(project_path),
+            "arguments": ["-std=c++17", "-I", str(project_path)],
+        }
+        for name in TEMPLATE_TEST_PROJECT_FILES
+    ]
+    return temp_compile_commands(project_path, entries)
+
+
 @contextmanager
 def env_var(name: str, value: str):
     """
