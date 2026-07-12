@@ -30,7 +30,7 @@ def test_compile_commands_lookup(project_path: str, test_file: str):
     print("1. Initializing analyzer...")
     analyzer = CppAnalyzer(str(project_path))
 
-    ccm = analyzer.compile_commands_manager
+    ccm = analyzer.context.compile_commands_manager
     print(f"   Compile commands enabled: {ccm.enabled}")
     print(f"   Compile commands loaded: {len(ccm.compile_commands)} entries")
     print(f"   Compile commands path: {ccm.compile_commands_path}")

@@ -118,9 +118,10 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
 
     # Create analyzer
     analyzer = CppAnalyzer(str(project_root))
+    ccm = analyzer.context.compile_commands_manager
 
     # Get files from compile commands
-    files = analyzer.compile_commands_manager.get_all_files()
+    files = ccm.get_all_files()
 
     if not files:
         print("[ERROR] No files found in compile_commands.json")
@@ -140,7 +141,7 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
 
     # Get compile args
     file_path = Path(test_file)
-    args = analyzer.compile_commands_manager.get_compile_args_with_fallback(file_path)
+    args = ccm.get_compile_args_with_fallback(file_path)
 
     print(f"\nCompilation arguments ({len(args)} total):")
     for i, arg in enumerate(args[:30]):
@@ -154,12 +155,17 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
 
     if success:
         print("[PASS] File parsed successfully!")
-        # Show symbols found
-        if test_file in analyzer.file_index:
-            symbols = analyzer.file_index[test_file]
-            print(f"Found {len(symbols)} symbols:")
-            for sym in symbols[:10]:
-                print(f"  - {sym.kind}: {sym.name}")
+        # Show symbols found by querying SQLite
+        symbol_count = 0
+        if analyzer.cache_manager and analyzer.cache_manager.backend:
+            try:
+                cursor = analyzer.cache_manager.backend.conn.execute(
+                    "SELECT COUNT(*) FROM symbols WHERE file = ?", (test_file,)
+                )
+                symbol_count = cursor.fetchone()[0]
+            except Exception:
+                symbol_count = 0
+        print(f"Found {symbol_count} symbols in SQLite cache")
     else:
         print("[ERROR] File failed to parse!")
         print("\nTo see detailed error messages, run:")
