@@ -45,25 +45,30 @@ def check_database(db_path):
 
 
 def get_cache_directory():
-    """Get the cache directory path"""
-    return Path.home() / ".mcp_cache"
+    """Get the cache directory path for the current working directory."""
+    from clang_index_mcp._persistence.project_identity import ProjectIdentity
+    from clang_index_mcp._persistence.cache_manager import CacheManager
+
+    identity = ProjectIdentity(Path.cwd(), None)
+    return CacheManager.compute_cache_dir(identity)
 
 
 def find_project_cache(project_path):
     """Find cache directory for a specific project"""
     from clang_index_mcp._persistence.project_identity import ProjectIdentity
+    from clang_index_mcp._persistence.cache_manager import CacheManager
 
-    project_path = os.path.abspath(project_path)
+    project_path = Path(project_path).resolve()
 
     # Try to find config file
     config_file = None
-    config_path = os.path.join(project_path, "cpp-analyzer-config.json")
-    if os.path.exists(config_path):
+    config_path = project_path / "cpp-analyzer-config.json"
+    if config_path.exists():
         config_file = config_path
 
     # Get project identity
     identity = ProjectIdentity(project_path, config_file)
-    cache_dir = identity.get_cache_directory()
+    cache_dir = CacheManager.compute_cache_dir(identity)
 
     return cache_dir
 
@@ -82,20 +87,20 @@ def remove_cache_directory(cache_dir):
 
 def scan_all_caches():
     """Scan all cache directories for corruption"""
-    cache_dir = get_cache_directory()
+    cache_base = get_cache_directory().parent
 
-    if not cache_dir.exists():
-        print(f"No cache directory found at: {cache_dir}")
+    if not cache_base.exists():
+        print(f"No cache directory found at: {cache_base}")
         return []
 
-    print(f"Scanning cache directory: {cache_dir}\n")
+    print(f"Scanning cache directory: {cache_base}\n")
 
     results = []
-    for project_dir in cache_dir.iterdir():
+    for project_dir in cache_base.iterdir():
         if not project_dir.is_dir():
             continue
 
-        db_path = project_dir / "cache.db"
+        db_path = project_dir / "symbols.db"
         if not db_path.exists():
             continue
 
@@ -140,7 +145,7 @@ def main():
             cache_dir = find_project_cache(project_path)
             print(f"Cache directory: {cache_dir}\n")
 
-            db_path = Path(cache_dir) / "cache.db"
+            db_path = Path(cache_dir) / "symbols.db"
 
             if not db_path.exists():
                 print(f"No database found at: {db_path}")
@@ -195,9 +200,9 @@ def main():
 
             print("\nTo fix corrupted caches, you can:")
             print("1. Delete specific project cache:")
-            print("   rm -rf ~/.mcp_cache/<project_dir_name>")
-            print("\n2. Delete all caches:")
-            print("   rm -rf ~/.mcp_cache/")
+            print("   rm -rf <project-root>/.mcp_cache/<project_dir_name>")
+            print("\n2. Delete all caches in the current working directory:")
+            print("   rm -rf ./.mcp_cache/")
             print("\n3. Run this script with the project path:")
             print("   python scripts/fix_corrupted_cache.py /path/to/project")
         else:
