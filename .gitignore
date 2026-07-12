@@ -1,6 +1,5 @@
 
 !.claude/skills/
-!.mcp_cache/.gitkeep
 !.test-projects/README.md
 !.test-scenarios/*.yaml
 !.test-scenarios/README.md
