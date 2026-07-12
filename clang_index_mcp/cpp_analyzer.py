@@ -25,8 +25,10 @@ from ._symbols.indexing_callbacks import IndexingCallbacks
 # Handle both package and script imports
 try:
     from ._core import diagnostics
+    from ._core.libclang_setup import configure_libclang
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
+    from libclang_setup import configure_libclang  # type: ignore[no-redef]
 
 try:
     from clang.cindex import Index  # noqa: F401
@@ -70,6 +72,11 @@ class CppAnalyzer:
             Different config_file values create separate cache directories.
         """
         self._skip_schema_recreation = skip_schema_recreation
+
+        # Ensure libclang is configured before any parsing.  This used to be
+        # triggered only by importing the MCP server module, which made analyzer
+        # tests fail when run in isolation.
+        configure_libclang()
 
         # Delegate all wiring to CompositionRoot
         self._root = CompositionRoot(
