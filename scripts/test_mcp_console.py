@@ -62,34 +62,42 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
 
     # Phase 4: Task 4.3 - call_graph dict removed, query SQLite for count
     call_sites_count = 0
+    total_symbols = 0
     if analyzer.cache_manager and analyzer.cache_manager.backend:
         try:
             # Query SQLite for total call sites count
             cursor = analyzer.cache_manager.backend.conn.execute("SELECT COUNT(*) FROM call_sites")
             call_sites_count = cursor.fetchone()[0]
+            cursor = analyzer.cache_manager.backend.conn.execute("SELECT COUNT(*) FROM symbols")
+            total_symbols = cursor.fetchone()[0]
         except Exception:
             call_sites_count = 0  # Silently ignore if table doesn't exist
+            total_symbols = 0
 
+    stats = analyzer.get_stats()
     status = {
-        "parsed_files": len(analyzer.file_index),  # Fixed: use file_index (Issue #10)
-        "indexed_classes": len(analyzer.class_index),
-        "indexed_functions": len(analyzer.function_index),
-        "indexed_symbols": len(analyzer.usr_index),
+        "parsed_files": stats.get("file_count", 0),
+        "indexed_classes": stats.get("class_count", 0),
+        "indexed_functions": stats.get("function_count", 0),
+        "indexed_symbols": total_symbols,
         "call_sites_count": call_sites_count,  # Phase 4: Query SQLite instead
-        "compile_commands_enabled": analyzer.compile_commands_manager.enabled,
-        "compile_commands_path": str(analyzer.compile_commands_manager.compile_commands_path),
+        "compile_commands_enabled": analyzer.context.is_compile_commands_enabled(),
+        "compile_commands_path": "",
     }
+
+    ccm = analyzer.context.compile_commands_manager
+    if ccm is not None:
+        status["compile_commands_path"] = str(ccm.compile_commands_path)
+
     print("[OK] Server status:")
     for key, value in status.items():
         print(f"   {key}: {value}")
 
     # 3.1. Show compile args profile for a sample file
-    if analyzer.compile_commands_manager:
-        source_files = analyzer.compile_commands_manager.get_all_files()
+    if ccm is not None:
+        source_files = ccm.get_all_files()
         if source_files:
-            profile = analyzer.compile_commands_manager.get_compile_arg_profile(
-                Path(source_files[0])
-            )
+            profile = ccm.get_compile_arg_profile(Path(source_files[0]))
             print("   compile_arg_profile(sample):")
             print(f"      file: {profile['file']}")
             print(f"      args_source: {profile['args_source']}")
@@ -136,7 +144,13 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
             if class_info.get("methods"):
                 print("   First 3 methods:")
                 for method in class_info["methods"][:3]:
-                    print(f"   - {method['name']} ({method['access']})")
+                    method_name = (
+                        method.get("qualified_name")
+                        or method.get("name")
+                        or method.get("prototype", "unknown")
+                    )
+                    method_access = method.get("access", "unknown")
+                    print(f"   - {method_name} ({method_access})")
 
     # 7. Get function signature (if functions exist)
     if functions:
