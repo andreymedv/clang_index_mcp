@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
+from tests.utils.test_helpers import write_template_compile_commands
 
 
 @pytest.fixture(scope="module")
@@ -20,6 +21,8 @@ def template_project_path(tmp_path_factory):
     Writing into the fixture source directory would dirty the git working tree on every
     test run, so we copy the sources to a temp dir instead and share the indexed result
     across all tests in the module.
+
+    compile_commands.json is generated at runtime with host-local paths (never committed).
     """
     src_path = Path(__file__).parent / "fixtures/template_test_project"
     project_path = tmp_path_factory.mktemp("template_test_project")
@@ -29,18 +32,7 @@ def template_project_path(tmp_path_factory):
         else:
             shutil.copy2(item, project_path / item.name)
 
-    files = ["main.cpp", "templates.h", "advanced_templates.h", "namespaced_templates.h"]
-    compile_commands = [
-        {
-            "directory": str(project_path),
-            "command": f"/usr/bin/c++ -std=c++17 -I. -c {f} -o {f}.o",
-            "file": f,
-        }
-        for f in files
-    ]
-    (project_path / "compile_commands.json").write_text(
-        json.dumps(compile_commands, indent=2) + "\n"
-    )
+    write_template_compile_commands(project_path)
     return project_path
 
 
