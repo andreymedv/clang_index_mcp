@@ -19,7 +19,6 @@
 *.egg-info/
 *.py[cod]
 .claude/
-.claude/skills/**/__pycache__/
 .idea/
 .kimi/
 .vscode/
