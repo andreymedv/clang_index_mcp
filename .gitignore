@@ -15,17 +15,14 @@
 # Python build artifacts
 # Test projects (managed by /test-mcp skill)
 # Test results (optional - can be kept for history)
-# Tool definition backups (created by optimize.py)
 # Virtual environment
 *.egg-info/
 *.py[cod]
-.aider*
 .claude/
 .claude/skills/**/__pycache__/
 .idea/
 .kimi/
 .vscode/
-.mcp.json
 .mcp_cache/*
 clang_index_mcp/.mcp_cache/*
 .test-projects/
@@ -36,7 +33,6 @@ benchmark_results.jsonl
 build/
 dist/
 mcp_env/
-clang_index_mcp/consolidated_tools.py.bak
 clang_index_mcp/libclang/
 mock_test_results.json
 tests/pytest.log
