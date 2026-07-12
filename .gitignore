@@ -35,7 +35,6 @@ __pycache__/
 benchmark_results.jsonl
 build/
 dist/
-lib/**/libclang*
 mcp_env/
 clang_index_mcp/consolidated_tools.py.bak
 clang_index_mcp/libclang/
