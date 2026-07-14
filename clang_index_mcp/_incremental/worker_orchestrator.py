@@ -44,8 +44,21 @@ def process_future_result(
     cache_orchestrator = ctx.cache_orchestrator
     symbol_store = ctx.symbol_store
 
-    # ProcessPoolExecutor returns (file_path, success, was_cached, symbols, call_sites, processed_headers)
-    _, success, was_cached, symbols, call_sites, processed_headers = result
+    # ProcessPoolExecutor returns:
+    # (file_path, success, was_cached, symbols, call_sites, processed_headers,
+    #  file_hash, compile_args_hash, error_message, retry_count)
+    (
+        _,
+        success,
+        was_cached,
+        symbols,
+        call_sites,
+        processed_headers,
+        file_hash,
+        compile_args_hash,
+        error_message,
+        retry_count,
+    ) = result
 
     if success and symbols:
         merge_symbols(ctx, symbols)
@@ -64,8 +77,20 @@ def process_future_result(
         for header_path, header_hash in processed_headers.items():
             cache_orchestrator.mark_header_completed(header_path, header_hash)
 
-    file_hash = cache_orchestrator.get_file_hash(file_path)
     symbol_store.set_file_hash(file_path, file_hash)
+
+    # Persist per-file cache from the main process. Workers skip cache writes so
+    # that all SQLite writes are serialized through a single process.
+    if not was_cached:
+        cache_orchestrator.save_file_cache(
+            file_path,
+            symbols if success else [],
+            file_hash,
+            compile_args_hash,
+            success=success,
+            error_message=error_message,
+            retry_count=retry_count,
+        )
 
     return success, was_cached
 

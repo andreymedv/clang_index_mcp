@@ -14,7 +14,18 @@ from clang_index_mcp._incremental.incremental_analyzer import AnalysisResult, In
 def _fake_process_file_worker(spec):
     """Fake worker that succeeds unless the file path contains 'fail'."""
     success = "fail" not in spec.file_path
-    return (spec.file_path, success, False, [], [], {})
+    return (
+        spec.file_path,
+        success,
+        False,
+        [],
+        [],
+        {},
+        "file-hash",
+        "compile-args-hash",
+        None,
+        0,
+    )
 
 
 def _make_mock_ctx(test_dir):
