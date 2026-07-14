@@ -151,6 +151,17 @@ class CppAnalyzer:
         """
         return self._root.indexing_pipeline.index_file(file_path, force)
 
+    def index_file_with_result(self, file_path: str, force: bool = False, write_cache: bool = True):
+        """Index a single C++ file and return a structured result.
+
+        When *write_cache* is False, the caller is responsible for persisting
+        the per-file cache. This is used by worker processes so that all SQLite
+        writes can be serialized through the main process.
+        """
+        return self._root.indexing_pipeline.index_file_with_result(
+            file_path, force=force, write_cache=write_cache
+        )
+
     def index_project(
         self,
         force: bool = False,
