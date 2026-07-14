@@ -114,6 +114,12 @@ class CppAnalyzer:
         This should be called when the CppAnalyzer is no longer needed
         to properly close database connections and avoid resource leaks.
         """
+        if hasattr(self, "_root") and self._root is not None:
+            if (
+                hasattr(self._root, "worker_result_merger")
+                and self._root.worker_result_merger is not None
+            ):
+                self._root.worker_result_merger.close()
         if hasattr(self, "cache_manager") and self.cache_manager is not None:
             self.cache_manager.close()
 

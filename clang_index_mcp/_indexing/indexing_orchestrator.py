@@ -150,6 +150,7 @@ class ProjectIndexingOrchestrator:
         finally:
             self.execution.worker_pool.shutdown_nowait(name="Indexing")
 
+        self.worker_result_merger.flush_cache_writes()
         return self._finalize_indexing(
             indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
         )
