@@ -38,8 +38,24 @@ class WorkerResultMerger:
         self.cache_orchestrator = cache_orchestrator
 
     def merge_worker_result(self, result: Tuple, file_path: str):
-        """Merge symbols and call sites from a worker process result."""
-        _, success, was_cached, symbols, call_sites, processed_headers = result
+        """Merge symbols and call sites from a worker process result.
+
+        Also persist the per-file cache from the main process. Workers no longer
+        write cache themselves, so all SQLite writes during indexing are
+        serialized through this path.
+        """
+        (
+            _,
+            success,
+            was_cached,
+            symbols,
+            call_sites,
+            processed_headers,
+            file_hash,
+            compile_args_hash,
+            error_message,
+            retry_count,
+        ) = result
 
         if success and symbols:
             with self.symbol_store.index_lock:
@@ -57,8 +73,21 @@ class WorkerResultMerger:
                 for header_path, header_hash in processed_headers.items():
                     self.cache_orchestrator.mark_header_completed(header_path, header_hash)
 
-            file_hash = self.cache_orchestrator.get_file_hash(file_path)
             self.symbol_store.set_file_hash(file_path, file_hash)
+
+        # Persist per-file cache from the main process. Workers deliberately skip
+        # this step so that all SQLite writes contend on a single writer instead
+        # of N worker processes.
+        if not was_cached:
+            self.cache_orchestrator.save_file_cache(
+                file_path,
+                symbols if success else [],
+                file_hash,
+                compile_args_hash,
+                success=success,
+                error_message=error_message,
+                retry_count=retry_count,
+            )
 
     def get_worker_result(self, future, file_path: str) -> Tuple[bool, bool]:
         """Get result from future and merge into indexes."""
@@ -72,8 +101,6 @@ class WorkerResultMerger:
 
     def process_refresh_result(self, file_path: str, res: Any) -> bool:
         """Process result from indexing worker during refresh. Returns True if successful."""
-        success = res[1]
-        if success:
-            self.merge_worker_result(res, file_path)
-            return True
-        return False
+        success = bool(res[1])
+        self.merge_worker_result(res, file_path)
+        return success
