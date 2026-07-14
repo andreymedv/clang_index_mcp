@@ -103,6 +103,7 @@ class RefreshPipeline:
                 include_dependencies,
                 callbacks,
             )
+            self.worker_result_merger.flush_cache_writes()
         except KeyboardInterrupt:
             diagnostics.info("\nRefresh interrupted by user (Ctrl-C)")
             self.execution.worker_pool.shutdown(name="Refresh")
