@@ -3,7 +3,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 
 class FileScanner:
@@ -27,6 +27,13 @@ class FileScanner:
     def __init__(self, project_root: Path, include_dependencies: bool = False):
         self.project_root = project_root
         self.include_dependencies = include_dependencies
+        # Resolve once; project_root is typically already resolved by callers,
+        # but normalizing here lets is_project_file use cheap relative_to checks.
+        self._resolved_project_root = Path(project_root).resolve()
+        # Path.resolve() issues stat syscalls for every path component.  The same
+        # header/source paths are checked thousands of times during AST traversal,
+        # so cache the resolved result to avoid repeated kernel calls.
+        self._resolved_path_cache: Dict[str, Path] = {}
 
     def should_skip_directory(self, dir_path: str) -> bool:
         """Check if a directory should be skipped"""
@@ -78,6 +85,14 @@ class FileScanner:
 
         return files
 
+    def _resolve_cached(self, file_path: str) -> Path:
+        """Return the resolved Path for *file_path*, caching the result."""
+        resolved = self._resolved_path_cache.get(file_path)
+        if resolved is None:
+            resolved = Path(file_path).resolve()
+            self._resolved_path_cache[file_path] = resolved
+        return resolved
+
     def is_project_file(self, file_path: str) -> bool:
         """Check if a file is part of the project (not a dependency)"""
         if not file_path:
@@ -85,8 +100,8 @@ class FileScanner:
 
         # Resolve symlinks to handle macOS /var -> /private/var, etc.
         try:
-            resolved = Path(file_path).resolve()
-            rel_path = resolved.relative_to(self.project_root)
+            resolved = self._resolve_cached(file_path)
+            rel_path = resolved.relative_to(self._resolved_project_root)
 
             # Check if file is in a dependency directory (at any level)
             for part in rel_path.parts:
