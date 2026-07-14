@@ -164,7 +164,8 @@ The server runs one main process and spawns worker processes for indexing.
         │               │               │
         └───────────────┼───────────────┘
                         ▼
-        Results merged into main process indexes and SQLite
+        Results merged into main process in-memory indexes;
+        per-file cache writes are handed off to a background writer thread
 ```
 
 - Workers use `spawn` multiprocessing for fork safety.
@@ -180,6 +181,7 @@ The server runs one main process and spawns worker processes for indexing.
 sequenceDiagram
     participant MP as Main Process
     participant WP as Worker Process
+    participant CWT as Cache Writer Thread
     participant DB as SQLite
 
     MP->>WP: submit(IndexingTaskSpec)
@@ -187,7 +189,6 @@ sequenceDiagram
     WP->>WP: collect parse result
     WP->>WP: bulk_write_symbols() to local indexes
     WP->>DB: save_type_aliases_batch()
-    WP->>DB: save_file_cache()
     opt parse failure
         WP->>DB: log_parse_error()
     end
@@ -199,6 +200,8 @@ sequenceDiagram
     MP->>MP: with index_lock: update SymbolIndexStore
     MP->>DB: stream_call_sites(file_path, call_sites)
     MP->>MP: update header tracker
+    MP->>CWT: enqueue file-cache write request
+    CWT->>DB: save_file_cache(...)
 ```
 
 ### What Workers Write Directly vs Return
@@ -208,17 +211,18 @@ sequenceDiagram
 | Symbols | Extract and return via `Future` | Merge into in-memory `SymbolIndexStore` | In-memory + file cache in SQLite |
 | Call sites | Extract and return via `Future` | Atomically replace per-file entries in SQLite | SQLite |
 | Type aliases | Write batch directly to SQLite | — | SQLite |
-| File cache | Write directly to SQLite | — | SQLite |
+| File cache | Skip write; return cache metadata | Enqueue to background `CacheWriterThread` | SQLite |
 | Parse errors | Append directly to JSONL | Read on demand | JSONL file |
 | Processed headers | Return via `Future` | Update `HeaderProcessingTracker` | In-memory + `header_tracker.json` |
 
-Call sites go through the main process because they require atomic per-file replacement (`DELETE` old + `INSERT` new). Type aliases and file cache are simple batch writes, so workers write them directly to reduce IPC.
+Call sites go through the main process because they require atomic per-file replacement (`DELETE` old + `INSERT` new). Type aliases are simple batch writes, so workers write them directly to reduce IPC. File cache is no longer written by workers; the main process enqueues it to a dedicated background writer thread that owns its own SQLite connection. This avoids SQLite contention between workers while keeping the main thread free to consume worker results as fast as they arrive.
 
 ### Lock Minimization
 
 - Workers parse and extract independently. They never hold the main process `index_lock`.
 - `SymbolExtractor` collects parser results during AST traversal and applies them in a single `bulk_write_symbols()` call under one lock acquisition.
 - The main process `index_lock` is held only for the brief merge of one file's results.
+- Per-file cache writes are serialized through one background `CacheWriterThread` that owns its own SQLite connection; SQLite WAL mode handles the single-writer contention.
 - SQLite WAL mode separates readers from writers; a busy handler resolves short conflicts.
 
 ### Synchronization Primitives
@@ -231,6 +235,7 @@ Call sites go through the main process because they require atomic per-file repl
 | `_tools_event` | `threading.Event` | Tool-call priority over indexing | `_mcp/state_manager.py` |
 | `_indexed_event` | `threading.Event` | Completion signal for indexing | `_mcp/state_manager.py` |
 | SQLite WAL + busy handler | SQLite | Persistent cache | `_persistence/sqlite_cache_backend.py` |
+| `WorkerResultMerger` cache writer queue | `queue.SimpleQueue` | Pending per-file cache writes | `_indexing/worker_result_merger.py` |
 | Header tracker lock | `threading.Lock` | `HeaderProcessingTracker` state | `_persistence/header_tracker.py` |
 
 ### Indexing vs Query Synchronization
