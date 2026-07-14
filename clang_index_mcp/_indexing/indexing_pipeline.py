@@ -7,12 +7,26 @@ and cache persistence.
 """
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from clang.cindex import TranslationUnit
 
 from .._core import diagnostics
+
+
+@dataclass
+class IndexingResult:
+    """Result of indexing a single file, including data needed to persist cache."""
+
+    success: bool
+    was_cached: bool
+    file_hash: str = ""
+    compile_args_hash: str = ""
+    error_message: Optional[str] = None
+    retry_count: int = 0
+
 
 if TYPE_CHECKING:
     from .._compilation.clang_parser import ClangParser
@@ -54,11 +68,35 @@ class SingleFileIndexingPipeline:
         self.symbol_store = symbol_store
 
     def index_file(self, file_path: str, force: bool = False) -> tuple[bool, bool]:
-        """Index a single C++ file.
+        """Index a single C++ file and write cache locally.
+
+        This is the public API entry point. It persists the per-file cache
+        immediately in the calling process.
 
         Returns:
             (success, was_cached) - success indicates if indexing succeeded,
                                    was_cached indicates if it was loaded from cache
+        """
+        result = self.index_file_with_result(file_path, force=force, write_cache=True)
+        return result.success, result.was_cached
+
+    def index_file_with_result(
+        self, file_path: str, force: bool = False, write_cache: bool = True
+    ) -> IndexingResult:
+        """Index a single C++ file and return a structured result.
+
+        When *write_cache* is False, the caller is responsible for persisting
+        the per-file cache. This is used by worker processes so that all SQLite
+        writes can be serialized through the main process.
+
+        Args:
+            file_path: Path to the C++ source file.
+            force: Force re-indexing even if cache exists.
+            write_cache: If True, write the per-file cache before returning.
+
+        Returns:
+            IndexingResult with success status, cache metadata, and the data
+            required to persist the cache if write_cache is False.
         """
         file_path = os.path.abspath(file_path)
 
@@ -66,7 +104,7 @@ class SingleFileIndexingPipeline:
             error_msg = f"Source file does not exist: {file_path}"
             diagnostics.error(error_msg)
             self.cache_manager.log_parse_error(file_path, FileNotFoundError(error_msg), "", None, 0)
-            return (False, False)
+            return IndexingResult(success=False, was_cached=False)
 
         current_hash = self.cache_orchestrator.get_file_hash(file_path)
         args = self.compilation_env.get_compile_args_for_file(Path(file_path))
@@ -76,7 +114,12 @@ class SingleFileIndexingPipeline:
             file_path, current_hash, compile_args_hash, force
         )
         if cached is not None:
-            return cached  # type: ignore[no-any-return]
+            return IndexingResult(
+                success=cached[0],
+                was_cached=True,
+                file_hash=current_hash,
+                compile_args_hash=compile_args_hash,
+            )
 
         retry_count = self._compute_retry_count(file_path, current_hash, compile_args_hash, force)
 
@@ -87,19 +130,26 @@ class SingleFileIndexingPipeline:
                 self._handle_index_file_failure(
                     file_path, error_msg, args, current_hash, compile_args_hash, retry_count
                 )
-                return (False, False)
+                return IndexingResult(
+                    success=False,
+                    was_cached=False,
+                    file_hash=current_hash,
+                    compile_args_hash=compile_args_hash,
+                    error_message=error_msg[:200],
+                    retry_count=retry_count,
+                )
 
             cache_error_msg = self._handle_index_file_diagnostics(
                 file_path, tu, current_hash, compile_args_hash, retry_count
             )
 
             return self._finalize_index_success(
-                file_path, tu, current_hash, compile_args_hash, cache_error_msg
+                file_path, tu, current_hash, compile_args_hash, cache_error_msg, write_cache
             )
 
         except Exception as e:
             return self._finalize_index_failure(
-                file_path, e, current_hash, compile_args_hash, retry_count
+                file_path, e, current_hash, compile_args_hash, retry_count, write_cache
             )
 
     def _compute_retry_count(
@@ -125,7 +175,7 @@ class SingleFileIndexingPipeline:
         compile_args_hash: str,
         retry_count: int,
     ) -> None:
-        """Log failure and save to cache."""
+        """Log failure."""
         diagnostics.error(f"Failed to parse {file_path}")
         diagnostics.error(f"  Error: {error_msg}")
 
@@ -138,17 +188,6 @@ class SingleFileIndexingPipeline:
         parse_error = Exception(f"{error_msg}\nArgs: {args}")
         self.cache_manager.log_parse_error(
             file_path, parse_error, current_hash, compile_args_hash, retry_count
-        )
-
-        # Save failure to cache
-        self.cache_orchestrator.save_file_cache(
-            file_path,
-            [],
-            current_hash,
-            compile_args_hash,
-            success=False,
-            error_message=error_msg[:200],
-            retry_count=retry_count,
         )
 
     def _handle_index_file_diagnostics(
@@ -173,8 +212,9 @@ class SingleFileIndexingPipeline:
         current_hash: str,
         compile_args_hash: str,
         cache_error_msg: Optional[str],
-    ) -> tuple[bool, bool]:
-        """Clear old entries, process TU, collect symbols, and save to cache."""
+        write_cache: bool,
+    ) -> IndexingResult:
+        """Clear old entries, process TU, collect symbols, and optionally save to cache."""
         with self.symbol_store.index_lock:
             self.symbol_store.clear_file_index_entries(file_path)
 
@@ -192,16 +232,24 @@ class SingleFileIndexingPipeline:
 
             self.symbol_store.set_file_hash(file_path, current_hash)
 
-        self.cache_orchestrator.save_file_cache(
-            file_path,
-            collected_symbols,
-            current_hash,
-            compile_args_hash,
+        if write_cache:
+            self.cache_orchestrator.save_file_cache(
+                file_path,
+                collected_symbols,
+                current_hash,
+                compile_args_hash,
+                success=True,
+                error_message=cache_error_msg,
+                retry_count=0,
+            )
+        return IndexingResult(
             success=True,
+            was_cached=False,
+            file_hash=current_hash,
+            compile_args_hash=compile_args_hash,
             error_message=cache_error_msg,
             retry_count=0,
         )
-        return (True, False)
 
     def _finalize_index_failure(
         self,
@@ -210,20 +258,29 @@ class SingleFileIndexingPipeline:
         current_hash: str,
         compile_args_hash: str,
         retry_count: int,
-    ) -> tuple[bool, bool]:
-        """Log parse error and save failure state to cache."""
+        write_cache: bool,
+    ) -> IndexingResult:
+        """Log parse error and optionally save failure state to cache."""
         self.cache_manager.log_parse_error(
             file_path, error, current_hash, compile_args_hash, retry_count
         )
         error_msg = str(error)[:200]
-        self.cache_orchestrator.save_file_cache(
-            file_path,
-            [],
-            current_hash,
-            compile_args_hash,
+        if write_cache:
+            self.cache_orchestrator.save_file_cache(
+                file_path,
+                [],
+                current_hash,
+                compile_args_hash,
+                success=False,
+                error_message=error_msg,
+                retry_count=retry_count,
+            )
+        diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
+        return IndexingResult(
             success=False,
+            was_cached=False,
+            file_hash=current_hash,
+            compile_args_hash=compile_args_hash,
             error_message=error_msg,
             retry_count=retry_count,
         )
-        diagnostics.debug(f"Failed to parse {file_path}: {error_msg}")
-        return (False, False)
