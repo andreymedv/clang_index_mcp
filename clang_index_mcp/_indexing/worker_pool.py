@@ -100,14 +100,15 @@ def _process_file_worker(spec: IndexingTaskSpec):
     # Set precomputed compile args
     context.compilation_env.provided_compile_args = spec.compile_args
 
-    # Parse the file
-    success, was_cached = _worker_analyzer.index_file(spec.file_path, spec.force)
+    # Parse the file, but do not write cache here; the main process will
+    # serialize all per-file cache writes to avoid SQLite contention.
+    result = _worker_analyzer.index_file_with_result(spec.file_path, spec.force, write_cache=False)
 
     # Extract symbols from this file
     symbols: List[Any] = []
     call_sites: List[Any] = []
     processed_headers: Dict[str, str] = {}
-    if success:
+    if result.success:
         for fpath, file_symbols in context.symbol_store.iter_file_items():
             symbols.extend(file_symbols)
 
@@ -128,7 +129,18 @@ def _process_file_worker(spec: IndexingTaskSpec):
     except Exception:
         pass
 
-    return (spec.file_path, success, was_cached, symbols, call_sites, processed_headers)
+    return (
+        spec.file_path,
+        result.success,
+        result.was_cached,
+        symbols,
+        call_sites,
+        processed_headers,
+        result.file_hash,
+        result.compile_args_hash,
+        result.error_message,
+        result.retry_count,
+    )
 
 
 class WorkerPoolManager:
