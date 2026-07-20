@@ -38,6 +38,7 @@ public:
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
 
         # Enable debug to see definition-wins messages
         get_logger().set_level(DiagnosticLevel.DEBUG)
@@ -91,6 +92,7 @@ public:
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         # Index forward declaration first
@@ -146,6 +148,7 @@ namespace ns {
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         print(f"Indexing forward decl: {fwd_h}")
@@ -202,6 +205,7 @@ int main() {
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         # This simulates what happens in real project indexing
@@ -267,6 +271,7 @@ int main() {
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         # Index the source file (which will parse both included headers)
@@ -325,6 +330,7 @@ class FwdClass4 {
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         print(f"Indexing {fwd_h}...")
@@ -383,6 +389,7 @@ int main() {
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         print("Indexing project (so all files, including headers, are persisted)...")
@@ -439,6 +446,7 @@ class NormalClass {
 """)
 
         analyzer = CppAnalyzer(project_root=str(tmp_path))
+        assert analyzer.context.symbol_store is not None
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
         print(f"Indexing {test_h}...")
