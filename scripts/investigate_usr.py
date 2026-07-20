@@ -46,8 +46,10 @@ public:
         analyzer.index_file(str(test_h))
 
         # Check what's in class_index
-        print(f"\nclass_index['MyClass'] entries: {len(analyzer.class_index.get('MyClass', []))}")
-        for i, sym in enumerate(analyzer.class_index.get("MyClass", [])):
+        print(
+            f"\nclass_index['MyClass'] entries: {len(analyzer.context.symbol_store.class_index.get('MyClass', []))}"
+        )
+        for i, sym in enumerate(analyzer.context.symbol_store.class_index.get("MyClass", [])):
             print(f"  [{i}] file={sym.file}:{sym.line}")
             print(f"      USR={sym.usr}")
             print(f"      is_definition={sym.is_definition}")
@@ -55,9 +57,9 @@ public:
 
         # Check usr_index
         print(
-            f"\nusr_index entries with 'MyClass': {sum(1 for k in analyzer.usr_index if 'MyClass' in k)}"
+            f"\nusr_index entries with 'MyClass': {sum(1 for k in analyzer.context.symbol_store.usr_index if 'MyClass' in k)}"
         )
-        for usr, sym in analyzer.usr_index.items():
+        for usr, sym in analyzer.context.symbol_store.usr_index.items():
             if "MyClass" in usr:
                 print(f"  USR={usr}")
                 print(f"  -> {sym.file}:{sym.line}, is_definition={sym.is_definition}")
@@ -96,8 +98,10 @@ public:
         analyzer.index_file(str(fwd_h))
 
         print("\nAfter indexing forward declaration:")
-        print(f"class_index['MyClass'] entries: {len(analyzer.class_index.get('MyClass', []))}")
-        for i, sym in enumerate(analyzer.class_index.get("MyClass", [])):
+        print(
+            f"class_index['MyClass'] entries: {len(analyzer.context.symbol_store.class_index.get('MyClass', []))}"
+        )
+        for i, sym in enumerate(analyzer.context.symbol_store.class_index.get("MyClass", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      is_definition={sym.is_definition}, file={sym.file}:{sym.line}")
 
@@ -106,8 +110,10 @@ public:
         analyzer.index_file(str(myclass_h))
 
         print("\nAfter indexing definition:")
-        print(f"class_index['MyClass'] entries: {len(analyzer.class_index.get('MyClass', []))}")
-        for i, sym in enumerate(analyzer.class_index.get("MyClass", [])):
+        print(
+            f"class_index['MyClass'] entries: {len(analyzer.context.symbol_store.class_index.get('MyClass', []))}"
+        )
+        for i, sym in enumerate(analyzer.context.symbol_store.class_index.get("MyClass", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      is_definition={sym.is_definition}, file={sym.file}:{sym.line}")
 
@@ -145,7 +151,7 @@ namespace ns {
         print(f"Indexing forward decl: {fwd_h}")
         analyzer.index_file(str(fwd_h))
 
-        fwd_symbols = analyzer.class_index.get("MyClass", [])
+        fwd_symbols = analyzer.context.symbol_store.class_index.get("MyClass", [])
         print(f"\nAfter forward decl - entries: {len(fwd_symbols)}")
         for sym in fwd_symbols:
             print(f"  USR={sym.usr}")
@@ -154,7 +160,7 @@ namespace ns {
         print(f"\nIndexing definition: {myclass_h}")
         analyzer.index_file(str(myclass_h))
 
-        def_symbols = analyzer.class_index.get("MyClass", [])
+        def_symbols = analyzer.context.symbol_store.class_index.get("MyClass", [])
         print(f"\nAfter definition - entries: {len(def_symbols)}")
         for sym in def_symbols:
             print(f"  USR={sym.usr}")
@@ -202,8 +208,10 @@ int main() {
         print("Indexing main.cpp (which includes both headers)...")
         analyzer.index_file(str(main_cpp))
 
-        print(f"\nclass_index['Widget'] entries: {len(analyzer.class_index.get('Widget', []))}")
-        for i, sym in enumerate(analyzer.class_index.get("Widget", [])):
+        print(
+            f"\nclass_index['Widget'] entries: {len(analyzer.context.symbol_store.class_index.get('Widget', []))}"
+        )
+        for i, sym in enumerate(analyzer.context.symbol_store.class_index.get("Widget", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      file={sym.file}:{sym.line}")
             print(f"      is_definition={sym.is_definition}")
@@ -265,15 +273,17 @@ int main() {
         print("Indexing main.cpp (includes both widget.h and qstring.h)...")
         analyzer.index_file(str(main_cpp))
 
-        print(f"\nclass_index['QString'] entries: {len(analyzer.class_index.get('QString', []))}")
-        for i, sym in enumerate(analyzer.class_index.get("QString", [])):
+        print(
+            f"\nclass_index['QString'] entries: {len(analyzer.context.symbol_store.class_index.get('QString', []))}"
+        )
+        for i, sym in enumerate(analyzer.context.symbol_store.class_index.get("QString", [])):
             print(f"  [{i}] USR={sym.usr}")
             print(f"      file={sym.file}:{sym.line}")
             print(f"      is_definition={sym.is_definition}")
             print(f"      start_line={sym.start_line}, end_line={sym.end_line}")
 
         # Check if both are present (the bug!)
-        symbols = analyzer.class_index.get("QString", [])
+        symbols = analyzer.context.symbol_store.class_index.get("QString", [])
         if len(symbols) > 1:
             print("\n*** BUG DETECTED: Multiple entries for same class! ***")
             for i, sym in enumerate(symbols):
@@ -321,8 +331,8 @@ class FwdClass4 {
         analyzer.index_file(str(fwd_h))
 
         print("\nChecking USRs for all indexed classes:")
-        for name in sorted(analyzer.class_index.keys()):
-            symbols = analyzer.class_index[name]
+        for name in sorted(analyzer.context.symbol_store.class_index.keys()):
+            symbols = analyzer.context.symbol_store.class_index[name]
             print(f"\n  {name}: {len(symbols)} symbol(s)")
             for i, sym in enumerate(symbols):
                 has_usr = bool(sym.usr)
@@ -333,9 +343,9 @@ class FwdClass4 {
 
         # Check usr_index for duplicates
         print("\n\nUSR index entries:")
-        for usr in sorted(analyzer.usr_index.keys()):
+        for usr in sorted(analyzer.context.symbol_store.usr_index.keys()):
             if any(name in usr for name in ["FwdClass1", "FwdClass2", "FwdClass3", "FwdClass4"]):
-                sym = analyzer.usr_index[usr]
+                sym = analyzer.context.symbol_store.usr_index[usr]
                 print(f"  {usr}: {sym.name} is_definition={sym.is_definition}")
 
 
@@ -430,7 +440,7 @@ class NormalClass {
         analyzer.index_file(str(test_h))
 
         print("\nChecking for symbols with empty USRs:")
-        for name, symbols in analyzer.class_index.items():
+        for name, symbols in analyzer.context.symbol_store.class_index.items():
             for sym in symbols:
                 if not sym.usr:
                     print(f"  *** EMPTY USR: {name} in {sym.file}:{sym.line}")
