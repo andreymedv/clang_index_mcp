@@ -19,7 +19,6 @@ from typing import Any, Dict
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from clang_index_mcp._persistence.schema_migrations import SchemaMigration  # noqa: E402
 from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
 
 
@@ -134,22 +133,32 @@ class CacheDiagnostic:
         }
 
         try:
-            migration = SchemaMigration(backend.conn)
-            current_version = migration.get_current_version()
+            assert backend.conn is not None
+            cursor = backend.conn.execute("SELECT value FROM cache_metadata WHERE key = 'version'")
+            result = cursor.fetchone()
             expected_version = backend.CURRENT_SCHEMA_VERSION
 
-            if current_version != expected_version:
-                if current_version < expected_version:
-                    check["warnings"].append(
-                        f"Schema outdated: v{current_version} (expected v{expected_version})"
-                    )
-                    check["suggestions"].append("Schema will be auto-upgraded on next use")
-                else:
-                    check["passed"] = False
-                    check["issues"].append(
-                        f"Schema too new: v{current_version} (expected v{expected_version})"
-                    )
-                    check["suggestions"].append("Update your code or delete the cache")
+            if result is None:
+                check["passed"] = False
+                check["issues"].append(
+                    f"No schema version metadata found (expected v{expected_version})"
+                )
+                check["suggestions"].append("Delete the cache and re-index the project")
+            else:
+                current_version = json.loads(result[0])
+
+                if current_version != expected_version:
+                    if current_version < expected_version:
+                        check["warnings"].append(
+                            f"Schema outdated: v{current_version} (expected v{expected_version})"
+                        )
+                        check["suggestions"].append("Schema will be auto-upgraded on next use")
+                    else:
+                        check["passed"] = False
+                        check["issues"].append(
+                            f"Schema too new: v{current_version} (expected v{expected_version})"
+                        )
+                        check["suggestions"].append("Update your code or delete the cache")
 
         except Exception as e:
             check["issues"].append(f"Schema version check failed: {e}")
@@ -167,6 +176,7 @@ class CacheDiagnostic:
         }
 
         try:
+            assert backend.conn is not None
             # Get list of indexes
             cursor = backend.conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'"
@@ -209,6 +219,7 @@ class CacheDiagnostic:
         }
 
         try:
+            assert backend.conn is not None
             # Check FTS5 table exists
             cursor = backend.conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='symbols_fts'"
@@ -248,6 +259,7 @@ class CacheDiagnostic:
         }
 
         try:
+            assert backend.conn is not None
             cursor = backend.conn.execute("PRAGMA journal_mode")
             journal_mode = cursor.fetchone()[0].lower()
 
@@ -280,6 +292,7 @@ class CacheDiagnostic:
                 check["warnings"].append(f"Database is very large: {db_size_mb:.1f} MB")
                 check["suggestions"].append("Consider running VACUUM to reclaim space")
 
+            assert backend.conn is not None
             # Check for wasted space
             cursor = backend.conn.execute("PRAGMA freelist_count")
             freelist_count = cursor.fetchone()[0]
