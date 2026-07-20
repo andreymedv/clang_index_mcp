@@ -400,6 +400,7 @@ int main() {
         print("\nQuerying SQLite directly...")
         cache_backend = analyzer.cache_manager.backend
         assert isinstance(cache_backend, SqliteCacheBackend)
+        assert cache_backend.conn is not None
 
         # Query for all TestClass entries
         cursor = cache_backend.conn.execute(
