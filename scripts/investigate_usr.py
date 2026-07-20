@@ -385,8 +385,8 @@ int main() {
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         get_logger().set_level(DiagnosticLevel.DEBUG)
 
-        print("Indexing main.cpp...")
-        analyzer.index_file(str(main_cpp))
+        print("Indexing project (so all files, including headers, are persisted)...")
+        analyzer.index_project(include_dependencies=False)
 
         # Now check what's in SQLite
         print("\nQuerying SQLite directly...")
@@ -407,6 +407,11 @@ int main() {
         if len(rows) > 1:
             print("\n*** POTENTIAL BUG: Multiple SQLite entries with same name! ***")
             print("    Check if USRs are different or if one is empty.")
+        elif len(rows) == 0:
+            print(
+                "\nNote: index_file() only persists symbols for the requested file; "
+                "header symbols are kept in memory until index_project() saves the full index."
+            )
 
 
 def test_empty_usr_handling():
