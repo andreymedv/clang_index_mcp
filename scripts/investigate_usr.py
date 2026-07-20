@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
 from clang_index_mcp._core.diagnostics import DiagnosticLevel, get_logger  # noqa: E402
+from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
 
 
 def test_usr_matching_same_file():
@@ -398,6 +399,7 @@ int main() {
         # Now check what's in SQLite
         print("\nQuerying SQLite directly...")
         cache_backend = analyzer.cache_manager.backend
+        assert isinstance(cache_backend, SqliteCacheBackend)
 
         # Query for all TestClass entries
         cursor = cache_backend.conn.execute(
