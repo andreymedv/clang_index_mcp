@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 _analyzer = None
 
 
-def test_clang_index_mcp(project_path: str, config_file: str = None):
+def test_clang_index_mcp(project_path: str, config_file: str | None = None):
     """Test the MCP server with a real codebase"""
 
     # Configure libclang exactly like production MCP server
@@ -64,6 +64,10 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     call_sites_count = 0
     total_symbols = 0
     if analyzer.cache_manager and analyzer.cache_manager.backend:
+        from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
+
+        assert type(analyzer.cache_manager.backend) is SqliteCacheBackend
+        assert analyzer.cache_manager.backend.conn is not None
         try:
             # Query SQLite for total call sites count
             cursor = analyzer.cache_manager.backend.conn.execute("SELECT COUNT(*) FROM call_sites")
@@ -107,6 +111,7 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 4. Search for classes
     print("\n4. Searching for classes (pattern: '.*')...")
     classes = analyzer.search_classes(".*", project_only=True)
+    assert type(classes) is list
     print(f"[OK] Found {len(classes)} classes in project")
     if classes:
         print("   First 5 classes:")
@@ -119,10 +124,12 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 5. Search for functions
     print("\n5. Searching for functions (pattern: '.*')...")
     functions = analyzer.search_functions(".*", project_only=True)
+    assert type(functions) is list
     print(f"[OK] Found {len(functions)} functions in project")
     if functions:
         print("   First 5 functions:")
         for func in functions[:5]:
+            assert type(func) is dict
             name = func.get("qualified_name") or func.get("name")
             loc = func.get("definition") or func.get("declaration")
             loc_str = f"{loc['file']}:{loc['line']}" if loc else "unknown"
@@ -131,6 +138,7 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 6. Get detailed class info (if classes exist)
     if classes:
         cls_name = classes[0].get("qualified_name") or classes[0].get("name")
+        assert type(cls_name) is str
         print(f"\n6. Getting detailed info for class: {cls_name}")
         class_info = analyzer.get_class_info(cls_name)
         if class_info:
@@ -155,6 +163,7 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 7. Get function signature (if functions exist)
     if functions:
         func_name = functions[0].get("qualified_name") or functions[0].get("name")
+        assert type(func_name) is str
         print(f"\n7. Getting signature for function: {func_name}")
         signatures = analyzer.get_function_signature(func_name)
         if signatures:
@@ -166,6 +175,7 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 8. Get class hierarchy (if classes exist)
     if classes:
         cls_name = classes[0].get("qualified_name") or classes[0].get("name")
+        assert type(cls_name) is str
         print(f"\n8. Getting class hierarchy for: {cls_name}")
         hierarchy = analyzer.get_class_hierarchy(cls_name)
         if hierarchy and "queried_class" in hierarchy:
@@ -184,6 +194,7 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 9. Find callers (if functions exist)
     if functions:
         func_name = functions[0].get("qualified_name") or functions[0].get("name")
+        assert type(func_name) is str
         print(f"\n9. Finding callers of function: {func_name}")
         callers_result = analyzer.find_incoming_calls(func_name)
         callers_list = callers_result.get("callers", [])
@@ -199,6 +210,7 @@ def test_clang_index_mcp(project_path: str, config_file: str = None):
     # 10. Find callees (if functions exist)
     if functions and len(functions) > 1:
         func_name = functions[0].get("qualified_name") or functions[0].get("name")
+        assert type(func_name) is str
         print(f"\n10. Finding callees of function: {func_name}")
         callees_result = analyzer.find_callees(func_name)
         callees_list = callees_result.get("callees", [])
