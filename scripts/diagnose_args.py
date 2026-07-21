@@ -13,11 +13,11 @@ from clang_index_mcp._compilation.compile_commands_manager import (  # noqa: E40
 )
 
 
-def diagnose_file_args(project_root: str, file_path: str):
+def diagnose_file_args(project_root_arg: str, file_path_arg: str):
     """Diagnose compilation arguments for a specific file."""
 
-    project_root = Path(project_root).resolve()
-    file_path = Path(file_path).resolve()
+    project_root = Path(project_root_arg).resolve()
+    file_path = Path(file_path_arg).resolve()
 
     print(f"=== Diagnosing Arguments for {file_path.name} ===\n")
     print(f"Project root: {project_root}")

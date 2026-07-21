@@ -110,7 +110,7 @@ def test_argument_extraction(project_root: Path, compile_commands: list):
                 print(f"Resolved path: {file_path.resolve()}")
 
 
-def test_single_file_parse(project_root: Path, file_to_test: str = None):
+def test_single_file_parse(project_root: Path, file_to_test: str | None = None):
     """Test parsing a single file with detailed error output"""
     print(f"\n{'=' * 70}")
     print("SINGLE FILE PARSE TEST")
@@ -119,6 +119,7 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
     # Create analyzer
     analyzer = CppAnalyzer(str(project_root))
     ccm = analyzer.context.compile_commands_manager
+    assert ccm is not None
 
     # Get files from compile commands
     files = ccm.get_all_files()
@@ -157,8 +158,16 @@ def test_single_file_parse(project_root: Path, file_to_test: str = None):
         print("[PASS] File parsed successfully!")
         # Show symbols found by querying SQLite
         symbol_count = 0
-        if analyzer.cache_manager and analyzer.cache_manager.backend:
+        if (
+            analyzer.cache_manager
+            and analyzer.cache_manager.backend
+            and analyzer.cache_manager.backend
+        ):
             try:
+                from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
+
+                assert type(analyzer.cache_manager.backend) is SqliteCacheBackend
+                assert analyzer.cache_manager.backend.conn is not None
                 cursor = analyzer.cache_manager.backend.conn.execute(
                     "SELECT COUNT(*) FROM symbols WHERE file = ?", (test_file,)
                 )
