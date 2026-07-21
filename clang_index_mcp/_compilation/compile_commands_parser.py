@@ -11,13 +11,9 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from clang.cindex import CompilationDatabase
 
 # Handle both package and script imports
-try:
-    from clang.cindex import CompilationDatabase
-except ImportError:
-    CompilationDatabase = None  # type: ignore[assignment,misc]
-
 try:
     from .._core import diagnostics
     from .._core.argument_sanitizer import ArgumentSanitizer
@@ -173,7 +169,7 @@ def sanitize_args_for_libclang(args: List[str], argument_sanitizer: ArgumentSani
 def process_compile_command_entry(
     entry: dict,
     index: int,
-    compdb: "CompilationDatabase",
+    compdb: CompilationDatabase,
     project_root: Path,
     argument_sanitizer: ArgumentSanitizer,
 ) -> Optional[Tuple[str, dict]]:
