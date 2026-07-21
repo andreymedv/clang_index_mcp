@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
-def test_compile_commands_lookup(project_path: str, test_file: str):
+def test_compile_commands_lookup(project_path_str: str, test_file_str: str):
     """Test if a specific file gets its args from compile_commands.json"""
 
     print("=" * 80)
@@ -19,8 +19,8 @@ def test_compile_commands_lookup(project_path: str, test_file: str):
     print("=" * 80)
     print()
 
-    project_path = Path(project_path).absolute()
-    test_file = Path(test_file).absolute()
+    project_path = Path(project_path_str).absolute()
+    test_file = Path(test_file_str).absolute()
 
     print(f"Project: {project_path}")
     print(f"Test file: {test_file}")
@@ -31,6 +31,7 @@ def test_compile_commands_lookup(project_path: str, test_file: str):
     analyzer = CppAnalyzer(str(project_path))
 
     ccm = analyzer.context.compile_commands_manager
+    assert ccm is not None
     print(f"   Compile commands enabled: {ccm.enabled}")
     print(f"   Compile commands loaded: {len(ccm.compile_commands)} entries")
     print(f"   Compile commands path: {ccm.compile_commands_path}")

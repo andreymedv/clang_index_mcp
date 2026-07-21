@@ -19,15 +19,15 @@ from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError  # noq
 from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
 
 
-def diagnose_file(project_path: str, file_path: str):
+def diagnose_file(project_path_str: str, file_path_str: str):
     """Diagnose parsing issues for a specific file."""
     print("=" * 80)
     print("C++ MCP Server - Parse Error Diagnostics")
     print("=" * 80)
     print()
 
-    project_path = Path(project_path).absolute()
-    file_path = Path(file_path).absolute()
+    project_path = Path(project_path_str).absolute()
+    file_path = Path(file_path_str).absolute()
 
     if not project_path.exists():
         print(f"Error: Project path does not exist: {project_path}")
@@ -51,6 +51,7 @@ def diagnose_file(project_path: str, file_path: str):
     print(f"   Clang resource dir: {clang_resource_dir or 'NOT FOUND'}")
     print()
 
+    assert ccm is not None
     # Get compilation arguments
     print("2. Getting compilation arguments...")
     args = ccm.get_compile_args_with_fallback(file_path)
