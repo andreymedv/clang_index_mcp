@@ -24,8 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from clang_index_mcp._search.smart_fallback import (  # noqa: E402
-    _PROTOTYPE_PATTERN,
-    _looks_like_signature,
+    PROTOTYPE_PATTERN,
+    looks_like_signature,
 )
 
 # Same regex meta detection as tool_call_logger
@@ -44,9 +44,9 @@ _MCP_PLUGIN_IDS = {"cpp-analyzer", "clang-index-mcp"}
 
 def _classify_pattern(pattern: str) -> str:
     """Classify a search pattern (same logic as server-side logger)."""
-    if _looks_like_signature(pattern):
+    if looks_like_signature(pattern):
         return "signature_like"
-    if _PROTOTYPE_PATTERN.search(pattern):
+    if PROTOTYPE_PATTERN.search(pattern):
         return "prototype_like"
     has_colons = "::" in pattern
     has_meta = bool(_REGEX_META.search(pattern))
