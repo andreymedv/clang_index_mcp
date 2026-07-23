@@ -187,7 +187,7 @@ def process_compile_command_entry(
     normalized_path = normalize_path(file_path, directory, project_root)
 
     compile_cmds = compdb.getCompileCommands(normalized_path)
-    if compile_cmds is None or len(list(compile_cmds)) == 0:
+    if compile_cmds is None or len(compile_cmds) == 0:
         compile_cmds = compdb.getCompileCommands(file_path)
 
     if compile_cmds is None:
