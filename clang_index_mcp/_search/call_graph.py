@@ -72,7 +72,7 @@ class CallSite:
 class CallGraphAnalyzer:
     """Manages call graph analysis for C++ code with line-level precision."""
 
-    def __init__(self, cache_backend=None):
+    def __init__(self, cache_backend=None) -> None:
         """
         Initialize CallGraphAnalyzer.
 

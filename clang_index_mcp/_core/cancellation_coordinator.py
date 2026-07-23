@@ -13,7 +13,7 @@ from .._core import diagnostics
 class CancellationCoordinator:
     """Manages cooperative cancellation of long-running indexing operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._interrupted: bool = False
         self._interrupt_lock = threading.Lock()
 

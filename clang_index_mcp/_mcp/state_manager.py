@@ -28,7 +28,7 @@ class AnalyzerState(Enum):
 class AnalyzerStateManager:
     """Thread-safe state management for analyzer lifecycle"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._state = AnalyzerState.UNINITIALIZED
         self._lock = Lock()
         self._indexed_event = Event()  # Signals when indexing completes
