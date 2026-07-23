@@ -37,7 +37,7 @@ class HeaderProcessingTracker:
         _in_progress: Set of headers currently being processed
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the header processing tracker."""
         self._lock = Lock()
 
