@@ -114,7 +114,7 @@ Projects with extensive template usage may experience:
 
 **Recommendations:**
 - Use `compile_commands.json` for accurate template parsing
-- Consider excluding generated template code (e.g., `exclude_patterns: ["*_autogen.h"]`)
+- Consider placing generated template code in directories listed in `exclude_directories`
 - Monitor cache size in `.mcp_cache/` directory
 
 ---

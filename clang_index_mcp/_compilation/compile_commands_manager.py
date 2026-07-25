@@ -67,7 +67,6 @@ class CompileCommandsManager:
         self.fallback_to_hardcoded = self._config.fallback_to_hardcoded
         self.cache_expiry_seconds = self._config.cache_expiry_seconds
         self.supported_extensions = set(self._config.supported_extensions)
-        self.exclude_patterns = list(self._config.exclude_patterns)
 
         # Cache data
         self.compile_commands: Dict[str, Any] = {}
