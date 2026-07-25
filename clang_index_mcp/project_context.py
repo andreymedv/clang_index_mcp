@@ -29,9 +29,9 @@ from ._persistence.cache_orchestrator import CacheOrchestrator
 from ._persistence.persistence_context import PersistenceContext
 from ._persistence.project_identity import ProjectIdentity
 from ._persistence.sqlite_cache_backend import SqliteCacheBackend
-from ._search.call_graph_service import CallGraphService
 from ._search.query_context import QueryContext
 from ._search.query_engine import QueryEngine
+from ._symbols.ports.call_graph_service import CallGraphServiceProtocol
 from ._symbols.symbol_context import SymbolContext
 from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
@@ -147,7 +147,7 @@ class ProjectContext:
         return self.runtime.progress_reporter
 
     @property
-    def call_graph_service(self) -> Optional[CallGraphService]:
+    def call_graph_service(self) -> Optional[CallGraphServiceProtocol]:
         return self.symbols.call_graph_service
 
     @property
