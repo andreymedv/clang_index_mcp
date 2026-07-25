@@ -3,8 +3,8 @@ Worker pool and parallel execution management for C++ Analyzer.
 
 This module contains only the parent-process side: WorkerPoolManager owns the
 ProcessPoolExecutor lifecycle (setup, shutdown, termination). The worker-side
-entry points that run inside spawned child processes (_init_worker,
-_process_file_worker, and the process-local analyzer instance) live in
+entry points that run inside spawned child processes (init_worker,
+process_file_worker, and the process-local analyzer instance) live in
 ``clang_index_mcp/worker_bootstrap.py``, the designated worker-side
 composition root.
 """
@@ -21,10 +21,10 @@ from typing import Any, List, Optional
 # Handle both package and script imports
 try:
     from .._core import diagnostics
-    from ..worker_bootstrap import _init_worker
+    from ..worker_bootstrap import init_worker
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
-    from worker_bootstrap import _init_worker  # type: ignore[no-redef]
+    from worker_bootstrap import init_worker  # type: ignore[no-redef]
 
 
 class WorkerPoolManager:
@@ -43,13 +43,13 @@ class WorkerPoolManager:
             self.executor = ProcessPoolExecutor(
                 max_workers=self.max_workers,
                 mp_context=self.mp_context,
-                initializer=_init_worker,
+                initializer=init_worker,
             )
         except Exception as e:
             diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
             self.executor = ProcessPoolExecutor(
                 max_workers=self.max_workers,
-                initializer=_init_worker,
+                initializer=init_worker,
             )
 
         return self.executor

@@ -49,7 +49,7 @@ This document captures the functional requirements for the Clang Index MCP Serve
 **REQ-1.2.5**: The system SHALL use ProcessPoolExecutor to bypass Python's Global Interpreter Lock (GIL):
 - Provides true parallelism on multi-core systems (6-7x speedup on 4+ cores)
 - Each worker process has isolated memory space (no shared state)
-- Worker function (`_process_file_worker()`) defined at module level for pickling compatibility
+- Worker function (`process_file_worker()`) defined at module level for pickling compatibility
 - Uses the `spawn` multiprocessing start method for fork safety
 
 ---

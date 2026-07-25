@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
 from .._indexing.indexing_task_spec import IndexingTaskSpec
-from ..worker_bootstrap import _process_file_worker
+from ..worker_bootstrap import process_file_worker
 
 if TYPE_CHECKING:
     from concurrent.futures import Executor, Future
@@ -57,7 +57,7 @@ class IndexingTaskSubmitter:
 
         return {
             executor.submit(
-                _process_file_worker,
+                process_file_worker,
                 IndexingTaskSpec(
                     project_root=str(self.project_root),
                     config_file=config_file_str,
@@ -91,7 +91,7 @@ class IndexingTaskSubmitter:
 
         for f in modified_files:
             future = executor.submit(
-                _process_file_worker,
+                process_file_worker,
                 IndexingTaskSpec(
                     project_root=project_root,
                     config_file=config_file_str,
@@ -104,7 +104,7 @@ class IndexingTaskSubmitter:
             future_to_file[future] = f
         for f in new_files:
             future = executor.submit(
-                _process_file_worker,
+                process_file_worker,
                 IndexingTaskSpec(
                     project_root=project_root,
                     config_file=config_file_str,
