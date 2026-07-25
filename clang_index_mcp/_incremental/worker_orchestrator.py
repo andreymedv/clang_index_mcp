@@ -142,7 +142,7 @@ def submit_tasks(
     import os
 
     from .._indexing.indexing_task_spec import IndexingTaskSpec
-    from .._indexing.worker_pool import _process_file_worker
+    from ..worker_bootstrap import process_file_worker
     from .._incremental.compile_args_resolver import get_file_compile_args
 
     project_root = str(ctx.project_root)
@@ -153,7 +153,7 @@ def submit_tasks(
 
     return {
         executor.submit(
-            _process_file_worker,
+            process_file_worker,
             IndexingTaskSpec(
                 project_root=project_root,
                 config_file=config_file_str,
@@ -273,17 +273,17 @@ def _run_analysis_loop(
 ) -> int:
     """Execute the analysis loop with executor lifecycle management."""
     from .._core import diagnostics
-    from .._indexing.worker_pool import _init_worker
+    from ..worker_bootstrap import init_worker
 
     executor: Optional[Executor] = None
     max_workers = os.cpu_count() or 4
     try:
         if mp_context:
             executor = ProcessPoolExecutor(
-                max_workers=max_workers, mp_context=mp_context, initializer=_init_worker
+                max_workers=max_workers, mp_context=mp_context, initializer=init_worker
             )
         else:
-            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker)
+            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker)
 
         future_to_file = submit_tasks(ctx, executor, file_list)
         analyzed, _failed = process_loop(

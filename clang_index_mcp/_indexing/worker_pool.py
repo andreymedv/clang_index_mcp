@@ -1,146 +1,30 @@
 """
 Worker pool and parallel execution management for C++ Analyzer.
+
+This module contains only the parent-process side: WorkerPoolManager owns the
+ProcessPoolExecutor lifecycle (setup, shutdown, termination). The worker-side
+entry points that run inside spawned child processes (init_worker,
+process_file_worker, and the process-local analyzer instance) live in
+``clang_index_mcp/worker_bootstrap.py``, the designated worker-side
+composition root.
 """
 
-import atexit
-import gc
-import io
 import multiprocessing
-import os
-import signal
 import sys
 import time
 from concurrent.futures import (
     Executor,
     ProcessPoolExecutor,
 )
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 # Handle both package and script imports
 try:
     from .._core import diagnostics
-    from .._indexing.indexing_task_spec import IndexingTaskSpec
+    from ..worker_bootstrap import init_worker
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
-    from indexing_task_spec import IndexingTaskSpec  # type: ignore[no-redef]
-
-# Global analyzer instance for each worker process
-# This is a process-local global, NOT shared between processes
-_worker_analyzer = None
-
-
-def _init_worker():
-    """Initializer for each worker process.
-
-    Ignores SIGINT so that Ctrl+C in the parent does not produce
-    KeyboardInterrupt tracebacks in workers.  The parent controls
-    worker lifetime via SIGTERM/SIGKILL.
-    """
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-
-def _cleanup_worker_analyzer():
-    """Ensure worker analyzer resources are released on process exit.
-
-    Suppresses stderr during close to avoid noisy libclang cleanup
-    errors (_CXString.__del__, cursor visitor assertions) that occur
-    when the interpreter is shutting down and C-level objects are
-    garbage-collected after libclang's shared library may already be
-    partially torn down.
-    """
-    global _worker_analyzer
-    if _worker_analyzer is not None:
-        saved = sys.stderr
-        sys.stderr = io.StringIO()
-        try:
-            _worker_analyzer.close()
-        except Exception:
-            pass
-        finally:
-            sys.stderr = saved
-            _worker_analyzer = None
-
-
-def _process_file_worker(spec: IndexingTaskSpec):
-    """
-    Worker function for ProcessPoolExecutor-based parallel parsing.
-
-    This is a module-level function (required for pickling) that uses
-    a shared, process-local CppAnalyzer instance to parse a single file.
-    """
-    global _worker_analyzer
-
-    # Lazy import to avoid circular dependency at module level
-    from ..cpp_analyzer import CppAnalyzer
-
-    # Create a single analyzer instance per worker process (process-local)
-    if _worker_analyzer is None:
-        diagnostics.debug(f"Worker process {os.getpid()}: Creating shared CppAnalyzer instance")
-        _worker_analyzer = CppAnalyzer(
-            spec.project_root,
-            spec.config_file,
-            skip_schema_recreation=True,
-            use_compile_commands_manager=False,
-        )
-        # Ensure cleanup is called when the worker process exits
-        atexit.register(_cleanup_worker_analyzer)
-
-    assert _worker_analyzer is not None
-    context = _worker_analyzer.context
-    assert context.compilation_env is not None
-    assert context.call_graph_service is not None
-    assert context.symbol_store is not None
-    assert context.cache_orchestrator is not None
-
-    # Set per-call parameters
-    context.compilation_env.include_dependencies = spec.include_dependencies
-    # Reset stateful components to prevent data leakage between files
-    context.call_graph_service.call_graph_analyzer.clear()
-
-    # Set precomputed compile args
-    context.compilation_env.provided_compile_args = spec.compile_args
-
-    # Parse the file, but do not write cache here; the main process will
-    # serialize all per-file cache writes to avoid SQLite contention.
-    result = _worker_analyzer.index_file_with_result(spec.file_path, spec.force, write_cache=False)
-
-    # Extract symbols from this file
-    symbols: List[Any] = []
-    call_sites: List[Any] = []
-    processed_headers: Dict[str, str] = {}
-    if result.success:
-        for fpath, file_symbols in context.symbol_store.iter_file_items():
-            symbols.extend(file_symbols)
-
-        # Extract call sites collected during this file's parsing
-        call_sites = context.call_graph_service.call_graph_analyzer.get_all_call_sites()
-
-        # Extract header tracking information
-        processed_headers = context.cache_orchestrator.get_processed_headers()
-
-    # Clean up worker indexes to prevent memory leaks (Issue #14)
-    context.symbol_store.clear_all_indexes()
-
-    # Force garbage collection to free TranslationUnit objects.
-    # Wrap in try/except because libclang's __del__ methods may raise
-    # if the C library state is inconsistent after a partial parse.
-    try:
-        gc.collect()
-    except Exception:
-        pass
-
-    return (
-        spec.file_path,
-        result.success,
-        result.was_cached,
-        symbols,
-        call_sites,
-        processed_headers,
-        result.file_hash,
-        result.compile_args_hash,
-        result.error_message,
-        result.retry_count,
-    )
+    from worker_bootstrap import init_worker  # type: ignore[no-redef]
 
 
 class WorkerPoolManager:
@@ -159,13 +43,13 @@ class WorkerPoolManager:
             self.executor = ProcessPoolExecutor(
                 max_workers=self.max_workers,
                 mp_context=self.mp_context,
-                initializer=_init_worker,
+                initializer=init_worker,
             )
         except Exception as e:
             diagnostics.warning(f"Failed to use 'spawn' context: {e}. Falling back to default.")
             self.executor = ProcessPoolExecutor(
                 max_workers=self.max_workers,
-                initializer=_init_worker,
+                initializer=init_worker,
             )
 
         return self.executor

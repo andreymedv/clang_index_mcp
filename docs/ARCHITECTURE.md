@@ -36,6 +36,7 @@ Core responsibilities:
 | **Frameworks / Drivers** | `_compilation/clang_parser.py`, `_compilation/clang_symbol_parser.py` | libclang parsing |
 | | `_core/libclang_setup.py`, `_core/file_scanner.py` | libclang setup and file discovery |
 | | `_indexing/worker_pool.py` | `ProcessPoolExecutor` |
+| | `worker_bootstrap.py` | Worker-side composition root (spawned processes) |
 | | `libclang/` | libclang binaries |
 
 ### Dependency Rule
@@ -276,7 +277,7 @@ stateDiagram-v2
 | Change SQLite schema | `clang_index_mcp/schema.sql`, `_persistence/sqlite_cache_backend.py` (`CURRENT_SCHEMA_VERSION`) |
 | Change incremental refresh | `_incremental/incremental_analyzer.py`, `_incremental/change_scanner.py`, `_search/dependency_graph.py` |
 | Change header deduplication | `_persistence/header_tracker.py` |
-| Change parallel execution | `_indexing/worker_pool.py`, `_indexing/indexing_task_submitter.py`, `_indexing/worker_result_merger.py` |
+| Change parallel execution | `_indexing/worker_pool.py`, `worker_bootstrap.py`, `_indexing/indexing_task_submitter.py`, `_indexing/worker_result_merger.py` |
 | Change compilation args / compile_commands | `_compilation/compile_commands_manager.py`, `_compilation/compilation_environment.py` |
 | Wire dependencies | `composition_root.py` |
 | Thin public API | `cpp_analyzer.py` |
