@@ -28,8 +28,13 @@ if TYPE_CHECKING:
     from .._symbols.symbol_index_store import SymbolIndexStore
 
 
-class QueryEngine:
-    """Manages search queries and analysis operations."""
+class QueryEngine(SearchDependencies):
+    """Manages search queries and analysis operations.
+
+    Explicitly implements the SearchDependencies protocol (the search
+    layer's port), so static checkers verify conformance instead of
+    relying on implicit structural (duck) typing.
+    """
 
     def __init__(
         self,
@@ -55,18 +60,50 @@ class QueryEngine:
             search_engine: Optional pre-built SearchEngine instance.
             smart_fallback: Optional pre-built SmartFallback instance.
         """
-        self.symbol_store = symbol_store
-        self.cache_manager = cache_manager
-        self.concurrency = concurrency
-        self.compilation_env = compilation_env
-        self.call_graph_service = call_graph_service
-        self.project_root = project_root
+        # Stored in private attributes; exposed via the properties below,
+        # which implement the SearchDependencies port with concrete types.
+        self._symbol_store = symbol_store
+        self._cache_manager = cache_manager
+        self._concurrency = concurrency
+        self._compilation_env = compilation_env
+        self._call_graph_service = call_graph_service
+        self._project_root = project_root
         self.search_engine = search_engine or SearchEngine(
             symbol_store=symbol_store,
             cache_manager=cache_manager,
         )
         self.smart_fallback = smart_fallback or SmartFallback()
         self._last_fallback: Optional[FallbackResult] = None
+
+    @property
+    def symbol_store(self) -> "SymbolIndexStore":
+        """In-memory symbol indexes (narrows the port to the concrete type)."""
+        return self._symbol_store
+
+    @property
+    def cache_manager(self) -> "CacheManager":
+        """SQLite-backed cache and persistence."""
+        return self._cache_manager
+
+    @property
+    def concurrency(self) -> "ConcurrencyContext":
+        """Concurrency context with index_lock."""
+        return self._concurrency
+
+    @property
+    def compilation_env(self) -> "CompilationEnvironment":
+        """Compilation environment for compile args and file scanning."""
+        return self._compilation_env
+
+    @property
+    def call_graph_service(self) -> "CallGraphService":
+        """Call graph and dependency tracking."""
+        return self._call_graph_service
+
+    @property
+    def project_root(self) -> "Path":
+        """Project root directory."""
+        return self._project_root
 
     def _as_search_deps(self) -> SearchDependencies:
         """Return self as a SearchDependencies-compatible object.
