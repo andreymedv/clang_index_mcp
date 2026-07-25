@@ -17,9 +17,12 @@ analyzer.context.symbol_store) or through the public wrapper methods
 """
 
 import sys
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
 from .composition_root import CompositionRoot
+from ._indexing.indexing_pipeline import IndexingResult
+from ._search.smart_fallback import FallbackResult
 from ._symbols.indexing_callbacks import IndexingCallbacks
 
 # Handle both package and script imports
@@ -54,7 +57,7 @@ class CppAnalyzer:
         config_file: Optional[str] = None,
         skip_schema_recreation: bool = False,
         use_compile_commands_manager: bool = True,
-    ):
+    ) -> None:
         """
         Initialize C++ Analyzer.
 
@@ -96,7 +99,7 @@ class CppAnalyzer:
         self.cache_dir = self._root.cache_manager.cache_dir
         self.cache_orchestrator = self._root.cache_orchestrator
 
-    def interrupt(self):
+    def interrupt(self) -> None:
         """
         Interrupt any ongoing indexing operations.
         Sets the interrupted flag which is checked by indexing loops.
@@ -107,7 +110,7 @@ class CppAnalyzer:
         """Check if indexing has been interrupted."""
         return self._root.cancellation.is_interrupted()
 
-    def close(self):
+    def close(self) -> None:
         """
         Close the analyzer and release all resources.
 
@@ -123,16 +126,21 @@ class CppAnalyzer:
         if hasattr(self, "cache_manager") and self.cache_manager is not None:
             self.cache_manager.close()
 
-    def __enter__(self):
+    def __enter__(self) -> "CppAnalyzer":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Literal[False]:
         """Context manager exit."""
         self.close()
         return False
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Destructor to ensure resources are released on garbage collection."""
         # During Python shutdown, modules may be None. Suppress all errors.
         try:
@@ -157,7 +165,9 @@ class CppAnalyzer:
         """
         return self._root.indexing_pipeline.index_file(file_path, force)
 
-    def index_file_with_result(self, file_path: str, force: bool = False, write_cache: bool = True):
+    def index_file_with_result(
+        self, file_path: str, force: bool = False, write_cache: bool = True
+    ) -> IndexingResult:
         """Index a single C++ file and return a structured result.
 
         When *write_cache* is False, the caller is responsible for persisting
@@ -192,7 +202,7 @@ class CppAnalyzer:
             callbacks=callbacks,
         )
 
-    def pop_last_fallback(self):
+    def pop_last_fallback(self) -> Optional[FallbackResult]:
         """Return and clear the last fallback result (delegates to query_engine)."""
         return self._root.query_engine.pop_last_fallback()
 
@@ -204,7 +214,7 @@ class CppAnalyzer:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         include_base_classes: bool = True,
-    ):
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for classes matching pattern (delegates to query_engine)."""
         return self._root.query_engine.search_classes(
             pattern, project_only, file_name, namespace, max_results, include_base_classes
@@ -220,7 +230,7 @@ class CppAnalyzer:
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
         include_attributes: bool = False,
-    ):
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching pattern (delegates to query_engine)."""
         return self._root.query_engine.search_functions(
             pattern,
@@ -277,7 +287,7 @@ class CppAnalyzer:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
-    ):
+    ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for all symbols (classes and functions) matching pattern (delegates to query_engine)."""
         return self._root.query_engine.search_symbols(
             pattern, project_only, symbol_types, namespace, max_results, signature_pattern
