@@ -12,7 +12,7 @@ dependency direction:
 
     cpp_analyzer (facade) -> composition_root (wiring) -> _indexing (policy)
 
-The CppAnalyzer import is intentionally deferred into _process_file_worker():
+The CppAnalyzer import is intentionally deferred into process_file_worker():
 this module sits on the composition_root import chain (composition_root ->
 _indexing.indexing_task_submitter -> worker_bootstrap), so a module-level
 import of the facade would create a circular import in the parent process.
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 _worker_analyzer: Optional["CppAnalyzer"] = None
 
 
-def _init_worker():
+def init_worker():
     """Initializer for each worker process.
 
     Ignores SIGINT so that Ctrl+C in the parent does not produce
@@ -77,7 +77,7 @@ def _cleanup_worker_analyzer():
             _worker_analyzer = None
 
 
-def _process_file_worker(spec: IndexingTaskSpec):
+def process_file_worker(spec: IndexingTaskSpec):
     """
     Worker function for ProcessPoolExecutor-based parallel parsing.
 
