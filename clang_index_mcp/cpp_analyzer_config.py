@@ -83,7 +83,7 @@ class CppAnalyzerConfig:
         "diagnostics": {"level": "info", "enabled": True},  # debug, info, warning, error, fatal
     }
 
-    def __init__(self, project_root: Path, config_path: Optional[Path] = None):
+    def __init__(self, project_root: Path, config_path: Optional[Path] = None) -> None:
         self.project_root = project_root
         self.config_path = config_path  # Pre-specified config path
         self.config = self._load_config()

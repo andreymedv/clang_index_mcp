@@ -7,7 +7,7 @@ and file-based symbol lookup.
 """
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from .._search.file_symbol_finder import find_in_file, get_files_containing_symbol
 from .._search.hierarchy_analyzer import get_class_hierarchy
@@ -41,7 +41,7 @@ class QueryEngine:
         project_root: "Path",
         search_engine: Optional[SearchEngine] = None,
         smart_fallback: Optional[SmartFallback] = None,
-    ):
+    ) -> None:
         """
         Initialize query engine.
 
@@ -76,7 +76,7 @@ class QueryEngine:
         """
         return self
 
-    def pop_last_fallback(self):
+    def pop_last_fallback(self) -> Optional[FallbackResult]:
         """Return and clear the last fallback result.
 
         Called by the MCP server layer to retrieve smart suggestions
@@ -94,7 +94,7 @@ class QueryEngine:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         include_base_classes: bool = True,
-    ):
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for classes matching pattern"""
         from .._core import diagnostics
 
@@ -133,7 +133,7 @@ class QueryEngine:
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
         include_attributes: bool = False,
-    ):
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching pattern, optionally within a specific class"""
         from .._core import diagnostics
 
@@ -210,7 +210,7 @@ class QueryEngine:
         namespace: Optional[str] = None,
         max_results: Optional[int] = None,
         signature_pattern: Optional[str] = None,
-    ):
+    ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for all symbols (classes and functions) matching pattern."""
         from .._core import diagnostics
 
