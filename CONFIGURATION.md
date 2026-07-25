@@ -22,7 +22,6 @@ All available configuration options:
 | Category | Option | Type | Default | Description |
 |----------|--------|------|---------|-------------|
 | **General** | `exclude_directories` | array | *see docs* | Directories to skip |
-| | `exclude_patterns` | array | `[]` | File patterns to exclude |
 | | `dependency_directories` | array | *see docs* | Third-party code dirs |
 | | `include_dependencies` | boolean | `true` | Analyze dependencies |
 | | `max_file_size_mb` | number | `10` | Max file size (MB) |
@@ -35,7 +34,6 @@ All available configuration options:
 | | `compile_commands.fallback_to_hardcoded` | boolean | `true` | Use defaults if missing |
 | | `compile_commands.cache_expiry_seconds` | number | `300` | *(deprecated)* |
 | | `compile_commands.supported_extensions` | array | *see docs* | File extensions |
-| | `compile_commands.exclude_patterns` | array | `[]` | Exclude patterns |
 
 **Environment Variables:**
 - `CPP_ANALYZER_CONFIG` - Path to custom config file
@@ -104,12 +102,6 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
     "Binaries"
   ],
 
-  "exclude_patterns": [
-    "*.generated.h",
-    "*.generated.cpp",
-    "*_test.cpp"
-  ],
-
   "dependency_directories": [
     "vcpkg_installed",
     "third_party",
@@ -134,8 +126,7 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
     "supported_extensions": [
       ".cpp", ".cc", ".cxx", ".c++",
       ".h", ".hpp", ".hxx", ".h++"
-    ],
-    "exclude_patterns": []
+    ]
   }
 }
 ```
@@ -147,7 +138,6 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `exclude_directories` | array | See below | Directories to skip during scanning |
-| `exclude_patterns` | array | `[]` | File patterns to exclude (glob patterns) |
 | `dependency_directories` | array | See below | Directories containing third-party code |
 | `include_dependencies` | boolean | `true` | Whether to analyze dependency files |
 | `max_file_size_mb` | number | `10` | Maximum file size to analyze (MB) |
@@ -199,7 +189,6 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
 | `compile_commands.fallback_to_hardcoded` | boolean | `true` | Use default args if compile_commands.json not found |
 | `compile_commands.cache_expiry_seconds` | number | `300` | Cache expiry time in seconds (deprecated, binary cache used instead) |
 | `compile_commands.supported_extensions` | array | See below | File extensions to analyze |
-| `compile_commands.exclude_patterns` | array | `[]` | Patterns to exclude from compile_commands.json |
 
 **Default supported_extensions**:
 ```json
@@ -209,7 +198,6 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
 **Notes**:
 - `cache_expiry_seconds`: This setting is deprecated. The new binary cache (`.mcp_cache/<project>/compile_commands/<hash>.cache`) is hash-validated and doesn't use time-based expiry.
 - `supported_extensions`: Only files with these extensions will be analyzed from `compile_commands.json`
-- `exclude_patterns`: Additional glob patterns to exclude files found in `compile_commands.json`
 
 **Example**:
 ```json
@@ -217,8 +205,7 @@ set CPP_ANALYZER_CONFIG=C:\path\to\my-custom-config.json
   "compile_commands": {
     "enabled": true,
     "path": "build/compile_commands.json",
-    "supported_extensions": [".cpp", ".cc", ".h", ".hpp"],
-    "exclude_patterns": ["*_generated.cpp", "*/test/*"]
+    "supported_extensions": [".cpp", ".cc", ".h", ".hpp"]
   }
 }
 ```
@@ -478,10 +465,6 @@ If no message appears, defaults are being used.
     "ThirdParty",
     "Plugins"
   ],
-  "exclude_patterns": [
-    "*.generated.h",
-    "*.generated.cpp"
-  ],
   "compile_commands": {
     "enabled": true,
     "path": "compile_commands.json"
@@ -512,10 +495,10 @@ If no message appears, defaults are being used.
 {
   "include_dependencies": false,
   "max_file_size_mb": 5,
-  "exclude_patterns": [
-    "*_test.cpp",
-    "*_benchmark.cpp",
-    "*/tests/*"
+  "exclude_directories": [
+    ".git",
+    "tests",
+    "benchmarks"
   ],
   "compile_commands": {
     "enabled": true,
@@ -733,7 +716,7 @@ Example:
 **"Too many files re-analyzed":**
 - Common headers may trigger widespread re-analysis
 - Consider excluding frequently-changing generated headers
-- Use `exclude_patterns` in config to skip certain files
+- Use `exclude_directories` in config to skip certain directories
 
 **"Cache seems stale":**
 - Use `auto_refresh=true` or call `refresh_project`

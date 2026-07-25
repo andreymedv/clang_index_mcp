@@ -1004,7 +1004,6 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 - `project_root`: Absolute or relative path to the C++ project root
 - `exclude_directories`: List of directories to exclude (default: .git, .svn, node_modules, etc.)
 - `dependency_directories`: List of directories containing dependencies (default: vcpkg_installed, third_party, external, etc.)
-- `exclude_patterns`: List of file patterns to exclude (e.g., "*.generated.h")
 - `include_dependencies`: Boolean flag to include dependency code (default: true)
 - `max_file_size_mb`: Maximum file size in MB (default: 10)
 - `max_parse_retries`: Maximum retry attempts for failed files (default: 2)

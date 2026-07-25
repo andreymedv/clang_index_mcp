@@ -30,7 +30,6 @@ class CompileCommandsConfig:
     supported_extensions: List[str] = field(
         default_factory=lambda: list(FileScanner.CPP_EXTENSIONS)
     )
-    exclude_patterns: List[str] = field(default_factory=list)
     sanitization_rules_file: Optional[str] = None
 
     @classmethod
@@ -45,7 +44,6 @@ class CompileCommandsConfig:
             fallback_to_hardcoded=data.get("fallback_to_hardcoded", True),
             cache_expiry_seconds=data.get("cache_expiry_seconds", 300),
             supported_extensions=data.get("supported_extensions", list(FileScanner.CPP_EXTENSIONS)),
-            exclude_patterns=data.get("exclude_patterns", []),
             sanitization_rules_file=data.get("sanitization_rules_file"),
         )
 
@@ -77,7 +75,6 @@ class CppAnalyzerConfig:
             "dependencies",
             "packages",
         ],
-        "exclude_patterns": [],
         "include_dependencies": True,
         "max_file_size_mb": 10,
         "max_parse_retries": 2,  # Maximum number of times to retry parsing a failed file
@@ -143,13 +140,6 @@ class CppAnalyzerConfig:
         """Get list of directories that contain dependencies."""
         result: List[str] = self.config.get(
             "dependency_directories", self.DEFAULT_CONFIG["dependency_directories"]
-        )
-        return result
-
-    def get_exclude_patterns(self) -> List[str]:
-        """Get list of file patterns to exclude."""
-        result: List[str] = self.config.get(
-            "exclude_patterns", self.DEFAULT_CONFIG["exclude_patterns"]
         )
         return result
 
@@ -231,7 +221,6 @@ class CppAnalyzerConfig:
             supported_extensions=compile_commands.get(
                 "supported_extensions", list(FileScanner.CPP_EXTENSIONS)
             ),
-            exclude_patterns=compile_commands.get("exclude_patterns", []),
             sanitization_rules_file=self.config.get("sanitization_rules_file"),
         )
 
@@ -258,7 +247,6 @@ class CppAnalyzerConfig:
                 "Binaries",
                 "DerivedDataCache",
             ],
-            "exclude_patterns": ["*.generated.h", "*.generated.cpp", "*_test.cpp"],
             "dependency_directories": ["vcpkg_installed", "third_party", "external"],
             "include_dependencies": True,
             "max_file_size_mb": 10,

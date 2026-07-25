@@ -310,7 +310,6 @@ Refactored into packages:
 **Mandatory Project setup:** Projects MUST be initialized via a `.json` configuration file passed to `set_project`.
 - `project_root`: (Required) Path to the C++ source directory (absolute or relative to config file).
 - `exclude_directories`: Dirs to skip (e.g., [".git", "build", "node_modules"])
-- `exclude_patterns`: File patterns to exclude (e.g., ["*.generated.h", "*_test.cpp"])
 - `dependency_directories`: Third-party deps (e.g., ["vcpkg_installed", "third_party"])
 - `include_dependencies`: Analyze files in dependency dirs (default: true)
 - `max_file_size_mb`: Skip files larger than this (default: 10)

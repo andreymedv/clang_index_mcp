@@ -9,14 +9,6 @@
     "build",
     "dist"
   ],
-  "exclude_patterns": [
-    "*.generated.h",
-    "*.generated.cpp",
-    "*.o",
-    "*.so",
-    "*.dll",
-    "*.exe"
-  ],
   "dependency_directories": [
     "third_party",
     "external",
@@ -41,16 +33,6 @@
       ".hxx",
       ".h++",
       ".inl"
-    ],
-    "exclude_patterns": [
-      "*/CMakeFiles/*",
-      "*/cmake-build-*",
-      "*/build/*",
-      "*/dist/*",
-      "*/node_modules/*",
-      "*/third_party/*",
-      "*/external/*",
-      "*/vendor/*"
     ]
   }
 }
