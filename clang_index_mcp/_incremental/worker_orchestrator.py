@@ -142,7 +142,7 @@ def submit_tasks(
     import os
 
     from .._indexing.indexing_task_spec import IndexingTaskSpec
-    from .._indexing.worker_pool import _process_file_worker
+    from ..worker_bootstrap import _process_file_worker
     from .._incremental.compile_args_resolver import get_file_compile_args
 
     project_root = str(ctx.project_root)
@@ -273,7 +273,7 @@ def _run_analysis_loop(
 ) -> int:
     """Execute the analysis loop with executor lifecycle management."""
     from .._core import diagnostics
-    from .._indexing.worker_pool import _init_worker
+    from ..worker_bootstrap import _init_worker
 
     executor: Optional[Executor] = None
     max_workers = os.cpu_count() or 4

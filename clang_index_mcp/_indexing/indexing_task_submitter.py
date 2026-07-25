@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
 from .._indexing.indexing_task_spec import IndexingTaskSpec
-from .._indexing.worker_pool import _process_file_worker
+from ..worker_bootstrap import _process_file_worker
 
 if TYPE_CHECKING:
     from concurrent.futures import Executor, Future
