@@ -228,7 +228,7 @@ Refactored into packages:
 - File descriptors remain stable at ~10-15 during indexing (tested with 5700+ files)
 - **Historical Issue:** self.translation_units dict was removed (write-only, caused 516+ FD leak)
 - See `clang_index_mcp/_indexing/indexing_pipeline.py` (`SingleFileIndexingPipeline._finalize_index_success()`) for explicit TU deletion
-- See `clang_index_mcp/_indexing/worker_pool.py` (`_process_file_worker()`) for worker cleanup
+- See `clang_index_mcp/worker_bootstrap.py` (`_process_file_worker()`) for worker cleanup
 - See `clang_index_mcp/_persistence/header_tracker.py`
 
 **5. SQLite Cache with FTS5**
@@ -290,7 +290,7 @@ Refactored into packages:
 - **Project Context / DI Container:** `clang_index_mcp/project_context.py` (`ProjectContext`)
 - **Full-Project Indexing:** `clang_index_mcp/_indexing/indexing_orchestrator.py` (`ProjectIndexingOrchestrator`)
 - **Single-File Indexing Pipeline:** `clang_index_mcp/_indexing/indexing_pipeline.py` (`SingleFileIndexingPipeline`)
-- **Worker Pool:** `clang_index_mcp/_indexing/worker_pool.py` (`_process_file_worker()`)
+- **Worker Pool:** `clang_index_mcp/_indexing/worker_pool.py` (`WorkerPoolManager`, executor lifecycle); worker-side entry point in `clang_index_mcp/worker_bootstrap.py` (`_process_file_worker()`)
 - **Symbol Extraction Coordination:** `clang_index_mcp/_symbols/symbol_extractor.py` (`SymbolExtractor.index_translation_unit()`)
 - **AST Traversal:** `clang_index_mcp/_compilation/clang_symbol_parser.py` (`ClangSymbolParser._process_cursor()`)
 - **Type Alias Extraction:** `clang_index_mcp/_symbols/alias_extractor.py` (`extract_alias_info()`)
