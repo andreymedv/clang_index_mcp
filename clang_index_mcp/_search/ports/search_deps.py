@@ -48,7 +48,7 @@ class SearchConcurrency(Protocol):
 class SearchCacheManager(Protocol):
     """Minimal interface for cache access used by search type alias resolution."""
 
-    def get_canonical_for_alias(self, type_name: str) -> Any:
+    def get_canonical_for_alias(self, alias_name: str) -> Any:
         pass
 
     def get_type_alias_info(self, type_name: str) -> Any:
