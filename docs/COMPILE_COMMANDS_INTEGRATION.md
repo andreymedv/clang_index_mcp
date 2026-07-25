@@ -26,15 +26,7 @@ The compile commands integration is configured through the `cpp-analyzer-config.
     "cache_enabled": true,
     "fallback_to_hardcoded": true,
     "cache_expiry_seconds": 300,
-    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"],
-    "exclude_patterns": [
-      "*/build/*",
-      "*/cmake-build-*",
-      "*/CMakeFiles/*",
-      "*/node_modules/*",
-      "*/third_party/*",
-      "*/external/*"
-    ]
+    "supported_extensions": [".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]
   }
 }
 ```
@@ -49,7 +41,6 @@ The compile commands integration is configured through the `cpp-analyzer-config.
 | `fallback_to_hardcoded` | boolean | `true` | Enable fallback to hardcoded arguments |
 | `cache_expiry_seconds` | integer | `300` | Cache expiry time in seconds |
 | `supported_extensions` | array | `[".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"]` | File extensions to process |
-| `exclude_patterns` | array | `[]` | File patterns to exclude from processing |
 
 ## Usage
 
@@ -74,8 +65,7 @@ You can customize the behavior by modifying `cpp-analyzer-config.json`:
     "cache_enabled": true,
     "fallback_to_hardcoded": true,
     "cache_expiry_seconds": 600,
-    "supported_extensions": [".cpp", ".cxx", ".h", ".hpp"],
-    "exclude_patterns": ["*/build/*", "*/tests/*"]
+    "supported_extensions": [".cpp", ".cxx", ".h", ".hpp"]
   }
 }
 ```
@@ -490,8 +480,7 @@ This generates a `compile_commands.json` file that the analyzer will automatical
     "cache_enabled": true,
     "fallback_to_hardcoded": false,
     "cache_expiry_seconds": 600,
-    "supported_extensions": [".cpp", ".cxx", ".h", ".hpp"],
-    "exclude_patterns": ["*/build/*", "*/tests/*"]
+    "supported_extensions": [".cpp", ".cxx", ".h", ".hpp"]
   }
 }
 ```

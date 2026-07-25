@@ -19,11 +19,6 @@
     "Build",
     "cmake-build-windows-vcpkg"
   ],
-  "exclude_patterns": [
-    "*.generated.h",
-    "*.generated.cpp",
-    "*_test.cpp"
-  ],
   "dependency_directories": [
     "vcpkg_installed",
     "third_party",
@@ -50,14 +45,6 @@
       ".hpp",
       ".hxx",
       ".h++"
-    ],
-    "exclude_patterns": [
-      "*/build/*",
-      "*/cmake-build-*",
-      "*/CMakeFiles/*",
-      "*/node_modules/*",
-      "*/third_party/*",
-      "*/external/*"
     ]
   },
   "_comment": "This configuration applies to all C++ projects analyzed by this MCP server"

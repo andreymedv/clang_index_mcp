@@ -90,7 +90,6 @@ class TestCompileCommandsManager(unittest.TestCase):
         self.assertTrue(manager.fallback_to_hardcoded)
         self.assertEqual(manager.cache_expiry_seconds, 300)
         self.assertIn(".cpp", manager.supported_extensions)
-        self.assertEqual(len(manager.exclude_patterns), 0)
 
     def test_init_with_custom_config(self):
         """Test initialization with custom configuration."""
@@ -101,7 +100,6 @@ class TestCompileCommandsManager(unittest.TestCase):
             "fallback_to_hardcoded": False,
             "cache_expiry_seconds": 600,
             "supported_extensions": [".cpp", ".cxx"],
-            "exclude_patterns": ["*/build/*", "*/tests/*"],
         }
 
         manager = CompileCommandsManager(self.project_root, config)
@@ -112,7 +110,6 @@ class TestCompileCommandsManager(unittest.TestCase):
         self.assertFalse(manager.fallback_to_hardcoded)
         self.assertEqual(manager.cache_expiry_seconds, 600)
         self.assertEqual(manager.supported_extensions, {".cpp", ".cxx"})
-        self.assertEqual(manager.exclude_patterns, ["*/build/*", "*/tests/*"])
 
     def test_load_compile_commands_success(self):
         """Test successful loading of compile commands."""

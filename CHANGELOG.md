@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Recommended**: Use qualified patterns for disambiguation
 - **Recommended**: Display `qualified_name` instead of `name` for clarity
 
+### Removed
+
+- **Unused `exclude_patterns` configuration**: Removed the top-level `exclude_patterns` config option and `compile_commands.exclude_patterns`, which were parsed but never applied anywhere in the analyzer. Also removed `CppAnalyzerConfig.get_exclude_patterns()`, `CompileCommandsConfig.exclude_patterns`, and `CompileCommandsManager.exclude_patterns`. Config files that still contain these keys are simply ignored — no migration needed. Use `exclude_directories` to skip files during scanning.
+
 ---
 
 ## [1.0.0] - Previous Releases
