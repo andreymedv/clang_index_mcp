@@ -116,7 +116,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
             ).ThreadPoolExecutor(max_workers=max_workers or 2),
         )
         self._worker_patch = patch(
-            "clang_index_mcp._indexing.worker_pool._process_file_worker",
+            "clang_index_mcp.worker_bootstrap.process_file_worker",
             side_effect=_fake_process_file_worker,
         )
         self._pool_patch.start()
