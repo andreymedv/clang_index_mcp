@@ -749,9 +749,6 @@ class SearchEngine:
         is_qualified = "::" in lookup_name
         simple_name = extract_simple_name(lookup_name)
 
-        if class_name:
-            class_name = extract_simple_name(class_name)
-
         with self.index_lock:
             infos = self._lookup_function_infos(simple_name)
             for info in infos:

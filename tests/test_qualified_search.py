@@ -564,6 +564,43 @@ namespace outer {
             assert len(sigs) >= 1
             assert any("myFunction" in s for s in sigs)
 
+    def test_get_function_signature_qualified_class_name(self):
+        """get_function_signature should accept a qualified class_name filter."""
+        import tempfile
+        from pathlib import Path
+
+        from clang_index_mcp.cpp_analyzer import CppAnalyzer
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_file = Path(tmpdir) / "test.cpp"
+            test_file.write_text("""
+namespace ns1 {
+    class Widget {
+    public:
+        void draw();
+    };
+}
+
+namespace ns2 {
+    class Widget {
+    public:
+        void draw();
+    };
+}
+""")
+
+            analyzer = CppAnalyzer(tmpdir)
+            analyzer.index_project()
+
+            # Qualified class_name disambiguates two classes with the same simple name.
+            sigs = analyzer.get_function_signature("draw", class_name="ns1::Widget")
+            assert len(sigs) == 1, f"Expected 1 signature, got {sigs}"
+            assert "draw" in sigs[0]
+
+            sigs = analyzer.get_function_signature("draw", class_name="ns2::Widget")
+            assert len(sigs) == 1, f"Expected 1 signature, got {sigs}"
+            assert "draw" in sigs[0]
+
     def test_get_class_info_exact_match_with_leading_colons(self):
         """Leading :: should still require exact global namespace match."""
         import tempfile
