@@ -466,3 +466,23 @@ def test_partial_namespace_with_pattern(nested_namespace_project):
     results2 = analyzer.search_classes("TextWidget", namespace="builders")
     assert len(results2) == 1
     assert results2[0]["qualified_name"] == "outer::builders::TextWidget"
+
+
+def test_qualified_method_pattern_with_parent_namespace(nested_namespace_project):
+    """
+    Test that a class-qualified method pattern combined with a parent
+    namespace filter finds the method.
+
+    Regression: the method namespace stored by the indexer includes the
+    enclosing class ("outer::builders::TextWidget"), so a filter on the
+    parent namespace ("outer::builders") must match as a prefix.
+    """
+    analyzer = CppAnalyzer(str(nested_namespace_project))
+    analyzer.index_project()
+
+    results = analyzer.search_functions(
+        "TextWidget::build", namespace="outer::builders"
+    )
+    assert len(results) == 1, f"Expected 1 result, got {len(results)}: {results}"
+    assert results[0]["qualified_name"] == "outer::builders::TextWidget::build"
+    assert results[0]["parent_class"] == "TextWidget"

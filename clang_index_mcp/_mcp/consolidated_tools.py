@@ -304,7 +304,11 @@ def list_tools_b() -> List[Tool]:
                     },
                     "namespace": {
                         "type": "string",
-                        "description": "Optional: Filter to symbols in this namespace.",
+                        "description": (
+                            "Optional: Filter to symbols in this namespace. "
+                            "Supports partial matching at :: boundaries "
+                            "(e.g. 'app::core' matches 'app::core::Widget::method')."
+                        ),
                     },
                     "max_results": {
                         "type": "integer",

@@ -100,6 +100,7 @@ class SearchEngine:
             _matches_namespace("builders", "builders") → True  (exact)
             _matches_namespace("myapp::builders", "myapp::builders") → True  (exact)
             _matches_namespace("X::myapp::builders", "myapp::builders") → True  (suffix)
+            _matches_namespace("myapp::builders::TextWidget", "myapp::builders") → True  (prefix)
             _matches_namespace("Foobuilders", "builders") → False  (not at boundary)
             _matches_namespace("", "") → True  (global namespace)
             _matches_namespace("ns1", "") → False  (not global namespace)
@@ -115,6 +116,13 @@ class SearchEngine:
         # Suffix match: symbol_namespace ends with "::filter_namespace"
         suffix = "::" + filter_namespace
         if symbol_namespace.endswith(suffix):
+            return True
+
+        # Prefix match: symbol_namespace starts with "filter_namespace::"
+        # This allows a parent namespace filter to match symbols in nested
+        # classes or deeper namespaces (e.g. "ns1" matches "ns1::View::render").
+        prefix = filter_namespace + "::"
+        if symbol_namespace.startswith(prefix):
             return True
 
         return False
