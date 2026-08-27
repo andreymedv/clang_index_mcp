@@ -486,3 +486,52 @@ def test_qualified_method_pattern_with_parent_namespace(nested_namespace_project
     assert len(results) == 1, f"Expected 1 result, got {len(results)}: {results}"
     assert results[0]["qualified_name"] == "outer::builders::TextWidget::build"
     assert results[0]["parent_class"] == "TextWidget"
+
+
+def test_parent_namespace_matches_nested_class(nested_namespace_project):
+    """
+    Test that a parent namespace filter finds classes defined in nested
+    namespaces (not only exact/suffix matches).
+    """
+    analyzer = CppAnalyzer(str(nested_namespace_project))
+    analyzer.index_project()
+
+    results = analyzer.search_classes("PdfWidget", namespace="TopLevel::outer")
+    assert len(results) == 1, f"Expected 1 result, got {len(results)}: {results}"
+    assert results[0]["qualified_name"] == "TopLevel::outer::builders::PdfWidget"
+
+
+def test_parent_namespace_matches_nested_method(nested_namespace_project):
+    """
+    Test that a parent namespace filter finds methods declared inside a
+    deeply nested class.
+    """
+    analyzer = CppAnalyzer(str(nested_namespace_project))
+    analyzer.index_project()
+
+    results = analyzer.search_functions("export_pdf", namespace="TopLevel::outer")
+    assert len(results) == 1, f"Expected 1 result, got {len(results)}: {results}"
+    assert (
+        results[0]["qualified_name"]
+        == "TopLevel::outer::builders::PdfWidget::export_pdf"
+    )
+    assert results[0]["parent_class"] == "PdfWidget"
+
+
+def test_parent_namespace_enumerates_nested_symbols(nested_namespace_project):
+    """
+    Test that empty pattern enumeration with a parent namespace includes
+    symbols in nested namespaces and classes.
+    """
+    analyzer = CppAnalyzer(str(nested_namespace_project))
+    analyzer.index_project()
+
+    all_symbols = analyzer.search_symbols("", namespace="TopLevel::outer")
+    classes = all_symbols["classes"]
+    functions = all_symbols["functions"]
+
+    qualified_names = {c["qualified_name"] for c in classes}
+    assert "TopLevel::outer::builders::PdfWidget" in qualified_names
+
+    method_names = {f["qualified_name"] for f in functions}
+    assert "TopLevel::outer::builders::PdfWidget::export_pdf" in method_names
