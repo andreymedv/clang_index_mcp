@@ -535,3 +535,47 @@ def test_parent_namespace_enumerates_nested_symbols(nested_namespace_project):
 
     method_names = {f["qualified_name"] for f in functions}
     assert "TopLevel::outer::builders::PdfWidget::export_pdf" in method_names
+
+
+def test_find_symbols_by_pattern_class_method_with_parent_namespace(tmp_path):
+    """
+    Exact reproduction of the reported bug: find_symbols_by_pattern with a
+    class-qualified method name and a parent namespace filter.
+
+    Before the fix the namespace filter (App::Core::Internal) was
+    rejected because the method namespace stored by the indexer includes the
+    enclosing class (App::Core::Internal::ClassImpl).
+    """
+    project = tmp_path / "qualified_method"
+    project.mkdir()
+    header = project / "class_impl.h"
+    header.write_text("""
+namespace App {
+namespace Core {
+namespace Internal {
+
+class ClassImpl {
+public:
+    void method(const char* str);
+};
+
+} // namespace Internal
+} // namespace Core
+} // namespace App
+""")
+
+    analyzer = CppAnalyzer(str(project))
+    analyzer.index_project()
+
+    # This is the internal call that find_symbols_by_pattern makes for
+    # target_type='functions_and_methods_only'.
+    results = analyzer.search_functions(
+        "ClassImpl::method",
+        namespace="App::Core::Internal",
+    )
+    assert len(results) == 1, f"Expected 1 result, got {len(results)}: {results}"
+    assert (
+        results[0]["qualified_name"]
+        == "App::Core::Internal::ClassImpl::method"
+    )
+    assert results[0]["parent_class"] == "ClassImpl"
