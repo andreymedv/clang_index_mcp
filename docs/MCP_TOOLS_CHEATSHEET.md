@@ -63,7 +63,7 @@ Find classes and structs by name pattern.
 pattern: "Builder"              # Required: name pattern (see modes above)
 search_scope: "project_code_only"  # Optional: "project_code_only" (default) or "include_external_libraries"
 file_name: "document.h"         # Optional: filter by file
-namespace: "app::core"          # Optional: exact namespace filter
+namespace: "app::core"          # Optional: namespace filter (exact or partial; partial matches at :: boundaries)
 ```
 
 **Output:** List of matching classes
@@ -95,7 +95,7 @@ Find functions and methods by name pattern.
 pattern: "parse.*"              # Required: name pattern
 search_scope: "project_code_only"  # Optional
 file_name: "parser.cpp"         # Optional
-namespace: "parser"             # Optional
+namespace: "parser"             # Optional: namespace filter (exact or partial)
 ```
 
 **Output:** List of matching functions
