@@ -153,7 +153,7 @@ class RefreshPipeline:
                 diagnostics.error(f"Error refreshing {file_path}: {e}")
 
             progress_callback = callbacks.progress if callbacks else None
-            if progress_callback and ((i + 1) % 10 == 0 or (i + 1) == total_to_check):
+            if progress_callback:
                 self.progress_reporter.report_refresh_progress(
                     progress_callback, total_to_check, refreshed, failed, file_path, start_time
                 )

@@ -7,12 +7,30 @@ cursors and produces the normalized dictionaries consumed by SymbolExtractor.
 import json
 import time
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 
 from clang.cindex import Cursor, CursorKind
 
 from .._symbols.ports.parser import TypeAliasRecord
-from .cursor_utils import extract_namespace, get_qualified_name
+from .cursor_utils import extract_namespace, get_qualified_name, iter_template_params
+
+
+def _extract_location(cursor: Cursor) -> Tuple[str, int, int]:
+    """Extract file path, line, and column from a cursor's location."""
+    file_path = str(cursor.location.file.name) if cursor.location.file else ""
+    return file_path, cursor.location.line, cursor.location.column
+
+
+def _underlying_typedef_type(cursor: Cursor) -> Tuple[str, str]:
+    """Extract target and canonical type spellings, falling back to the cursor's own type."""
+    try:
+        underlying_type = cursor.underlying_typedef_type
+        target_type = underlying_type.spelling
+        canonical_type = underlying_type.get_canonical().spelling
+    except AttributeError:
+        target_type = cursor.type.spelling
+        canonical_type = cursor.type.get_canonical().spelling
+    return target_type, canonical_type
 
 
 @dataclass
@@ -32,9 +50,7 @@ class AliasInfoBase:
         """Create AliasInfoBase from cursor with extracted type information."""
         alias_name = cursor.spelling
         qualified_name = get_qualified_name(cursor)
-        file_path = str(cursor.location.file.name) if cursor.location.file else ""
-        line = cursor.location.line
-        column = cursor.location.column
+        file_path, line, column = _extract_location(cursor)
 
         return cls(
             alias_name=alias_name,
@@ -67,35 +83,28 @@ def extract_template_alias_info(cursor: Cursor) -> TemplateAliasInfo:
     type_alias_decl = None
 
     for child in cursor.get_children():
+        if child.kind == CursorKind.TYPE_ALIAS_DECL:
+            type_alias_decl = child
+
+    for child in iter_template_params(cursor):
         if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
             template_params.append({"name": child.spelling, "kind": "type"})
         elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
             template_params.append(
                 {"name": child.spelling, "kind": "non_type", "type": child.type.spelling}
             )
-        elif child.kind == CursorKind.TYPE_ALIAS_DECL:
-            type_alias_decl = child
 
     if type_alias_decl:
         alias_name = type_alias_decl.spelling
         qualified_name = get_qualified_name(type_alias_decl)
-
-        try:
-            underlying_type = type_alias_decl.underlying_typedef_type
-            target_type = underlying_type.spelling
-            canonical_type = underlying_type.get_canonical().spelling
-        except AttributeError:
-            target_type = type_alias_decl.type.spelling
-            canonical_type = type_alias_decl.type.get_canonical().spelling
+        target_type, canonical_type = _underlying_typedef_type(type_alias_decl)
     else:
         alias_name = cursor.spelling
         qualified_name = get_qualified_name(cursor)
         target_type = ""
         canonical_type = ""
 
-    file_path = str(cursor.location.file.name) if cursor.location.file else ""
-    line = cursor.location.line
-    column = cursor.location.column
+    file_path, line, column = _extract_location(cursor)
 
     return TemplateAliasInfo(
         alias_name=alias_name,
@@ -113,14 +122,7 @@ def extract_simple_alias_info(cursor: Cursor) -> SimpleAliasInfo:
     """Extract alias info from a TYPEDEF_DECL or TYPE_ALIAS_DECL cursor."""
     alias_name = cursor.spelling
     qualified_name = get_qualified_name(cursor)
-
-    try:
-        underlying_type = cursor.underlying_typedef_type
-        target_type = underlying_type.spelling
-        canonical_type = underlying_type.get_canonical().spelling
-    except AttributeError:
-        target_type = cursor.type.spelling
-        canonical_type = cursor.type.get_canonical().spelling
+    target_type, canonical_type = _underlying_typedef_type(cursor)
 
     if cursor.kind == CursorKind.TYPE_ALIAS_DECL:
         alias_kind = "using"
@@ -129,9 +131,7 @@ def extract_simple_alias_info(cursor: Cursor) -> SimpleAliasInfo:
     else:
         alias_kind = "unknown"
 
-    file_path = str(cursor.location.file.name) if cursor.location.file else ""
-    line = cursor.location.line
-    column = cursor.location.column
+    file_path, line, column = _extract_location(cursor)
 
     return SimpleAliasInfo(
         alias_name=alias_name,

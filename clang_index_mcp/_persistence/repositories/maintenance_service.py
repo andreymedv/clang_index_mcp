@@ -1,8 +1,9 @@
 """SQLite-backed database maintenance, health checks, and performance monitoring."""
 
-import sqlite3
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
+
+from .base import BaseRepository
 
 try:
     from ..._core import diagnostics
@@ -10,17 +11,8 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 
-class MaintenanceService:
+class MaintenanceService(BaseRepository):
     """Handles database maintenance, integrity checks, health status, and perf monitoring."""
-
-    def __init__(self, conn_getter: Callable[[], Optional[sqlite3.Connection]]):
-        self._conn_getter = conn_getter
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        connection = self._conn_getter()
-        assert connection is not None, "Database connection not initialized"
-        return connection
 
     def get_symbol_stats(self) -> Dict[str, Any]:
         """Get detailed symbol statistics."""

@@ -1,8 +1,9 @@
 """SQLite-backed file metadata and cache metadata operations."""
 
-import sqlite3
 import time
-from typing import Any, Callable, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
+
+from .base import BaseRepository
 
 try:
     from ..._core import diagnostics
@@ -10,17 +11,8 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 
-class FileMetadataRepository:
+class FileMetadataRepository(BaseRepository):
     """Handles file metadata, cache metadata, and compile args hash persistence."""
-
-    def __init__(self, conn_getter: Callable[[], Optional[sqlite3.Connection]]):
-        self._conn_getter = conn_getter
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        connection = self._conn_getter()
-        assert connection is not None, "Database connection not initialized"
-        return connection
 
     def update_file_metadata(
         self,

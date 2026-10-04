@@ -216,14 +216,7 @@ class BackgroundIndexer:
         loop = asyncio.get_event_loop()
 
         # Create progress callback that updates state_manager
-        def progress_callback(progress: IndexingProgress):
-            """Callback to update progress in state manager"""
-            self.state_manager.update_progress(progress)
-
-        callbacks = IndexingCallbacks(
-            progress=progress_callback,
-            wait_for_tools=self.state_manager.wait_for_tools_to_finish,
-        )
+        callbacks = IndexingCallbacks.from_state_manager(self.state_manager)
 
         try:
             indexed_count = await loop.run_in_executor(

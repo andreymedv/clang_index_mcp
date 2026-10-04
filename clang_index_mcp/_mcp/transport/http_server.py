@@ -25,6 +25,28 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _parse_error_response(session_id: str) -> JSONResponse:
+    """Build the JSON-RPC -32700 Parse error response."""
+    return JSONResponse(
+        {
+            "jsonrpc": "2.0",
+            "error": {"code": -32700, "message": "Parse error"},
+            "id": None,
+        },
+        status_code=400,
+        headers={"mcp-session-id": session_id},
+    )
+
+
+def _internal_error_payload(message: str) -> dict:
+    """Build the JSON-RPC -32603 Internal error payload body."""
+    return {
+        "jsonrpc": "2.0",
+        "error": {"code": -32603, "message": f"Internal error: {message}"},
+        "id": None,
+    }
+
+
 class MCPHTTPServer:
     """
     HTTP/SSE server wrapper for MCP Server.
@@ -196,16 +218,7 @@ class MCPHTTPServer:
             return body, None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning(f"JSON decode error: {e}")
-            response = JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "error": {"code": -32700, "message": "Parse error"},
-                    "id": None,
-                },
-                status_code=400,
-                headers={"mcp-session-id": session_id},
-            )
-            return body, response
+            return body, _parse_error_response(session_id)
 
     def _inject_session_header(self, request: Request, session_id: str) -> dict:
         """Inject session ID into request headers for transport validation."""
@@ -282,23 +295,11 @@ class MCPHTTPServer:
         except json.JSONDecodeError as e:
             # Invalid JSON
             logger.warning(f"JSON decode error: {e}")
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "error": {"code": -32700, "message": "Parse error"},
-                    "id": None,
-                },
-                status_code=400,
-                headers={"mcp-session-id": session_id},
-            )
+            return _parse_error_response(session_id)
         except Exception as e:
             logger.exception(f"Error handling request: {e}")
             return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
-                    "id": None,
-                },
+                _internal_error_payload(str(e)),
                 status_code=500,
                 headers={"mcp-session-id": session_id},
             )
@@ -416,13 +417,7 @@ class MCPHTTPServer:
             await send(
                 {
                     "type": "http.response.body",
-                    "body": json.dumps(
-                        {
-                            "jsonrpc": "2.0",
-                            "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
-                            "id": None,
-                        }
-                    ).encode(),
+                    "body": json.dumps(_internal_error_payload(str(e))).encode(),
                 }
             )
 

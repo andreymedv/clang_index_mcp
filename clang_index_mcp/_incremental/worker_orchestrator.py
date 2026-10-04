@@ -6,9 +6,7 @@ and reporting progress during incremental refresh.
 
 import multiprocessing
 import os
-import time
 from concurrent.futures import Executor, ProcessPoolExecutor, as_completed
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type
 
 if TYPE_CHECKING:
@@ -105,32 +103,14 @@ def report_progress(
     file_path: str,
 ) -> None:
     """Calculate and report indexing progress via callback."""
-    from .._core import diagnostics
+    from .._indexing.indexing_progress_reporter import IndexingProgressReporter
 
-    processed = i + 1
-    if processed % 10 == 0 or processed == total:
-        try:
-            from .._indexing.progress import IndexingProgress
-
-            elapsed = time.time() - start_time
-            rate = processed / elapsed if elapsed > 0 else 0
-            eta = (total - processed) / rate if rate > 0 else 0
-
-            estimated_completion = datetime.now() + timedelta(seconds=eta) if eta > 0 else None
-
-            progress = IndexingProgress(
-                total_files=total,
-                indexed_files=analyzed,
-                failed_files=failed,
-                cache_hits=0,
-                current_file=file_path if processed < total else None,
-                start_time=datetime.fromtimestamp(start_time),
-                estimated_completion=estimated_completion,
-            )
-
-            progress_callback(progress)
-        except Exception as e:
-            diagnostics.debug(f"Progress callback failed: {e}")
+    # In the caller's loop analyzed + failed == i + 1 (every iteration increments
+    # exactly one of them), so the canonical reporter's processed counter and
+    # its every-10-files / last-file gating match this function's old behavior.
+    IndexingProgressReporter.report_refresh_progress(
+        progress_callback, total, analyzed, failed, file_path, start_time
+    )
 
 
 def submit_tasks(

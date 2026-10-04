@@ -7,7 +7,7 @@ Separates MCP tool output (stdout) from diagnostic messages (stderr by default).
 import os
 import sys
 from enum import IntEnum
-from typing import Optional, TextIO
+from typing import Dict, Optional, TextIO
 
 
 class DiagnosticLevel(IntEnum):
@@ -106,6 +106,20 @@ class DiagnosticLogger:
 # Global diagnostic logger instance
 _global_logger: Optional[DiagnosticLogger] = None
 
+# Maps upper-cased level names to diagnostic levels
+_LEVEL_MAP: Dict[str, DiagnosticLevel] = {
+    "DEBUG": DiagnosticLevel.DEBUG,
+    "INFO": DiagnosticLevel.INFO,
+    "WARNING": DiagnosticLevel.WARNING,
+    "ERROR": DiagnosticLevel.ERROR,
+    "FATAL": DiagnosticLevel.FATAL,
+}
+
+
+def _parse_level(level_str: str) -> Optional[DiagnosticLevel]:
+    """Map a level name (case-insensitive) to a DiagnosticLevel, or None if unknown."""
+    return _LEVEL_MAP.get(level_str.upper())
+
 
 def get_logger() -> DiagnosticLogger:
     """Get the global diagnostic logger instance."""
@@ -118,15 +132,8 @@ def get_logger() -> DiagnosticLogger:
 def _create_default_logger() -> DiagnosticLogger:
     """Create a logger with default settings from environment/config."""
     # Check environment variable for diagnostic level
-    level_str = os.environ.get("CPP_ANALYZER_DIAGNOSTIC_LEVEL", "INFO").upper()
-    level_map = {
-        "DEBUG": DiagnosticLevel.DEBUG,
-        "INFO": DiagnosticLevel.INFO,
-        "WARNING": DiagnosticLevel.WARNING,
-        "ERROR": DiagnosticLevel.ERROR,
-        "FATAL": DiagnosticLevel.FATAL,
-    }
-    level = level_map.get(level_str, DiagnosticLevel.INFO)
+    parsed = _parse_level(os.environ.get("CPP_ANALYZER_DIAGNOSTIC_LEVEL", "INFO"))
+    level = parsed if parsed is not None else DiagnosticLevel.INFO
 
     return DiagnosticLogger(level=level, output_stream=sys.stderr)
 
@@ -148,16 +155,9 @@ def configure_from_config(config: dict):
     logger = get_logger()
 
     # Set level
-    level_str = diag_config.get("level", "INFO").upper()
-    level_map = {
-        "DEBUG": DiagnosticLevel.DEBUG,
-        "INFO": DiagnosticLevel.INFO,
-        "WARNING": DiagnosticLevel.WARNING,
-        "ERROR": DiagnosticLevel.ERROR,
-        "FATAL": DiagnosticLevel.FATAL,
-    }
-    if level_str in level_map:
-        logger.set_level(level_map[level_str])
+    level = _parse_level(diag_config.get("level", "INFO"))
+    if level is not None:
+        logger.set_level(level)
 
     # Set enabled state
     enabled = diag_config.get("enabled", True)

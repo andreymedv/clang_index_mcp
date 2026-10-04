@@ -127,7 +127,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
 
 # Import domain rules from focused modules.
-from .query_policy import _check_tool_readiness  # noqa: E402
+from .query_policy import QUERY_TOOL_NAMES, _check_tool_readiness  # noqa: E402
 
 # Import tool handlers from focused submodules.
 from .tool_handlers.search_tools import (  # noqa: E402
@@ -157,6 +157,29 @@ from .tool_handlers.transport_tools import (  # noqa: E402
     _run_stdio_transport,
 )
 
+# Handlers for query tools, keyed by the names single-sourced in
+# query_policy.QUERY_TOOL_NAMES (consulted below when building the dispatch table).
+_QUERY_HANDLERS = {
+    "search_classes": _handle_search_classes,
+    "search_functions": _handle_search_functions,
+    "get_class_info": _handle_get_class_info,
+    "get_type_alias_info": _handle_get_type_alias_info,
+    "search_symbols": _handle_search_symbols,
+    "find_in_file": _handle_find_in_file,
+    "get_class_hierarchy": _handle_get_class_hierarchy,
+    "find_incoming_calls": _handle_find_incoming_calls,
+    "get_outgoing_calls": _handle_get_outgoing_calls,
+    "get_call_sites": _handle_get_call_sites,
+    "get_call_path": _handle_get_call_path,
+}
+
+# Tools dispatched without the query-readiness gate (see query_policy).
+_UNGATED_HANDLERS = {
+    "refresh_project": _handle_refresh_project,
+    "check_system_status": _handle_check_system_status,
+    "wait_for_indexing": _handle_wait_for_indexing,
+}
+
 
 async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     try:
@@ -172,22 +195,8 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
             return error_response
 
         # 3. Route to specific handler
-        handlers = {
-            "search_classes": _handle_search_classes,
-            "search_functions": _handle_search_functions,
-            "get_class_info": _handle_get_class_info,
-            "get_type_alias_info": _handle_get_type_alias_info,
-            "search_symbols": _handle_search_symbols,
-            "find_in_file": _handle_find_in_file,
-            "refresh_project": _handle_refresh_project,
-            "check_system_status": _handle_check_system_status,
-            "wait_for_indexing": _handle_wait_for_indexing,
-            "get_class_hierarchy": _handle_get_class_hierarchy,
-            "find_incoming_calls": _handle_find_incoming_calls,
-            "get_outgoing_calls": _handle_get_outgoing_calls,
-            "get_call_sites": _handle_get_call_sites,
-            "get_call_path": _handle_get_call_path,
-        }
+        handlers = {tool_name: _QUERY_HANDLERS[tool_name] for tool_name in QUERY_TOOL_NAMES}
+        handlers.update(_UNGATED_HANDLERS)
 
         if name in handlers:
             return await handlers[name](arguments)

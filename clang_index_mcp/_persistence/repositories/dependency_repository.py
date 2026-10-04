@@ -2,29 +2,14 @@
 
 import sqlite3
 import time
-from typing import Callable, Dict, List, Optional, Set, Union
+from typing import Dict, List, Set, Union
 
 from ..._core import diagnostics
+from .base import BaseRepository
 
 
-class SqliteDependencyRepository:
+class SqliteDependencyRepository(BaseRepository):
     """Stores and queries include dependencies using SQLite."""
-
-    def __init__(self, conn_getter: Callable[[], Optional[sqlite3.Connection]]):
-        """
-        Args:
-            conn_getter: Callable returning the current SQLite connection.
-                         A callable is used so the repository survives cache
-                         reconnections.
-        """
-        self._conn_getter = conn_getter
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        """Get the current database connection."""
-        conn = self._conn_getter()
-        assert conn is not None
-        return conn
 
     def update_dependencies(self, source_file: str, included_files: List[str]) -> int:
         """Replace stored dependencies for ``source_file``."""

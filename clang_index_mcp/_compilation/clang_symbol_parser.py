@@ -11,7 +11,7 @@ from .._core import diagnostics
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import CallSiteRecord, ParseResult, SymbolParser, TypeAliasRecord
 from .._symbols.alias_extractor import extract_alias_info
-from .._symbols.cursor_utils import extract_namespace, get_qualified_name
+from .._symbols.cursor_utils import extract_namespace, get_qualified_name, iter_template_params
 from .._symbols.documentation_extractor import extract_documentation
 from .._symbols.signature_builder import build_human_readable_signature
 from .._symbols.usr_decoder import usr_to_display_name
@@ -93,15 +93,10 @@ class ClangSymbolParser(SymbolParser):
         """Build a map from 'type-parameter-D-I' to actual template parameter names."""
         type_param_map: Dict[str, str] = {}
         param_index = 0
-        for child in cursor.get_children():
-            if child.kind in (
-                CursorKind.TEMPLATE_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
-            ):
-                if child.spelling:
-                    type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
-                param_index += 1
+        for child in iter_template_params(cursor):
+            if child.spelling:
+                type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
+            param_index += 1
         return type_param_map
 
     def _resolve_base_name(self, base_type: Type, type_param_map: Dict[str, str]) -> str:
@@ -263,7 +258,7 @@ class ClangSymbolParser(SymbolParser):
         """Extract template parameters from a template cursor."""
         template_params = []
 
-        for child in cursor.get_children():
+        for child in iter_template_params(cursor):
             if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
                 template_params.append({"name": child.spelling, "kind": "type"})
             elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:

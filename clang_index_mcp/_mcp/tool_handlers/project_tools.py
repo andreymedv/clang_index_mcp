@@ -10,6 +10,7 @@ from mcp.types import TextContent
 
 from ..context import ctx
 from ..config_validation import _validate_config_file
+from ..query_policy import PROJECT_DIRECTORY_NOT_SET_MESSAGE
 from ..state_manager import AnalyzerState, IndexingProgress, BackgroundIndexer
 from ..tool_call_logger import ToolCallLogger
 from ..._core import diagnostics
@@ -173,21 +174,12 @@ async def _run_background_refresh(refresh_mode: str):
     try:
         loop = asyncio.get_event_loop()
 
-        # Create progress callback that updates state_manager (same as BackgroundIndexer)
-        def progress_callback(progress: IndexingProgress):
-            """Callback to update progress in state manager during refresh"""
-            ctx.state_manager.update_progress(progress)
-
-        def wait_for_tools():
-            """Wrapper to match Callable[[], None] expected by analyzers"""
-            ctx.state_manager.wait_for_tools_to_finish()
-
         if refresh_mode == "incremental":
             diagnostics.info("Starting incremental refresh...")
         else:
             diagnostics.info("Starting full refresh...")
 
-        callbacks = IndexingCallbacks(progress=progress_callback, wait_for_tools=wait_for_tools)
+        callbacks = IndexingCallbacks.from_state_manager(ctx.state_manager)
         modified_count = await loop.run_in_executor(
             None, lambda: analyzer.refresh_if_needed(callbacks)
         )
@@ -208,7 +200,7 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
         return [
             TextContent(
                 type="text",
-                text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.",
+                text=PROJECT_DIRECTORY_NOT_SET_MESSAGE,
             )
         ]
 
