@@ -221,6 +221,37 @@ class CallGraphAnalyzer:
             )
             self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
+    def _find_related_usrs(self, function_usr: str, incoming: bool) -> Set[str]:
+        """USRs connected to function_usr (incoming=True: callers, False: callees).
+
+        Queries SQLite exclusively (no in-memory dicts); all call graph data is
+        stored exclusively in the call_sites table. Current-session call sites
+        are also checked before they are saved to SQLite.
+        """
+        result: Set[str] = set()
+
+        if self.cache_backend:
+            try:
+                db_results = (
+                    self.cache_backend.get_call_sites_for_callee(function_usr)
+                    if incoming
+                    else self.cache_backend.get_call_sites_for_caller(function_usr)
+                )
+                key = "caller_usr" if incoming else "callee_usr"
+                for cs_dict in db_results:
+                    usr = cs_dict.get(key)
+                    if usr:
+                        result.add(usr)
+            except Exception:
+                pass  # Silently ignore DB errors, return empty set
+
+        # Also check current session call_sites (before they're saved to SQLite)
+        for cs in self.call_sites:
+            if (cs.callee_usr if incoming else cs.caller_usr) == function_usr:
+                result.add(cs.caller_usr if incoming else cs.callee_usr)
+
+        return result
+
     def find_incoming_calls(self, function_usr: str) -> Set[str]:
         """
         Find all functions that call the specified function.
@@ -228,25 +259,7 @@ class CallGraphAnalyzer:
         Phase 4: Task 4.3 - Queries ONLY SQLite (no in-memory dicts).
         All call graph data is now stored exclusively in the call_sites table.
         """
-        result: Set[str] = set()
-
-        # Phase 4: Task 4.3 - Query SQLite exclusively (no in-memory dicts)
-        if self.cache_backend:
-            try:
-                db_results = self.cache_backend.get_call_sites_for_callee(function_usr)
-                for cs_dict in db_results:
-                    caller_usr = cs_dict.get("caller_usr")
-                    if caller_usr:
-                        result.add(caller_usr)
-            except Exception:
-                pass  # Silently ignore DB errors, return empty set
-
-        # Also check current session call_sites (before they're saved to SQLite)
-        for cs in self.call_sites:
-            if cs.callee_usr == function_usr:
-                result.add(cs.caller_usr)
-
-        return result
+        return self._find_related_usrs(function_usr, incoming=True)
 
     def find_callees(self, function_usr: str) -> Set[str]:
         """
@@ -255,25 +268,7 @@ class CallGraphAnalyzer:
         Phase 4: Task 4.3 - Queries ONLY SQLite (no in-memory dicts).
         All call graph data is now stored exclusively in the call_sites table.
         """
-        result: Set[str] = set()
-
-        # Phase 4: Task 4.3 - Query SQLite exclusively (no in-memory dicts)
-        if self.cache_backend:
-            try:
-                db_results = self.cache_backend.get_call_sites_for_caller(function_usr)
-                for cs_dict in db_results:
-                    callee_usr = cs_dict.get("callee_usr")
-                    if callee_usr:
-                        result.add(callee_usr)
-            except Exception:
-                pass  # Silently ignore DB errors, return empty set
-
-        # Also check current session call_sites (before they're saved to SQLite)
-        for cs in self.call_sites:
-            if cs.caller_usr == function_usr:
-                result.add(cs.callee_usr)
-
-        return result
+        return self._find_related_usrs(function_usr, incoming=False)
 
     def get_call_paths(self, from_usr: str, to_usr: str, max_depth: int = 10) -> List[List[str]]:
         """Find all call paths from one function to another"""
@@ -339,30 +334,30 @@ class CallGraphAnalyzer:
 
     # Phase 3: Line-level call site methods
 
-    def get_call_sites_for_caller(self, caller_usr: str) -> List[CallSite]:
-        """
-        Get all call sites from a specific caller function.
+    def _get_call_sites_for(self, usr: str, incoming: bool) -> List[CallSite]:
+        """Call sites connected to usr, merged from session and SQLite, sorted.
 
         Uses lazy loading: first checks in-memory call_sites (current session),
-        then queries SQLite for historical call sites.
-
-        Args:
-            caller_usr: USR of the calling function
-
-        Returns:
-            List of CallSite objects for this caller
+        then queries SQLite for historical call sites. ``incoming=True`` returns
+        call sites where usr is the callee; False where usr is the caller.
         """
         # First, get call sites from current session (in-memory)
-        current_session = [cs for cs in self.call_sites if cs.caller_usr == caller_usr]
+        current_session = [
+            cs for cs in self.call_sites if (cs.callee_usr if incoming else cs.caller_usr) == usr
+        ]
 
         # Then, get historical call sites from SQLite (lazy loading)
         if self.cache_backend:
             try:
-                db_results = self.cache_backend.get_call_sites_for_caller(caller_usr)
+                db_results = (
+                    self.cache_backend.get_call_sites_for_callee(usr)
+                    if incoming
+                    else self.cache_backend.get_call_sites_for_caller(usr)
+                )
                 for cs_dict in db_results:
                     call_site = CallSite(
-                        caller_usr=caller_usr,  # Use parameter, not from db result
-                        callee_usr=cs_dict["callee_usr"],
+                        caller_usr=cs_dict["caller_usr"] if incoming else usr,
+                        callee_usr=usr if incoming else cs_dict["callee_usr"],
                         file=cs_dict["file"],
                         line=cs_dict["line"],
                         column=cs_dict.get("column"),
@@ -376,6 +371,21 @@ class CallGraphAnalyzer:
                 pass  # SQLite errors shouldn't break the query
 
         return sorted(current_session, key=lambda cs: (cs.file, cs.line))
+
+    def get_call_sites_for_caller(self, caller_usr: str) -> List[CallSite]:
+        """
+        Get all call sites from a specific caller function.
+
+        Uses lazy loading: first checks in-memory call_sites (current session),
+        then queries SQLite for historical call sites.
+
+        Args:
+            caller_usr: USR of the calling function
+
+        Returns:
+            List of CallSite objects for this caller
+        """
+        return self._get_call_sites_for(caller_usr, incoming=False)
 
     def get_call_sites_for_callee(self, callee_usr: str) -> List[CallSite]:
         """
@@ -390,30 +400,7 @@ class CallGraphAnalyzer:
         Returns:
             List of CallSite objects for this callee
         """
-        # First, get call sites from current session (in-memory)
-        current_session = [cs for cs in self.call_sites if cs.callee_usr == callee_usr]
-
-        # Then, get historical call sites from SQLite (lazy loading)
-        if self.cache_backend:
-            try:
-                db_results = self.cache_backend.get_call_sites_for_callee(callee_usr)
-                for cs_dict in db_results:
-                    call_site = CallSite(
-                        caller_usr=cs_dict["caller_usr"],
-                        callee_usr=callee_usr,  # Use parameter, not from db result
-                        file=cs_dict["file"],
-                        line=cs_dict["line"],
-                        column=cs_dict.get("column"),
-                        display_name=cs_dict.get("display_name"),
-                        template_project_types=cs_dict.get("template_project_types"),
-                    )
-                    # Avoid duplicates (current session may have same call sites)
-                    if call_site not in current_session:
-                        current_session.append(call_site)
-            except Exception:
-                pass  # SQLite errors shouldn't break the query
-
-        return sorted(current_session, key=lambda cs: (cs.file, cs.line))
+        return self._get_call_sites_for(callee_usr, incoming=True)
 
     def get_all_call_sites(self) -> List[Dict[str, Any]]:
         """

@@ -151,6 +151,15 @@ class SearchEngine:
 
         return True
 
+    def _symbol_result_tail(self, info: SymbolInfo) -> Dict[str, Any]:
+        """Build the result fields shared by every symbol response shape."""
+        return {
+            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
+            **build_location_objects(info),
+            "brief": info.brief,
+            "doc_comment": info.doc_comment,
+        }
+
     def _create_class_result(self, info: SymbolInfo, include_base_classes: bool) -> Dict[str, Any]:
         """Build a result dictionary for a class search hit."""
         entry = {
@@ -161,10 +170,7 @@ class SearchEngine:
             "is_project": info.is_project,
             "template_kind": info.template_kind,
             "template_parameters": info.template_parameters,
-            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-            **build_location_objects(info),
-            "brief": info.brief,
-            "doc_comment": info.doc_comment,
+            **self._symbol_result_tail(info),
         }
         if include_base_classes:
             entry["base_classes"] = info.base_classes
@@ -278,16 +284,13 @@ class SearchEngine:
             "parent_class": info.parent_class or None,
             "template_kind": info.template_kind,
             "template_parameters": info.template_parameters,
-            "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-            **build_location_objects(info),
-            "brief": info.brief,
-            "doc_comment": info.doc_comment,
+            **self._symbol_result_tail(info),
         }
         if include_attributes:
             d["attributes"] = build_attributes(info)
         return omit_empty(d)
 
-    def _search_functions_in_file_index(
+    def _search_functions(
         self,
         pattern: str,
         pattern_type: str,
@@ -295,42 +298,16 @@ class SearchEngine:
         class_name: Optional[str],
         namespace: Optional[str],
         signature_pattern: Optional[str],
-        file_name: str,
         include_attributes: bool,
+        index: Dict[str, List[SymbolInfo]],
+        file_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Search for functions in file_index when a file_name filter is provided."""
+        """Search for functions in the given index, optionally filtering by file."""
         results: List[Dict[str, Any]] = []
         with self.index_lock:
-            for file_path, infos in self.file_index.items():
-                if file_name not in file_path:
+            for key, infos in index.items():
+                if file_name is not None and file_name not in key:
                     continue
-                for info in infos:
-                    if self._matches_function_criteria(
-                        info,
-                        pattern,
-                        pattern_type,
-                        project_only,
-                        class_name,
-                        namespace,
-                        signature_pattern,
-                    ):
-                        results.append(self._create_function_result(info, include_attributes))
-        return results
-
-    def _search_functions_in_function_index(
-        self,
-        pattern: str,
-        pattern_type: str,
-        project_only: bool,
-        class_name: Optional[str],
-        namespace: Optional[str],
-        signature_pattern: Optional[str],
-        include_attributes: bool,
-    ) -> List[Dict[str, Any]]:
-        """Search for functions in function_index."""
-        results: List[Dict[str, Any]] = []
-        with self.index_lock:
-            for name, infos in self.function_index.items():
                 for info in infos:
                     if self._matches_function_criteria(
                         info,
@@ -388,18 +365,19 @@ class SearchEngine:
             class_name = extract_simple_name(class_name)
 
         if criteria.file_name:
-            results = self._search_functions_in_file_index(
+            results = self._search_functions(
                 pattern,
                 pattern_type,
                 criteria.project_only,
                 class_name,
                 criteria.namespace,
                 criteria.signature_pattern,
-                criteria.file_name,
                 criteria.include_attributes,
+                self.file_index,
+                file_name=criteria.file_name,
             )
         else:
-            results = self._search_functions_in_function_index(
+            results = self._search_functions(
                 pattern,
                 pattern_type,
                 criteria.project_only,
@@ -407,6 +385,7 @@ class SearchEngine:
                 criteria.namespace,
                 criteria.signature_pattern,
                 criteria.include_attributes,
+                self.function_index,
             )
 
         return self._apply_max_results(results, criteria.max_results)
@@ -620,13 +599,8 @@ class SearchEngine:
                             "access": func_info.access,
                             "template_kind": func_info.template_kind,
                             "template_parameters": func_info.template_parameters,
-                            "specialization_of": self._resolve_specialization_of(
-                                func_info.primary_template_usr
-                            ),
-                            **build_location_objects(func_info),
+                            **self._symbol_result_tail(func_info),
                             "attributes": build_attributes(func_info),
-                            "brief": func_info.brief,
-                            "doc_comment": func_info.doc_comment,
                         }
                     )
                 )
@@ -687,10 +661,7 @@ class SearchEngine:
                 "is_project": info.is_project,
                 "template_kind": info.template_kind,
                 "template_parameters": info.template_parameters,
-                "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
-                **build_location_objects(info),
-                "brief": info.brief,
-                "doc_comment": info.doc_comment,
+                **self._symbol_result_tail(info),
             }
         )
 
