@@ -112,10 +112,16 @@ class SymbolIndexStore:
     ) -> Optional[SymbolInfo]:
         """Apply definition-wins logic when a symbol already exists in the USR index.
 
-        Returns the info object to use, or None if the symbol should be skipped.
+        Shared by bulk_write_symbols and merge_symbol_into_indexes so both
+        index-write paths apply identical replacement semantics. Returns the
+        info object to use, or None if the symbol should be skipped.
         """
         if not self._should_replace(existing_symbol, info):
             return None
+
+        # Preserve parent_class from the replaced symbol if the replacement lost it
+        if not info.parent_class and existing_symbol.parent_class:
+            info = dataclasses.replace(info, parent_class=existing_symbol.parent_class)
 
         if existing_symbol.is_definition:
             # Both are definitions; the richer one won.
@@ -125,10 +131,6 @@ class SymbolIndexStore:
                 f"to {info.file}:{info.line})"
             )
         else:
-            # Preserve parent_class from declaration if definition lost it
-            if not info.parent_class and existing_symbol.parent_class:
-                info = dataclasses.replace(info, parent_class=existing_symbol.parent_class)
-
             diagnostics.debug(
                 f"Definition-wins: Replacing declaration of {info.name} with definition "
                 f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
@@ -196,13 +198,21 @@ class SymbolIndexStore:
         """Clear existing index entries for a file (atomicity should be handled by caller)."""
         self._remove_file_from_indexes(file_path)
 
-    def merge_symbol_into_indexes(self, symbol: SymbolInfo):
-        """Merge a single symbol into the main process indexes with deduplication."""
+    def merge_symbol_into_indexes(self, symbol: SymbolInfo) -> bool:
+        """Merge a single symbol into the main process indexes with deduplication.
+
+        Shared per-symbol merge used by bulk_write_symbols and the incremental /
+        worker-result merge path so both apply identical definition-wins semantics.
+
+        Returns:
+            True if the symbol was added (new entry or definition-wins
+            replacement), False if an existing symbol was kept.
+        """
         if symbol.usr and symbol.usr in self.usr_index:
-            existing = self.usr_index[symbol.usr]
-            if not self._should_replace(existing, symbol):
-                return
-            self._remove_symbol_from_indexes(existing)
+            resolved = self._handle_symbol_definition_wins(symbol, self.usr_index[symbol.usr])
+            if resolved is None:
+                return False
+            symbol = resolved
 
         if symbol.kind in CLASS_KINDS:
             self.class_index[symbol.name].append(symbol)
@@ -213,6 +223,7 @@ class SymbolIndexStore:
             self.usr_index[symbol.usr] = symbol
 
         self._add_to_file_index(symbol)
+        return True
 
     def populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
         """Populate main and file indexes from cache data."""
@@ -289,27 +300,10 @@ class SymbolIndexStore:
 
         # Single lock acquisition for all updates
         with self._lock_provider:
-            # Add all collected symbols
+            # Add all collected symbols through the shared per-symbol merge
             for info in symbols:
-                # USR-based deduplication with definition-wins logic
-                if info.usr and info.usr in self.usr_index:
-                    existing_symbol = self.usr_index[info.usr]
-                    resolved_info = self._handle_symbol_definition_wins(info, existing_symbol)
-                    if resolved_info is None:
-                        continue
-                    info = resolved_info
-
-                # New symbol or replacement - add to all indexes
-                if info.kind in CLASS_KINDS:
-                    self.class_index[info.name].append(info)
-                else:
-                    self.function_index[info.name].append(info)
-
-                if info.usr:
-                    self.usr_index[info.usr] = info
-
-                self._add_to_file_index(info)
-                added_count += 1
+                if self.merge_symbol_into_indexes(info):
+                    added_count += 1
 
             # Add all collected call relationships
             self.call_graph_port.process_call_buffer(calls)

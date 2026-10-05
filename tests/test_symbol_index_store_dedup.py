@@ -1,12 +1,14 @@
 """
-Unit tests for the SymbolIndexStore definition-wins dedup rule (2c57.2).
+Unit tests for the SymbolIndexStore definition-wins dedup rule.
 
-Both index-write paths must apply the same dedup outcomes:
+Both index-write paths must apply the same dedup outcomes and the same
+replacement metadata handling:
 - bulk_write_symbols (bulk indexing via SymbolExtractor)
 - merge_symbol_into_indexes (incremental / worker-result merge)
 
-Known intentional divergence: the bulk path additionally carries parent_class
-over from a replaced declaration (see TestParentClassCarryOver).
+Covers cplusplus_mcp-2c57.2 (shared _should_replace predicate and
+_add_to_file_index) and cplusplus_mcp-2c57.3 (parent_class carry-over on
+definition-wins replacement in both paths).
 """
 
 import sys
@@ -255,10 +257,76 @@ class TestFileIndexDedup:
 
 
 class TestParentClassCarryOver:
-    """Bulk path metadata behavior when a definition replaces a declaration."""
+    """Both index-write paths must carry parent_class over on replacement.
 
-    def test_bulk_definition_inherits_parent_class_from_declaration(self):
-        store = _make_store()
+    When a winning symbol lost parent_class that the replaced symbol had
+    (e.g. an out-of-line definition replacing an in-class declaration), the
+    replaced symbol's parent_class is preserved. Dedup outcomes (which symbol
+    wins) are unaffected.
+    """
+
+    def test_definition_inherits_parent_class_from_declaration(self):
+        existing = _sym(file="a.h", line=1, is_definition=False, parent_class="Foo")
+        new = _sym(file="a.cpp", line=50, is_definition=True, parent_class="")
+
+        for path_name, apply in PATHS.items():
+            store = apply(existing, new)
+            winner = store.usr_index[new.usr]
+            assert (winner.file, winner.line) == ("a.cpp", 50), path_name
+            assert winner.parent_class == "Foo", path_name
+
+    def test_richer_definition_inherits_parent_class_from_poorer_definition(self):
+        existing = _sym(
+            file="a.h",
+            line=1,
+            is_definition=True,
+            parent_class="Foo",
+            start_line=1,
+            end_line=3,
+        )
+        new = _sym(
+            file="a.cpp",
+            line=50,
+            is_definition=True,
+            parent_class="",
+            start_line=50,
+            end_line=80,
+        )
+
+        for path_name, apply in PATHS.items():
+            store = apply(existing, new)
+            winner = store.usr_index[new.usr]
+            assert (winner.file, winner.line) == ("a.cpp", 50), path_name
+            assert winner.parent_class == "Foo", path_name
+
+    def test_replacement_keeps_its_own_parent_class(self):
+        existing = _sym(file="a.h", line=1, is_definition=False, parent_class="Foo")
+        new = _sym(file="a.cpp", line=50, is_definition=True, parent_class="Bar")
+
+        for path_name, apply in PATHS.items():
+            store = apply(existing, new)
+            assert store.usr_index[new.usr].parent_class == "Bar", path_name
+
+    def test_no_parent_class_to_carry(self):
+        existing = _sym(file="a.h", line=1, is_definition=False, parent_class="")
+        new = _sym(file="a.cpp", line=50, is_definition=True, parent_class="")
+
+        for path_name, apply in PATHS.items():
+            store = apply(existing, new)
+            assert store.usr_index[new.usr].parent_class == "", path_name
+
+    def test_kept_existing_keeps_its_parent_class(self):
+        existing = _sym(file="a.h", line=1, is_definition=True, parent_class="Foo")
+        new = _sym(file="a.cpp", line=50, is_definition=False, parent_class="")
+
+        for path_name, apply in PATHS.items():
+            store = apply(existing, new)
+            winner = store.usr_index[new.usr]
+            assert (winner.file, winner.line) == ("a.h", 1), path_name
+            assert winner.parent_class == "Foo", path_name
+
+    def test_method_style_carry_over_identical_on_both_paths(self):
+        # Real-world shape: out-of-line definition replaces an in-class declaration
         decl = _sym(
             name="bar",
             kind="method",
@@ -278,16 +346,18 @@ class TestParentClassCarryOver:
             parent_class="",
         )
 
-        store.bulk_write_symbols([decl], [], [])
-        store.bulk_write_symbols([defn], [], [])
+        winners = {}
+        for path_name, apply in PATHS.items():
+            winners[path_name] = apply(decl, defn).usr_index["c:@S@Foo@F@bar#"]
+            assert (winners[path_name].file, winners[path_name].line) == ("foo.cpp", 20)
+            assert winners[path_name].parent_class == "Foo", path_name
 
-        winner = store.usr_index["c:@S@Foo@F@bar#"]
-        assert (winner.file, winner.line) == ("foo.cpp", 20)
-        assert winner.parent_class == "Foo"
+        # Bulk and incremental must produce identical winner state
+        assert winners["bulk"] == winners["merge"]
 
 
-class TestBulkWriteCount:
-    """bulk_write_symbols count semantics around dedup."""
+class TestWriteCountSemantics:
+    """bulk_write_symbols / merge_symbol_into_indexes count semantics around dedup."""
 
     def test_replacement_counts_as_added(self):
         store = _make_store()
@@ -302,13 +372,23 @@ class TestBulkWriteCount:
         assert store.bulk_write_symbols([defn], [], []) == 1
         assert store.bulk_write_symbols([decl], [], []) == 0
 
+    def test_merge_returns_whether_symbol_was_added(self):
+        store = _make_store()
+        decl = _sym(file="a.h", line=1, is_definition=False)
+        defn = _sym(file="a.cpp", line=50, is_definition=True)
+        assert store.merge_symbol_into_indexes(decl) is True
+        assert store.merge_symbol_into_indexes(defn) is True
+        assert store.merge_symbol_into_indexes(_sym(file="a.cpp", line=60)) is False
+
     def test_add_symbol_to_indexes_matches_merge_path(self):
-        existing = _sym(file="a.h", line=1, is_definition=False)
+        existing = _sym(file="a.h", line=1, is_definition=False, parent_class="Foo")
         new = _sym(file="a.cpp", line=50, is_definition=True)
 
         store = _make_store()
         store.add_symbol_to_indexes(existing)
         store.add_symbol_to_indexes(new)
 
-        assert _winner(store, new.usr) == ("a.cpp", 50)
+        winner = store.usr_index[new.usr]
+        assert (winner.file, winner.line) == ("a.cpp", 50)
+        assert winner.parent_class == "Foo"
         assert len(store.class_index["Widget"]) == 1
