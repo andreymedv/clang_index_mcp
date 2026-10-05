@@ -33,17 +33,31 @@ class CompileCommandsConfig:
     sanitization_rules_file: Optional[str] = None
 
     @classmethod
+    def _build(
+        cls,
+        mapping: Dict[str, Any],
+        sanitization_rules_file: Optional[str] = None,
+    ) -> "CompileCommandsConfig":
+        """Shared construction from a normalized flat-key mapping."""
+        return cls(
+            compile_commands_enabled=mapping.get("compile_commands_enabled", True),
+            compile_commands_path=mapping.get("compile_commands_path", "compile_commands.json"),
+            compile_commands_cache_enabled=mapping.get("compile_commands_cache_enabled", True),
+            fallback_to_hardcoded=mapping.get("fallback_to_hardcoded", True),
+            cache_expiry_seconds=mapping.get("cache_expiry_seconds", 300),
+            supported_extensions=mapping.get(
+                "supported_extensions", list(FileScanner.CPP_EXTENSIONS)
+            ),
+            sanitization_rules_file=sanitization_rules_file,
+        )
+
+    @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "CompileCommandsConfig":
-        """Build a CompileCommandsConfig from a legacy dictionary."""
+        """Build a CompileCommandsConfig from a legacy flat-key dictionary."""
         if data is None:
             return cls()
-        return cls(
-            compile_commands_enabled=data.get("compile_commands_enabled", True),
-            compile_commands_path=data.get("compile_commands_path", "compile_commands.json"),
-            compile_commands_cache_enabled=data.get("compile_commands_cache_enabled", True),
-            fallback_to_hardcoded=data.get("fallback_to_hardcoded", True),
-            cache_expiry_seconds=data.get("cache_expiry_seconds", 300),
-            supported_extensions=data.get("supported_extensions", list(FileScanner.CPP_EXTENSIONS)),
+        return cls._build(
+            data,
             sanitization_rules_file=data.get("sanitization_rules_file"),
         )
 
@@ -212,15 +226,19 @@ class CppAnalyzerConfig:
         """
         compile_commands = self.config.get("compile_commands", {})
 
-        return CompileCommandsConfig(
-            compile_commands_enabled=compile_commands.get("enabled", True),
-            compile_commands_path=compile_commands.get("path", "compile_commands.json"),
-            compile_commands_cache_enabled=compile_commands.get("cache_enabled", True),
-            fallback_to_hardcoded=compile_commands.get("fallback_to_hardcoded", True),
-            cache_expiry_seconds=compile_commands.get("cache_expiry_seconds", 300),
-            supported_extensions=compile_commands.get(
-                "supported_extensions", list(FileScanner.CPP_EXTENSIONS)
-            ),
+        # Translate nested config keys to the normalized flat keys _build expects.
+        normalized: Dict[str, Any] = {
+            "compile_commands_enabled": compile_commands.get("enabled", True),
+            "compile_commands_path": compile_commands.get("path", "compile_commands.json"),
+            "compile_commands_cache_enabled": compile_commands.get("cache_enabled", True),
+            "fallback_to_hardcoded": compile_commands.get("fallback_to_hardcoded", True),
+            "cache_expiry_seconds": compile_commands.get("cache_expiry_seconds", 300),
+        }
+        if "supported_extensions" in compile_commands:
+            normalized["supported_extensions"] = compile_commands["supported_extensions"]
+
+        return CompileCommandsConfig._build(
+            normalized,
             sanitization_rules_file=self.config.get("sanitization_rules_file"),
         )
 
