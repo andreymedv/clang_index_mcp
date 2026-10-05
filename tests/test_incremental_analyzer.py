@@ -110,7 +110,7 @@ class TestIncrementalAnalyzer(unittest.TestCase):
         # This is a unit-testing seam: production always uses real ProcessPoolExecutor,
         # but Mock contexts cannot be pickled across processes.
         self._pool_patch = patch(
-            "clang_index_mcp._incremental.worker_orchestrator.ProcessPoolExecutor",
+            "clang_index_mcp._indexing.worker_pool.ProcessPoolExecutor",
             side_effect=lambda max_workers=None, mp_context=None, initializer=None: __import__(
                 "concurrent.futures", fromlist=["ThreadPoolExecutor"]
             ).ThreadPoolExecutor(max_workers=max_workers or 2),

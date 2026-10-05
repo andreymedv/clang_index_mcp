@@ -70,6 +70,7 @@ except ImportError:
     from tool_call_logger import ToolCallLogger  # type: ignore[no-redef]  # noqa: F401
 
 from .context import ctx  # noqa: E402
+from .config_validation import resolve_project_root_from_config  # noqa: E402
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -222,15 +223,7 @@ def _try_resume_session(saved_session):
     config_file = saved_session.get("config_file")
 
     try:
-        with open(config_file, "r") as f:
-            config_data = json.load(f)
-
-        config_root = config_data.get("project_root")
-        if not config_root:
-            raise ValueError(f"Config file {config_file} missing 'project_root'")
-
-        config_dir = os.path.dirname(config_file)
-        project_path = os.path.abspath(os.path.join(config_dir, config_root))
+        project_path = resolve_project_root_from_config(config_file)
 
         diagnostics.info(f"Auto-resuming session via config: {config_file}")
         diagnostics.info(f"Resolved project root: {project_path}")
@@ -256,6 +249,16 @@ def _try_resume_session(saved_session):
         diagnostics.warning(f"Failed to resume session: {e}")
         ctx.state_manager.transition_to(AnalyzerState.UNINITIALIZED)
         return None, None, False
+
+
+def resume_saved_session() -> None:
+    """Auto-resume the last saved session unless disabled via MCP_DISABLE_SESSION_RESUME."""
+    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
+    saved_session = None if disable_auto_resume else ctx.session_manager.load_session()
+    if saved_session:
+        ctx.analyzer, ctx.background_indexer, ctx.analyzer_initialized = _try_resume_session(
+            saved_session
+        )
 
 
 def _shutdown_analyzer():
@@ -339,12 +342,7 @@ async def main():
     """Main entry point for the MCP server."""
     _install_signal_handlers()
 
-    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
-    saved_session = None if disable_auto_resume else ctx.session_manager.load_session()
-    if saved_session:
-        ctx.analyzer, ctx.background_indexer, ctx.analyzer_initialized = _try_resume_session(
-            saved_session
-        )
+    resume_saved_session()
 
     parser = _create_argument_parser()
     args = parser.parse_args()

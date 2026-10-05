@@ -7,10 +7,10 @@ items to the process pool executor.
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
+from .. import worker_bootstrap
 from .._indexing.indexing_task_spec import IndexingTaskSpec
-from ..worker_bootstrap import process_file_worker
 
 if TYPE_CHECKING:
     from concurrent.futures import Executor, Future
@@ -18,6 +18,30 @@ if TYPE_CHECKING:
     from .._compilation.compilation_environment import CompilationEnvironment
     from .._indexing.execution_config import ExecutionConfig
     from .._persistence.project_identity import ProjectIdentity
+
+
+def submit_file_task(
+    executor: "Executor",
+    *,
+    project_root: str,
+    config_file: Optional[str],
+    file_path: str,
+    force: bool,
+    include_dependencies: bool,
+    compile_args: List[str],
+) -> "Future":
+    """Submit a single file-indexing task to the executor."""
+    return executor.submit(
+        worker_bootstrap.process_file_worker,
+        IndexingTaskSpec(
+            project_root=project_root,
+            config_file=config_file,
+            file_path=os.path.abspath(file_path),
+            force=force,
+            include_dependencies=include_dependencies,
+            compile_args=compile_args,
+        ),
+    )
 
 
 class IndexingTaskSubmitter:
@@ -56,16 +80,14 @@ class IndexingTaskSubmitter:
         file_compile_args = self.compilation_env.prepare_worker_compile_args(files)
 
         return {
-            executor.submit(
-                process_file_worker,
-                IndexingTaskSpec(
-                    project_root=str(self.project_root),
-                    config_file=config_file_str,
-                    file_path=os.path.abspath(f),
-                    force=force,
-                    include_dependencies=include_dependencies,
-                    compile_args=file_compile_args[f],
-                ),
+            submit_file_task(
+                executor,
+                project_root=str(self.project_root),
+                config_file=config_file_str,
+                file_path=f,
+                force=force,
+                include_dependencies=include_dependencies,
+                compile_args=file_compile_args[f],
             ): os.path.abspath(f)
             for f in files
         }
@@ -79,7 +101,6 @@ class IndexingTaskSubmitter:
     ) -> Dict["Future", str]:
         """Submit indexing tasks for modified and new files."""
         future_to_file: Dict["Future", str] = {}
-        project_root = str(self.project_root)
         config_file_str = (
             str(self.project_identity.config_file_path)
             if self.project_identity.config_file_path
@@ -90,29 +111,25 @@ class IndexingTaskSubmitter:
         file_compile_args = self.compilation_env.prepare_refresh_compile_args(all_files_to_process)
 
         for f in modified_files:
-            future = executor.submit(
-                process_file_worker,
-                IndexingTaskSpec(
-                    project_root=project_root,
-                    config_file=config_file_str,
-                    file_path=os.path.abspath(f),
-                    force=True,
-                    include_dependencies=include_dependencies,
-                    compile_args=file_compile_args[f],
-                ),
+            future = submit_file_task(
+                executor,
+                project_root=str(self.project_root),
+                config_file=config_file_str,
+                file_path=f,
+                force=True,
+                include_dependencies=include_dependencies,
+                compile_args=file_compile_args[f],
             )
             future_to_file[future] = f
         for f in new_files:
-            future = executor.submit(
-                process_file_worker,
-                IndexingTaskSpec(
-                    project_root=project_root,
-                    config_file=config_file_str,
-                    file_path=os.path.abspath(f),
-                    force=False,
-                    include_dependencies=include_dependencies,
-                    compile_args=file_compile_args[f],
-                ),
+            future = submit_file_task(
+                executor,
+                project_root=str(self.project_root),
+                config_file=config_file_str,
+                file_path=f,
+                force=False,
+                include_dependencies=include_dependencies,
+                compile_args=file_compile_args[f],
             )
             future_to_file[future] = f
         return future_to_file

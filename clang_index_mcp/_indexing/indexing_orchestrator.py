@@ -109,46 +109,44 @@ class ProjectIndexingOrchestrator:
         indexed_count, cache_hits, failed_count = 0, 0, 0
         last_report_time = start_time
 
-        executor = self.execution.worker_pool.setup()
-
         try:
-            future_to_file = self.task_submitter.submit_indexing_tasks(
-                executor, files, force, include_dependencies
-            )
-
-            for i, future in enumerate(as_completed(future_to_file)):
-                if self.cancellation.is_interrupted():
-                    raise KeyboardInterrupt("Indexing interrupted by request")
-                if callbacks and callbacks.wait_for_tools:
-                    callbacks.wait_for_tools()
-
-                file_path = future_to_file[future]
-                success, was_cached = self.worker_result_merger.get_worker_result(future, file_path)
-
-                idx_d, cache_d, fail_d = self._update_indexing_counts(success, was_cached)
-                indexed_count += idx_d
-                cache_hits += cache_d
-                failed_count += fail_d
-
-                last_report_time = self.progress_reporter.maybe_report_indexing_progress(
-                    i + 1,
-                    len(files),
-                    indexed_count,
-                    failed_count,
-                    cache_hits,
-                    start_time,
-                    last_report_time,
-                    is_terminal,
-                    callbacks.progress if callbacks else None,
-                    file_path,
+            with self.execution.worker_pool.managed_executor("Indexing") as executor:
+                future_to_file = self.task_submitter.submit_indexing_tasks(
+                    executor, files, force, include_dependencies
                 )
+
+                for i, future in enumerate(as_completed(future_to_file)):
+                    if self.cancellation.is_interrupted():
+                        raise KeyboardInterrupt("Indexing interrupted by request")
+                    if callbacks and callbacks.wait_for_tools:
+                        callbacks.wait_for_tools()
+
+                    file_path = future_to_file[future]
+                    success, was_cached = self.worker_result_merger.get_worker_result(
+                        future, file_path
+                    )
+
+                    idx_d, cache_d, fail_d = self._update_indexing_counts(success, was_cached)
+                    indexed_count += idx_d
+                    cache_hits += cache_d
+                    failed_count += fail_d
+
+                    last_report_time = self.progress_reporter.maybe_report_indexing_progress(
+                        i + 1,
+                        len(files),
+                        indexed_count,
+                        failed_count,
+                        cache_hits,
+                        start_time,
+                        last_report_time,
+                        is_terminal,
+                        callbacks.progress if callbacks else None,
+                        file_path,
+                    )
 
         except KeyboardInterrupt:
             diagnostics.info("\nIndexing interrupted by user (Ctrl-C)")
-            self.execution.worker_pool.shutdown(name="Indexing")
             raise
-        finally:
-            self.execution.worker_pool.shutdown_nowait(name="Indexing")
 
         self.worker_result_merger.flush_cache_writes()
         return self._finalize_indexing(

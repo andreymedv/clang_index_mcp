@@ -16,7 +16,8 @@ from concurrent.futures import (
     Executor,
     ProcessPoolExecutor,
 )
-from typing import Any, List, Optional
+from contextlib import contextmanager
+from typing import Any, Iterator, List, Optional
 
 # Handle both package and script imports
 try:
@@ -108,6 +109,22 @@ class WorkerPoolManager:
             diagnostics.debug(f"Error during {name} executor shutdown: {e}")
         finally:
             self.executor = None
+
+    @contextmanager
+    def managed_executor(self, name: str = "Indexing") -> Iterator[Executor]:
+        """Yield a pool executor with interrupt-aware teardown guaranteed.
+
+        On KeyboardInterrupt the pool is shut down gracefully (waiting for and
+        terminating workers); on every exit path a non-blocking shutdown runs.
+        """
+        executor = self.setup()
+        try:
+            yield executor
+        except KeyboardInterrupt:
+            self.shutdown(name=name)
+            raise
+        finally:
+            self.shutdown_nowait(name=name)
 
     def _cancel_executor_futures(self) -> None:
         """Cancel pending futures in the executor if possible."""

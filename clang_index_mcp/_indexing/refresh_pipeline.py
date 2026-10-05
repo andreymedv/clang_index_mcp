@@ -92,24 +92,21 @@ class RefreshPipeline:
         diagnostics.debug(f"Refresh: {len(modified_files)} modified, {len(new_files)} new files")
         self.cache_manager.ensure_schema_current()
 
-        executor = self.execution.worker_pool.setup()
         try:
-            refreshed, failed = self._run_refresh_loop(
-                executor,
-                modified_files,
-                new_files,
-                total_to_check,
-                start_time,
-                include_dependencies,
-                callbacks,
-            )
-            self.worker_result_merger.flush_cache_writes()
+            with self.execution.worker_pool.managed_executor("Refresh") as executor:
+                refreshed, failed = self._run_refresh_loop(
+                    executor,
+                    modified_files,
+                    new_files,
+                    total_to_check,
+                    start_time,
+                    include_dependencies,
+                    callbacks,
+                )
+                self.worker_result_merger.flush_cache_writes()
         except KeyboardInterrupt:
             diagnostics.info("\nRefresh interrupted by user (Ctrl-C)")
-            self.execution.worker_pool.shutdown(name="Refresh")
             raise
-        finally:
-            self.execution.worker_pool.shutdown_nowait(name="Refresh")
 
         self._finalize_refresh(refreshed, deleted)
         return refreshed

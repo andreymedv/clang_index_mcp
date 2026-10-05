@@ -2,14 +2,13 @@
 
 import asyncio
 import json
-import os
 from datetime import datetime
 from typing import Any, Dict, List
 
 from mcp.types import TextContent
 
 from ..context import ctx
-from ..config_validation import _validate_config_file
+from ..config_validation import _validate_config_file, resolve_project_root_from_config
 from ..query_policy import PROJECT_DIRECTORY_NOT_SET_MESSAGE
 from ..state_manager import AnalyzerState, IndexingProgress, BackgroundIndexer
 from ..tool_call_logger import ToolCallLogger
@@ -28,34 +27,11 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
     assert config_file is not None
 
     try:
-        with open(config_file, "r") as f:
-            config_data = json.load(f)
+        project_path = resolve_project_root_from_config(config_file)
+    except ValueError as e:
+        return [TextContent(type="text", text=f"Error: {e}")]
 
-        config_root = config_data.get("project_root")
-        if not config_root:
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Error: Config file '{config_file}' is missing 'project_root' field",
-                )
-            ]
-
-        # Resolve project_root relative to config file directory
-        config_dir = os.path.dirname(config_file)  # type: ignore[arg-type]
-        project_path = os.path.abspath(os.path.join(config_dir, config_root))
-
-        if not os.path.isdir(project_path):
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Error: 'project_root' in config '{project_path}' is not a directory or does not exist",
-                )
-            ]
-
-        diagnostics.info(f"Using config {config_file} for root {project_path}")
-
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error reading config file: {str(e)}")]
+    diagnostics.info(f"Using config {config_file} for root {project_path}")
 
     # Re-initialize analyzer with new path and config
     # Transition to INDEXING state (allows immediate queries with partial results)
@@ -155,14 +131,9 @@ async def _ensure_analyzer_resumed() -> bool:
         return True
 
     diagnostics.info("Attempting auto-resume of last used session...")
-    disable_auto_resume = os.environ.get("MCP_DISABLE_SESSION_RESUME", "false").lower() == "true"
-    saved_session = None if disable_auto_resume else ctx.session_manager.load_session()
-    if saved_session:
-        from ..cpp_mcp_server import _try_resume_session
+    from ..cpp_mcp_server import resume_saved_session
 
-        ctx.analyzer, ctx.background_indexer, ctx.analyzer_initialized = _try_resume_session(
-            saved_session
-        )
+    resume_saved_session()
 
     return ctx.analyzer is not None
 
