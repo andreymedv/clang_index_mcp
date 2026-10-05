@@ -3,7 +3,9 @@
 import time
 from typing import Any, Dict, Optional, Tuple
 
+from ..._symbols.model import SymbolInfo
 from .base import BaseRepository
+from .symbol_repository import INSERT_SYMBOL_SQL, symbol_to_tuple
 
 try:
     from ..._core import diagnostics
@@ -361,59 +363,22 @@ class MaintenanceService(BaseRepository):
                     cursor.fetchone()
                     metrics["load_by_usr_ms"] = (time.time() - start) * 1000
             elif operation == "write":
-                test_tuple = (
-                    "perf_test_usr",
-                    "PerfTestSymbol",
-                    "",
-                    "function",
-                    "/test/perf.cpp",
-                    1,
-                    1,
-                    "void PerfTestSymbol",
-                    True,
-                    "",
-                    "public",
-                    "",
-                    "[]",
-                    False,
-                    False,
-                    None,
-                    None,
-                    None,
-                    1,
-                    1,
-                    None,
-                    None,
-                    None,
-                    None,
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    None,
-                    None,
-                    time.time(),
-                    time.time(),
+                test_symbol = SymbolInfo(
+                    name="PerfTestSymbol",
+                    kind="function",
+                    file="/test/perf.cpp",
+                    line=1,
+                    column=1,
+                    usr="perf_test_usr",
+                    signature="void PerfTestSymbol",
+                    start_line=1,
+                    end_line=1,
+                    is_definition=True,
                 )
+                test_tuple = symbol_to_tuple(test_symbol)
                 start = time.time()
                 self.conn.execute("SAVEPOINT perf_test")
-                self.conn.execute(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    test_tuple,
-                )
+                self.conn.execute(INSERT_SYMBOL_SQL, test_tuple)
                 self.conn.execute("ROLLBACK TO perf_test")
                 metrics["write_symbol_ms"] = (time.time() - start) * 1000
             return metrics

@@ -127,7 +127,7 @@ class ProjectIdentity:
 
 **Backward Compatibility**:
 - Old cache directories (without config hash) remain valid
-- On first load with new system, rehash and migrate if needed
+- New cache directories are keyed by config hash; old ones are not migrated automatically
 - Leave old cache for manual cleanup
 
 ---
@@ -989,7 +989,7 @@ async def set_project_directory(
 
 2. **Task 1.2**: Update database schema
    - Add `file_dependencies` table
-   - Migration script for existing caches
+   - Existing caches recreated on schema version mismatch (no migration scripts)
    - File: `clang_index_mcp/schema.sql`
 
 3. **Task 1.3**: Integrate ProjectIdentity into CacheManager

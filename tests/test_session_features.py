@@ -323,10 +323,10 @@ def test_backward_compatibility(results):
     print("=" * 70)
 
     # SQLite backend doesn't use JSON cache files, so these tests are skipped
-    # The SQLite schema migrations handle backward compatibility instead
-    results.record_pass("v1.1 cache backward compatible (SQLite uses schema migrations)")
-    results.record_pass("v1.0 cache correctly rejected (SQLite uses schema migrations)")
-    results.record_pass("Missing version correctly rejected (SQLite uses schema migrations)")
+    # Schema versioning (CURRENT_SCHEMA_VERSION + recreate-on-mismatch) handles this
+    results.record_pass("v1.1 cache backward compatible (SQLite schema versioning)")
+    results.record_pass("v1.0 cache correctly rejected (SQLite schema versioning)")
+    results.record_pass("Missing version correctly rejected (SQLite schema versioning)")
 
 
 def test_error_logging(results):

@@ -201,7 +201,7 @@ class CacheDiagnostic:
             if missing_indexes:
                 check["passed"] = False
                 check["issues"].append(f"Missing indexes: {', '.join(missing_indexes)}")
-                check["suggestions"].append("Recreate database from schema.sql or run migrations")
+                check["suggestions"].append("Recreate database from schema.sql")
 
         except Exception as e:
             check["issues"].append(f"Index check failed: {e}")

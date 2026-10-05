@@ -45,23 +45,6 @@ class AliasInfoBase:
     line: int
     column: int
 
-    @classmethod
-    def from_cursor(cls, cursor: Cursor, target_type: str, canonical_type: str) -> "AliasInfoBase":
-        """Create AliasInfoBase from cursor with extracted type information."""
-        alias_name = cursor.spelling
-        qualified_name = get_qualified_name(cursor)
-        file_path, line, column = _extract_location(cursor)
-
-        return cls(
-            alias_name=alias_name,
-            qualified_name=qualified_name,
-            target_type=target_type,
-            canonical_type=canonical_type,
-            file_path=file_path,
-            line=line,
-            column=column,
-        )
-
 
 @dataclass
 class TemplateAliasInfo(AliasInfoBase):

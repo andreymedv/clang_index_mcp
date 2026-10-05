@@ -13,7 +13,7 @@ try:
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
-_INSERT_SYMBOL_SQL = """
+INSERT_SYMBOL_SQL = """
 INSERT OR REPLACE INTO symbols (
     usr, name, qualified_name, kind, file, line, column, signature,
     is_project, namespace, access, parent_class,
@@ -28,47 +28,48 @@ INSERT OR REPLACE INTO symbols (
 """
 
 
+def symbol_to_tuple(symbol: SymbolInfo) -> tuple:
+    """Convert SymbolInfo to tuple for SQL insertion."""
+    now = time.time()
+    return (
+        symbol.usr,
+        symbol.name,
+        symbol.qualified_name,
+        symbol.kind,
+        symbol.file,
+        symbol.line,
+        symbol.column,
+        symbol.signature,
+        symbol.is_project,
+        symbol.namespace,
+        symbol.access,
+        symbol.parent_class,
+        json.dumps(symbol.base_classes),
+        symbol.is_template_specialization,
+        symbol.is_template,
+        symbol.template_kind,
+        symbol.template_parameters,
+        symbol.primary_template_usr,
+        symbol.start_line,
+        symbol.end_line,
+        symbol.header_file,
+        symbol.header_line,
+        symbol.header_start_line,
+        symbol.header_end_line,
+        symbol.is_definition,
+        symbol.is_virtual,
+        symbol.is_pure_virtual,
+        symbol.is_const,
+        symbol.is_static,
+        symbol.brief,
+        symbol.doc_comment,
+        now,
+        now,
+    )
+
+
 class SymbolRepository(BaseRepository):
     """Handles symbol persistence: insert, batch write, search, and delete."""
-
-    def symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
-        """Convert SymbolInfo to tuple for SQL insertion."""
-        now = time.time()
-        return (
-            symbol.usr,
-            symbol.name,
-            symbol.qualified_name,
-            symbol.kind,
-            symbol.file,
-            symbol.line,
-            symbol.column,
-            symbol.signature,
-            symbol.is_project,
-            symbol.namespace,
-            symbol.access,
-            symbol.parent_class,
-            json.dumps(symbol.base_classes),
-            symbol.is_template_specialization,
-            symbol.is_template,
-            symbol.template_kind,
-            symbol.template_parameters,
-            symbol.primary_template_usr,
-            symbol.start_line,
-            symbol.end_line,
-            symbol.header_file,
-            symbol.header_line,
-            symbol.header_start_line,
-            symbol.header_end_line,
-            symbol.is_definition,
-            symbol.is_virtual,
-            symbol.is_pure_virtual,
-            symbol.is_const,
-            symbol.is_static,
-            symbol.brief,
-            symbol.doc_comment,
-            now,
-            now,
-        )
 
     def row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
         """Convert database row to SymbolInfo object."""
@@ -123,8 +124,8 @@ class SymbolRepository(BaseRepository):
         try:
             with self.conn:
                 self.conn.execute(
-                    _INSERT_SYMBOL_SQL,
-                    self.symbol_to_tuple(symbol),
+                    INSERT_SYMBOL_SQL,
+                    symbol_to_tuple(symbol),
                 )
             return True
         except Exception as e:
@@ -138,8 +139,8 @@ class SymbolRepository(BaseRepository):
         try:
             with self.conn:
                 self.conn.executemany(
-                    _INSERT_SYMBOL_SQL,
-                    [self.symbol_to_tuple(s) for s in symbols],
+                    INSERT_SYMBOL_SQL,
+                    [symbol_to_tuple(s) for s in symbols],
                 )
             return len(symbols)
         except Exception as e:
