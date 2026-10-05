@@ -80,14 +80,18 @@ class SymbolIndexStore:
             if not target_index[symbol.name]:
                 del target_index[symbol.name]
 
-        # 2. USR and Call Graph
+        # 2. USR index
         if symbol.usr:
             if symbol.usr in self.usr_index:
                 # Only delete if it's actually the same symbol (to avoid accidental deletion of replacements)
                 existing = self.usr_index[symbol.usr]
                 if existing == symbol or existing.usr == symbol.usr:
                     del self.usr_index[symbol.usr]
-            self.call_graph_port.remove_symbol(symbol.usr)
+            # NOTE: no call_graph_port.remove_symbol cascade here. Persisted
+            # call sites are owned per caller file (stream_call_sites replaces
+            # them per file; remove_file_cache cleans deleted files). Cascading
+            # a USR-level delete wipes other files' still-valid call sites
+            # whenever a callee is re-merged or replaced definition-wins.
 
     def _handle_symbol_definition_wins(
         self, info: SymbolInfo, existing_symbol: SymbolInfo

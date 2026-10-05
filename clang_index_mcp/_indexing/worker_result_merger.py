@@ -89,11 +89,17 @@ class WorkerResultMerger:
             self._cache_writer_thread = t
 
     def _cache_writer_thread_target(self, identity: Any, q: queue.SimpleQueue) -> None:
-        """Background thread target: own a cache connection and write file caches."""
+        """Background thread target: own a cache connection and write file caches.
+
+        The writer is a secondary connection in the main process: the primary
+        backend owns the schema lifecycle, so recreation is skipped (the same
+        mode worker processes use). A transient lock during init then retries
+        instead of wiping the database.
+        """
         from .._persistence.cache_manager import CacheManager
 
         try:
-            cache_manager = CacheManager(identity, skip_schema_recreation=False)
+            cache_manager = CacheManager(identity, skip_schema_recreation=True)
         except Exception as e:
             diagnostics.error(f"Background cache writer failed to initialize: {e}")
             return

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 
 if TYPE_CHECKING:
     from .._contexts.incremental_context import IncrementalContext
+    from .._indexing.worker_result_merger import WorkerResultMerger
     from .._symbols.indexing_callbacks import IndexingCallbacks
 
 
@@ -33,64 +34,22 @@ def create_executor(
 
 
 def process_future_result(
-    ctx: "IncrementalContext", result: Any, file_path: str
+    result_merger: "WorkerResultMerger", result: Any, file_path: str
 ) -> Tuple[bool, bool]:
-    """Process the result from a future and merge it into the analyzer."""
-    from .._incremental.symbol_merger import merge_symbols
+    """Process the result from a future and merge it into the analyzer.
 
-    call_graph_analyzer = ctx.call_graph_analyzer
-    cache_orchestrator = ctx.cache_orchestrator
-    symbol_store = ctx.symbol_store
-
+    Delegates to WorkerResultMerger.merge_worker_result so the incremental path
+    shares the full indexing merge semantics: stale index entries are cleared
+    before merging, call sites are streamed to SQLite with full field fidelity,
+    and file hashes are recorded only for successful, non-empty results. The
+    per-file cache write is offloaded to the merger's background writer; the
+    caller flushes it when the processing loop finishes.
+    """
     # ProcessPoolExecutor returns:
     # (file_path, success, was_cached, symbols, call_sites, processed_headers,
     #  file_hash, compile_args_hash, error_message, retry_count)
-    (
-        _,
-        success,
-        was_cached,
-        symbols,
-        call_sites,
-        processed_headers,
-        file_hash,
-        compile_args_hash,
-        error_message,
-        retry_count,
-    ) = result
-
-    if success and symbols:
-        merge_symbols(ctx, symbols)
-
-    if call_sites:
-        for cs_dict in call_sites:
-            call_graph_analyzer.add_call(
-                cs_dict["caller_usr"],
-                cs_dict["callee_usr"],
-                cs_dict["file"],
-                cs_dict["line"],
-                cs_dict.get("column"),
-            )
-
-    if processed_headers:
-        for header_path, header_hash in processed_headers.items():
-            cache_orchestrator.mark_header_completed(header_path, header_hash)
-
-    symbol_store.set_file_hash(file_path, file_hash)
-
-    # Persist per-file cache from the main process. Workers skip cache writes so
-    # that all SQLite writes are serialized through a single process.
-    if not was_cached:
-        cache_orchestrator.save_file_cache(
-            file_path,
-            symbols if success else [],
-            file_hash,
-            compile_args_hash,
-            success=success,
-            error_message=error_message,
-            retry_count=retry_count,
-        )
-
-    return success, was_cached
+    result_merger.merge_worker_result(result, file_path)
+    return result[1], result[2]
 
 
 def report_progress(
@@ -156,6 +115,7 @@ def process_loop(
     callbacks: Optional["IndexingCallbacks"],
     is_interrupted: Callable[[], bool],
     shutdown_executor: Callable[[Executor, str], None],
+    result_merger: "WorkerResultMerger",
 ) -> Tuple[int, int]:
     """Process results from futures in a loop."""
     from .._core import diagnostics
@@ -176,7 +136,7 @@ def process_loop(
         file_path = future_to_file[future]
         try:
             result = future.result()
-            success, was_cached = process_future_result(ctx, result, file_path)
+            success, was_cached = process_future_result(result_merger, result, file_path)
 
             if success:
                 analyzed += 1
@@ -253,7 +213,14 @@ def _run_analysis_loop(
 ) -> int:
     """Execute the analysis loop with executor lifecycle management."""
     from .._core import diagnostics
+    from .._indexing.worker_result_merger import WorkerResultMerger
     from ..worker_bootstrap import init_worker
+
+    result_merger = WorkerResultMerger(
+        symbol_store=ctx.symbol_store,
+        call_graph_service=ctx.call_graph_service,
+        cache_orchestrator=ctx.cache_orchestrator,
+    )
 
     executor: Optional[Executor] = None
     max_workers = os.cpu_count() or 4
@@ -275,6 +242,7 @@ def _run_analysis_loop(
             callbacks,
             is_interrupted,
             shutdown_executor,
+            result_merger,
         )
     except KeyboardInterrupt:
         diagnostics.info("\nIncremental refresh interrupted")
@@ -287,5 +255,7 @@ def _run_analysis_loop(
                 executor.shutdown(wait=False)
             except Exception:
                 pass
+        # Ensure all background cache writes are durable before returning.
+        result_merger.flush_cache_writes()
 
     return analyzed
