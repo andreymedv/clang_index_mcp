@@ -80,76 +80,84 @@ class SymbolIndexStore:
             if not target_index[symbol.name]:
                 del target_index[symbol.name]
 
-        # 2. USR and Call Graph
+        # 2. USR index
         if symbol.usr:
             if symbol.usr in self.usr_index:
                 # Only delete if it's actually the same symbol (to avoid accidental deletion of replacements)
                 existing = self.usr_index[symbol.usr]
                 if existing == symbol or existing.usr == symbol.usr:
                     del self.usr_index[symbol.usr]
-            self.call_graph_port.remove_symbol(symbol.usr)
+            # NOTE: no call_graph_port.remove_symbol cascade here. Persisted
+            # call sites are owned per caller file (stream_call_sites replaces
+            # them per file; remove_file_cache cleans deleted files). Cascading
+            # a USR-level delete wipes other files' still-valid call sites
+            # whenever a callee is re-merged or replaced definition-wins.
+
+    @staticmethod
+    def _should_replace(existing: SymbolInfo, new: SymbolInfo) -> bool:
+        """Definition-wins dedup rule: should `new` replace `existing`?
+
+        A definition beats a declaration; between two definitions the richer
+        one wins (is_richer_definition). A declaration never replaces a
+        definition.
+        """
+        if not new.is_definition:
+            return False
+        if not existing.is_definition:
+            return True
+        return is_richer_definition(new, existing)
 
     def _handle_symbol_definition_wins(
         self, info: SymbolInfo, existing_symbol: SymbolInfo
     ) -> Optional[SymbolInfo]:
         """Apply definition-wins logic when a symbol already exists in the USR index.
 
-        Returns the info object to use, or None if the symbol should be skipped.
+        Shared by bulk_write_symbols and merge_symbol_into_indexes so both
+        index-write paths apply identical replacement semantics. Returns the
+        info object to use, or None if the symbol should be skipped.
         """
-        # Definition-wins: If new symbol is a definition and existing is not, replace
-        if info.is_definition and not existing_symbol.is_definition:
-            # Preserve parent_class from declaration if definition lost it
-            if not info.parent_class and existing_symbol.parent_class:
-                info = dataclasses.replace(info, parent_class=existing_symbol.parent_class)
+        if not self._should_replace(existing_symbol, info):
+            return None
 
+        # Preserve parent_class from the replaced symbol if the replacement lost it
+        if not info.parent_class and existing_symbol.parent_class:
+            info = dataclasses.replace(info, parent_class=existing_symbol.parent_class)
+
+        if existing_symbol.is_definition:
+            # Both are definitions; the richer one won.
+            diagnostics.debug(
+                f"Richer-definition: Replacing {info.name} "
+                f"(from {existing_symbol.file}:{existing_symbol.line} "
+                f"to {info.file}:{info.line})"
+            )
+        else:
             diagnostics.debug(
                 f"Definition-wins: Replacing declaration of {info.name} with definition "
                 f"(from {existing_symbol.file}:{existing_symbol.line} to {info.file}:{info.line})"
             )
 
-            # Remove from class/function/usr indexes but KEEP in file_index
-            self._remove_symbol_from_indexes(existing_symbol)
-            return info
+        # Remove from class/function/usr indexes but KEEP in file_index
+        self._remove_symbol_from_indexes(existing_symbol)
+        return info
 
-        elif info.is_definition and existing_symbol.is_definition:
-            # Both are definitions. Pick the richer one.
-            if is_richer_definition(info, existing_symbol):
-                diagnostics.debug(
-                    f"Richer-definition: Replacing {info.name} "
-                    f"(from {existing_symbol.file}:{existing_symbol.line} "
-                    f"to {info.file}:{info.line})"
-                )
-                self._remove_symbol_from_indexes(existing_symbol)
-                return info
-            else:
-                return None  # Keep existing (it's richer or equal)
-        else:
-            # Keep existing symbol (existing is definition, new is declaration)
-            return None
+    def _add_to_file_index(self, symbol: SymbolInfo) -> None:
+        """Add symbol to file_index with definition-wins deduplication.
 
-    def _add_symbol_to_file_index(self, info: SymbolInfo) -> None:
-        """Add symbol to file_index with deduplication check."""
-        if not info.file:
+        Replaces a same-USR entry when _should_replace prefers the new symbol,
+        otherwise keeps the existing entry.
+        """
+        if not symbol.file:
             return
 
-        if info.file not in self.file_index:
-            self.file_index[info.file] = []
+        file_symbols = self.file_index[symbol.file]
+        if symbol.usr:
+            for idx_pos, existing in enumerate(file_symbols):
+                if existing.usr == symbol.usr:
+                    if self._should_replace(existing, symbol):
+                        file_symbols[idx_pos] = symbol
+                    return
 
-        already_in_file_index = False
-        if info.usr:
-            for idx_pos, existing in enumerate(self.file_index[info.file]):
-                if existing.usr == info.usr:
-                    if (info.is_definition and not existing.is_definition) or (
-                        info.is_definition
-                        and existing.is_definition
-                        and is_richer_definition(info, existing)
-                    ):
-                        self.file_index[info.file][idx_pos] = info
-                    already_in_file_index = True
-                    break
-
-        if not already_in_file_index:
-            self.file_index[info.file].append(info)
+        file_symbols.append(symbol)
 
     def apply_cached_symbols(
         self, file_path: str, cached_symbols: List[SymbolInfo], current_hash: str
@@ -190,42 +198,21 @@ class SymbolIndexStore:
         """Clear existing index entries for a file (atomicity should be handled by caller)."""
         self._remove_file_from_indexes(file_path)
 
-    def _add_to_file_index(self, symbol: SymbolInfo):
-        """Add symbol to file index with deduplication."""
-        if symbol.file not in self.file_index:
-            self.file_index[symbol.file] = []
-            self.file_index[symbol.file].append(symbol)
-            return
+    def merge_symbol_into_indexes(self, symbol: SymbolInfo) -> bool:
+        """Merge a single symbol into the main process indexes with deduplication.
 
-        if not symbol.usr:
-            self.file_index[symbol.file].append(symbol)
-            return
+        Shared per-symbol merge used by bulk_write_symbols and the incremental /
+        worker-result merge path so both apply identical definition-wins semantics.
 
-        for idx_pos, existing in enumerate(self.file_index[symbol.file]):
-            if existing.usr == symbol.usr:
-                if (symbol.is_definition and not existing.is_definition) or (
-                    symbol.is_definition
-                    and existing.is_definition
-                    and is_richer_definition(symbol, existing)
-                ):
-                    self.file_index[symbol.file][idx_pos] = symbol
-                return
-
-        self.file_index[symbol.file].append(symbol)
-
-    def merge_symbol_into_indexes(self, symbol: SymbolInfo):
-        """Merge a single symbol into the main process indexes with deduplication."""
+        Returns:
+            True if the symbol was added (new entry or definition-wins
+            replacement), False if an existing symbol was kept.
+        """
         if symbol.usr and symbol.usr in self.usr_index:
-            existing = self.usr_index[symbol.usr]
-            if symbol.is_definition and not existing.is_definition:
-                self._remove_symbol_from_indexes(existing)
-            elif symbol.is_definition and existing.is_definition:
-                if is_richer_definition(symbol, existing):
-                    self._remove_symbol_from_indexes(existing)
-                else:
-                    return
-            else:
-                return
+            resolved = self._handle_symbol_definition_wins(symbol, self.usr_index[symbol.usr])
+            if resolved is None:
+                return False
+            symbol = resolved
 
         if symbol.kind in CLASS_KINDS:
             self.class_index[symbol.name].append(symbol)
@@ -235,8 +222,8 @@ class SymbolIndexStore:
         if symbol.usr:
             self.usr_index[symbol.usr] = symbol
 
-        if symbol.file:
-            self._add_to_file_index(symbol)
+        self._add_to_file_index(symbol)
+        return True
 
     def populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
         """Populate main and file indexes from cache data."""
@@ -313,27 +300,10 @@ class SymbolIndexStore:
 
         # Single lock acquisition for all updates
         with self._lock_provider:
-            # Add all collected symbols
+            # Add all collected symbols through the shared per-symbol merge
             for info in symbols:
-                # USR-based deduplication with definition-wins logic
-                if info.usr and info.usr in self.usr_index:
-                    existing_symbol = self.usr_index[info.usr]
-                    resolved_info = self._handle_symbol_definition_wins(info, existing_symbol)
-                    if resolved_info is None:
-                        continue
-                    info = resolved_info
-
-                # New symbol or replacement - add to all indexes
-                if info.kind in CLASS_KINDS:
-                    self.class_index[info.name].append(info)
-                else:
-                    self.function_index[info.name].append(info)
-
-                if info.usr:
-                    self.usr_index[info.usr] = info
-
-                self._add_symbol_to_file_index(info)
-                added_count += 1
+                if self.merge_symbol_into_indexes(info):
+                    added_count += 1
 
             # Add all collected call relationships
             self.call_graph_port.process_call_buffer(calls)

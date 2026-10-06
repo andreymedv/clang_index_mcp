@@ -7,8 +7,7 @@ shared symbol store, call graph, and cache.
 """
 
 import json
-import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Optional, Set
 
 from clang.cindex import TranslationUnit
 
@@ -76,25 +75,6 @@ class SymbolExtractor:
     def get_file_hash(self, file_path: str) -> str:
         return self.cache_orchestrator.get_file_hash(file_path)
 
-    def _find_primary_template_info(self, primary_template_usr: str) -> Optional[Any]:
-        """Look up the primary template in class_index by USR."""
-        with self.symbol_store.index_lock:
-            for name, infos in self.class_index.items():
-                for info in infos:
-                    if info.usr == primary_template_usr:
-                        return info
-        return None
-
-    def _parse_template_params(self, primary_info: Any) -> List[dict]:
-        """Parse template_parameters JSON from a primary template info."""
-        if not primary_info.template_parameters:
-            return []
-        try:
-            result: List[Dict[str, Any]] = json.loads(primary_info.template_parameters)
-            return result
-        except (json.JSONDecodeError, TypeError):
-            return []
-
     def _parse_json_field(self, field_value: Optional[str]) -> Any:
         """Safely parse a JSON field, returning None on failure."""
         if not field_value:
@@ -147,25 +127,6 @@ class SymbolExtractor:
                 f"Resolved base_classes for {resolved_count} template instantiation(s)"
             )
         return resolved_count
-
-    def _extract_template_base_name_from_usr(self, usr: str) -> Optional[str]:
-        """Extract the base template name from a USR."""
-        if not usr:
-            return None
-
-        match = re.search(r"c:@ST>[^@]*@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        match = re.search(r"c:@S@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        match = re.search(r"c:@SP>[^@]*@(\w+)", usr)
-        if match:
-            return match.group(1)
-
-        return None
 
     def _should_extract_header(self, file_path: str) -> bool:
         """Check if a header file should be extracted based on project status and tracker."""

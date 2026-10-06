@@ -3,72 +3,73 @@
 import json
 import sqlite3
 import time
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from ..._symbols.model import SymbolInfo
+from .base import BaseRepository
 
 try:
     from ..._core import diagnostics
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
+INSERT_SYMBOL_SQL = """
+INSERT OR REPLACE INTO symbols (
+    usr, name, qualified_name, kind, file, line, column, signature,
+    is_project, namespace, access, parent_class,
+    base_classes, is_template_specialization,
+    is_template, template_kind, template_parameters, primary_template_usr,
+    start_line, end_line, header_file, header_line,
+    header_start_line, header_end_line, is_definition,
+    is_virtual, is_pure_virtual, is_const, is_static,
+    brief, doc_comment,
+    created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
 
-class SymbolRepository:
+
+def symbol_to_tuple(symbol: SymbolInfo) -> tuple:
+    """Convert SymbolInfo to tuple for SQL insertion."""
+    now = time.time()
+    return (
+        symbol.usr,
+        symbol.name,
+        symbol.qualified_name,
+        symbol.kind,
+        symbol.file,
+        symbol.line,
+        symbol.column,
+        symbol.signature,
+        symbol.is_project,
+        symbol.namespace,
+        symbol.access,
+        symbol.parent_class,
+        json.dumps(symbol.base_classes),
+        symbol.is_template_specialization,
+        symbol.is_template,
+        symbol.template_kind,
+        symbol.template_parameters,
+        symbol.primary_template_usr,
+        symbol.start_line,
+        symbol.end_line,
+        symbol.header_file,
+        symbol.header_line,
+        symbol.header_start_line,
+        symbol.header_end_line,
+        symbol.is_definition,
+        symbol.is_virtual,
+        symbol.is_pure_virtual,
+        symbol.is_const,
+        symbol.is_static,
+        symbol.brief,
+        symbol.doc_comment,
+        now,
+        now,
+    )
+
+
+class SymbolRepository(BaseRepository):
     """Handles symbol persistence: insert, batch write, search, and delete."""
-
-    def __init__(self, conn_getter: Callable[[], Optional[sqlite3.Connection]]):
-        """
-        Args:
-            conn_getter: Callable returning the current SQLite connection.
-                         Survives cache reconnections.
-        """
-        self._conn_getter = conn_getter
-
-    @property
-    def conn(self) -> sqlite3.Connection:
-        """Get the current database connection."""
-        connection = self._conn_getter()
-        assert connection is not None, "Database connection not initialized"
-        return connection
-
-    def symbol_to_tuple(self, symbol: SymbolInfo) -> tuple:
-        """Convert SymbolInfo to tuple for SQL insertion."""
-        now = time.time()
-        return (
-            symbol.usr,
-            symbol.name,
-            symbol.qualified_name,
-            symbol.kind,
-            symbol.file,
-            symbol.line,
-            symbol.column,
-            symbol.signature,
-            symbol.is_project,
-            symbol.namespace,
-            symbol.access,
-            symbol.parent_class,
-            json.dumps(symbol.base_classes),
-            symbol.is_template_specialization,
-            symbol.is_template,
-            symbol.template_kind,
-            symbol.template_parameters,
-            symbol.primary_template_usr,
-            symbol.start_line,
-            symbol.end_line,
-            symbol.header_file,
-            symbol.header_line,
-            symbol.header_start_line,
-            symbol.header_end_line,
-            symbol.is_definition,
-            symbol.is_virtual,
-            symbol.is_pure_virtual,
-            symbol.is_const,
-            symbol.is_static,
-            symbol.brief,
-            symbol.doc_comment,
-            now,
-            now,
-        )
 
     def row_to_symbol(self, row: sqlite3.Row) -> SymbolInfo:
         """Convert database row to SymbolInfo object."""
@@ -123,20 +124,8 @@ class SymbolRepository:
         try:
             with self.conn:
                 self.conn.execute(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    self.symbol_to_tuple(symbol),
+                    INSERT_SYMBOL_SQL,
+                    symbol_to_tuple(symbol),
                 )
             return True
         except Exception as e:
@@ -150,20 +139,8 @@ class SymbolRepository:
         try:
             with self.conn:
                 self.conn.executemany(
-                    """
-                    INSERT OR REPLACE INTO symbols (
-                        usr, name, qualified_name, kind, file, line, column, signature,
-                        is_project, namespace, access, parent_class,
-                        base_classes, is_template_specialization,
-                        is_template, template_kind, template_parameters, primary_template_usr,
-                        start_line, end_line, header_file, header_line,
-                        header_start_line, header_end_line, is_definition,
-                        is_virtual, is_pure_virtual, is_const, is_static,
-                        brief, doc_comment,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [self.symbol_to_tuple(s) for s in symbols],
+                    INSERT_SYMBOL_SQL,
+                    [symbol_to_tuple(s) for s in symbols],
                 )
             return len(symbols)
         except Exception as e:
@@ -204,13 +181,9 @@ class SymbolRepository:
     def delete_symbols_by_file(self, file_path: str) -> int:
         """Delete all symbols from a specific file."""
         try:
-            cursor = self.conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (file_path,))
-            count: int = cursor.fetchone()[0]
-            if count == 0:
-                return 0
-            with self.conn:
-                self.conn.execute("DELETE FROM symbols WHERE file = ?", (file_path,))
-            diagnostics.debug(f"Deleted {count} symbols from {file_path}")
+            count = self._count_and_delete("symbols", "file = ?", (file_path,))
+            if count:
+                diagnostics.debug(f"Deleted {count} symbols from {file_path}")
             return count
         except Exception as e:
             diagnostics.error(f"Failed to delete symbols for file {file_path}: {e}")

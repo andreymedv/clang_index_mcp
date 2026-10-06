@@ -36,8 +36,6 @@ except ImportError:
     from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
-    from concurrent.futures import Executor
-
     from .._contexts.incremental_context import IncrementalContext
 
 
@@ -88,7 +86,6 @@ class IncrementalAnalyzer:
         self,
         ctx: "IncrementalContext",
         is_interrupted: Optional[Callable[[], bool]] = None,
-        shutdown_executor: Optional[Callable[["Executor", str], None]] = None,
     ):
         """
         Initialize incremental analyzer.
@@ -96,12 +93,10 @@ class IncrementalAnalyzer:
         Args:
             ctx: IncrementalContext with all required services
             is_interrupted: Callback to check if analysis was interrupted
-            shutdown_executor: Callback to shut down an executor
         """
         self.ctx = ctx
         self.scanner = ChangeScanner(ctx)
         self._is_interrupted = is_interrupted or (lambda: False)
-        self._shutdown_executor = shutdown_executor
 
     def perform_incremental_analysis(
         self,
@@ -231,5 +226,4 @@ class IncrementalAnalyzer:
             start_time,
             callbacks,
             is_interrupted=self._is_interrupted,
-            shutdown_executor=self._shutdown_executor,
         )

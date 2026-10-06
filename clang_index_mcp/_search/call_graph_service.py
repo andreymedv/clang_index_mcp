@@ -238,8 +238,8 @@ class CallGraphService:
         if not from_funcs or not to_funcs:
             return []
 
-        from_usrs = self._get_usrs_for_functions(from_funcs)
-        to_usrs = self._get_usrs_for_functions(to_funcs)
+        from_usrs = self._collect_target_usrs(from_funcs)
+        to_usrs = self._collect_target_usrs(to_funcs)
 
         return self._find_paths_bfs(from_usrs, to_usrs, max_depth)
 
@@ -261,35 +261,46 @@ class CallGraphService:
                     target_usrs.add(symbol.usr)
         return target_usrs
 
+    def _add_known_symbol(self, usr: str, out_list: List[Dict[str, Any]]) -> bool:
+        """Append the project-index entry for usr if known. Returns True if added."""
+        info = self.symbol_store.get_symbol_by_usr(usr)
+        if info is None:
+            return False
+        out_list.append(
+            omit_empty(
+                {
+                    "qualified_name": info.qualified_name or info.name,
+                    "kind": info.kind,
+                    "signature": info.signature,
+                    "parent_class": info.parent_class or None,
+                    "is_project": info.is_project,
+                    **build_location_objects(info),
+                }
+            )
+        )
+        return True
+
+    def _add_external_symbol(self, usr: str, out_list: List[Dict[str, Any]]) -> None:
+        """Append a fallback entry for a usr that has no project-index metadata."""
+        rich = self.symbol_store.resolve_symbol_info(usr)
+        if rich is not None:
+            out_list.append(rich)
+        else:
+            out_list.append(
+                {
+                    "qualified_name": usr_to_display_name(usr),
+                    "is_project": False,
+                }
+            )
+
     def _add_caller(
         self, caller_usr: str, callers_list: List[Dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single caller to the callers list, respecting project_only filter."""
-        caller_info = self.symbol_store.get_symbol_by_usr(caller_usr)
-        if caller_info is not None:
-            callers_list.append(
-                omit_empty(
-                    {
-                        "qualified_name": caller_info.qualified_name or caller_info.name,
-                        "kind": caller_info.kind,
-                        "signature": caller_info.signature,
-                        "parent_class": caller_info.parent_class or None,
-                        "is_project": caller_info.is_project,
-                        **build_location_objects(caller_info),
-                    }
-                )
-            )
-        elif not project_only:
-            rich = self.symbol_store.resolve_symbol_info(caller_usr)
-            if rich is not None:
-                callers_list.append(rich)
-            else:
-                callers_list.append(
-                    {
-                        "qualified_name": usr_to_display_name(caller_usr),
-                        "is_project": False,
-                    }
-                )
+        if self._add_known_symbol(caller_usr, callers_list):
+            return
+        if not project_only:
+            self._add_external_symbol(caller_usr, callers_list)
 
     def _add_call_site(
         self, call_site, call_sites_list: List[Dict[str, Any]], project_only: bool
@@ -364,20 +375,7 @@ class CallGraphService:
         target_usrs: Set[str],
     ) -> None:
         """Add a single callee to the callees list, respecting project_only filter."""
-        callee_info = self.symbol_store.get_symbol_by_usr(callee_usr)
-        if callee_info is not None:
-            callees_list.append(
-                omit_empty(
-                    {
-                        "qualified_name": callee_info.qualified_name or callee_info.name,
-                        "kind": callee_info.kind,
-                        "signature": callee_info.signature,
-                        "parent_class": callee_info.parent_class or None,
-                        "is_project": callee_info.is_project,
-                        **build_location_objects(callee_info),
-                    }
-                )
-            )
+        if self._add_known_symbol(callee_usr, callees_list):
             return
 
         tmpl_info = self._get_template_mediated_info(target_usrs, callee_usr)
@@ -386,30 +384,7 @@ class CallGraphService:
             return
 
         if not project_only:
-            rich = self.symbol_store.resolve_symbol_info(callee_usr)
-            if rich is not None:
-                callees_list.append(rich)
-            else:
-                callees_list.append(
-                    {
-                        "qualified_name": usr_to_display_name(callee_usr),
-                        "is_project": False,
-                    }
-                )
-
-    def _get_usrs_for_functions(self, funcs: List[Dict[str, Any]]) -> set:
-        """Resolve a list of function search results to a set of USRs."""
-        usrs = set()
-        for func in funcs:
-            _loc = func.get("definition") or func.get("declaration") or {}
-            _func_file = _loc.get("file")
-            _func_line = _loc.get("line")
-            for symbol in self.symbol_store.get_functions_by_name(
-                func["qualified_name"].split("::")[-1]
-            ):
-                if symbol.usr and symbol.file == _func_file and symbol.line == _func_line:
-                    usrs.add(symbol.usr)
-        return usrs
+            self._add_external_symbol(callee_usr, callees_list)
 
     def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> List[List[str]]:
         """Perform BFS to find paths between sets of USRs."""

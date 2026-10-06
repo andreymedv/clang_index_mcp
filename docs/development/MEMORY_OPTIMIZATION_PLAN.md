@@ -19,7 +19,7 @@
 | Task 2.1: Lazy loading call_sites | ~150-200 MB | `12cd00a` | ✅ Done |
 | Task 2.2: Optimize SQLite loading | ~500 MB peak | `12cd00a` | ✅ Done |
 | Task 1.2: Remove calls/called_by from SymbolInfo | ~200 MB | PR #93 | ✅ Done |
-| Race condition fix (schema migration) | - | `661cc28` | ✅ Done |
+| Race condition fix (schema recreate) | - | `661cc28` | ✅ Done |
 
 **Phase 3 (Worker Process Optimization):**
 
@@ -178,7 +178,7 @@ for symbol_list in self.class_index.values():
 - Various performance and integration tests
 
 **Lesson:**
-- Schema version changes require centralized migration BEFORE spawning workers
+- Schema version changes must run centrally (recreate-on-mismatch) BEFORE spawning workers
 - OR use retry logic with backoff
 - Test schema changes with parallel test execution specifically
 
@@ -321,11 +321,11 @@ rm -rf .mcp_cache/ && make test
 
 ## Phase 2: Schema Change (Race Condition Fixed ✅)
 
-### Prerequisite: Fix Schema Migration Race Condition ✅ COMPLETED
+### Prerequisite: Fix Schema Recreation Race Condition ✅ COMPLETED
 
 **Implementation (completed 2025-12-31):**
 
-1. **Centralized migration in main process** - `ensure_schema_current()` called in `index_project()` and `refresh_if_needed()` BEFORE creating ProcessPoolExecutor
+1. **Centralized schema versioning in main process** - `ensure_schema_current()` called in `index_project()` and `refresh_if_needed()` BEFORE creating ProcessPoolExecutor
 
 2. **Workers skip schema recreation** - `skip_schema_recreation=True` parameter prevents workers from attempting database recreation
 
@@ -458,7 +458,7 @@ done
 ### Final Target (All Phases)
 - [ ] Memory savings: ≥1.0 GB
 - [ ] Header file search still works
-- [ ] Schema migration is race-free
+- [ ] Schema recreation is race-free
 - [ ] All tests passing
 
 ---
@@ -661,7 +661,7 @@ Worker Process:
 ### Phase 1-2 (COMPLETED)
 - ✅ Memory savings: ~850 MB
 - ✅ All tests passing (586)
-- ✅ Schema migration race-free
+- ✅ Schema recreation race-free
 
 ### Phase 3 Target
 - [ ] Memory savings: ~30 GB (for 32-worker systems)

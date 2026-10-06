@@ -19,6 +19,7 @@ from .._symbols.symbol_index_store import SymbolIndexStore
 
 if TYPE_CHECKING:
     from .._search.call_graph import CallGraphAnalyzer
+    from .._search.call_graph_service import CallGraphService
     from .._search.dependency_graph import DependencyGraphBuilder
 
 
@@ -38,5 +39,6 @@ class IncrementalContext:
     symbol_store: SymbolIndexStore
     concurrency: ConcurrencyContext
     call_graph_analyzer: "CallGraphAnalyzer"
+    call_graph_service: "CallGraphService"
     dependency_graph: "DependencyGraphBuilder"
     config_file: Optional[str] = None

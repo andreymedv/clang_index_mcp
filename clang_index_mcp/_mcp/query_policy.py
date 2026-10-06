@@ -10,6 +10,30 @@ from .tool_handlers.policy_tools import check_query_policy
 
 _VALID_SEARCH_SCOPES = ("project_code_only", "include_external_libraries")
 
+# Message returned when a tool requires a project but none is configured.
+PROJECT_DIRECTORY_NOT_SET_MESSAGE = (
+    "Error: Project directory not set. Please use 'set_project_directory' first "
+    "with the path to your C++ project."
+)
+
+# Query tools gated by the readiness check in _check_tool_readiness.
+# Single source of truth for which tool names require an indexed project.
+QUERY_TOOL_NAMES = frozenset(
+    {
+        "search_classes",
+        "search_functions",
+        "get_class_info",
+        "get_type_alias_info",
+        "search_symbols",
+        "find_in_file",
+        "get_class_hierarchy",
+        "find_incoming_calls",
+        "get_outgoing_calls",
+        "get_call_path",
+        "get_call_sites",
+    }
+)
+
 
 def _parse_search_scope(arguments: Dict[str, Any]) -> bool:
     """Convert search_scope string enum to project_only bool.
@@ -92,26 +116,12 @@ def _check_tool_readiness(name: str) -> Optional[List[TextContent]]:
     Returns None if ready, or a List[TextContent] with an error message if not.
     """
     # Policy check and readiness for query tools
-    query_tools = {
-        "search_classes",
-        "search_functions",
-        "get_class_info",
-        "get_type_alias_info",
-        "search_symbols",
-        "find_in_file",
-        "get_class_hierarchy",
-        "find_incoming_calls",
-        "get_outgoing_calls",
-        "get_call_path",
-        "get_call_sites",
-    }
-
-    if name in query_tools:
+    if name in QUERY_TOOL_NAMES:
         if ctx.analyzer is None:
             return [
                 TextContent(
                     type="text",
-                    text="Error: Project directory not set. Please use 'set_project_directory' first with the path to your C++ project.",
+                    text=PROJECT_DIRECTORY_NOT_SET_MESSAGE,
                 )
             ]
         if not ctx.state_manager.is_ready_for_queries():

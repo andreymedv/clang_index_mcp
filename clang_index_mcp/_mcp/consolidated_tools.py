@@ -31,6 +31,7 @@ _PASSTHROUGH_MAP = {
     "get_class_info": "get_class_info",
     "get_class_hierarchy": "get_class_hierarchy",
     "get_type_alias_info": "get_type_alias_info",
+    "find_incoming_calls": "find_incoming_calls",
 }
 
 # Default sync timeout for set_project (seconds)
@@ -67,6 +68,24 @@ _SYSTEM_STATE_MAP = {
     "indexed": "ready",
     "refreshing": "partially_ready",
     "error": "error",
+}
+
+# Shared inputSchema property fragments (composed into tool definitions below)
+_CLASS_NAME_FRAGMENT = {
+    "type": "string",
+    "description": "Optional: Class name if function is a method.",
+    "default": "",
+}
+_MAX_RESULTS_FRAGMENT = {
+    "type": "integer",
+    "description": "Optional: Maximum results.",
+    "minimum": 1,
+}
+_SEARCH_SCOPE_FRAGMENT = {
+    "type": "string",
+    "enum": ["project_code_only", "include_external_libraries"],
+    "description": "'project_code_only' (default) or 'include_external_libraries'.",
+    "default": "project_code_only",
 }
 
 # All public tool names (for validation)
@@ -481,11 +500,7 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "description": "Function name to inspect.",
                     },
-                    "class_name": {
-                        "type": "string",
-                        "description": "Optional: Class name if function is a method.",
-                        "default": "",
-                    },
+                    "class_name": dict(_CLASS_NAME_FRAGMENT),
                     "return_format": {
                         "type": "string",
                         "enum": [
@@ -501,19 +516,8 @@ def list_tools_b() -> List[Tool]:
                         ),
                         "default": "function_definitions_summary",
                     },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Optional: Maximum results.",
-                        "minimum": 1,
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": (
-                            "'project_code_only' (default) or " "'include_external_libraries'."
-                        ),
-                        "default": "project_code_only",
-                    },
+                    "max_results": dict(_MAX_RESULTS_FRAGMENT),
+                    "search_scope": dict(_SEARCH_SCOPE_FRAGMENT),
                 },
                 "required": ["function_name"],
             },
@@ -538,24 +542,9 @@ def list_tools_b() -> List[Tool]:
                         "type": "string",
                         "description": "Name of the function to find callers for.",
                     },
-                    "class_name": {
-                        "type": "string",
-                        "description": "Optional: Class name if function is a method.",
-                        "default": "",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Optional: Maximum results.",
-                        "minimum": 1,
-                    },
-                    "search_scope": {
-                        "type": "string",
-                        "enum": ["project_code_only", "include_external_libraries"],
-                        "description": (
-                            "'project_code_only' (default) or 'include_external_libraries'."
-                        ),
-                        "default": "project_code_only",
-                    },
+                    "class_name": dict(_CLASS_NAME_FRAGMENT),
+                    "max_results": dict(_MAX_RESULTS_FRAGMENT),
+                    "search_scope": dict(_SEARCH_SCOPE_FRAGMENT),
                 },
                 "required": ["function_name"],
             },
@@ -623,9 +612,6 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
 
     if name == "find_outgoing_calls":
         return await _handle_find_outgoing_calls(arguments)
-
-    if name == "find_incoming_calls":
-        return await _handle_find_incoming_calls(arguments)
 
     if name == "trace_execution_path":
         return await _handle_trace_execution_path(arguments)
@@ -767,17 +753,6 @@ async def _handle_find_outgoing_calls(
         result = _filter_detail_level(result, "signatures_only")
 
     return result
-
-
-async def _handle_find_incoming_calls(
-    arguments: Dict[str, Any],
-) -> List[TextContent]:
-    """Translate find_incoming_calls -> find_incoming_calls (rename only)."""
-
-    return cast(
-        List[TextContent],
-        await ToolRegistry.call_tool("_handle_tool_call", "find_incoming_calls", arguments),
-    )
 
 
 async def _handle_trace_execution_path(

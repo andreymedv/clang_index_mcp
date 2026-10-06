@@ -229,6 +229,7 @@ class ProjectContext:
             symbol_store=symbol_store,
             concurrency=self.runtime.concurrency,
             call_graph_analyzer=call_graph_service.call_graph_analyzer,
+            call_graph_service=call_graph_service,
             dependency_graph=call_graph_service.dependency_graph,
             config_file=(
                 str(self.identity.project_identity.config_file_path)

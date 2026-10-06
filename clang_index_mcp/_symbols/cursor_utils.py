@@ -54,3 +54,18 @@ def extract_namespace(qualified_name: str) -> str:
 
     parts = qualified_name.split("::")
     return "::".join(parts[:-1])
+
+
+# Template parameter declaration kinds, in the order consumers expect to see them
+_TEMPLATE_PARAM_KINDS = (
+    CursorKind.TEMPLATE_TYPE_PARAMETER,
+    CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+    CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
+)
+
+
+def iter_template_params(cursor: Cursor):
+    """Yield child cursors that declare template parameters (type, non-type, template)."""
+    for child in cursor.get_children():
+        if child.kind in _TEMPLATE_PARAM_KINDS:
+            yield child

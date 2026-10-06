@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **Unused `exclude_patterns` configuration**: Removed the top-level `exclude_patterns` config option and `compile_commands.exclude_patterns`, which were parsed but never applied anywhere in the analyzer. Also removed `CppAnalyzerConfig.get_exclude_patterns()`, `CompileCommandsConfig.exclude_patterns`, and `CompileCommandsManager.exclude_patterns`. Config files that still contain these keys are simply ignored — no migration needed. Use `exclude_directories` to skip files during scanning.
+- **Unused schema migration framework**: Removed `_persistence/schema_migrations.py` and `_persistence/migrations/` (forward-only migration framework with no production callers). Schema versioning remains `CURRENT_SCHEMA_VERSION` + recreate-on-mismatch in `sqlite_cache_backend.py`. Also removed `tests/test_schema_migration.py`, which covered only this framework.
+- **Other verified dead code**: Removed `SymbolExtractor._find_primary_template_info`/`_parse_template_params`/`_extract_template_base_name_from_usr` (unused duplicates of live code in `ClangSymbolParser` and `template_symbol_indexer`), unused `AliasInfoBase.from_cursor`, and the hand-encoded 33-field tuple in `MaintenanceService.monitor_performance` — it now builds a real `SymbolInfo` via the shared `symbol_to_tuple` helper.
+- **Stale migration documentation**: Dropped doc references to the removed schema migration framework and to `scripts/migrate_cache.py` / `MIGRATION_GUIDE.md`, which were never shipped.
 
 ---
 

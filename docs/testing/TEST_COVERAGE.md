@@ -306,7 +306,7 @@ Tests are organized by category:
 | test_scale::test_extremely_large_project | Slow (~60s) | Low (performance validation only) |
 | test_resource_errors::test_out_of_memory | Slow/unpredictable | Low (graceful degradation tested) |
 | test_windows_platform::* (2 tests) | Windows-only | Medium (Windows support less tested) |
-| test_backward_compatibility | Old cache format | Low (migration tested elsewhere) |
+| test_backward_compatibility | Old cache format | Low (schema versioning tested elsewhere) |
 | test_fallback_to_json_on_init_error | SQLite fallback | Low (JSON backend deprecated) |
 | Other skipped tests (8) | Platform/environment specific | Low |
 

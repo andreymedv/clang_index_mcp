@@ -11,7 +11,7 @@ from .._core import diagnostics
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import CallSiteRecord, ParseResult, SymbolParser, TypeAliasRecord
 from .._symbols.alias_extractor import extract_alias_info
-from .._symbols.cursor_utils import extract_namespace, get_qualified_name
+from .._symbols.cursor_utils import extract_namespace, get_qualified_name, iter_template_params
 from .._symbols.documentation_extractor import extract_documentation
 from .._symbols.signature_builder import build_human_readable_signature
 from .._symbols.usr_decoder import usr_to_display_name
@@ -93,15 +93,10 @@ class ClangSymbolParser(SymbolParser):
         """Build a map from 'type-parameter-D-I' to actual template parameter names."""
         type_param_map: Dict[str, str] = {}
         param_index = 0
-        for child in cursor.get_children():
-            if child.kind in (
-                CursorKind.TEMPLATE_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
-                CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
-            ):
-                if child.spelling:
-                    type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
-                param_index += 1
+        for child in iter_template_params(cursor):
+            if child.spelling:
+                type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
+            param_index += 1
         return type_param_map
 
     def _resolve_base_name(self, base_type: Type, type_param_map: Dict[str, str]) -> str:
@@ -263,7 +258,7 @@ class ClangSymbolParser(SymbolParser):
         """Extract template parameters from a template cursor."""
         template_params = []
 
-        for child in cursor.get_children():
+        for child in iter_template_params(cursor):
             if child.kind == CursorKind.TEMPLATE_TYPE_PARAMETER:
                 template_params.append({"name": child.spelling, "kind": "type"})
             elif child.kind == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
@@ -333,6 +328,53 @@ class ClangSymbolParser(SymbolParser):
             loc_info=self._extract_line_range_info(cursor),
             doc_info=extract_documentation(cursor),
         )
+
+    def _base_symbol_kwargs(self, cursor: Cursor, common: CommonSymbolData) -> Dict[str, Any]:
+        """Build the kwargs shared by every SymbolInfo construction."""
+        loc_info = common.loc_info
+        doc_info = common.doc_info
+        return {
+            "name": cursor.spelling,
+            "file": loc_info.file,
+            "line": loc_info.line,
+            "column": loc_info.column,
+            "qualified_name": common.qualified_name,
+            "is_project": (self._is_project_file(loc_info.file) if loc_info.file else False),
+            "namespace": common.namespace,
+            "usr": cursor.get_usr() if cursor.get_usr() else "",
+            "start_line": loc_info.start_line,
+            "end_line": loc_info.end_line,
+            "header_file": loc_info.header_file,
+            "header_line": loc_info.header_line,
+            "header_start_line": loc_info.header_start_line,
+            "header_end_line": loc_info.header_end_line,
+            "is_definition": cursor.is_definition(),
+            "brief": doc_info["brief"],
+            "doc_comment": doc_info["doc_comment"],
+        }
+
+    @staticmethod
+    def _normalize_access(cursor: Cursor) -> str:
+        """Normalize a cursor's access specifier to a lowercase access level."""
+        access_spec = cursor.access_specifier
+        access = access_spec.name.lower() if access_spec else "public"
+        if access in ("none", "invalid"):
+            access = "public"
+        return access
+
+    @staticmethod
+    def _resolve_semantic_parent_class(cursor: Cursor, parent_class: str) -> str:
+        """Fall back to the cursor's semantic parent when no parent class is known."""
+        if parent_class:
+            return parent_class
+        sem_parent = cursor.semantic_parent
+        if sem_parent and sem_parent.kind in (
+            CursorKind.CLASS_DECL,
+            CursorKind.STRUCT_DECL,
+            CursorKind.CLASS_TEMPLATE,
+        ):
+            return str(sem_parent.spelling)
+        return parent_class
 
     def _process_cursor(
         self,
@@ -417,10 +459,6 @@ class ClangSymbolParser(SymbolParser):
 
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
-            qualified_name = common.qualified_name
-            namespace = common.namespace
-            loc_info = common.loc_info
-            doc_info = common.doc_info
 
             base_classes = self._get_base_classes(cursor)
             template_params = self._extract_template_parameters(cursor)
@@ -433,30 +471,14 @@ class ClangSymbolParser(SymbolParser):
                 primary_usr = self._get_primary_template_usr(cursor)
 
             info = SymbolInfo(
-                name=cursor.spelling,
+                **self._base_symbol_kwargs(cursor, common),
                 kind=symbol_kind,
-                file=loc_info.file,
-                line=loc_info.line,
-                column=loc_info.column,
-                qualified_name=qualified_name,
-                is_project=(self._is_project_file(loc_info.file) if loc_info.file else False),
-                namespace=namespace,
                 parent_class="",
                 base_classes=base_classes,
-                usr=cursor.get_usr() if cursor.get_usr() else "",
                 is_template=True,
                 template_kind=symbol_kind,
                 template_parameters=template_params,
                 primary_template_usr=primary_usr,
-                start_line=loc_info.start_line,
-                end_line=loc_info.end_line,
-                header_file=loc_info.header_file,
-                header_line=loc_info.header_line,
-                header_start_line=loc_info.header_start_line,
-                header_end_line=loc_info.header_end_line,
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
             )
             symbols_buffer.append(info)
 
@@ -482,10 +504,6 @@ class ClangSymbolParser(SymbolParser):
 
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
-            qualified_name = common.qualified_name
-            namespace = common.namespace
-            loc_info = common.loc_info
-            doc_info = common.doc_info
 
             base_classes = self._get_base_classes(cursor)
             is_class_template_spec = self._detect_template_specialization(cursor)
@@ -502,31 +520,15 @@ class ClangSymbolParser(SymbolParser):
                             stored_template_args = json.dumps(targs)
 
             info = SymbolInfo(
-                name=cursor.spelling,
+                **self._base_symbol_kwargs(cursor, common),
                 kind="class" if kind == CursorKind.CLASS_DECL else "struct",
-                file=loc_info.file,
-                line=loc_info.line,
-                column=loc_info.column,
-                qualified_name=qualified_name,
-                is_project=(self._is_project_file(loc_info.file) if loc_info.file else False),
-                namespace=namespace,
                 parent_class="",
                 base_classes=base_classes,
-                usr=cursor.get_usr() if cursor.get_usr() else "",
                 is_template_specialization=is_class_template_spec,
                 is_template=is_class_template_spec,
                 template_kind="full_specialization" if is_class_template_spec else None,
                 primary_template_usr=primary_usr,
                 template_arguments=stored_template_args,
-                start_line=loc_info.start_line,
-                end_line=loc_info.end_line,
-                header_file=loc_info.header_file,
-                header_line=loc_info.header_line,
-                header_start_line=loc_info.header_start_line,
-                header_end_line=loc_info.header_end_line,
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
             )
             symbols_buffer.append(info)
 
@@ -550,65 +552,32 @@ class ClangSymbolParser(SymbolParser):
         symbols_buffer = self._symbols_buffer
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
-            qualified_name = common.qualified_name
-            namespace = common.namespace
-            loc_info = common.loc_info
-            doc_info = common.doc_info
 
             signature = build_human_readable_signature(cursor)
-            function_usr = cursor.get_usr() if cursor.get_usr() else ""
             template_params = self._extract_template_parameters(cursor)
 
-            effective_parent_class = parent_class
-            if not parent_class:
-                sem_parent = cursor.semantic_parent
-                if sem_parent and sem_parent.kind in (
-                    CursorKind.CLASS_DECL,
-                    CursorKind.STRUCT_DECL,
-                    CursorKind.CLASS_TEMPLATE,
-                ):
-                    effective_parent_class = sem_parent.spelling
-
+            effective_parent_class = self._resolve_semantic_parent_class(cursor, parent_class)
             is_method_template = bool(effective_parent_class)
             is_virtual = cursor.is_virtual_method() if is_method_template else False
             is_pure_virtual = cursor.is_pure_virtual_method() if is_method_template else False
             is_const = cursor.is_const_method() if is_method_template else False
             is_static = cursor.is_static_method()
-            access_spec = cursor.access_specifier
-            access = access_spec.name.lower() if access_spec else "public"
-            if access in ("none", "invalid"):
-                access = "public"
+            access = self._normalize_access(cursor)
 
             info = SymbolInfo(
-                name=cursor.spelling,
+                **self._base_symbol_kwargs(cursor, common),
                 kind="function_template",
-                file=loc_info.file,
-                line=loc_info.line,
-                column=loc_info.column,
-                qualified_name=qualified_name,
                 signature=signature,
-                is_project=(self._is_project_file(loc_info.file) if loc_info.file else False),
-                namespace=namespace,
                 access=access,
                 parent_class=effective_parent_class,
-                usr=function_usr,
                 is_template_specialization=False,
                 is_template=True,
                 template_kind="function_template",
                 template_parameters=template_params,
-                start_line=loc_info.start_line,
-                end_line=loc_info.end_line,
-                header_file=loc_info.header_file,
-                header_line=loc_info.header_line,
-                header_start_line=loc_info.header_start_line,
-                header_end_line=loc_info.header_end_line,
                 is_virtual=is_virtual,
                 is_pure_virtual=is_pure_virtual,
                 is_const=is_const,
                 is_static=is_static,
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
             )
             symbols_buffer.append(info)
 
@@ -633,13 +602,8 @@ class ClangSymbolParser(SymbolParser):
         kind = cursor.kind
         if cursor.spelling and should_extract:
             common = self._get_common_symbol_data(cursor)
-            qualified_name = common.qualified_name
-            namespace = common.namespace
-            loc_info = common.loc_info
-            doc_info = common.doc_info
 
             signature = build_human_readable_signature(cursor)
-            function_usr = cursor.get_usr() if cursor.get_usr() else ""
             is_template_spec = self._detect_template_specialization(cursor)
             primary_usr = self._get_primary_template_usr(cursor) if is_template_spec else None
 
@@ -653,51 +617,28 @@ class ClangSymbolParser(SymbolParser):
             is_pure_virtual = cursor.is_pure_virtual_method() if is_method else False
             is_const = cursor.is_const_method() if is_method else False
             is_static = cursor.is_static_method()
-            access_spec = cursor.access_specifier
-            access = access_spec.name.lower() if access_spec else "public"
-            if access in ("none", "invalid"):
-                access = "public"
+            access = self._normalize_access(cursor)
 
-            effective_parent_class = parent_class
-            if is_method and not parent_class:
-                sem_parent = cursor.semantic_parent
-                if sem_parent and sem_parent.kind in (
-                    CursorKind.CLASS_DECL,
-                    CursorKind.STRUCT_DECL,
-                    CursorKind.CLASS_TEMPLATE,
-                ):
-                    effective_parent_class = sem_parent.spelling
+            effective_parent_class = (
+                self._resolve_semantic_parent_class(cursor, parent_class)
+                if is_method
+                else parent_class
+            )
 
             info = SymbolInfo(
-                name=cursor.spelling,
+                **self._base_symbol_kwargs(cursor, common),
                 kind="function" if kind == CursorKind.FUNCTION_DECL else "method",
-                file=loc_info.file,
-                line=loc_info.line,
-                column=loc_info.column,
-                qualified_name=qualified_name,
                 signature=signature,
-                is_project=(self._is_project_file(loc_info.file) if loc_info.file else False),
-                namespace=namespace,
                 access=access,
                 parent_class=effective_parent_class if is_method else "",
-                usr=function_usr,
                 is_template_specialization=is_template_spec,
                 is_template=is_template_spec,
                 template_kind="full_specialization" if is_template_spec else None,
                 primary_template_usr=primary_usr,
-                start_line=loc_info.start_line,
-                end_line=loc_info.end_line,
-                header_file=loc_info.header_file,
-                header_line=loc_info.header_line,
-                header_start_line=loc_info.header_start_line,
-                header_end_line=loc_info.header_end_line,
                 is_virtual=is_virtual,
                 is_pure_virtual=is_pure_virtual,
                 is_const=is_const,
                 is_static=is_static,
-                is_definition=cursor.is_definition(),
-                brief=doc_info["brief"],
-                doc_comment=doc_info["doc_comment"],
             )
             symbols_buffer.append(info)
 

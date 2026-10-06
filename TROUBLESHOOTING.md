@@ -386,9 +386,8 @@ ls -lt .mcp_cache/backup_*/
 # Restore from backup
 cp -r .mcp_cache/backup_20251117_143022/* .mcp_cache/
 
-# Recreate SQLite cache
-rm .mcp_cache/cache.db .mcp_cache/.migrated_to_sqlite
-python3 scripts/migrate_cache.py
+# Recreate SQLite cache (rebuilt from schema.sql on next start)
+rm .mcp_cache/cache.db
 ```
 
 **2. Attempt database repair:**

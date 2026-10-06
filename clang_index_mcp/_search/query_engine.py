@@ -7,7 +7,7 @@ and file-based symbol lookup.
 """
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 from .._search.file_symbol_finder import find_in_file, get_files_containing_symbol
 from .._search.hierarchy_analyzer import get_class_hierarchy
@@ -26,6 +26,20 @@ if TYPE_CHECKING:
     from .._persistence.cache_manager import CacheManager
     from .._search.call_graph_service import CallGraphService
     from .._symbols.symbol_index_store import SymbolIndexStore
+
+
+_T = TypeVar("_T")
+
+
+def _result_is_empty(actual: Any) -> bool:
+    """Check whether an engine result payload counts as empty.
+
+    Dict payloads (symbol groups) are empty when they hold no symbols;
+    other payloads (lists) are empty when falsy.
+    """
+    if isinstance(actual, dict):
+        return sum(len(v) for v in actual.values() if isinstance(v, list)) == 0
+    return not actual
 
 
 class QueryEngine(SearchDependencies):
@@ -123,6 +137,33 @@ class QueryEngine(SearchDependencies):
         self._last_fallback = None
         return result
 
+    def _guarded_search(
+        self,
+        criteria: SearchCriteria,
+        engine_method: str,
+        tool_name: str,
+        fallback_kwargs: Dict[str, Any],
+        empty_result: _T,
+    ) -> _T:
+        """Run an engine search with a regex-error guard and smart fallback on empty results."""
+        from .._core import diagnostics
+
+        self._last_fallback = None
+        try:
+            results = getattr(self.search_engine, engine_method)(criteria)
+            actual = results[0] if isinstance(results, tuple) else results
+            if _result_is_empty(actual):
+                self._last_fallback = self.smart_fallback.analyze_empty_result(
+                    pattern=criteria.pattern,
+                    tool_name=tool_name,
+                    symbol_store=self.symbol_store,
+                    **fallback_kwargs,
+                )
+            return cast(_T, results)
+        except re.error as e:
+            diagnostics.error(f"Invalid regex pattern: {e}")
+            return empty_result
+
     def search_classes(
         self,
         pattern: str,
@@ -133,32 +174,21 @@ class QueryEngine(SearchDependencies):
         include_base_classes: bool = True,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for classes matching pattern"""
-        from .._core import diagnostics
-
-        self._last_fallback = None
-        try:
-            criteria = SearchCriteria(
-                pattern=pattern,
-                project_only=project_only,
-                file_name=file_name,
-                namespace=namespace,
-                max_results=max_results,
-                include_base_classes=include_base_classes,
-            )
-            results = self.search_engine.search_classes(criteria)
-            actual = results[0] if isinstance(results, tuple) else results
-            if not actual:
-                self._last_fallback = self.smart_fallback.analyze_empty_result(
-                    pattern=pattern,
-                    tool_name="search_classes",
-                    symbol_store=self.symbol_store,
-                    file_name=file_name,
-                    namespace=namespace,
-                )
-            return results
-        except re.error as e:
-            diagnostics.error(f"Invalid regex pattern: {e}")
-            return []
+        criteria = SearchCriteria(
+            pattern=pattern,
+            project_only=project_only,
+            file_name=file_name,
+            namespace=namespace,
+            max_results=max_results,
+            include_base_classes=include_base_classes,
+        )
+        return self._guarded_search(
+            criteria,
+            "search_classes",
+            "search_classes",
+            {"file_name": file_name, "namespace": namespace},
+            [],
+        )
 
     def search_functions(
         self,
@@ -172,35 +202,23 @@ class QueryEngine(SearchDependencies):
         include_attributes: bool = False,
     ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
         """Search for functions matching pattern, optionally within a specific class"""
-        from .._core import diagnostics
-
-        self._last_fallback = None
-        try:
-            criteria = SearchCriteria(
-                pattern=pattern,
-                project_only=project_only,
-                class_name=class_name,
-                file_name=file_name,
-                namespace=namespace,
-                max_results=max_results,
-                signature_pattern=signature_pattern,
-                include_attributes=include_attributes,
-            )
-            results = self.search_engine.search_functions(criteria)
-            actual = results[0] if isinstance(results, tuple) else results
-            if not actual:
-                self._last_fallback = self.smart_fallback.analyze_empty_result(
-                    pattern=pattern,
-                    tool_name="search_functions",
-                    symbol_store=self.symbol_store,
-                    file_name=file_name,
-                    namespace=namespace,
-                    class_name=class_name,
-                )
-            return results
-        except re.error as e:
-            diagnostics.error(f"Invalid regex pattern: {e}")
-            return []
+        criteria = SearchCriteria(
+            pattern=pattern,
+            project_only=project_only,
+            class_name=class_name,
+            file_name=file_name,
+            namespace=namespace,
+            max_results=max_results,
+            signature_pattern=signature_pattern,
+            include_attributes=include_attributes,
+        )
+        return self._guarded_search(
+            criteria,
+            "search_functions",
+            "search_functions",
+            {"file_name": file_name, "namespace": namespace, "class_name": class_name},
+            [],
+        )
 
     def get_stats(self) -> Dict[str, Any]:
         """Get indexer statistics"""
@@ -249,35 +267,22 @@ class QueryEngine(SearchDependencies):
         signature_pattern: Optional[str] = None,
     ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
         """Search for all symbols (classes and functions) matching pattern."""
-        from .._core import diagnostics
-
-        self._last_fallback = None
-        try:
-            criteria = SearchCriteria(
-                pattern=pattern,
-                project_only=project_only,
-                symbol_types=symbol_types,
-                namespace=namespace,
-                max_results=max_results,
-                signature_pattern=signature_pattern,
-            )
-            results = self.search_engine.search_symbols(criteria)
-            actual = results[0] if isinstance(results, tuple) else results
-            if isinstance(actual, dict):
-                count = sum(len(v) for v in actual.values() if isinstance(v, list))
-            else:
-                count = len(actual) if actual else 0
-            if count == 0:
-                self._last_fallback = self.smart_fallback.analyze_empty_result(
-                    pattern=pattern,
-                    tool_name="search_symbols",
-                    symbol_store=self.symbol_store,
-                    namespace=namespace,
-                )
-            return results
-        except re.error as e:
-            diagnostics.error(f"Invalid regex pattern: {e}")
-            return {"classes": [], "functions": []}
+        criteria = SearchCriteria(
+            pattern=pattern,
+            project_only=project_only,
+            symbol_types=symbol_types,
+            namespace=namespace,
+            max_results=max_results,
+            signature_pattern=signature_pattern,
+        )
+        empty_result: Dict[str, List[Dict[str, Any]]] = {"classes": [], "functions": []}
+        return self._guarded_search(
+            criteria,
+            "search_symbols",
+            "search_symbols",
+            {"namespace": namespace},
+            empty_result,
+        )
 
     def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
         """Get comprehensive type alias information."""

@@ -242,21 +242,13 @@ def main():
     config_file = None
 
     if os.path.isfile(path_arg) and path_arg.endswith(".json"):
-        import json
-
         config_file = os.path.abspath(path_arg)
         try:
-            with open(config_file, "r") as f:
-                config_data = json.load(f)
-            config_root = config_data.get("project_root")
-            if not config_root:
-                print(f"Error: Config file {config_file} missing 'project_root'", file=sys.stderr)
-                sys.exit(1)
+            from clang_index_mcp._mcp.config_validation import resolve_project_root_from_config
 
-            config_dir = os.path.dirname(config_file)
-            project_path = os.path.abspath(os.path.join(config_dir, config_root))
+            project_path = resolve_project_root_from_config(config_file)
         except Exception as e:
-            print(f"Error reading config file: {e}", file=sys.stderr)
+            print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
     else:
         project_path = path_arg

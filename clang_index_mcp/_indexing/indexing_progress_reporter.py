@@ -136,9 +136,12 @@ class IndexingProgressReporter:
         current_file: str,
         start_time: float,
     ):
-        """Report refresh progress via callback."""
+        """Report refresh progress via callback (every 10 files and on the last file)."""
+        processed = refreshed + failed
+        if not (processed % 10 == 0 or processed == total_files):
+            return
+
         try:
-            processed = refreshed + failed
             elapsed = time.time() - start_time
             rate = processed / elapsed if elapsed > 0 else 0
             eta = (total_files - processed) / rate if rate > 0 else 0

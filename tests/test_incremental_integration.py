@@ -173,6 +173,77 @@ int multiply(int a, int b) {
             f"modified={result.changes.modified_files}, added={result.changes.added_files}",
         )
 
+    def test_reanalysis_clears_stale_symbols_and_persists_call_sites(self):
+        """Regression: reanalysis must clear stale symbols and stream call sites to SQLite.
+
+        Before the WorkerResultMerger unification, the incremental path merged
+        symbols without clearing the file's old index entries and added call
+        sites to the in-memory graph only, never persisting them to SQLite.
+        """
+        analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
+        analyzer.index_project()
+
+        store = analyzer.context.symbols.symbol_store
+        self.assertTrue(
+            store.get_functions_by_name("multiply"), "multiply should be indexed initially"
+        )
+
+        # utils.h: declare triple() so main.cpp's translation unit stays valid
+        self.utils_h.write_text("""
+#pragma once
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int triple(int a);
+""")
+        # utils.cpp: replace multiply() with triple()
+        self.utils_cpp.write_text("""
+#include "utils.h"
+
+int triple(int a) {
+    return a * 3;
+}
+""")
+        # main.cpp: call triple() instead of add()
+        self.main_cpp.write_text("""
+#include "utils.h"
+
+int main() {
+    return triple(3);
+}
+""")
+
+        incremental = IncrementalAnalyzer(
+            analyzer.context.build_incremental_context(),
+            is_interrupted=analyzer._is_interrupted,
+        )
+        result = incremental.perform_incremental_analysis()
+        self.assertGreaterEqual(result.files_analyzed, 1)
+
+        # Stale symbol must be gone from the in-memory index, new one present
+        self.assertFalse(
+            store.get_functions_by_name("multiply"),
+            "stale multiply symbol should be cleared after reanalysis",
+        )
+        triple_symbols = store.get_functions_by_name("triple")
+        self.assertTrue(triple_symbols, "triple should be indexed after reanalysis")
+
+        # Call sites from the reanalyzed main.cpp must be persisted to SQLite
+        ctx = analyzer.context.build_incremental_context()
+        all_sites = ctx.cache_manager.backend.load_all_call_sites()
+        main_path = os.path.realpath(str(self.main_cpp))
+        main_sites = [s for s in all_sites if os.path.realpath(s["file"]) == main_path]
+        self.assertTrue(
+            main_sites, "call sites for reanalyzed main.cpp must be persisted to SQLite"
+        )
+        triple_usr = triple_symbols[0].usr
+        self.assertTrue(
+            any(s.get("callee_usr") == triple_usr for s in main_sites),
+            "persisted call sites must include the new triple() call",
+        )
+
     def test_header_file_modification_cascade(self):
         """Test that modifying a header triggers re-analysis of dependents."""
         # Initialize analyzer
