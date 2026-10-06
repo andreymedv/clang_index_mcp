@@ -34,7 +34,10 @@ All three are stored with:
 - `get_class_info("Container")` returns arbitrary match (usually template base)
 - `get_class_info("Container<int>")` will not find the specialization
 - `search_classes({"pattern": "Container"})` returns all variants without distinction
-- Cannot query derived classes of a specific specialization
+- `get_class_hierarchy("Container<int>")` and `get_derived_classes("Container<int>")`
+  DO work since cplusplus_mcp-jqqq: hierarchy/derived queries disambiguate
+  specializations at query time via USR decoding and base-class substitution,
+  and hierarchy nodes are keyed with their template arguments (`Container<int>`)
 
 **Workaround:**
 1. Use `search_classes()` and filter results by `kind` field

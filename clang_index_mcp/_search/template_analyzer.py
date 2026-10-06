@@ -6,11 +6,16 @@ and indirect inheritance through template parameters (e.g. ``class Foo<T> : publ
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .._symbols.model import SymbolInfo, build_location_objects, omit_empty
-from .._search.pattern_matcher import matches_qualified_pattern
-from .._search.symbol_name_utils import extract_simple_name
+from .._search.pattern_matcher import matches_qualified_pattern, normalize_template_whitespace
+from .._search.symbol_name_utils import (
+    extract_simple_name,
+    is_dependent_type_name,
+    is_specialization_key,
+    split_specialization_key,
+)
 
 
 def check_template_param_inheritance(
@@ -299,17 +304,13 @@ def get_derived_classes(
 
     # Normalize class_name: extract simple name from qualified name
     simple_name = extract_simple_name(class_name)
-
-    # Issue #99 Phase 3: Check if this is a template and get all specializations
-    template_patterns = get_template_patterns(simple_name, symbol_store, index_lock)
+    matcher = _make_derived_matcher(class_name, simple_name, symbol_store, index_lock)
 
     with index_lock:
         for name, infos in symbol_store.iter_class_items():
             for info in infos:
                 if not project_only or info.is_project:
-                    if is_derived_from(
-                        info, template_patterns, simple_name, symbol_store, index_lock
-                    ):
+                    if matcher(info):
                         derived_classes.append(
                             omit_empty(
                                 {
@@ -323,3 +324,344 @@ def get_derived_classes(
                         )
 
     return derived_classes
+
+
+def _make_derived_matcher(class_name: str, simple_name: str, symbol_store, index_lock):
+    """Build a predicate deciding whether a class derives from the target.
+
+    Query names that carry template arguments (e.g. ``T<A1>``) match only the
+    exact specialization key, so sibling instantiations (``T<A2>``) never mix
+    in. Bare names keep the aggregation behavior and match any specialization.
+    """
+    if is_specialization_key(class_name):
+        exact_key = resolve_class_key(class_name, symbol_store, index_lock)
+
+        def match_exact(info: SymbolInfo) -> bool:
+            return _inherits_exact_key(info, exact_key, symbol_store, index_lock)
+
+        return match_exact
+
+    template_patterns = get_template_patterns(simple_name, symbol_store, index_lock)
+
+    def match_pattern(info: SymbolInfo) -> bool:
+        return is_derived_from(info, template_patterns, simple_name, symbol_store, index_lock)
+
+    return match_pattern
+
+
+def _inherits_exact_key(info: SymbolInfo, exact_key: str, symbol_store, index_lock) -> bool:
+    """Return True if any base of ``info`` resolves to the exact node key."""
+    for base_class in info.base_classes:
+        if resolve_class_key(base_class, symbol_store, index_lock) == exact_key:
+            return True
+    return False
+
+
+# =============================================================================
+# Specialization node keys (issue cplusplus_mcp-jqqq)
+# =============================================================================
+
+
+def parse_specialization_key(key: str) -> Optional[Tuple[str, List[str]]]:
+    """Parse "ns::T<ns::A1, int>" into ("ns::T", ["ns::A1", "int"]).
+
+    Returns None when the key is not a specialization key (handles nested
+    template arguments via :func:`parse_template_args`).
+    """
+    parts = split_specialization_key(key)
+    if parts is None:
+        return None
+    name_part, args_str = parts
+    return name_part, parse_template_args(args_str)
+
+
+def format_specialization_key(template_name: str, args: List[str]) -> str:
+    """Build a canonical specialization key like "ns::T<ns::A1>"."""
+    inner = ", ".join(a.strip() for a in args)
+    return normalize_template_whitespace(f"{template_name}<{inner}>")
+
+
+def resolve_class_key(raw: str, symbol_store, index_lock) -> str:
+    """Resolve a raw class/base name to a canonical node key.
+
+    Specialization names keep their template arguments (``T<A1>``); the
+    template-name portion and each argument are resolved to qualified names so
+    ``T<A1>`` and ``ns::T<ns::A1>`` converge on the same key. Dependent names
+    (``typename T::Base``) pass through unchanged.
+    """
+    if is_dependent_type_name(raw):
+        return raw
+    parts = split_specialization_key(raw)
+    if parts is None:
+        return _resolve_plain_key(raw, symbol_store, index_lock)
+    name_part, args_str = parts
+    resolved_name = _resolve_plain_key(name_part, symbol_store, index_lock)
+    args = [resolve_class_key(a, symbol_store, index_lock) for a in parse_template_args(args_str)]
+    return format_specialization_key(resolved_name, args)
+
+
+def _resolve_plain_key(lookup: str, symbol_store, index_lock) -> str:
+    """Resolve a non-specialization name to its indexed qualified name."""
+    is_qual = "::" in lookup
+    simple = extract_simple_name(lookup)
+    with index_lock:
+        infos = symbol_store.get_classes_by_name(simple)
+        for info in infos:
+            if is_qual:
+                info_qn = info.qualified_name if info.qualified_name else info.name
+                if not matches_qualified_pattern(info_qn, lookup):
+                    continue
+            qn = info.qualified_name if info.qualified_name else info.name
+            return str(qn)  # type: ignore[no-any-return]
+    return lookup
+
+
+def build_param_name_to_arg(
+    template_parameters: Optional[str], template_args: List[str]
+) -> Dict[str, str]:
+    """Build a mapping from template parameter names to substitution arguments."""
+    mapping: Dict[str, str] = {}
+    for name, index in build_param_name_to_index(template_parameters).items():
+        if index < len(template_args):
+            mapping[name] = template_args[index]
+    return mapping
+
+
+def substitute_template_params(
+    base_classes: List[str],
+    template_parameters: Optional[str],
+    template_args: List[str],
+) -> List[str]:
+    """Substitute template parameters inside base class names.
+
+    Handles whole-base parameters (``P`` -> ``A1``), legacy indexed parameters
+    (``type-parameter-0-0``) and parameters embedded in composite names
+    (``T1<P>`` -> ``T1<A1>``).
+    """
+    param_to_arg = build_param_name_to_arg(template_parameters, template_args)
+    return [_substitute_base(b, param_to_arg, template_args) for b in base_classes]
+
+
+def _substitute_base(base: str, param_to_arg: Dict[str, str], template_args: List[str]) -> str:
+    if base in param_to_arg:
+        return param_to_arg[base]
+    legacy = re.match(r"type-parameter-(\d+)-(\d+)$", base)
+    if legacy:
+        index = int(legacy.group(2))
+        return template_args[index] if index < len(template_args) else base
+    return re.sub(r"\b([A-Za-z_]\w*)\b", lambda m: param_to_arg.get(m.group(1), m.group(1)), base)
+
+
+def _base_uses_template_params(base_classes: List[str], template_parameters: Optional[str]) -> bool:
+    """Return True when any base class is (or embeds) a template parameter."""
+    name_to_index = build_param_name_to_index(template_parameters)
+    for base in base_classes:
+        if resolve_param_index(base, name_to_index) is not None:
+            return True
+        for name in name_to_index:
+            if re.search(rf"\b{re.escape(name)}\b", base):
+                return True
+    return False
+
+
+# USR encoding of template arguments (observed libclang shapes):
+#   c:@S@T>#$@S@A1        -> T<A1>       ($ + type USR without "c:" prefix)
+#   c:@S@T>#I             -> T<int>      (builtin type code)
+#   c:@S@T2>#$@S@A1#$@N@ns@S@NA -> T2<A1, ns::NA>
+#   c:@S@TN>#$@S@TN>#I    -> T<TN<int>> (nested template-id)
+_USR_BUILTIN_TYPE_CODES = {
+    "I": "int",
+    "d": "double",
+    "b": "bool",
+    "C": "char",
+    "S": "short",
+    "L": "long",
+    "v": "void",
+    "f": "float",
+    "K": "long long",
+    "i": "unsigned int",
+    "l": "unsigned long",
+    "W": "wchar_t",
+    "q": "char16_t",
+    "r": "signed char",
+    "c": "unsigned char",
+    "s": "unsigned short",
+    "D": "long double",
+}
+
+
+def decode_usr_template_args(usr: Optional[str]) -> Optional[List[str]]:
+    """Recover template argument strings from a specialization USR.
+
+    Returns None when the USR shape is unrecognized (non-type arguments with
+    complex encodings, function pointers, arrays, ...), so callers can fall
+    back to base-class substitution matching.
+    """
+    if not usr or ">#" not in usr:
+        return None
+    args_part = usr.split(">", 1)[1]
+    try:
+        args, rest = _decode_usr_arg_list(args_part)
+    except (ValueError, IndexError):
+        return None
+    if rest or not args:
+        return None
+    return args
+
+
+def _decode_usr_arg_list(text: str) -> Tuple[List[str], str]:
+    args: List[str] = []
+    while text.startswith("#"):
+        arg, text = _decode_usr_arg(text[1:])
+        args.append(arg)
+    return args, text
+
+
+def _decode_usr_arg(text: str) -> Tuple[str, str]:
+    if text.startswith("V"):
+        _, text = _decode_usr_type(text[1:])
+        return _decode_usr_literal(text)
+    return _decode_usr_type(text)
+
+
+def _decode_usr_literal(text: str) -> Tuple[str, str]:
+    end = 1 if text.startswith("-") else 0
+    while end < len(text) and text[end].isdigit():
+        end += 1
+    if end == (1 if text.startswith("-") else 0):
+        raise ValueError("missing non-type argument literal")
+    return text[:end], text[end:]
+
+
+def _decode_usr_type(text: str) -> Tuple[str, str]:
+    if text.startswith("$"):
+        return _decode_usr_type_name(text[1:])
+    if text.startswith(("*", "&", "1")):
+        inner, rest = _decode_usr_type(text[1:])
+        suffix = "" if text[0] == "1" else text[0]
+        prefix = "const " if text[0] == "1" else ""
+        return f"{prefix}{inner}{suffix}", rest
+    if text[:1] in _USR_BUILTIN_TYPE_CODES:
+        return _USR_BUILTIN_TYPE_CODES[text[0]], text[1:]
+    raise ValueError(f"unrecognized USR type encoding: {text!r}")
+
+
+def _decode_usr_type_name(text: str) -> Tuple[str, str]:
+    parts: List[str] = []
+    while text.startswith("@"):
+        if len(text) < 3 or text[2] != "@":
+            raise ValueError(f"malformed USR name element: {text!r}")
+        end = 3
+        while end < len(text) and text[end] not in "@>":
+            end += 1
+        if end == 3:
+            raise ValueError(f"empty USR name element: {text!r}")
+        parts.append(text[3:end])
+        text = text[end:]
+    if not parts:
+        raise ValueError("missing USR name path")
+    name = "::".join(parts)
+    if text.startswith(">"):
+        args, text = _decode_usr_arg_list(text[1:])
+        if not args:
+            raise ValueError("empty nested template argument list")
+        name = format_specialization_key(name, args)
+    return name, text
+
+
+def find_full_specializations(primary: SymbolInfo, symbol_store, index_lock) -> List[SymbolInfo]:
+    """Return full specialization symbols of the given primary class template."""
+    simple = extract_simple_name(primary.qualified_name or primary.name)
+    with index_lock:
+        candidates = list(symbol_store.get_classes_by_name(simple))
+    result = []
+    for info in candidates:
+        if not info.is_template_specialization:
+            continue
+        if primary.usr and info.primary_template_usr and info.primary_template_usr != primary.usr:
+            continue
+        result.append(info)
+    return result
+
+
+def recover_specialization_args(
+    spec: SymbolInfo, primary: Optional[SymbolInfo], symbol_store, index_lock
+) -> Optional[List[str]]:
+    """Recover the template arguments of an indexed specialization symbol.
+
+    Specialization symbols are stored with template arguments stripped from
+    their names, so arguments are recovered from the USR first, then by
+    matching the specialization's base classes against the primary template's
+    substituted base classes.
+    """
+    decoded = decode_usr_template_args(spec.usr)
+    if decoded is not None:
+        return [resolve_class_key(a, symbol_store, index_lock) for a in decoded]
+    if primary is None:
+        return None
+    return _args_from_base_substitution(spec, primary)
+
+
+def _args_from_base_substitution(spec: SymbolInfo, primary: SymbolInfo) -> Optional[List[str]]:
+    name_to_index = build_param_name_to_index(primary.template_parameters)
+    arg_count = len(name_to_index)
+    if not arg_count or not spec.base_classes:
+        return None
+    args: List[Optional[str]] = [None] * arg_count
+    for position, base in enumerate(primary.base_classes):
+        index = resolve_param_index(base, name_to_index)
+        if index is not None and position < len(spec.base_classes):
+            args[index] = spec.base_classes[position]
+    if all(a is not None for a in args):
+        return [str(a) for a in args]  # type: ignore[arg-type]
+    return None
+
+
+def find_matching_specialization(
+    primary: SymbolInfo,
+    template_args: List[str],
+    symbol_store,
+    index_lock,
+) -> Optional[SymbolInfo]:
+    """Find the indexed full specialization of ``primary`` for ``template_args``.
+
+    Matching compares recovered arguments first (USR decoding), then falls
+    back to substituted base classes — specialization symbols all share the
+    template's stripped name, so name comparison cannot distinguish them.
+    """
+    specs = find_full_specializations(primary, symbol_store, index_lock)
+    canon = [resolve_class_key(a, symbol_store, index_lock) for a in template_args]
+    for spec in specs:
+        recovered = recover_specialization_args(spec, primary, symbol_store, index_lock)
+        if recovered is None:
+            continue
+        if [resolve_class_key(a, symbol_store, index_lock) for a in recovered] == canon:
+            return spec
+    return _match_specialization_by_bases(primary, template_args, specs, symbol_store, index_lock)
+
+
+def _match_specialization_by_bases(
+    primary: SymbolInfo,
+    template_args: List[str],
+    specs: List[SymbolInfo],
+    symbol_store,
+    index_lock,
+) -> Optional[SymbolInfo]:
+    if not _base_uses_template_params(primary.base_classes, primary.template_parameters):
+        return None
+    expected = [
+        resolve_class_key(b, symbol_store, index_lock)
+        for b in substitute_template_params(
+            primary.base_classes, primary.template_parameters, template_args
+        )
+    ]
+    for spec in specs:
+        got = [
+            resolve_class_key(b, symbol_store, index_lock)
+            for b in substitute_template_params(
+                spec.base_classes, primary.template_parameters, template_args
+            )
+        ]
+        if got == expected:
+            return spec
+    return None

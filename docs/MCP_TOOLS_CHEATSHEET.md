@@ -248,6 +248,15 @@ template_parameters: null                      # For template aliases
 Get the inheritance graph for a class as a flat adjacency list (ancestors,
 descendants, or both).
 
+Template specializations are first-class nodes keyed with their template
+arguments (`T<A1>` vs `T<A2>` — never collapsed to `T`), with a
+`specialization_of` back-reference to the primary template. The primary
+template aggregates its instantiations through an `instantiates` list which is
+not an inheritance edge: `down('T')` reaches `D1`/`D2` via `T<A1>`/`T<A2>`
+chains, while `down('A1')` only ever sees the `T<A1>` branch. Specialization
+nodes are synthesized from base-class strings even when no specialization
+symbol was indexed.
+
 **Input:**
 ```yaml
 class_name: "app::ui::Button"   # Simple or qualified name

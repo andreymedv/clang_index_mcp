@@ -1733,7 +1733,7 @@ class TestDependentTypeHierarchy:
         assert "error" not in hierarchy
         qname = hierarchy["queried_class"]
         node = hierarchy["classes"].get(qname, {})
-        # IntContainer should reference Container (bare name, no template args) as base
+        # IntContainer should reference the Container<int> instantiation as base
         base_keys = node.get("base_classes", [])
         assert (
             len(base_keys) >= 1
@@ -1741,7 +1741,7 @@ class TestDependentTypeHierarchy:
         # All referenced base nodes must be present in the classes dict (no dangling refs)
         for bk in base_keys:
             assert bk in hierarchy["classes"], f"Base key '{bk}' not present in classes dict"
-        # The base should be Container (bare name without template args)
+        # The base is the specialization node Container<int> (issue cplusplus_mcp-jqqq)
         assert any(
             "Container" in bk for bk in base_keys
         ), f"IntContainer should inherit from Container, got base_keys: {base_keys}"
