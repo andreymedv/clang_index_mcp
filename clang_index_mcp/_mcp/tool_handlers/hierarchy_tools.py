@@ -18,11 +18,16 @@ async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextCon
     max_depth = arguments.get("max_depth", None)
     direction = arguments.get("direction", "both")
     output_format = arguments.get("output_format", "json")
+    edge_scope = arguments.get("edge_scope", "path")
     # Run synchronous method in executor to avoid blocking event loop
     hierarchy = await loop.run_in_executor(
         None,
         lambda: analyzer.get_class_hierarchy(
-            class_name, max_nodes=max_nodes, max_depth=max_depth, direction=direction
+            class_name,
+            max_nodes=max_nodes,
+            max_depth=max_depth,
+            direction=direction,
+            edge_scope=edge_scope,
         ),
     )
     if hierarchy:

@@ -337,6 +337,7 @@ class QueryEngine(SearchDependencies):
         max_nodes: Optional[int] = 200,
         max_depth: Optional[int] = None,
         direction: str = "both",
+        edge_scope: str = "path",
     ) -> Dict[str, Any]:
         """Get the inheritance graph for a class as a flat adjacency list."""
         return get_class_hierarchy(
@@ -346,4 +347,5 @@ class QueryEngine(SearchDependencies):
             direction=direction,
             symbol_store=self.symbol_store,
             index_lock=self.concurrency.index_lock,
+            edge_scope=edge_scope,
         )
