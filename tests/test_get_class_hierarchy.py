@@ -378,10 +378,13 @@ class TestTemplateInheritance:
         names = get_simple_names(result)
 
         assert "ParamInheritUser" in names
-        # Should have ParamInherit as base
-        assert "ParamInherit" in names
-        # Note: Template parameter bases are resolved based on instantiation.
-        # The exact representation depends on libclang's template handling.
+        # The base is the instantiation node ParamInherit<A1> (issue
+        # cplusplus_mcp-jqqq: specializations are keyed with their template
+        # arguments instead of collapsing to the bare template name).
+        assert any(n == "ParamInherit" or n.startswith("ParamInherit<") for n in names)
+        # Template parameter bases are resolved per instantiation: ParamInherit
+        # inherits from T, so ParamInherit<A1> has A1 as its base.
+        assert "A1" in names
 
 
 # =============================================================================

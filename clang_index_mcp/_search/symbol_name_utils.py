@@ -5,6 +5,8 @@ hierarchy/template analyzers can use them without reaching into a class
 that is otherwise unrelated to simple name manipulation.
 """
 
+from typing import Optional, Tuple
+
 
 def strip_template_args(name: str) -> str:
     """Strip template argument suffix from a name.
@@ -19,6 +21,37 @@ def strip_template_args(name: str) -> str:
     if idx == -1:
         return name
     return name[:idx]
+
+
+def is_dependent_type_name(name: str) -> bool:
+    """Return True for template-dependent names that cannot be resolved now.
+
+    Examples: "typename T::BaseType", "T<X>::Nested" (qualified through a
+    template-id and therefore dependent on unresolved parameters).
+    """
+    return name.startswith("typename ") or ("<" in name and ">" in name and not name.endswith(">"))
+
+
+def is_specialization_key(name: str) -> bool:
+    """Return True when a name carries template arguments (e.g. "T<A1>").
+
+    Guards against operator names ("operator<") and dependent names that only
+    contain angle brackets incidentally.
+    """
+    if is_dependent_type_name(name):
+        return False
+    return "<" in name and name.endswith(">") and name.find("<") > 0
+
+
+def split_specialization_key(name: str) -> Optional[Tuple[str, str]]:
+    """Split "ns::T<ns::A1, int>" into ("ns::T", "ns::A1, int").
+
+    Returns None when the name is not a specialization key.
+    """
+    if not is_specialization_key(name):
+        return None
+    idx = name.find("<")
+    return name[:idx], name[idx + 1 : -1]
 
 
 def extract_simple_name(qualified_name: str) -> str:
