@@ -405,6 +405,12 @@ def list_tools_b() -> List[Tool]:
                 "- 'both' (default): ancestors AND descendants, but avoids explosion through shared bases\n"
                 "- 'up': ancestors only (base classes and their bases)\n"
                 "- 'down': descendants only (derived classes and their derivations)\n\n"
+                "Edge scope (base_classes/derived_classes lists on each node):\n"
+                "- 'path' (default): only edges between nodes in the result graph — every listed\n"
+                "  base/derived name is itself a node, so sibling branches (e.g. a co-base in\n"
+                "  multiple inheritance) never appear as dangling quasi-edges\n"
+                "- 'full': every node carries its complete base_classes and derived_classes\n"
+                "  lists regardless of traversal direction\n\n"
                 "Output formats:\n"
                 "- 'json' (default): Full structured JSON with all metadata\n"
                 "- 'compact': Abbreviated JSON (smaller payload)\n"
@@ -414,6 +420,7 @@ def list_tools_b() -> List[Tool]:
                 "- 'full hierarchy of X' -> get_class_hierarchy('X', direction='both')\n"
                 "- 'all implementations of IProcessor' -> get_class_hierarchy('IProcessor', direction='down')\n"
                 "- 'base classes of Widget' -> get_class_hierarchy('Widget', direction='up')\n"
+                "- 'all bases of every node' -> get_class_hierarchy('Widget', edge_scope='full')\n"
                 "- 'compact view of Widget' -> get_class_hierarchy('Widget', output_format='compact')\n"
                 "- 'C++ view of Widget' -> get_class_hierarchy('Widget', output_format='cpp')"
             ),
@@ -442,6 +449,19 @@ def list_tools_b() -> List[Tool]:
                     "max_depth": {
                         "type": "integer",
                         "description": "Max BFS depth from queried class.",
+                    },
+                    "edge_scope": {
+                        "type": "string",
+                        "enum": ["path", "full"],
+                        "description": (
+                            "Edge scope for per-node base_classes/derived_classes lists: "
+                            "'path' (default) lists only edges between nodes present in the "
+                            "result graph (sound reachability graph — no sibling MI branches "
+                            "as quasi-edges); "
+                            "'full' attaches complete base/derived lists to every node "
+                            "regardless of traversal direction."
+                        ),
+                        "default": "path",
                     },
                     "output_format": {
                         "type": "string",

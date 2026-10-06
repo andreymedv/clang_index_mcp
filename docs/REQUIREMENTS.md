@@ -385,17 +385,30 @@ The system provides 14 MCP tools. Each tool has specific requirements for inputs
 
 **REQ-4.10.1**: SHALL accept:
 - `class_name`: string (name of class)
+- `direction`: optional string, one of `up`, `down`, `both` (default: `both`)
+- `max_nodes`: optional integer (default: 200)
+- `max_depth`: optional integer (no default limit)
+- `edge_scope`: optional string, one of `path`, `full` (default: `path`)
+- `output_format`: optional string, one of `json`, `compact`, `cpp`, `cpp_with_meta`
 
-**REQ-4.10.2**: SHALL return:
-- class_info (detailed class information)
-- base_classes (direct base classes, list of names)
-- derived_classes (direct derived classes, list)
-- base_hierarchy (recursive base class tree)
-- derived_hierarchy (recursive derived class tree)
+**REQ-4.10.2**: SHALL return a flat adjacency list:
+- `queried_class` (qualified name of the starting class)
+- `direction` and `edge_scope` as requested
+- `classes`: map of qualified name to node with `qualified_name`, `kind`,
+  `is_project`, `base_classes` (list of names), `derived_classes` (list of names)
+- completeness metadata (`completeness`, `completeness_note`, and `truncated` /
+  `nodes_returned` when limits cut off the traversal)
 
 **REQ-4.10.3**: SHALL handle circular references by marking them.
 
 **REQ-4.10.4**: SHALL search entire codebase including dependencies for hierarchy.
+
+**REQ-4.10.5**: With `edge_scope='path'` (default), each node's `base_classes`
+and `derived_classes` SHALL list only classes that are themselves nodes in the
+returned graph, so entities outside the traversal (e.g. a sibling co-base in
+multiple inheritance) never appear as dangling quasi-edges. With
+`edge_scope='full'`, each node SHALL carry its complete base_classes and
+derived_classes lists regardless of traversal direction.
 
 ### 4.11 get_derived_classes
 

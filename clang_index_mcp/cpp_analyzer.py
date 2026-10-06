@@ -317,10 +317,11 @@ class CppAnalyzer:
         max_nodes: Optional[int] = 200,
         max_depth: Optional[int] = None,
         direction: str = "both",
+        edge_scope: str = "path",
     ) -> Dict[str, Any]:
         """Get the inheritance graph for a class as a flat adjacency list (delegates to query_engine)."""
         return self._root.query_engine.get_class_hierarchy(
-            class_name, max_nodes, max_depth, direction
+            class_name, max_nodes, max_depth, direction, edge_scope
         )
 
     def find_incoming_calls(

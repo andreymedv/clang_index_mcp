@@ -177,6 +177,20 @@ def bfs_traverse_hierarchy(
     return visited, local_truncated
 
 
+def _scope_edges_to_graph(classes: Dict[str, Any]) -> None:
+    """Restrict node edge lists to nodes present in the result graph.
+
+    Keeps the response a sound reachability graph: every base/derived reference
+    resolves to a node in ``classes``, so foreign entities (e.g. a sibling
+    co-base in multiple inheritance) never appear as quasi-edges. Full lists
+    remain available via ``edge_scope='full'`` or a follow-up get_class_info
+    query.
+    """
+    for node in classes.values():
+        node["base_classes"] = [b for b in node["base_classes"] if b in classes]
+        node["derived_classes"] = [d for d in node["derived_classes"] if d in classes]
+
+
 def get_class_hierarchy(
     class_name: str,
     max_nodes: Optional[int],
@@ -184,10 +198,13 @@ def get_class_hierarchy(
     direction: str,
     symbol_store,
     index_lock,
+    edge_scope: str = "path",
 ) -> Dict[str, Any]:
     """Get the inheritance graph for a class as a flat adjacency list."""
     if direction not in ("up", "down", "both"):
         return {"error": f"Invalid direction '{direction}'. Must be one of: up, down, both"}
+    if edge_scope not in ("path", "full"):
+        return {"error": f"Invalid edge_scope '{edge_scope}'. Must be one of: path, full"}
 
     start_infos = lookup_class_infos(class_name, symbol_store, index_lock)
     if not start_infos:
@@ -224,9 +241,13 @@ def get_class_hierarchy(
             )
         truncated = trunc_up or trunc_down
 
+    if edge_scope == "path":
+        _scope_edges_to_graph(classes)
+
     result: Dict[str, Any] = {
         "queried_class": start_key,
         "direction": direction,
+        "edge_scope": edge_scope,
         "classes": classes,
     }
     if truncated:

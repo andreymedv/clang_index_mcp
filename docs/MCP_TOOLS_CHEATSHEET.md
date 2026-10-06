@@ -245,42 +245,49 @@ template_parameters: null                      # For template aliases
 
 ### get_class_hierarchy
 
-Get full inheritance tree (both directions).
+Get the inheritance graph for a class as a flat adjacency list (ancestors,
+descendants, or both).
 
 **Input:**
 ```yaml
 class_name: "app::ui::Button"   # Simple or qualified name
+direction: both                  # up | down | both (default: both)
+edge_scope: path                 # path | full (default: path)
+max_nodes: 200                   # Node cap (default: 200)
+max_depth: null                  # Optional BFS depth limit
+output_format: json              # json | compact | cpp | cpp_with_meta
 ```
 
 **Output:**
 ```yaml
-name: app::ui::Button
-class_info:                                # Full class details (same as get_class_info)
-  name: Button
-  qualified_name: app::ui::Button
-  # ... all fields ...
-base_classes:                              # Direct parents
-  - app::ui::Widget
-derived_classes:                           # Direct children
-  - app::ui::IconButton
-  - app::ui::TextButton
-base_hierarchy:                            # Full tree upward
-  name: app::ui::Button
-  base_classes:
-    - name: app::ui::Widget
-      base_classes:
-        - name: app::ui::Component
-          base_classes: []
-derived_hierarchy:                         # Full tree downward
-  name: app::ui::Button
-  derived_classes:
-    - name: app::ui::IconButton
-      derived_classes: []
-    - name: app::ui::TextButton
-      derived_classes:
-        - name: app::ui::RichTextButton
-          derived_classes: []
+queried_class: app::ui::Button
+direction: both
+edge_scope: path                 # Echoes the requested edge scope
+classes:
+  app::ui::Button:
+    qualified_name: app::ui::Button
+    kind: class
+    is_project: true
+    base_classes:                # With edge_scope='path': only nodes in this
+      - app::ui::Widget          # graph (no dangling sibling co-bases);
+    derived_classes:             # with 'full': complete lists per node
+      - app::ui::IconButton
+      - app::ui::TextButton
+  app::ui::Widget:
+    qualified_name: app::ui::Widget
+    kind: class
+    is_project: true
+    base_classes: []
+    derived_classes:
+      - app::ui::Button
+completeness: complete           # partial + truncated: true when limits cut the traversal
 ```
+
+**Edge scope:** with `path` (default), every `base_classes`/`derived_classes`
+entry resolves to a node in `classes` — the response is a sound reachability
+graph, so sibling branches in multiple inheritance never leak in as
+quasi-edges. Use `edge_scope='full'` for the complete per-node base/derived
+lists, or a follow-up `get_class_info` call.
 
 ---
 
