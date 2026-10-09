@@ -329,14 +329,9 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         )
 
         # Verify recovery was attempted
-        # Note: Recovery is only triggered for database corruption with "corrupt" in message
-        if "corrupt" in str(corruption_error).lower():
-            self.recovery_manager.backup_database.assert_called_once()
-            self.recovery_manager.attempt_repair.assert_called_once()
-        else:
-            # If not triggered, just verify error was tracked
-            summary = cache_manager.get_error_summary()
-            self.assertGreater(summary["total_errors"], 0)
+        # Recovery is triggered for database corruption (detected by "corrupt" or "malformed" in message)
+        self.recovery_manager.backup_database.assert_called_once()
+        self.recovery_manager.attempt_repair.assert_called_once()
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""

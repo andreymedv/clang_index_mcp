@@ -18,6 +18,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
 
 
@@ -230,7 +232,7 @@ class TestBuiltinHeaders:
 
             print("[OK] REQ-5.7.2.2: Resource directory added with -isystem")
         else:
-            print("[WARNING] REQ-5.7.2.2: Skipped (no resource directory)")
+            pytest.skip("No clang resource directory detected (clang may not be installed)")
 
     def test_req_5_7_2_3_proper_positioning(self):
         """REQ-5.7.2.3: Resource directory positioning"""
@@ -253,7 +255,7 @@ class TestBuiltinHeaders:
 
             print("[OK] REQ-5.7.2.3: Resource directory positioning is correct")
         else:
-            print("[WARNING] REQ-5.7.2.3: Skipped (no resource directory)")
+            pytest.skip("No clang resource directory detected (clang may not be installed)")
 
     def test_req_5_7_2_4_included_everywhere(self):
         """REQ-5.7.2.4: Builtin headers included in all contexts"""
@@ -267,7 +269,7 @@ class TestBuiltinHeaders:
 
             print("[OK] REQ-5.7.2.4: Builtin headers included in fallback args")
         else:
-            print("[WARNING] REQ-5.7.2.4: Skipped (no resource directory)")
+            pytest.skip("No clang resource directory detected (clang may not be installed)")
 
 
 class TestPathNormalization:
@@ -394,7 +396,7 @@ class TestProcessingPipeline:
 
                 print("[OK] REQ-5.7.4: Complete processing pipeline works correctly")
             else:
-                print("[WARNING] REQ-5.7.4: Could not get args (file not in compile_commands)")
+                pytest.skip("Could not get compile args for test file (file not in compile_commands)")
 
     def test_req_5_7_4_1_consistency(self):
         """REQ-5.7.4.1: Pipeline applied consistently to command and arguments"""
@@ -443,7 +445,7 @@ class TestProcessingPipeline:
 
                 print("[OK] REQ-5.7.4.1: Pipeline applied consistently")
             else:
-                print("[WARNING] REQ-5.7.4.1: Could not test (files not in compile_commands)")
+                pytest.skip("Could not get compile args for test files (files not in compile_commands)")
 
     def test_req_5_7_4_2_integrity(self):
         """REQ-5.7.4.2: Argument list integrity preserved"""

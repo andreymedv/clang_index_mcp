@@ -278,8 +278,9 @@ int subtract(int a, int b) {  // New function
 
         # Should re-analyze files that include utils.h
         self.assertGreater(result.files_analyzed, 0, "Should have analyzed some files")
-        # Note: Header tracking may not be fully implemented yet
-        # self.assertIn(str(self.utils_h), result.changes.modified_headers)
+        # Header modification should cascade to dependent files
+        self.assertIsNotNone(result.changes, "Changes should be reported")
+        self.assertIn(os.path.realpath(str(self.utils_h)), result.changes.modified_headers)
 
     def test_new_file_added(self):
         """Test that adding a new file triggers analysis."""

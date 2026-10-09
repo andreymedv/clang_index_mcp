@@ -232,7 +232,7 @@ async def test_progress_is_complete_flag(simple_cpp_project):
     # Check that early updates show incomplete
     if len(progress_updates) > 1:
         first_progress = progress_updates[0]
-        # First update might be complete if only one file, so check conservatively
+        assert not first_progress.is_complete, "First progress should not be complete when there are multiple updates"
 
     # Check that final update shows complete
     final_progress = progress_updates[-1]
