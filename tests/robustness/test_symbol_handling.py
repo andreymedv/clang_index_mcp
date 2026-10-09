@@ -26,7 +26,8 @@ class TestExtremelyLongSymbols:
     """Test handling of extremely long symbol names - REQ-11.2"""
 
     def test_extremely_long_symbol_names(self, temp_project_dir):
-        """Test 5000+ character identifiers - Task 1.4.4"""
+        """Verify the indexer handles 5000+ character identifiers without crashing
+        and the long-named class is discoverable via prefix search."""
         # Create class with very long name
         long_name = "A" * 5000
         content = f"class {long_name} {{\npublic:\n    void method();\n}};\n"
@@ -36,9 +37,8 @@ class TestExtremelyLongSymbols:
         count = analyzer.index_project()
 
         # Should not crash
-        assert count >= 0, "Should handle long identifiers without crashing"
+        assert count > 0, "Should index file with extremely long identifier"
 
         # Try to search for it
         results = analyzer.search_classes(f"{long_name[:100]}.*")
-        # May or may not find it, but shouldn't crash
-        assert isinstance(results, list), "Should return list"
+        assert len(results) > 0, "Should find class with extremely long name via prefix search"

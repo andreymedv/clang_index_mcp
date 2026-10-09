@@ -15,9 +15,12 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 @pytest.mark.edge_case
 class TestUnicode:
     def test_unicode_in_symbols(self, temp_project_dir):
-        """Test Unicode identifiers and emoji in comments - Task 1.5.5"""
+        """Verify Unicode in comments does not prevent indexing and the class
+        defined in the file is discoverable via search."""
         content = "// Unicode: 你好 \nclass TestClass {\n// Comment with émoji \npublic:\n    void method();\n};\n"
         (temp_project_dir / "src" / "unicode.cpp").write_text(content, encoding="utf-8")
         analyzer = CppAnalyzer(str(temp_project_dir))
         count = analyzer.index_project()
-        assert count >= 0, "Should handle Unicode without crashing"
+        assert count > 0, "Should index file with Unicode in comments"
+        classes = analyzer.search_classes("TestClass")
+        assert len(classes) > 0, "Should find TestClass despite Unicode in comments"

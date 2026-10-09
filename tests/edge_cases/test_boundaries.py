@@ -26,7 +26,8 @@ class TestFileSizeBoundaries:
     """Test file size boundary conditions - REQ-12.1"""
 
     def test_file_size_boundary_conditions(self, temp_project_dir):
-        """Test files at 9.99MB, 10MB, 10.01MB boundaries - Task 1.5.1"""
+        """Verify the indexer handles files at 9.99MB, 10MB, and 10.01MB
+        boundaries and indexes at least one of them successfully."""
         # Assuming 10MB limit
         sizes = [9_990_000, 10_000_000, 10_010_000]
 
@@ -36,7 +37,7 @@ class TestFileSizeBoundaries:
 
         analyzer = CppAnalyzer(str(temp_project_dir))
         count = analyzer.index_project()
-        assert count >= 0, "Should handle boundary file sizes"
+        assert count > 0, "Should index at least one file at boundary sizes"
 
 
 @pytest.mark.edge_case

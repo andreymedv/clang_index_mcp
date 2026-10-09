@@ -28,7 +28,8 @@ class TestWindowsPaths:
         assert "results" in response
 
     def test_windows_max_path_length(self, temp_project_dir):
-        """Test paths > 260 characters on Windows - Task 1.6.3"""
+        """Verify the indexer handles paths exceeding 260 characters without crashing
+        and indexes the file at the long path."""
         long_dir = temp_project_dir / "src" / ("subdir_" * 30)
         long_dir.mkdir(parents=True, exist_ok=True)
         file = long_dir / "test.cpp"
@@ -36,6 +37,6 @@ class TestWindowsPaths:
             file.write_text("class Test {};")
             analyzer = CppAnalyzer(str(temp_project_dir))
             count = analyzer.index_project()
-            assert count >= 0, "Should handle long paths gracefully"
+            assert count > 0, "Should index file despite long path"
         except OSError:
             pytest.skip("Cannot create long path on this system")

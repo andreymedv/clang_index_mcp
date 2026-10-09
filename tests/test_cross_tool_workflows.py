@@ -350,9 +350,13 @@ class TestGetInfoToGetHierarchy:
 
         # Step 2: Use in get_class_hierarchy
         hierarchy = analyzer.get_class_hierarchy(qualified_name)
-        assert (
-            hierarchy is not None
-        ), f"get_class_hierarchy failed for '{qualified_name}' from get_class_info"
+        assert hierarchy is not None, (
+            f"get_class_hierarchy failed for '{qualified_name}' from get_class_info"
+        )
+        assert "queried_class" in hierarchy, "hierarchy should contain queried_class"
+        assert hierarchy["queried_class"] in hierarchy.get("classes", {}), (
+            "queried_class should be present in classes dict"
+        )
 
 
 # =============================================================================
@@ -382,26 +386,34 @@ class TestPartialQualifiedNames:
         ), "get_class_info should accept partial qualified name 'inner::Base'"
 
     def test_partial_qualified_name_in_hierarchy(self, namespaced_project):
-        """
-        get_class_hierarchy should accept partial qualified names.
-        """
+        """Verify get_class_hierarchy accepts partial qualified names and returns
+        a hierarchy whose queried_class and classes dict are populated."""
         analyzer = namespaced_project
 
         hierarchy = analyzer.get_class_hierarchy("inner::Derived")
-        assert (
-            hierarchy is not None
-        ), "get_class_hierarchy should accept partial qualified name 'inner::Derived'"
+        assert hierarchy is not None, (
+            "get_class_hierarchy should accept partial qualified name 'inner::Derived'"
+        )
+        assert "queried_class" in hierarchy, "hierarchy should contain queried_class"
+        qname = hierarchy["queried_class"]
+        assert qname in hierarchy.get("classes", {}), (
+            f"queried_class '{qname}' should be present in classes dict"
+        )
 
     def test_partial_qualified_name_in_derived(self, namespaced_project):
-        """
-        get_derived_classes should accept partial qualified names.
-        """
+        """Verify get_derived_classes accepts partial qualified names and returns
+        the expected derived class(es)."""
         analyzer = namespaced_project
 
         derived = analyzer.get_derived_classes("inner::Base")
-        assert (
-            derived is not None
-        ), "get_derived_classes should accept partial qualified name 'inner::Base'"
+        assert derived is not None, (
+            "get_derived_classes should accept partial qualified name 'inner::Base'"
+        )
+        assert len(derived) > 0, "inner::Base should have at least one derived class"
+        derived_names = [d["qualified_name"].split("::")[-1] for d in derived]
+        assert any("Derived" in name for name in derived_names), (
+            f"Should find Derived class, got: {derived_names}"
+        )
 
 
 # =============================================================================

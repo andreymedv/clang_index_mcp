@@ -57,7 +57,8 @@ public:
         assert len(classes) > 0, "Should find TestClass"
 
     def test_without_vcpkg(self, temp_project_dir):
-        """Test analyzer works without vcpkg"""
+        """Verify the analyzer works without a vcpkg_installed directory present
+        and can index and discover classes using fallback compilation args."""
         # Create a simple C++ file
         (temp_project_dir / "src" / "no_vcpkg.cpp").write_text("""
 class NoVcpkgClass {
@@ -80,7 +81,8 @@ public:
         assert len(classes) > 0, "Should find NoVcpkgClass without vcpkg"
 
     def test_vcpkg_with_real_library_simulation(self, temp_project_dir):
-        """Test vcpkg integration with simulated library usage"""
+        """Verify indexing succeeds with a vcpkg_installed directory containing
+        a simulated library and that the project class is discoverable."""
         # Create vcpkg structure for a simulated library
         vcpkg_include = temp_project_dir / "vcpkg_installed" / "x64-linux" / "include"
         vcpkg_include.mkdir(parents=True, exist_ok=True)
@@ -113,7 +115,7 @@ public:
 
         # Verify we can find our project class
         classes = analyzer.search_classes("MyApp")
-        assert len(classes) >= 0, "Should handle vcpkg project"
+        assert len(classes) > 0, "Should find MyApp in vcpkg project"
 
     def test_vcpkg_multiple_triplets(self, temp_project_dir):
         """Test handling of multiple vcpkg triplets"""
