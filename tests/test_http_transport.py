@@ -6,9 +6,6 @@ Tests the HTTP/Streamable HTTP protocol support for the MCP server.
 
 import asyncio
 import json
-import os
-import tempfile
-from pathlib import Path
 
 import httpx
 import pytest

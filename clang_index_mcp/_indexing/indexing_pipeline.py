@@ -9,7 +9,7 @@ and cache persistence.
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from clang.cindex import TranslationUnit
 
@@ -24,7 +24,7 @@ class IndexingResult:
     was_cached: bool
     file_hash: str = ""
     compile_args_hash: str = ""
-    error_message: Optional[str] = None
+    error_message: str | None = None
     retry_count: int = 0
 
 
@@ -170,7 +170,7 @@ class SingleFileIndexingPipeline:
         self,
         file_path: str,
         error_msg: str,
-        args: List[str],
+        args: list[str],
         current_hash: str,
         compile_args_hash: str,
         retry_count: int,
@@ -197,7 +197,7 @@ class SingleFileIndexingPipeline:
         current_hash: str,
         compile_args_hash: str,
         retry_count: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract and process diagnostics. Returns error message if any."""
         return (  # type: ignore[no-any-return]
             self.clang_parser.handle_index_file_diagnostics(
@@ -211,7 +211,7 @@ class SingleFileIndexingPipeline:
         tu: TranslationUnit,
         current_hash: str,
         compile_args_hash: str,
-        cache_error_msg: Optional[str],
+        cache_error_msg: str | None,
         write_cache: bool,
     ) -> IndexingResult:
         """Clear old entries, process TU, collect symbols, and optionally save to cache."""

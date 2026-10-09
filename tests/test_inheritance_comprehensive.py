@@ -97,9 +97,8 @@ def find_class(results, name):
 def get_info_or_skip(analyzer, name, qualified_fallback=None):
     """Get class info, trying qualified name if simple name is ambiguous."""
     info = analyzer.get_class_info(name)
-    if info and info.get("is_ambiguous"):
-        if qualified_fallback:
-            info = analyzer.get_class_info(qualified_fallback)
+    if info and info.get("is_ambiguous") and qualified_fallback:
+        info = analyzer.get_class_info(qualified_fallback)
     return info
 
 

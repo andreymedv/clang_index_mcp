@@ -14,22 +14,24 @@ The manager is now a thin orchestrator around focused helper modules:
 
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 # Handle both package and script imports
 try:
-    from ..cpp_analyzer_config import CompileCommandsConfig
     from .._core import diagnostics
     from .._core.argument_sanitizer import ArgumentSanitizer
+    from ..cpp_analyzer_config import CompileCommandsConfig
 except ImportError:
-    from cpp_analyzer_config import CompileCommandsConfig  # type: ignore[no-redef]
     import diagnostics  # type: ignore[no-redef]
     from argument_sanitizer import ArgumentSanitizer  # type: ignore[no-redef]
+    from cpp_analyzer_config import CompileCommandsConfig  # type: ignore[no-redef]
 
-from . import compile_commands_cache
-from . import compile_commands_diff
-from . import compile_commands_parser
-from . import resource_detector
+from . import (
+    compile_commands_cache,
+    compile_commands_diff,
+    compile_commands_parser,
+    resource_detector,
+)
 
 # Try to import orjson for faster JSON parsing (optional)
 HAS_ORJSON = False
@@ -47,9 +49,9 @@ class CompileCommandsManager:
     def __init__(
         self,
         project_root: Path,
-        config: Optional[Union[Dict[str, Any], CompileCommandsConfig]] = None,
-        cache_dir: Optional[Path] = None,
-        cache_backend: Optional[Any] = None,
+        config: dict[str, Any] | CompileCommandsConfig | None = None,
+        cache_dir: Path | None = None,
+        cache_backend: Any | None = None,
     ):
         self.project_root = project_root
         self._config = (
@@ -69,8 +71,8 @@ class CompileCommandsManager:
         self.supported_extensions = set(self._config.supported_extensions)
 
         # Cache data
-        self.compile_commands: Dict[str, Any] = {}
-        self.file_to_command_map: Dict[str, Any] = {}
+        self.compile_commands: dict[str, Any] = {}
+        self.file_to_command_map: dict[str, Any] = {}
         self.last_modified: float = 0
         self.cache_lock = threading.Lock()
 
@@ -100,16 +102,16 @@ class CompileCommandsManager:
     # ------------------------------------------------------------------
     @staticmethod
     def compute_commands_diff(
-        old_commands: Dict[str, List[str]], new_commands: Dict[str, List[str]]
-    ) -> Tuple[Set[str], Set[str], Set[str]]:
+        old_commands: dict[str, list[str]], new_commands: dict[str, list[str]]
+    ) -> tuple[set[str], set[str], set[str]]:
         """Compute difference between two compile-command maps."""
         return compile_commands_diff.compute_commands_diff(old_commands, new_commands)
 
-    def _hash_args(self, args: List[str]) -> str:
+    def _hash_args(self, args: list[str]) -> str:
         """Return a stable hash of a compilation argument list."""
         return compile_commands_diff.hash_args(args)
 
-    def store_command_hashes(self, commands: Dict[str, List[str]]) -> int:
+    def store_command_hashes(self, commands: dict[str, list[str]]) -> int:
         """Store argument hashes for the given compile commands in SQLite."""
         return compile_commands_diff.store_command_hashes(commands, self.cache_backend)
 
@@ -117,7 +119,7 @@ class CompileCommandsManager:
         """Return the stored argument hash for a file, or empty string."""
         return compile_commands_diff.get_stored_args_hash(file_path, self.cache_backend)
 
-    def has_args_changed(self, file_path: str, current_args: List[str]) -> bool:
+    def has_args_changed(self, file_path: str, current_args: list[str]) -> bool:
         """Return True if the stored argument hash differs from the current args."""
         return compile_commands_diff.has_args_changed(file_path, current_args, self.cache_backend)
 
@@ -168,35 +170,35 @@ class CompileCommandsManager:
     # ------------------------------------------------------------------
     # Resource detection wrappers
     # ------------------------------------------------------------------
-    def _build_fallback_args(self) -> List[str]:
+    def _build_fallback_args(self) -> list[str]:
         """Build the fallback compilation arguments (current hardcoded approach)."""
         return resource_detector.build_fallback_args(self.project_root, self.clang_resource_dir)
 
-    def _detect_clang_resource_dir(self) -> Optional[str]:
+    def _detect_clang_resource_dir(self) -> str | None:
         """Detect the clang resource directory containing builtin headers."""
         return resource_detector.detect_clang_resource_dir()
 
-    def _detect_cxx_stdlib_path(self, arguments: List[str]) -> Optional[str]:
+    def _detect_cxx_stdlib_path(self, arguments: list[str]) -> str | None:
         """Detect the C++ standard library include path based on compile arguments."""
         return resource_detector.detect_cxx_stdlib_path(arguments)
 
-    def _detect_system_c_headers_dir(self) -> Optional[str]:
+    def _detect_system_c_headers_dir(self) -> str | None:
         """Detect the system C header directory for #include_next resolution."""
         return resource_detector.detect_system_c_headers_dir(self.clang_resource_dir)
 
-    def _find_std_insert_position(self, arguments: List[str]) -> int:
+    def _find_std_insert_position(self, arguments: list[str]) -> int:
         """Find insertion position after -std= flag if present."""
         return resource_detector.find_std_insert_position(arguments)
 
-    def _is_path_in_args(self, path: str, arguments: List[str]) -> bool:
+    def _is_path_in_args(self, path: str, arguments: list[str]) -> bool:
         """Check if a path is already present in arguments."""
         return resource_detector.is_path_in_args(path, arguments)
 
-    def _insert_system_include(self, arguments: List[str], insert_pos: int, path: str) -> int:
+    def _insert_system_include(self, arguments: list[str], insert_pos: int, path: str) -> int:
         """Insert -isystem path at insert_pos and return updated position."""
         return resource_detector.insert_system_include(arguments, insert_pos, path)
 
-    def _add_builtin_includes(self, arguments: List[str]) -> List[str]:
+    def _add_builtin_includes(self, arguments: list[str]) -> list[str]:
         """Add clang builtin include directory and C++ stdlib to arguments if needed."""
         return resource_detector.add_builtin_includes(arguments, self.clang_resource_dir)
 
@@ -222,7 +224,7 @@ class CompileCommandsManager:
             self.last_modified = last_modified
         return success
 
-    def _filter_arguments(self, arguments: List[str]) -> List[str]:
+    def _filter_arguments(self, arguments: list[str]) -> list[str]:
         """Filter out compiler executable, -o, -c, and source files from arguments."""
         return compile_commands_parser.filter_arguments(arguments)
 
@@ -231,23 +233,23 @@ class CompileCommandsManager:
         return compile_commands_parser.normalize_path(file_path, directory, self.project_root)
 
     def _normalize_single_argument(
-        self, arg: str, next_arg: Optional[str], directory: str
-    ) -> Tuple[List[str], int]:
+        self, arg: str, next_arg: str | None, directory: str
+    ) -> tuple[list[str], int]:
         """Normalize a single argument and its optional successor."""
         return compile_commands_parser.normalize_single_argument(arg, next_arg, directory)
 
-    def _normalize_arguments(self, arguments: List[str], directory: str) -> List[str]:
+    def _normalize_arguments(self, arguments: list[str], directory: str) -> list[str]:
         """Normalize relative include paths in arguments to absolute paths."""
         return compile_commands_parser.normalize_arguments(arguments, directory)
 
-    def _sanitize_args_for_libclang(self, args: List[str]) -> List[str]:
+    def _sanitize_args_for_libclang(self, args: list[str]) -> list[str]:
         """Sanitize compiler arguments for use with libclang using rule-based system."""
         return compile_commands_parser.sanitize_args_for_libclang(args, self.argument_sanitizer)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def get_compile_args(self, file_path: Path) -> Optional[List[str]]:
+    def get_compile_args(self, file_path: Path) -> list[str] | None:
         """Get compilation arguments for a specific file."""
         if not self.enabled:
             return None
@@ -280,7 +282,7 @@ class CompileCommandsManager:
 
         return None
 
-    def get_compile_args_with_fallback(self, file_path: Path) -> List[str]:
+    def get_compile_args_with_fallback(self, file_path: Path) -> list[str]:
         """Get compilation arguments for a file, with fallback to hardcoded args."""
         # Try to get compile commands first
         compile_args = self.get_compile_args(file_path)
@@ -322,7 +324,7 @@ class CompileCommandsManager:
 
         return success
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about the compile commands manager."""
         with self.cache_lock:
             fallback_profile = self._extract_arg_insights(self.fallback_args)
@@ -339,10 +341,10 @@ class CompileCommandsManager:
                 "fallback_system_include_dirs": fallback_profile["system_include_dirs"],
             }
 
-    def _extract_arg_insights(self, args: List[str]) -> Dict[str, List[str]]:
+    def _extract_arg_insights(self, args: list[str]) -> dict[str, list[str]]:
         """Extract concise diagnostics from compile arguments."""
-        standards: List[str] = []
-        system_includes: List[str] = []
+        standards: list[str] = []
+        system_includes: list[str] = []
 
         i = 0
         while i < len(args):
@@ -367,7 +369,7 @@ class CompileCommandsManager:
             "system_include_dirs": unique_system_includes,
         }
 
-    def get_compile_arg_profile(self, file_path: Path) -> Dict[str, Any]:
+    def get_compile_arg_profile(self, file_path: Path) -> dict[str, Any]:
         """Return compile argument profile for a specific source file."""
         compile_args = self.get_compile_args(file_path)
         if compile_args is not None:
@@ -397,7 +399,7 @@ class CompileCommandsManager:
         file_path_str = str(file_path.resolve())
         return file_path_str in self.file_to_command_map
 
-    def get_all_files(self) -> List[str]:
+    def get_all_files(self) -> list[str]:
         """Get all files that have compile commands."""
         if not self.enabled:
             return []

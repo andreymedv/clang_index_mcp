@@ -113,6 +113,7 @@ def _get_llvm_config_libdir(llvm_config_query: str) -> str | None:
         try:
             result = subprocess.run(
                 [llvm_config, str(llvm_config_query)],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=5,

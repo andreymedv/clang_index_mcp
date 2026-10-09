@@ -4,7 +4,6 @@ Test runner for compile_commands.json integration tests.
 This script runs all the tests and provides a summary of the results.
 """
 
-import os
 import sys
 import unittest
 from pathlib import Path

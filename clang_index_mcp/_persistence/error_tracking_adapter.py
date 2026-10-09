@@ -1,11 +1,12 @@
 """Adapter implementing the cache recovery port with concrete error tracking."""
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
+
+from clang_index_mcp._persistence.ports.recovery import CacheRecoveryPort
 
 from .._core.error_tracking import ErrorTracker
 from .recovery import RecoveryManager
-from .ports.recovery import CacheRecoveryPort
 
 
 class ErrorTrackingAdapter:
@@ -13,8 +14,8 @@ class ErrorTrackingAdapter:
 
     def __init__(
         self,
-        error_tracker: Optional[ErrorTracker] = None,
-        recovery_manager: Optional[RecoveryManager] = None,
+        error_tracker: ErrorTracker | None = None,
+        recovery_manager: RecoveryManager | None = None,
     ):
         self._error_tracker = error_tracker or ErrorTracker()
         self._recovery_manager = recovery_manager or RecoveryManager()
@@ -31,21 +32,19 @@ class ErrorTrackingAdapter:
     ) -> bool:
         return self._error_tracker.record_error(error_type, error_message, operation, recoverable)
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         return self._error_tracker.get_error_summary()
 
     def reset(self) -> None:
         self._error_tracker.reset()
 
-    def backup_database(
-        self, db_path: Union[str, Path], backup_suffix: str = ".backup"
-    ) -> Optional[str]:
+    def backup_database(self, db_path: str | Path, backup_suffix: str = ".backup") -> str | None:
         return self._recovery_manager.backup_database(db_path, backup_suffix)
 
-    def attempt_repair(self, db_path: Union[str, Path]) -> bool:
+    def attempt_repair(self, db_path: str | Path) -> bool:
         return self._recovery_manager.attempt_repair(db_path)
 
-    def clear_cache(self, cache_dir: Union[str, Path]) -> bool:
+    def clear_cache(self, cache_dir: str | Path) -> bool:
         return self._recovery_manager.clear_cache(cache_dir)
 
 

@@ -1,6 +1,6 @@
 """Persistence port for type aliases produced during indexing."""
 
-from typing import List, Protocol
+from typing import Protocol
 
 from .parser import TypeAliasRecord
 
@@ -12,6 +12,6 @@ class AliasPersistence(Protocol):
     the symbol index layer depends only on this protocol.
     """
 
-    def save_aliases(self, aliases: List[TypeAliasRecord]) -> int:
+    def save_aliases(self, aliases: list[TypeAliasRecord]) -> int:
         """Persist aliases and return the number saved."""
         ...

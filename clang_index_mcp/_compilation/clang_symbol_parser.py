@@ -2,17 +2,27 @@
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from clang.cindex import Cursor, CursorKind, TranslationUnit, Type
 
 from .._core import diagnostics
-from .._symbols.model import SymbolInfo
-from .._symbols.ports.parser import CallSiteRecord, ParseResult, SymbolParser, TypeAliasRecord
 from .._symbols.alias_extractor import extract_alias_info
-from .._symbols.cursor_utils import extract_namespace, get_qualified_name, iter_template_params
+from .._symbols.cursor_utils import (
+    extract_namespace,
+    get_qualified_name,
+    iter_template_params,
+)
 from .._symbols.documentation_extractor import extract_documentation
+from .._symbols.model import SymbolInfo
+from .._symbols.ports.parser import (
+    CallSiteRecord,
+    ParseResult,
+    SymbolParser,
+    TypeAliasRecord,
+)
 from .._symbols.signature_builder import build_human_readable_signature
 from .._symbols.usr_decoder import usr_to_display_name
 from .template_resolver import TemplateResolver
@@ -32,10 +42,10 @@ class LineRangeInfo:
     column: int
     start_line: int
     end_line: int
-    header_file: Optional[str] = None
-    header_line: Optional[int] = None
-    header_start_line: Optional[int] = None
-    header_end_line: Optional[int] = None
+    header_file: str | None = None
+    header_line: int | None = None
+    header_start_line: int | None = None
+    header_end_line: int | None = None
 
 
 @dataclass(frozen=True)
@@ -45,7 +55,7 @@ class CommonSymbolData:
     qualified_name: str
     namespace: str
     loc_info: LineRangeInfo
-    doc_info: Dict[str, Optional[str]]
+    doc_info: dict[str, str | None]
 
 
 class ClangSymbolParser(SymbolParser):
@@ -71,9 +81,9 @@ class ClangSymbolParser(SymbolParser):
 
         # Buffers are normally reset by parse(); they are also kept available so
         # _process_cursor can be exercised directly in tests and diagnostics.
-        self._symbols_buffer: List[SymbolInfo] = []
-        self._calls_buffer: List[CallSiteRecord] = []
-        self._aliases_buffer: List[TypeAliasRecord] = []
+        self._symbols_buffer: list[SymbolInfo] = []
+        self._calls_buffer: list[CallSiteRecord] = []
+        self._aliases_buffer: list[TypeAliasRecord] = []
 
     def _is_project_file(self, file_path: str) -> bool:
         return self.compilation_env.is_project_file(file_path)
@@ -86,20 +96,20 @@ class ClangSymbolParser(SymbolParser):
         return self.symbol_store.index_lock
 
     @property
-    def class_index(self) -> Dict[str, List[SymbolInfo]]:
+    def class_index(self) -> dict[str, list[SymbolInfo]]:
         return self.symbol_store.class_index
 
-    def _build_type_param_map(self, cursor: Cursor) -> Dict[str, str]:
+    def _build_type_param_map(self, cursor: Cursor) -> dict[str, str]:
         """Build a map from 'type-parameter-D-I' to actual template parameter names."""
-        type_param_map: Dict[str, str] = {}
+        type_param_map: dict[str, str] = {}
         param_index = 0
-        for child in iter_template_params(cursor):
+        for param_index, child in enumerate(iter_template_params(cursor)):
             if child.spelling:
                 type_param_map[f"type-parameter-0-{param_index}"] = child.spelling
             param_index += 1
         return type_param_map
 
-    def _resolve_base_name(self, base_type: Type, type_param_map: Dict[str, str]) -> str:
+    def _resolve_base_name(self, base_type: Type, type_param_map: dict[str, str]) -> str:
         """Resolve the qualified name of a base type, substituting template parameters."""
         canonical_type = base_type.get_canonical()
         base_name_qualified = canonical_type.spelling
@@ -124,7 +134,7 @@ class ClangSymbolParser(SymbolParser):
 
         return str(base_name_qualified)
 
-    def _get_base_classes(self, cursor: Cursor) -> List[str]:
+    def _get_base_classes(self, cursor: Cursor) -> list[str]:
         """Extract base class names from a class cursor."""
         type_param_map = self._build_type_param_map(cursor)
 
@@ -135,28 +145,28 @@ class ClangSymbolParser(SymbolParser):
 
         return base_classes
 
-    def _find_primary_template_info(self, primary_template_usr: str) -> Optional[SymbolInfo]:
+    def _find_primary_template_info(self, primary_template_usr: str) -> SymbolInfo | None:
         """Look up the primary template in class_index by USR."""
         with self.index_lock:
-            for name, infos in self.class_index.items():
+            for infos in self.class_index.values():
                 for info in infos:
                     if info.usr == primary_template_usr:
                         return info
         return None
 
-    def _parse_template_params(self, primary_info: SymbolInfo) -> List[dict]:
+    def _parse_template_params(self, primary_info: SymbolInfo) -> list[dict]:
         """Parse template_parameters JSON from a primary template info."""
         if not primary_info.template_parameters:
             return []
         try:
-            result: List[Dict[str, Any]] = json.loads(primary_info.template_parameters)
+            result: list[dict[str, Any]] = json.loads(primary_info.template_parameters)
             return result
         except (json.JSONDecodeError, TypeError):
             return []
 
     def _resolve_instantiation_base_classes(
-        self, cursor: Cursor, primary_template_usr: Optional[str]
-    ) -> List[str]:
+        self, cursor: Cursor, primary_template_usr: str | None
+    ) -> list[str]:
         """Resolve base classes for explicit template instantiations."""
         if not primary_template_usr:
             return []
@@ -189,7 +199,7 @@ class ClangSymbolParser(SymbolParser):
         return ""
 
     @staticmethod
-    def _extract_cursor_extent(cursor: Cursor, location: Any) -> Tuple[int, int]:
+    def _extract_cursor_extent(cursor: Cursor, location: Any) -> tuple[int, int]:
         """Extract start and end lines from a cursor's extent, falling back to location line."""
         try:
             extent = cursor.extent
@@ -254,7 +264,7 @@ class ClangSymbolParser(SymbolParser):
         return result
 
     @staticmethod
-    def _extract_template_parameters(cursor: Cursor) -> Optional[str]:
+    def _extract_template_parameters(cursor: Cursor) -> str | None:
         """Extract template parameters from a template cursor."""
         template_params = []
 
@@ -273,14 +283,14 @@ class ClangSymbolParser(SymbolParser):
         return None
 
     @staticmethod
-    def _get_primary_template_usr(cursor: Cursor) -> Optional[str]:
+    def _get_primary_template_usr(cursor: Cursor) -> str | None:
         """Get the USR of the primary template for a template specialization."""
         from clang import cindex
 
         try:
             specialized_cursor = cindex.conf.lib.clang_getSpecializedCursorTemplate(cursor)
             if specialized_cursor and not specialized_cursor.kind.is_invalid():
-                usr: Optional[str] = specialized_cursor.get_usr()
+                usr: str | None = specialized_cursor.get_usr()
                 if usr:
                     return usr
         except Exception:
@@ -329,7 +339,7 @@ class ClangSymbolParser(SymbolParser):
             doc_info=extract_documentation(cursor),
         )
 
-    def _base_symbol_kwargs(self, cursor: Cursor, common: CommonSymbolData) -> Dict[str, Any]:
+    def _base_symbol_kwargs(self, cursor: Cursor, common: CommonSymbolData) -> dict[str, Any]:
         """Build the kwargs shared by every SymbolInfo construction."""
         loc_info = common.loc_info
         doc_info = common.doc_info
@@ -379,7 +389,7 @@ class ClangSymbolParser(SymbolParser):
     def _process_cursor(
         self,
         cursor: Cursor,
-        should_extract_from_file: Optional[Callable[[str], bool]] = None,
+        should_extract_from_file: Callable[[str], bool] | None = None,
         parent_class: str = "",
         parent_function_usr: str = "",
     ) -> None:
@@ -419,7 +429,7 @@ class ClangSymbolParser(SymbolParser):
         for child in cursor.get_children():
             self._process_cursor(child, should_extract_from_file, parent_class, parent_function_usr)
 
-    def _get_cursor_handler(self, kind: CursorKind) -> Optional[Callable]:
+    def _get_cursor_handler(self, kind: CursorKind) -> Callable | None:
         """Return the handler method for a given cursor kind, or None."""
         if kind == CursorKind.CLASS_TEMPLATE:
             return self._handle_class_template_cursor
@@ -449,7 +459,7 @@ class ClangSymbolParser(SymbolParser):
         self,
         cursor: Cursor,
         should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
+        should_extract_from_file: Callable[[str], bool] | None,
         parent_class: str,
         parent_function_usr: str,
     ) -> None:
@@ -494,7 +504,7 @@ class ClangSymbolParser(SymbolParser):
         self,
         cursor: Cursor,
         should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
+        should_extract_from_file: Callable[[str], bool] | None,
         parent_class: str,
         parent_function_usr: str,
     ) -> None:
@@ -544,7 +554,7 @@ class ClangSymbolParser(SymbolParser):
         self,
         cursor: Cursor,
         should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
+        should_extract_from_file: Callable[[str], bool] | None,
         parent_class: str,
         parent_function_usr: str,
     ) -> None:
@@ -593,7 +603,7 @@ class ClangSymbolParser(SymbolParser):
         self,
         cursor: Cursor,
         should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
+        should_extract_from_file: Callable[[str], bool] | None,
         parent_class: str,
         parent_function_usr: str,
     ) -> None:
@@ -654,7 +664,7 @@ class ClangSymbolParser(SymbolParser):
         self,
         cursor: Cursor,
         should_extract: bool,
-        should_extract_from_file: Optional[Callable[[str], bool]],
+        should_extract_from_file: Callable[[str], bool] | None,
         parent_class: str,
         parent_function_usr: str,
     ) -> None:
@@ -680,7 +690,7 @@ class ClangSymbolParser(SymbolParser):
 
     def _extract_template_call_info(
         self, referenced: Cursor, called_usr: str
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """Extract display_name and project-type template args from a template call."""
         try:
             num_args = referenced.get_num_template_arguments()
@@ -762,13 +772,13 @@ class ClangSymbolParser(SymbolParser):
         self,
         tu: TranslationUnit,
         source_file: str,
-        should_extract_from_file: Optional[Callable[[str], bool]] = None,
+        should_extract_from_file: Callable[[str], bool] | None = None,
     ) -> ParseResult:
         """Parse a translation unit and return extracted symbol data."""
         self._symbols_buffer = []
         self._calls_buffer = []
         self._aliases_buffer = []
-        processed_headers: Dict[str, str] = {}
+        processed_headers: dict[str, str] = {}
 
         def _wrapped_should_extract(file_path: str) -> bool:
             if file_path == source_file:

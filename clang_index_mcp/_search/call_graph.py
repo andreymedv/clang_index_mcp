@@ -1,6 +1,6 @@
 """Call graph analysis for C++ code."""
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import CallSiteRecord
@@ -10,12 +10,12 @@ class CallSite:
     """Represents a single call site with location information."""
 
     __slots__ = (
-        "caller_usr",
         "callee_usr",
-        "file",
-        "line",
+        "caller_usr",
         "column",
         "display_name",
+        "file",
+        "line",
         "template_project_types",
     )
 
@@ -25,9 +25,9 @@ class CallSite:
         callee_usr: str,
         file: str,
         line: int,
-        column: Optional[int] = None,
-        display_name: Optional[str] = None,
-        template_project_types: Optional[str] = None,
+        column: int | None = None,
+        display_name: str | None = None,
+        template_project_types: str | None = None,
     ):
         self.caller_usr = caller_usr
         self.callee_usr = callee_usr
@@ -37,7 +37,7 @@ class CallSite:
         self.display_name = display_name
         self.template_project_types = template_project_types
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         result = {
             "caller_usr": self.caller_usr,
@@ -89,7 +89,7 @@ class CallGraphAnalyzer:
         # Phase 3: Line-level call site tracking
         # Only stores call sites from CURRENT indexing session
         # Historical call sites are loaded on-demand from SQLite via cache_backend
-        self.call_sites: Set[CallSite] = (
+        self.call_sites: set[CallSite] = (
             set()
         )  # Current session call sites (using set to avoid duplicates)
 
@@ -100,12 +100,12 @@ class CallGraphAnalyzer:
         self,
         caller_usr: str,
         callee_usr: str,
-        file: Optional[str] = None,
-        line: Optional[int] = None,
-        column: Optional[int] = None,
+        file: str | None = None,
+        line: int | None = None,
+        column: int | None = None,
         store_call_site: bool = True,
-        display_name: Optional[str] = None,
-        template_project_types: Optional[str] = None,
+        display_name: str | None = None,
+        template_project_types: str | None = None,
     ):
         """
         Add a function call relationship with optional location information.
@@ -171,7 +171,7 @@ class CallGraphAnalyzer:
             cs for cs in self.call_sites if cs.caller_usr != usr and cs.callee_usr != usr
         }
 
-    def rebuild_from_symbols(self, symbols: List[SymbolInfo]):
+    def rebuild_from_symbols(self, symbols: list[SymbolInfo]):
         """
         Rebuild call graph from symbol list.
 
@@ -183,9 +183,8 @@ class CallGraphAnalyzer:
         """
         # v9.0: No-op - call graph is now loaded lazily from SQLite
         # The calls/called_by fields were removed from SymbolInfo
-        pass
 
-    def process_call_buffer(self, calls_buffer: List[CallSiteRecord]) -> None:
+    def process_call_buffer(self, calls_buffer: list[CallSiteRecord]) -> None:
         """Process buffered call records produced during indexing."""
         if not calls_buffer:
             return
@@ -201,7 +200,7 @@ class CallGraphAnalyzer:
                 template_project_types=record.template_project_types,
             )
 
-    def restore_call_sites(self, call_sites_data: List[Dict[str, Any]]):
+    def restore_call_sites(self, call_sites_data: list[dict[str, Any]]):
         """
         Restore call sites from database-loaded dictionaries.
 
@@ -221,14 +220,14 @@ class CallGraphAnalyzer:
             )
             self.call_sites.add(call_site)  # Using set.add() to automatically deduplicate
 
-    def _find_related_usrs(self, function_usr: str, incoming: bool) -> Set[str]:
+    def _find_related_usrs(self, function_usr: str, incoming: bool) -> set[str]:
         """USRs connected to function_usr (incoming=True: callers, False: callees).
 
         Queries SQLite exclusively (no in-memory dicts); all call graph data is
         stored exclusively in the call_sites table. Current-session call sites
         are also checked before they are saved to SQLite.
         """
-        result: Set[str] = set()
+        result: set[str] = set()
 
         if self.cache_backend:
             try:
@@ -252,7 +251,7 @@ class CallGraphAnalyzer:
 
         return result
 
-    def find_incoming_calls(self, function_usr: str) -> Set[str]:
+    def find_incoming_calls(self, function_usr: str) -> set[str]:
         """
         Find all functions that call the specified function.
 
@@ -261,7 +260,7 @@ class CallGraphAnalyzer:
         """
         return self._find_related_usrs(function_usr, incoming=True)
 
-    def find_callees(self, function_usr: str) -> Set[str]:
+    def find_callees(self, function_usr: str) -> set[str]:
         """
         Find all functions called by the specified function.
 
@@ -270,7 +269,7 @@ class CallGraphAnalyzer:
         """
         return self._find_related_usrs(function_usr, incoming=False)
 
-    def get_call_paths(self, from_usr: str, to_usr: str, max_depth: int = 10) -> List[List[str]]:
+    def get_call_paths(self, from_usr: str, to_usr: str, max_depth: int = 10) -> list[list[str]]:
         """Find all call paths from one function to another"""
         if from_usr == to_usr:
             return [[from_usr]]
@@ -295,7 +294,7 @@ class CallGraphAnalyzer:
 
         return paths
 
-    def get_call_statistics(self) -> Dict[str, Any]:
+    def get_call_statistics(self) -> dict[str, Any]:
         """
         Get statistics about the call graph.
 
@@ -316,7 +315,7 @@ class CallGraphAnalyzer:
             "Use SQLite queries directly for call graph statistics if needed.",
         }
 
-    def _get_most_called_functions(self, limit: int) -> List[tuple]:
+    def _get_most_called_functions(self, limit: int) -> list[tuple]:
         """
         Get the most frequently called functions.
 
@@ -324,7 +323,7 @@ class CallGraphAnalyzer:
         """
         return []
 
-    def _get_functions_with_most_calls(self, limit: int) -> List[tuple]:
+    def _get_functions_with_most_calls(self, limit: int) -> list[tuple]:
         """
         Get functions that make the most calls.
 
@@ -334,7 +333,7 @@ class CallGraphAnalyzer:
 
     # Phase 3: Line-level call site methods
 
-    def _get_call_sites_for(self, usr: str, incoming: bool) -> List[CallSite]:
+    def _get_call_sites_for(self, usr: str, incoming: bool) -> list[CallSite]:
         """Call sites connected to usr, merged from session and SQLite, sorted.
 
         Uses lazy loading: first checks in-memory call_sites (current session),
@@ -372,7 +371,7 @@ class CallGraphAnalyzer:
 
         return sorted(current_session, key=lambda cs: (cs.file, cs.line))
 
-    def get_call_sites_for_caller(self, caller_usr: str) -> List[CallSite]:
+    def get_call_sites_for_caller(self, caller_usr: str) -> list[CallSite]:
         """
         Get all call sites from a specific caller function.
 
@@ -387,7 +386,7 @@ class CallGraphAnalyzer:
         """
         return self._get_call_sites_for(caller_usr, incoming=False)
 
-    def get_call_sites_for_callee(self, callee_usr: str) -> List[CallSite]:
+    def get_call_sites_for_callee(self, callee_usr: str) -> list[CallSite]:
         """
         Get all call sites to a specific callee function.
 
@@ -402,7 +401,7 @@ class CallGraphAnalyzer:
         """
         return self._get_call_sites_for(callee_usr, incoming=True)
 
-    def get_all_call_sites(self) -> List[Dict[str, Any]]:
+    def get_all_call_sites(self) -> list[dict[str, Any]]:
         """
         Get all call sites as dictionaries for storage.
 

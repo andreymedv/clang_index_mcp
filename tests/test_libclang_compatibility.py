@@ -293,7 +293,7 @@ class TestPathNormalization:
         result = manager._normalize_arguments(args, "/base/dir")
 
         # Find the -I argument
-        i_arg = [arg for arg in result if arg.startswith("-I")][0]
+        i_arg = next(arg for arg in result if arg.startswith("-I"))
         path = i_arg[2:]  # Remove -I prefix
         assert os.path.isabs(path), f"Path should be absolute: {path}"
 

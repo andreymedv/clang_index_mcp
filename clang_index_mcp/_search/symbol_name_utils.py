@@ -5,8 +5,6 @@ hierarchy/template analyzers can use them without reaching into a class
 that is otherwise unrelated to simple name manipulation.
 """
 
-from typing import Optional, Tuple
-
 
 def strip_template_args(name: str) -> str:
     """Strip template argument suffix from a name.
@@ -43,7 +41,7 @@ def is_specialization_key(name: str) -> bool:
     return "<" in name and name.endswith(">") and name.find("<") > 0
 
 
-def split_specialization_key(name: str) -> Optional[Tuple[str, str]]:
+def split_specialization_key(name: str) -> tuple[str, str] | None:
     """Split "ns::T<ns::A1, int>" into ("ns::T", "ns::A1, int").
 
     Returns None when the name is not a specialization key.

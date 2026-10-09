@@ -7,8 +7,8 @@ imported upper-layer types (CppAnalyzerConfig, ProjectIdentity).
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..cpp_analyzer_config import CppAnalyzerConfig
 from .._persistence.project_identity import ProjectIdentity
+from ..cpp_analyzer_config import CppAnalyzerConfig
 
 
 @dataclass

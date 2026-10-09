@@ -13,8 +13,9 @@ Shows comprehensive statistics about the C++ analyzer SQLite cache, including:
 import importlib
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any
 
 
 def format_size(bytes_value: int) -> str:
@@ -29,14 +30,14 @@ def format_size(bytes_value: int) -> str:
         return f"{bytes_value / (1024 * 1024 * 1024):.2f} GB"
 
 
-def get_sqlite_cache_stats(cache_dir: Path) -> Dict[str, Any]:
+def get_sqlite_cache_stats(cache_dir: Path) -> dict[str, Any]:
     """Get statistics for a SQLite cache."""
     db_path = cache_dir / "symbols.db"
 
     if not db_path.exists():
         return {"error": "No SQLite cache found"}
 
-    stats: Dict[str, Any] = {"backend_type": "SQLite", "db_path": str(db_path)}
+    stats: dict[str, Any] = {"backend_type": "SQLite", "db_path": str(db_path)}
 
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -207,7 +208,7 @@ def _print_metadata(stats: Mapping[str, Any]) -> None:
     print()
 
 
-def print_stats(stats: Dict[str, Any]) -> None:
+def print_stats(stats: dict[str, Any]) -> None:
     """Print statistics in a formatted layout."""
     print("=" * 70)
     print("CACHE STATISTICS")

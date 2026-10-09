@@ -410,7 +410,7 @@ int main() {
 
         print(f"\nSQLite entries for 'TestClass': {len(rows)}")
         for row in rows:
-            usr, name, kind, file, line, is_def = row
+            usr, _name, _kind, file, line, is_def = row
             print(f"  USR={usr}")
             print(f"  file={file}:{line}, is_definition={is_def}")
 

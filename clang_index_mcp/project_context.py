@@ -13,19 +13,18 @@ from clang.cindex import Index
 if TYPE_CHECKING:
     from ._indexing.refresh_pipeline import RefreshPipeline
 
-from ._core.cancellation_coordinator import CancellationCoordinator
-from ._core.concurrency_context import ConcurrencyContext
-from ._persistence.error_tracking_adapter import ErrorTrackingAdapter
-from ._contexts import ProjectIdentityContext
-from ._contexts.runtime_context import RuntimeContext
 from ._compilation.clang_parser import ClangParser
 from ._compilation.compilation_context import CompilationContext
 from ._compilation.compilation_environment import CompilationEnvironment
-from .cpp_analyzer_config import CppAnalyzerConfig
+from ._contexts import ProjectIdentityContext
+from ._contexts.runtime_context import RuntimeContext
+from ._core.cancellation_coordinator import CancellationCoordinator
+from ._core.concurrency_context import ConcurrencyContext
 from ._indexing.execution_config import ExecutionConfig
 from ._indexing.indexing_progress_reporter import IndexingProgressReporter
 from ._persistence.cache_manager import CacheManager
 from ._persistence.cache_orchestrator import CacheOrchestrator
+from ._persistence.error_tracking_adapter import ErrorTrackingAdapter
 from ._persistence.persistence_context import PersistenceContext
 from ._persistence.project_identity import ProjectIdentity
 from ._persistence.sqlite_cache_backend import SqliteCacheBackend
@@ -35,6 +34,7 @@ from ._symbols.ports.call_graph_service import CallGraphServiceProtocol
 from ._symbols.symbol_context import SymbolContext
 from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
+from .cpp_analyzer_config import CppAnalyzerConfig
 
 
 class ProjectContext:
@@ -50,7 +50,7 @@ class ProjectContext:
     def __init__(
         self,
         project_root: str,
-        config_file: Optional[str] = None,
+        config_file: str | None = None,
         skip_schema_recreation: bool = False,
     ):
         """
@@ -127,7 +127,7 @@ class ProjectContext:
         return self.persistence.cache_manager
 
     @property
-    def cache_orchestrator(self) -> Optional[CacheOrchestrator]:
+    def cache_orchestrator(self) -> CacheOrchestrator | None:
         return self.persistence.cache_orchestrator
 
     @property
@@ -147,27 +147,27 @@ class ProjectContext:
         return self.runtime.progress_reporter
 
     @property
-    def call_graph_service(self) -> Optional[CallGraphServiceProtocol]:
+    def call_graph_service(self) -> CallGraphServiceProtocol | None:
         return self.symbols.call_graph_service
 
     @property
-    def symbol_store(self) -> Optional[SymbolIndexStore]:
+    def symbol_store(self) -> SymbolIndexStore | None:
         return self.symbols.symbol_store
 
     @property
-    def symbol_extractor(self) -> Optional[SymbolExtractor]:
+    def symbol_extractor(self) -> SymbolExtractor | None:
         return self.symbols.symbol_extractor
 
     @property
-    def compilation_env(self) -> Optional[CompilationEnvironment]:
+    def compilation_env(self) -> CompilationEnvironment | None:
         return self.compilation.compilation_env
 
     @property
-    def clang_parser(self) -> Optional[ClangParser]:
+    def clang_parser(self) -> ClangParser | None:
         return self.compilation.clang_parser
 
     @property
-    def query_engine(self) -> Optional[QueryEngine]:
+    def query_engine(self) -> QueryEngine | None:
         return self.query.query_engine
 
     @property

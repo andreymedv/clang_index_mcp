@@ -8,7 +8,7 @@ parsed compile_commands.json data.
 import hashlib
 import pickle
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 # Handle both package and script imports
 try:
@@ -20,7 +20,7 @@ except ImportError:
 
 
 def get_compile_commands_cache_path(
-    cache_dir: Optional[Path], project_root: Path, compile_commands_path: str
+    cache_dir: Path | None, project_root: Path, compile_commands_path: str
 ) -> Path:
     """Get the cache file path for parsed compile commands.
 
@@ -59,10 +59,10 @@ def get_file_hash(file_path: Path) -> str:
 
 def load_from_cache(
     compile_commands_file: Path,
-    cache_dir: Optional[Path],
+    cache_dir: Path | None,
     project_root: Path,
     compile_commands_path: str,
-) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], float]]:
+) -> tuple[dict[str, Any], dict[str, Any], float] | None:
     """Try to load parsed commands from cache.
 
     Returns:
@@ -108,11 +108,11 @@ def load_from_cache(
 
 def save_to_cache(
     compile_commands_file: Path,
-    cache_dir: Optional[Path],
+    cache_dir: Path | None,
     project_root: Path,
     compile_commands_path: str,
-    compile_commands: Dict[str, Any],
-    file_to_command_map: Dict[str, Any],
+    compile_commands: dict[str, Any],
+    file_to_command_map: dict[str, Any],
 ) -> None:
     """Save parsed commands to cache for faster loading next time."""
     cache_path = get_compile_commands_cache_path(cache_dir, project_root, compile_commands_path)

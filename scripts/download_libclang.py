@@ -11,9 +11,9 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
 
 LLVM_VERSION = "19.1.7"
 
@@ -35,7 +35,7 @@ class DownloadConfig:
         )
 
 
-def get_download_config(system_override: Optional[str] = None) -> DownloadConfig:
+def get_download_config(system_override: str | None = None) -> DownloadConfig:
     """Return the download configuration for the current platform."""
     system = (system_override or platform.system()).lower()
     # Get the directory where the script itself is located
@@ -157,7 +157,7 @@ def _copy_libclang(temp_root: Path, config: DownloadConfig) -> bool:
 
 
 def download_libclang(
-    system_override: Optional[str] = None, save_archive_to: Optional[Path] = None
+    system_override: str | None = None, save_archive_to: Path | None = None
 ) -> bool:
     """Download and extract a libclang build for the current platform."""
     config = get_download_config(system_override)
@@ -233,7 +233,7 @@ def download_libclang(
     return success
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Download libclang for the MCP server")
     parser.add_argument(
         "--system",

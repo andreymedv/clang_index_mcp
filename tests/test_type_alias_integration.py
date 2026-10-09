@@ -10,7 +10,6 @@ Tests the complete integration of type alias tracking through:
 
 import os
 import sys
-from pathlib import Path
 
 import pytest
 

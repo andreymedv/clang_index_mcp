@@ -5,21 +5,18 @@ Tests that progress callbacks are invoked and provide accurate information
 during the indexing process.
 """
 
-import asyncio
-import tempfile
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from clang_index_mcp._symbols.indexing_callbacks import IndexingCallbacks
 from clang_index_mcp._mcp.state_manager import (
     AnalyzerState,
     AnalyzerStateManager,
     BackgroundIndexer,
     IndexingProgress,
 )
+from clang_index_mcp._symbols.indexing_callbacks import IndexingCallbacks
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 @pytest.fixture
@@ -236,7 +233,6 @@ async def test_progress_is_complete_flag(simple_cpp_project):
     if len(progress_updates) > 1:
         first_progress = progress_updates[0]
         # First update might be complete if only one file, so check conservatively
-        pass
 
     # Check that final update shows complete
     final_progress = progress_updates[-1]

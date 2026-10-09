@@ -1,7 +1,6 @@
 """DTO describing search criteria for symbol lookups."""
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 
 @dataclass
@@ -10,11 +9,11 @@ class SearchCriteria:
 
     pattern: str = ""
     project_only: bool = True
-    class_name: Optional[str] = None
-    file_name: Optional[str] = None
-    namespace: Optional[str] = None
-    max_results: Optional[int] = None
-    signature_pattern: Optional[str] = None
+    class_name: str | None = None
+    file_name: str | None = None
+    namespace: str | None = None
+    max_results: int | None = None
+    signature_pattern: str | None = None
     include_attributes: bool = False
     include_base_classes: bool = True
-    symbol_types: Optional[List[str]] = None
+    symbol_types: list[str] | None = None

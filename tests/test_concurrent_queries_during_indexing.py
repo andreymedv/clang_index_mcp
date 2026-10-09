@@ -8,14 +8,17 @@ while indexing is in progress without timing out or blocking.
 import asyncio
 import json
 import threading
-from pathlib import Path
 
 import pytest
 
 from clang_index_mcp._mcp import cpp_mcp_server
 from clang_index_mcp._mcp.context import ctx
+from clang_index_mcp._mcp.state_manager import (
+    AnalyzerState,
+    AnalyzerStateManager,
+    BackgroundIndexer,
+)
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager, BackgroundIndexer
 
 
 @pytest.fixture

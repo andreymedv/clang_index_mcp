@@ -14,7 +14,7 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
@@ -63,7 +63,7 @@ def temp_project(name: str = "test_project", create_subdirs: bool = True):
 
 
 @contextmanager
-def temp_file(content: str, suffix: str = ".cpp", dir: Optional[Path] = None):
+def temp_file(content: str, suffix: str = ".cpp", dir: Path | None = None):
     """
     Create a temporary file with given content.
 
@@ -93,7 +93,7 @@ def temp_file(content: str, suffix: str = ".cpp", dir: Optional[Path] = None):
             file_path.unlink()
 
 
-def temp_compile_commands(project_root: Path, files: List[Dict[str, Any]]) -> Path:
+def temp_compile_commands(project_root: Path, files: list[dict[str, Any]]) -> Path:
     """
     Create a compile_commands.json file in the project root.
 
@@ -197,7 +197,7 @@ def env_var(name: str, value: str):
             os.environ[name] = old_value
 
 
-def temp_config_file(project_root: Path, config: Dict[str, Any]) -> Path:
+def temp_config_file(project_root: Path, config: dict[str, Any]) -> Path:
     """
     Create a .cpp-analyzer-config.json file in the project root.
 
@@ -222,10 +222,10 @@ def temp_config_file(project_root: Path, config: Dict[str, Any]) -> Path:
 
 
 def setup_test_analyzer(
-    project_root: Optional[Path] = None,
-    source_files: Optional[Dict[str, str]] = None,
-    compile_commands: Optional[List[Dict[str, Any]]] = None,
-    config: Optional[Dict[str, Any]] = None,
+    project_root: Path | None = None,
+    source_files: dict[str, str] | None = None,
+    compile_commands: list[dict[str, Any]] | None = None,
+    config: dict[str, Any] | None = None,
     index_immediately: bool = True,
 ) -> CppAnalyzer:
     """
@@ -290,9 +290,9 @@ def setup_test_analyzer(
 
 def create_simple_cpp_file(
     filename: str,
-    classes: Optional[List[str]] = None,
-    functions: Optional[List[str]] = None,
-    includes: Optional[List[str]] = None,
+    classes: list[str] | None = None,
+    functions: list[str] | None = None,
+    includes: list[str] | None = None,
 ) -> str:
     """
     Generate a simple C++ file with specified elements.

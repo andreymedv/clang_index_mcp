@@ -7,7 +7,7 @@ arguments to ensure compatibility with libclang's programmatic interface.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Handle both package and script imports
 try:
@@ -19,7 +19,7 @@ except ImportError:
 class ArgumentSanitizer:
     """Rule-based compiler argument sanitizer for libclang compatibility."""
 
-    def __init__(self, rules_file: Optional[Path] = None, custom_rules_file: Optional[Path] = None):
+    def __init__(self, rules_file: Path | None = None, custom_rules_file: Path | None = None):
         """
         Initialize the argument sanitizer.
 
@@ -27,7 +27,7 @@ class ArgumentSanitizer:
             rules_file: Path to default rules JSON file (uses built-in if None)
             custom_rules_file: Path to optional custom rules file to extend defaults
         """
-        self.rules: List[Dict[str, Any]] = []
+        self.rules: list[dict[str, Any]] = []
         self.rules_version = "unknown"
 
         # Load default rules
@@ -71,7 +71,7 @@ class ArgumentSanitizer:
         except Exception as e:
             diagnostics.error(f"Failed to load sanitization rules from {rules_file}: {e}")
 
-    def sanitize(self, args: List[str]) -> List[str]:
+    def sanitize(self, args: list[str]) -> list[str]:
         """
         Sanitize compiler arguments by applying all loaded rules.
 
@@ -98,7 +98,7 @@ class ArgumentSanitizer:
 
         return sanitized
 
-    def _apply_rules(self, args: List[str], index: int) -> int:
+    def _apply_rules(self, args: list[str], index: int) -> int:
         """
         Apply sanitization rules to argument at given index.
 
@@ -139,14 +139,14 @@ class ArgumentSanitizer:
 
         return 0  # No rule matched
 
-    def _apply_exact_match(self, arg: str, rule: Dict[str, Any]) -> int:
+    def _apply_exact_match(self, arg: str, rule: dict[str, Any]) -> int:
         """Apply exact_match rule."""
         patterns = rule.get("patterns", [])
         if arg in patterns:
             return 1  # Remove this argument
         return 0
 
-    def _apply_prefix_match(self, arg: str, rule: Dict[str, Any]) -> int:
+    def _apply_prefix_match(self, arg: str, rule: dict[str, Any]) -> int:
         """Apply prefix_match rule."""
         patterns = rule.get("patterns", [])
         for pattern in patterns:
@@ -155,7 +155,7 @@ class ArgumentSanitizer:
         return 0
 
     def _apply_flag_with_optional_value(
-        self, args: List[str], index: int, rule: Dict[str, Any]
+        self, args: list[str], index: int, rule: dict[str, Any]
     ) -> int:
         """Apply flag_with_optional_value rule."""
         pattern = rule.get("pattern")
@@ -168,7 +168,7 @@ class ArgumentSanitizer:
         else:
             return 1  # Remove just the flag
 
-    def _apply_xclang_sequence(self, args: List[str], index: int, rule: Dict[str, Any]) -> int:
+    def _apply_xclang_sequence(self, args: list[str], index: int, rule: dict[str, Any]) -> int:
         """Apply xclang_sequence rule."""
         if args[index] != "-Xclang":
             return 0
@@ -193,7 +193,7 @@ class ArgumentSanitizer:
         return len(sequence)
 
     def _apply_xclang_conditional_sequence(
-        self, args: List[str], index: int, rule: Dict[str, Any]
+        self, args: list[str], index: int, rule: dict[str, Any]
     ) -> int:
         """Apply xclang_conditional_sequence rule."""
         if args[index] != "-Xclang":
@@ -231,7 +231,7 @@ class ArgumentSanitizer:
         return 0
 
     def _apply_xclang_option_with_value(
-        self, args: List[str], index: int, rule: Dict[str, Any]
+        self, args: list[str], index: int, rule: dict[str, Any]
     ) -> int:
         """Apply xclang_option_with_value rule."""
         if args[index] != "-Xclang":
@@ -253,7 +253,7 @@ class ArgumentSanitizer:
 
         return 0
 
-    def get_rules_info(self) -> Dict[str, Any]:
+    def get_rules_info(self) -> dict[str, Any]:
         """Get information about loaded rules."""
         return {
             "version": self.rules_version,

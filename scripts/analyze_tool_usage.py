@@ -18,7 +18,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -57,7 +57,7 @@ def _classify_pattern(pattern: str) -> str:
     return "plain_name"
 
 
-def _extract_pattern_features(pattern: str) -> Dict[str, bool]:
+def _extract_pattern_features(pattern: str) -> dict[str, bool]:
     """Extract boolean features from a pattern."""
     type_keywords = {
         "void",
@@ -105,7 +105,7 @@ def _extract_text_content(block_content: list) -> str:
     return "\n".join(parts).strip()
 
 
-def _extract_tool_call_info(content: list) -> Optional[Dict[str, Any]]:
+def _extract_tool_call_info(content: list) -> dict[str, Any] | None:
     """Extract tool name and parameters from a toolCallRequest content block."""
     for c in content:
         if c.get("type") == "toolCallRequest":
@@ -155,7 +155,7 @@ def _count_results(result_text: str) -> int:
 
 def _extract_distributions(
     result_text: str,
-) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
+) -> tuple[dict[str, int] | None, dict[str, int] | None]:
     """Extract class and namespace distribution from result JSON."""
     try:
         parsed = json.loads(result_text)
@@ -179,14 +179,14 @@ def _extract_distributions(
         return None, None
 
 
-def extract_tool_calls(data: dict) -> List[Dict[str, Any]]:
+def extract_tool_calls(data: dict) -> list[dict[str, Any]]:
     """Extract all MCP tool call pairs from an LM Studio conversation.
 
     Walks through messages → versions → steps, pairing toolCallRequest
     steps with their following toolCallResult steps.
     """
     entries = []
-    recent_calls: List[Dict[str, Any]] = []  # For retry detection
+    recent_calls: list[dict[str, Any]] = []  # For retry detection
 
     for msg in data.get("messages", []):
         versions = msg.get("versions", [])
@@ -198,8 +198,8 @@ def extract_tool_calls(data: dict) -> List[Dict[str, Any]]:
             continue
 
         steps = version.get("steps", [])
-        pending_call: Optional[Dict[str, Any]] = None
-        preceding_analysis: Optional[str] = None
+        pending_call: dict[str, Any] | None = None
+        preceding_analysis: str | None = None
 
         for step in steps:
             stype = step.get("type")
@@ -232,7 +232,7 @@ def extract_tool_calls(data: dict) -> List[Dict[str, Any]]:
                 arguments = pending_call["parameters"]
 
                 now = time.time()
-                entry: Dict[str, Any] = {
+                entry: dict[str, Any] = {
                     "tool_name": tool_name,
                     "arguments": arguments,
                     "result_count": result_count,
@@ -353,20 +353,18 @@ def main():
     # Output JSONL
     if args.append_to:
         with open(args.append_to, "a") as f:
-            for entry in entries:
-                f.write(json.dumps(entry) + "\n")
+            f.writelines(json.dumps(entry) + "\n" for entry in entries)
         print(f"Appended {len(entries)} entries to {args.append_to}", file=sys.stderr)
     elif args.output:
         with open(args.output, "w") as f:
-            for entry in entries:
-                f.write(json.dumps(entry) + "\n")
+            f.writelines(json.dumps(entry) + "\n" for entry in entries)
         print(f"Wrote {len(entries)} entries to {args.output}", file=sys.stderr)
     else:
         for entry in entries:
             print(json.dumps(entry))
 
 
-def _print_summary(entries: List[Dict[str, Any]]) -> None:
+def _print_summary(entries: list[dict[str, Any]]) -> None:
     """Print summary statistics."""
     total = len(entries)
     empty = sum(1 for e in entries if e.get("result_category") == "empty")

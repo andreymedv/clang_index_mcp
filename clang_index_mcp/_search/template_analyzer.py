@@ -6,16 +6,19 @@ and indirect inheritance through template parameters (e.g. ``class Foo<T> : publ
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from .._symbols.model import SymbolInfo, build_location_objects, omit_empty
-from .._search.pattern_matcher import matches_qualified_pattern, normalize_template_whitespace
+from .._search.pattern_matcher import (
+    matches_qualified_pattern,
+    normalize_template_whitespace,
+)
 from .._search.symbol_name_utils import (
     extract_simple_name,
     is_dependent_type_name,
     is_specialization_key,
     split_specialization_key,
 )
+from .._symbols.model import SymbolInfo, build_location_objects, omit_empty
 
 
 def check_template_param_inheritance(
@@ -91,7 +94,7 @@ def check_template_param_inheritance(
 
 def get_template_param_inheritance_indices(
     template_name: str, symbol_store, index_lock
-) -> List[int]:
+) -> list[int]:
     """
     Get the template parameter indices that a template inherits from.
 
@@ -139,9 +142,9 @@ def template_info_matches_name(info: SymbolInfo, template_name: str) -> bool:
     return matches_qualified_pattern(info_qualified, template_name)
 
 
-def build_param_name_to_index(template_parameters: Optional[str]) -> Dict[str, int]:
+def build_param_name_to_index(template_parameters: str | None) -> dict[str, int]:
     """Build a mapping from template parameter names to their indices."""
-    param_name_to_index: Dict[str, int] = {}
+    param_name_to_index: dict[str, int] = {}
     if not template_parameters:
         return param_name_to_index
 
@@ -157,7 +160,7 @@ def build_param_name_to_index(template_parameters: Optional[str]) -> Dict[str, i
     return param_name_to_index
 
 
-def resolve_param_index(base: str, param_name_to_index: Dict[str, int]) -> Optional[int]:
+def resolve_param_index(base: str, param_name_to_index: dict[str, int]) -> int | None:
     """Resolve a base class name to a template parameter index if applicable."""
     if base in param_name_to_index:
         return param_name_to_index[base]
@@ -169,7 +172,7 @@ def resolve_param_index(base: str, param_name_to_index: Dict[str, int]) -> Optio
     return None
 
 
-def parse_template_args(args_str: str) -> List[str]:
+def parse_template_args(args_str: str) -> list[str]:
     """
     Parse template arguments from a string like "A, B<C, D>, E".
 
@@ -204,9 +207,9 @@ def parse_template_args(args_str: str) -> List[str]:
     return args
 
 
-def get_template_patterns(simple_name: str, symbol_store, index_lock) -> List[str]:
+def get_template_patterns(simple_name: str, symbol_store, index_lock) -> list[str]:
     """Get template patterns for matching derived classes."""
-    template_patterns: List[str] = []
+    template_patterns: list[str] = []
     with index_lock:
         # Check if class_name exists in class_index (use simple_name for lookup)
         if symbol_store.has_class_name(simple_name):
@@ -226,7 +229,7 @@ def get_template_patterns(simple_name: str, symbol_store, index_lock) -> List[st
     return template_patterns
 
 
-def check_pattern_match(base_class: str, template_patterns: List[str]) -> bool:
+def check_pattern_match(base_class: str, template_patterns: list[str]) -> bool:
     """Check if base_class matches any of the template patterns."""
     for pattern in template_patterns:
         # Exact match or template specialization prefix match
@@ -244,13 +247,13 @@ def check_pattern_match(base_class: str, template_patterns: List[str]) -> bool:
 
 def is_derived_from(
     info: SymbolInfo,
-    template_patterns: List[str],
+    template_patterns: list[str],
     simple_name: str,
     symbol_store,
     index_lock,
 ) -> bool:
     """Check if a symbol inherits from the target class or any specialization."""
-    tparam_names: Set[str] = set()
+    tparam_names: set[str] = set()
     if info.template_parameters:
         try:
             tparams = json.loads(info.template_parameters)
@@ -282,7 +285,7 @@ def get_derived_classes(
     project_only: bool,
     symbol_store,
     index_lock,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get all classes that derive from the given class.
 
@@ -362,7 +365,7 @@ def _inherits_exact_key(info: SymbolInfo, exact_key: str, symbol_store, index_lo
 # =============================================================================
 
 
-def parse_specialization_key(key: str) -> Optional[Tuple[str, List[str]]]:
+def parse_specialization_key(key: str) -> tuple[str, list[str]] | None:
     """Parse "ns::T<ns::A1, int>" into ("ns::T", ["ns::A1", "int"]).
 
     Returns None when the key is not a specialization key (handles nested
@@ -375,7 +378,7 @@ def parse_specialization_key(key: str) -> Optional[Tuple[str, List[str]]]:
     return name_part, parse_template_args(args_str)
 
 
-def format_specialization_key(template_name: str, args: List[str]) -> str:
+def format_specialization_key(template_name: str, args: list[str]) -> str:
     """Build a canonical specialization key like "ns::T<ns::A1>"."""
     inner = ", ".join(a.strip() for a in args)
     return normalize_template_whitespace(f"{template_name}<{inner}>")
@@ -417,10 +420,10 @@ def _resolve_plain_key(lookup: str, symbol_store, index_lock) -> str:
 
 
 def build_param_name_to_arg(
-    template_parameters: Optional[str], template_args: List[str]
-) -> Dict[str, str]:
+    template_parameters: str | None, template_args: list[str]
+) -> dict[str, str]:
     """Build a mapping from template parameter names to substitution arguments."""
-    mapping: Dict[str, str] = {}
+    mapping: dict[str, str] = {}
     for name, index in build_param_name_to_index(template_parameters).items():
         if index < len(template_args):
             mapping[name] = template_args[index]
@@ -428,10 +431,10 @@ def build_param_name_to_arg(
 
 
 def substitute_template_params(
-    base_classes: List[str],
-    template_parameters: Optional[str],
-    template_args: List[str],
-) -> List[str]:
+    base_classes: list[str],
+    template_parameters: str | None,
+    template_args: list[str],
+) -> list[str]:
     """Substitute template parameters inside base class names.
 
     Handles whole-base parameters (``P`` -> ``A1``), legacy indexed parameters
@@ -442,7 +445,7 @@ def substitute_template_params(
     return [_substitute_base(b, param_to_arg, template_args) for b in base_classes]
 
 
-def _substitute_base(base: str, param_to_arg: Dict[str, str], template_args: List[str]) -> str:
+def _substitute_base(base: str, param_to_arg: dict[str, str], template_args: list[str]) -> str:
     if base in param_to_arg:
         return param_to_arg[base]
     legacy = re.match(r"type-parameter-(\d+)-(\d+)$", base)
@@ -452,7 +455,7 @@ def _substitute_base(base: str, param_to_arg: Dict[str, str], template_args: Lis
     return re.sub(r"\b([A-Za-z_]\w*)\b", lambda m: param_to_arg.get(m.group(1), m.group(1)), base)
 
 
-def _base_uses_template_params(base_classes: List[str], template_parameters: Optional[str]) -> bool:
+def _base_uses_template_params(base_classes: list[str], template_parameters: str | None) -> bool:
     """Return True when any base class is (or embeds) a template parameter."""
     name_to_index = build_param_name_to_index(template_parameters)
     for base in base_classes:
@@ -490,7 +493,7 @@ _USR_BUILTIN_TYPE_CODES = {
 }
 
 
-def decode_usr_template_args(usr: Optional[str]) -> Optional[List[str]]:
+def decode_usr_template_args(usr: str | None) -> list[str] | None:
     """Recover template argument strings from a specialization USR.
 
     Returns None when the USR shape is unrecognized (non-type arguments with
@@ -509,22 +512,22 @@ def decode_usr_template_args(usr: Optional[str]) -> Optional[List[str]]:
     return args
 
 
-def _decode_usr_arg_list(text: str) -> Tuple[List[str], str]:
-    args: List[str] = []
+def _decode_usr_arg_list(text: str) -> tuple[list[str], str]:
+    args: list[str] = []
     while text.startswith("#"):
         arg, text = _decode_usr_arg(text[1:])
         args.append(arg)
     return args, text
 
 
-def _decode_usr_arg(text: str) -> Tuple[str, str]:
+def _decode_usr_arg(text: str) -> tuple[str, str]:
     if text.startswith("V"):
         _, text = _decode_usr_type(text[1:])
         return _decode_usr_literal(text)
     return _decode_usr_type(text)
 
 
-def _decode_usr_literal(text: str) -> Tuple[str, str]:
+def _decode_usr_literal(text: str) -> tuple[str, str]:
     end = 1 if text.startswith("-") else 0
     while end < len(text) and text[end].isdigit():
         end += 1
@@ -533,7 +536,7 @@ def _decode_usr_literal(text: str) -> Tuple[str, str]:
     return text[:end], text[end:]
 
 
-def _decode_usr_type(text: str) -> Tuple[str, str]:
+def _decode_usr_type(text: str) -> tuple[str, str]:
     if text.startswith("$"):
         return _decode_usr_type_name(text[1:])
     if text.startswith(("*", "&", "1")):
@@ -546,8 +549,8 @@ def _decode_usr_type(text: str) -> Tuple[str, str]:
     raise ValueError(f"unrecognized USR type encoding: {text!r}")
 
 
-def _decode_usr_type_name(text: str) -> Tuple[str, str]:
-    parts: List[str] = []
+def _decode_usr_type_name(text: str) -> tuple[str, str]:
+    parts: list[str] = []
     while text.startswith("@"):
         if len(text) < 3 or text[2] != "@":
             raise ValueError(f"malformed USR name element: {text!r}")
@@ -569,7 +572,7 @@ def _decode_usr_type_name(text: str) -> Tuple[str, str]:
     return name, text
 
 
-def find_full_specializations(primary: SymbolInfo, symbol_store, index_lock) -> List[SymbolInfo]:
+def find_full_specializations(primary: SymbolInfo, symbol_store, index_lock) -> list[SymbolInfo]:
     """Return full specialization symbols of the given primary class template."""
     simple = extract_simple_name(primary.qualified_name or primary.name)
     with index_lock:
@@ -585,8 +588,8 @@ def find_full_specializations(primary: SymbolInfo, symbol_store, index_lock) -> 
 
 
 def recover_specialization_args(
-    spec: SymbolInfo, primary: Optional[SymbolInfo], symbol_store, index_lock
-) -> Optional[List[str]]:
+    spec: SymbolInfo, primary: SymbolInfo | None, symbol_store, index_lock
+) -> list[str] | None:
     """Recover the template arguments of an indexed specialization symbol.
 
     Specialization symbols are stored with template arguments stripped from
@@ -602,12 +605,12 @@ def recover_specialization_args(
     return _args_from_base_substitution(spec, primary)
 
 
-def _args_from_base_substitution(spec: SymbolInfo, primary: SymbolInfo) -> Optional[List[str]]:
+def _args_from_base_substitution(spec: SymbolInfo, primary: SymbolInfo) -> list[str] | None:
     name_to_index = build_param_name_to_index(primary.template_parameters)
     arg_count = len(name_to_index)
     if not arg_count or not spec.base_classes:
         return None
-    args: List[Optional[str]] = [None] * arg_count
+    args: list[str | None] = [None] * arg_count
     for position, base in enumerate(primary.base_classes):
         index = resolve_param_index(base, name_to_index)
         if index is not None and position < len(spec.base_classes):
@@ -619,10 +622,10 @@ def _args_from_base_substitution(spec: SymbolInfo, primary: SymbolInfo) -> Optio
 
 def find_matching_specialization(
     primary: SymbolInfo,
-    template_args: List[str],
+    template_args: list[str],
     symbol_store,
     index_lock,
-) -> Optional[SymbolInfo]:
+) -> SymbolInfo | None:
     """Find the indexed full specialization of ``primary`` for ``template_args``.
 
     Matching compares recovered arguments first (USR decoding), then falls
@@ -642,11 +645,11 @@ def find_matching_specialization(
 
 def _match_specialization_by_bases(
     primary: SymbolInfo,
-    template_args: List[str],
-    specs: List[SymbolInfo],
+    template_args: list[str],
+    specs: list[SymbolInfo],
     symbol_store,
     index_lock,
-) -> Optional[SymbolInfo]:
+) -> SymbolInfo | None:
     if not _base_uses_template_params(primary.base_classes, primary.template_parameters):
         return None
     expected = [

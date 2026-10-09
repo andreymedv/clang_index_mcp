@@ -5,13 +5,13 @@ processes do not each need to load CompileCommandsManager.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .._contexts.incremental_context import IncrementalContext
 
 
-def get_file_compile_args(ctx: "IncrementalContext", file_list: List[str]) -> Dict[str, List[str]]:
+def get_file_compile_args(ctx: "IncrementalContext", file_list: list[str]) -> dict[str, list[str]]:
     """Precompute compile arguments for a list of files."""
     compilation_env = ctx.compilation_env
     file_compile_args = {}

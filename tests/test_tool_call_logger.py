@@ -6,8 +6,6 @@ empty/large result enrichment, retry detection, file rotation, and privacy.
 
 import json
 import os
-import uuid
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -286,8 +284,7 @@ class TestFileRotation:
             # Write >10MB of data
             line = json.dumps({"tool_name": "x", "data": "y" * 1000}) + "\n"
             lines_needed = (10 * 1024 * 1024) // len(line) + 1
-            for _ in range(lines_needed):
-                f.write(line)
+            f.writelines(line for _ in range(lines_needed))
 
         assert enabled_logger.log_path.stat().st_size > 10 * 1024 * 1024
 

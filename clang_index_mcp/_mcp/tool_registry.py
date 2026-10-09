@@ -1,4 +1,5 @@
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 
 class ToolRegistry:
@@ -6,7 +7,7 @@ class ToolRegistry:
     A simple registry for MCP tools to break circular dependencies.
     """
 
-    _tools: Dict[str, Callable] = {}
+    _tools: ClassVar[dict[str, Callable]] = {}
 
     @classmethod
     def register(cls, name: str, handler: Callable) -> None:
@@ -14,7 +15,7 @@ class ToolRegistry:
         cls._tools[name] = handler
 
     @classmethod
-    def get_handler(cls, name: str) -> Optional[Callable]:
+    def get_handler(cls, name: str) -> Callable | None:
         """Retrieves a tool handler by name."""
         return cls._tools.get(name)
 

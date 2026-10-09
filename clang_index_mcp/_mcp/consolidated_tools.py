@@ -18,9 +18,10 @@ Tool mapping (public      -> internal):
 
 import json
 import os
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from mcp.types import TextContent, Tool
+
 from .._mcp.tool_registry import ToolRegistry
 
 # ---------------------------------------------------------------
@@ -108,7 +109,7 @@ TOOL_NAMES = [
 # ---------------------------------------------------------------
 
 
-def _filter_detail_level(result: List[TextContent], detail_level: str) -> List[TextContent]:
+def _filter_detail_level(result: list[TextContent], detail_level: str) -> list[TextContent]:
     """Filter output fields based on output_detail_level enum."""
     if detail_level == "full_details_with_docs":
         return result
@@ -154,7 +155,7 @@ def _strip_from_data(data: Any, fields: set[str]) -> None:
             _strip_fields_from_item(item, fields)
 
 
-def _add_system_state(result: List[TextContent]) -> List[TextContent]:
+def _add_system_state(result: list[TextContent]) -> list[TextContent]:
     """Add simplified system_state enum to check_system_status response."""
     if not result:
         return result
@@ -173,7 +174,7 @@ def _add_system_state(result: List[TextContent]) -> List[TextContent]:
 # ---------------------------------------------------------------
 
 
-def list_tools_b() -> List[Tool]:
+def list_tools_b() -> list[Tool]:
     """Return consolidated tool definitions (10 tools)."""
     return [
         Tool(
@@ -616,13 +617,13 @@ def list_tools_b() -> List[Tool]:
 # ---------------------------------------------------------------
 
 
-async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+async def handle_tool_call_b(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Dispatch consolidated tool calls, delegating to internal handlers."""
 
     # Passthrough tools — delegate directly with same name and args
     if name in _PASSTHROUGH_MAP:
         return cast(
-            List[TextContent],
+            list[TextContent],
             await ToolRegistry.call_tool("_handle_tool_call", _PASSTHROUGH_MAP[name], arguments),
         )
 
@@ -644,11 +645,11 @@ async def handle_tool_call_b(name: str, arguments: Dict[str, Any]) -> List[TextC
     return [TextContent(type="text", text=f"Error: Unknown tool '{name}'")]
 
 
-async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_set_project(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle set_project: set directory via config file + synchronous wait for indexing."""
 
     config_file = arguments["config_file"]
-    internal_args: Dict[str, Any] = {
+    internal_args: dict[str, Any] = {
         "config_file": config_file,
     }
 
@@ -690,7 +691,7 @@ async def _handle_set_project(arguments: Dict[str, Any]) -> List[TextContent]:
     return [TextContent(type="text", text=json.dumps(response, indent=2))]
 
 
-async def _handle_sync_project(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_sync_project(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle sync_project: status check or refresh trigger."""
 
     refresh_mode = arguments.get("refresh_mode")
@@ -712,7 +713,7 @@ async def _handle_sync_project(arguments: Dict[str, Any]) -> List[TextContent]:
     return _add_system_state(result)
 
 
-def _resolve_sync_timeout(param_value: Optional[float]) -> float:
+def _resolve_sync_timeout(param_value: float | None) -> float:
     """Resolve sync timeout: param > env var > default."""
     if param_value is not None:
         return float(param_value)
@@ -726,8 +727,8 @@ def _resolve_sync_timeout(param_value: Optional[float]) -> float:
 
 
 async def _handle_search_codebase(
-    arguments: Dict[str, Any],
-) -> List[TextContent]:
+    arguments: dict[str, Any],
+) -> list[TextContent]:
     """Route search_codebase to search_classes/search_functions/search_symbols."""
 
     target_type = arguments.get("target_type", "all_symbol_types")
@@ -749,8 +750,8 @@ async def _handle_search_codebase(
 
 
 async def _handle_find_outgoing_calls(
-    arguments: Dict[str, Any],
-) -> List[TextContent]:
+    arguments: dict[str, Any],
+) -> list[TextContent]:
     """Route to get_outgoing_calls or get_call_sites based on return_format."""
 
     return_format = arguments.get("return_format", "function_definitions_summary")
@@ -762,14 +763,14 @@ async def _handle_find_outgoing_calls(
             "class_name": arguments.get("class_name", ""),
         }
         return cast(
-            List[TextContent],
+            list[TextContent],
             await ToolRegistry.call_tool("_handle_tool_call", "get_call_sites", call_sites_args),
         )
 
     # Route to get_outgoing_calls (strip Schema B-only params)
     schema_a_args = {k: v for k, v in arguments.items() if k not in _CALLGRAPH_CONSOLIDATED_PARAMS}
     result = cast(
-        List[TextContent],
+        list[TextContent],
         await ToolRegistry.call_tool("_handle_tool_call", "get_outgoing_calls", schema_a_args),
     )
 
@@ -781,11 +782,11 @@ async def _handle_find_outgoing_calls(
 
 
 async def _handle_trace_execution_path(
-    arguments: Dict[str, Any],
-) -> List[TextContent]:
+    arguments: dict[str, Any],
+) -> list[TextContent]:
     """Translate trace_execution_path -> get_call_path (rename + param names)."""
 
-    schema_a_args: Dict[str, Any] = {
+    schema_a_args: dict[str, Any] = {
         "from_function": arguments["source_function"],
         "to_function": arguments["target_function"],
     }
@@ -794,7 +795,7 @@ async def _handle_trace_execution_path(
         schema_a_args["max_depth"] = max_depth
 
     return cast(
-        List[TextContent],
+        list[TextContent],
         await ToolRegistry.call_tool("_handle_tool_call", "get_call_path", schema_a_args),
     )
 

@@ -2,7 +2,6 @@
 
 import sqlite3
 import time
-from typing import Dict, List, Set, Union
 
 from ..._core import diagnostics
 from .base import BaseRepository
@@ -11,7 +10,7 @@ from .base import BaseRepository
 class SqliteDependencyRepository(BaseRepository):
     """Stores and queries include dependencies using SQLite."""
 
-    def update_dependencies(self, source_file: str, included_files: List[str]) -> int:
+    def update_dependencies(self, source_file: str, included_files: list[str]) -> int:
         """Replace stored dependencies for ``source_file``."""
         cursor = self.conn.cursor()
 
@@ -45,7 +44,7 @@ class SqliteDependencyRepository(BaseRepository):
             self.conn.rollback()
             return 0
 
-    def find_dependents(self, header_path: str) -> Set[str]:
+    def find_dependents(self, header_path: str) -> set[str]:
         """Return source files that directly include ``header_path``."""
         cursor = self.conn.cursor()
 
@@ -66,7 +65,7 @@ class SqliteDependencyRepository(BaseRepository):
             diagnostics.error(f"Failed to find dependents of {header_path}: {e}")
             return set()
 
-    def find_transitive_dependents(self, header_path: str) -> Set[str]:
+    def find_transitive_dependents(self, header_path: str) -> set[str]:
         """Return all files that transitively include ``header_path``."""
         cursor = self.conn.cursor()
 
@@ -120,7 +119,7 @@ class SqliteDependencyRepository(BaseRepository):
             self.conn.rollback()
             return 0
 
-    def get_dependency_stats(self) -> Dict[str, Union[int, float]]:
+    def get_dependency_stats(self) -> dict[str, int | float]:
         """Return aggregate dependency statistics."""
         cursor = self.conn.cursor()
 

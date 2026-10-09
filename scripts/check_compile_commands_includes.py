@@ -10,10 +10,9 @@ import json
 import os
 import re
 import sys
-from typing import List, Set, Tuple
 
 
-def extract_include_paths(command: str) -> List[str]:
+def extract_include_paths(command: str) -> list[str]:
     """
     Extract include paths from a compiler command.
     Handles both -I<path> and -isystem <path> formats.
@@ -63,7 +62,7 @@ def resolve_path(path: str, base_directory: str) -> str:
 
 def check_compile_commands(
     compile_commands_path: str, verbose: bool = False
-) -> Tuple[Set[str], Set[str]]:
+) -> tuple[set[str], set[str]]:
     """
     Check all include paths in compile_commands.json.
 

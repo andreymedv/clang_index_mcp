@@ -3,21 +3,21 @@
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from mcp.types import TextContent
 
-from ..context import ctx
-from ..config_validation import _validate_config_file, resolve_project_root_from_config
-from ..query_policy import PROJECT_DIRECTORY_NOT_SET_MESSAGE
-from ..state_manager import AnalyzerState, IndexingProgress, BackgroundIndexer
-from ..tool_call_logger import ToolCallLogger
 from ..._core import diagnostics
-from ...cpp_analyzer import CppAnalyzer
 from ..._symbols.indexing_callbacks import IndexingCallbacks
+from ...cpp_analyzer import CppAnalyzer
+from ..config_validation import _validate_config_file, resolve_project_root_from_config
+from ..context import ctx
+from ..query_policy import PROJECT_DIRECTORY_NOT_SET_MESSAGE
+from ..state_manager import AnalyzerState, BackgroundIndexer, IndexingProgress
+from ..tool_call_logger import ToolCallLogger
 
 
-async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_set_project_directory(arguments: dict[str, Any]) -> list[TextContent]:
     config_file_raw = arguments.get("config_file")
     auto_refresh = arguments.get("auto_refresh", True)
 
@@ -101,7 +101,6 @@ async def _handle_set_project_directory(arguments: Dict[str, Any]) -> List[TextC
         except Exception as e:
             diagnostics.error(f"Background indexing failed: {e}")
             ctx.state_manager.transition_to(AnalyzerState.ERROR)
-            pass
 
     # Create background task (non-blocking)
     asyncio.create_task(run_background_indexing())
@@ -161,10 +160,9 @@ async def _run_background_refresh(refresh_mode: str):
     except Exception as e:
         diagnostics.error(f"Background refresh failed: {e}")
         ctx.state_manager.transition_to(AnalyzerState.ERROR)
-        pass
 
 
-async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_refresh_project(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle refresh_project: trigger incremental or full re-indexing."""
     # 1. If analyzer is None, try to resume session from last used config
     if not await _ensure_analyzer_resumed():
@@ -202,7 +200,7 @@ async def _handle_refresh_project(arguments: Dict[str, Any]) -> List[TextContent
     ]
 
 
-async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_check_system_status(arguments: dict[str, Any]) -> list[TextContent]:
     # Combined server diagnostics and indexing status
     status_dict = ctx.state_manager.get_status_dict()
     status_dict["analyzer_type"] = "python_enhanced"
@@ -230,7 +228,7 @@ async def _handle_check_system_status(arguments: Dict[str, Any]) -> List[TextCon
     return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
 
-async def _handle_wait_for_indexing(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_wait_for_indexing(arguments: dict[str, Any]) -> list[TextContent]:
     loop = asyncio.get_event_loop()
     # Internal handler - used by sync_project and tests
     timeout = arguments.get("timeout", 60.0)

@@ -11,7 +11,6 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -174,7 +173,7 @@ def run_benchmarks():
             # Benchmark bulk write
             if symbol_count <= 100000:  # Only for SQLite backend
                 write_results = benchmark_bulk_write(backend, symbol_count)
-                print(f"  Bulk Write:")
+                print("  Bulk Write:")
                 print(f"    Time: {write_results['elapsed_ms']:.2f} ms")
                 print(f"    Throughput: {write_results['throughput_per_sec']:.0f} symbols/sec")
                 print(
@@ -184,7 +183,7 @@ def run_benchmarks():
             # Benchmark FTS5 search
             if symbol_count <= 100000:
                 search_results = benchmark_fts5_search(backend, symbol_count, query_count=100)
-                print(f"  FTS5 Search (100 queries):")
+                print("  FTS5 Search (100 queries):")
                 print(f"    Average: {search_results['avg_ms']:.2f} ms")
                 print(f"    Min: {search_results['min_ms']:.2f} ms")
                 print(f"    Max: {search_results['max_ms']:.2f} ms")
@@ -195,11 +194,11 @@ def run_benchmarks():
 
             # Benchmark cache save/load
             save_results = benchmark_cache_save(cache_manager, symbol_count)
-            print(f"  Cache Save:")
+            print("  Cache Save:")
             print(f"    Time: {save_results['elapsed_ms']:.2f} ms")
 
             load_results = benchmark_cache_load(cache_manager)
-            print(f"  Cache Load:")
+            print("  Cache Load:")
             print(f"    Time: {load_results['elapsed_ms']:.2f} ms")
             print(f"    Symbols loaded: {load_results['symbol_count']:,}")
 
@@ -230,11 +229,11 @@ def run_benchmarks():
                 cache_manager = CacheManager(temp_path)
 
                 save_results = benchmark_cache_save(cache_manager, symbol_count)
-                print(f"  Cache Save:")
+                print("  Cache Save:")
                 print(f"    Time: {save_results['elapsed_ms']:.2f} ms")
 
                 load_results = benchmark_cache_load(cache_manager)
-                print(f"  Cache Load:")
+                print("  Cache Load:")
                 print(f"    Time: {load_results['elapsed_ms']:.2f} ms")
                 print(f"    Symbols loaded: {load_results['symbol_count']:,}")
 

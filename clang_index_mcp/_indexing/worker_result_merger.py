@@ -9,7 +9,7 @@ indexes.
 import queue
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from .._core import diagnostics
 
@@ -24,11 +24,11 @@ class _CacheWriteRequest:
     """Per-file cache data handed off to the background writer thread."""
 
     file_path: str
-    symbols: List[Any]
+    symbols: list[Any]
     file_hash: str
-    compile_args_hash: Optional[str]
+    compile_args_hash: str | None
     success: bool
-    error_message: Optional[str]
+    error_message: str | None
     retry_count: int
 
 
@@ -53,11 +53,11 @@ class WorkerResultMerger:
         self.call_graph_service = call_graph_service
         self.cache_orchestrator = cache_orchestrator
 
-        self._cache_queue: Optional[queue.SimpleQueue] = None
-        self._cache_writer_thread: Optional[threading.Thread] = None
+        self._cache_queue: queue.SimpleQueue | None = None
+        self._cache_writer_thread: threading.Thread | None = None
         self._cache_writer_lock = threading.Lock()
 
-    def _get_project_identity(self) -> Optional[Any]:
+    def _get_project_identity(self) -> Any | None:
         """Return the project identity used to open a private cache connection."""
         cache_manager = getattr(self.cache_orchestrator, "cache_manager", None)
         if cache_manager is None:
@@ -137,11 +137,11 @@ class WorkerResultMerger:
     def _enqueue_file_cache(
         self,
         file_path: str,
-        symbols: List[Any],
+        symbols: list[Any],
         file_hash: str,
-        compile_args_hash: Optional[str],
+        compile_args_hash: str | None,
         success: bool,
-        error_message: Optional[str],
+        error_message: str | None,
         retry_count: int,
     ) -> None:
         """Hand the per-file cache write to the background writer thread.
@@ -175,7 +175,7 @@ class WorkerResultMerger:
             )
         )
 
-    def merge_worker_result(self, result: Tuple, file_path: str):
+    def merge_worker_result(self, result: tuple, file_path: str):
         """Merge symbols and call sites from a worker process result.
 
         In-memory indexes are updated synchronously on the main thread. The
@@ -228,7 +228,7 @@ class WorkerResultMerger:
                 retry_count=retry_count,
             )
 
-    def get_worker_result(self, future, file_path: str) -> Tuple[bool, bool]:
+    def get_worker_result(self, future, file_path: str) -> tuple[bool, bool]:
         """Get result from future and merge into indexes."""
         try:
             result = future.result()

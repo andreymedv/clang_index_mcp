@@ -7,7 +7,6 @@ cursors and produces the normalized dictionaries consumed by SymbolExtractor.
 import json
 import time
 from dataclasses import dataclass
-from typing import List, Tuple
 
 from clang.cindex import Cursor, CursorKind
 
@@ -15,13 +14,13 @@ from .._symbols.ports.parser import TypeAliasRecord
 from .cursor_utils import extract_namespace, get_qualified_name, iter_template_params
 
 
-def _extract_location(cursor: Cursor) -> Tuple[str, int, int]:
+def _extract_location(cursor: Cursor) -> tuple[str, int, int]:
     """Extract file path, line, and column from a cursor's location."""
     file_path = str(cursor.location.file.name) if cursor.location.file else ""
     return file_path, cursor.location.line, cursor.location.column
 
 
-def _underlying_typedef_type(cursor: Cursor) -> Tuple[str, str]:
+def _underlying_typedef_type(cursor: Cursor) -> tuple[str, str]:
     """Extract target and canonical type spellings, falling back to the cursor's own type."""
     try:
         underlying_type = cursor.underlying_typedef_type
@@ -50,7 +49,7 @@ class AliasInfoBase:
 class TemplateAliasInfo(AliasInfoBase):
     """Information extracted from a TYPE_ALIAS_TEMPLATE_DECL cursor."""
 
-    template_params: List[dict]
+    template_params: list[dict]
 
 
 @dataclass

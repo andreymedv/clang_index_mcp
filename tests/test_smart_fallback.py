@@ -6,8 +6,6 @@ without requiring real C++ parsing or libclang.
 
 from types import SimpleNamespace
 
-import pytest
-
 from clang_index_mcp._search.smart_fallback import (
     FallbackResult,
     SmartFallback,
@@ -15,8 +13,8 @@ from clang_index_mcp._search.smart_fallback import (
     _has_double_escapes,
     _has_unnecessary_anchors,
     _looks_like_short_regex,
-    looks_like_signature,
     _strip_anchors,
+    looks_like_signature,
 )
 
 

@@ -15,7 +15,6 @@ Design Pattern:
 """
 
 from threading import Lock
-from typing import Dict, Set
 
 
 class HeaderProcessingTracker:
@@ -43,10 +42,10 @@ class HeaderProcessingTracker:
 
         # Track: header_path -> file_hash when it was processed
         # File hash enables change detection
-        self._processed: Dict[str, str] = {}
+        self._processed: dict[str, str] = {}
 
         # Track headers currently being processed (prevents race conditions)
-        self._in_progress: Set[str] = set()
+        self._in_progress: set[str] = set()
 
     def try_claim_header(self, header_path: str, current_file_hash: str) -> bool:
         """
@@ -189,7 +188,7 @@ class HeaderProcessingTracker:
         with self._lock:
             return len(self._processed)
 
-    def get_processed_headers(self) -> Dict[str, str]:
+    def get_processed_headers(self) -> dict[str, str]:
         """
         Get a copy of all processed headers and their hashes.
 
@@ -208,7 +207,7 @@ class HeaderProcessingTracker:
         with self._lock:
             return dict(self._processed)
 
-    def restore_processed_headers(self, processed_headers: Dict[str, str]):
+    def restore_processed_headers(self, processed_headers: dict[str, str]):
         """
         Restore processed headers from cache.
 

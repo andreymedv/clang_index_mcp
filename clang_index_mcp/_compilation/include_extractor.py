@@ -1,7 +1,6 @@
 """libclang-based implementation of the IncludeExtractor port."""
 
 from pathlib import Path
-from typing import List
 
 from clang.cindex import TranslationUnit
 
@@ -11,12 +10,12 @@ from .._core import diagnostics
 class ClangIncludeExtractor:
     """Extract include directives from a libclang TranslationUnit."""
 
-    def extract_includes(self, tu: TranslationUnit, source_file: str) -> List[str]:
+    def extract_includes(self, tu: TranslationUnit, source_file: str) -> list[str]:
         """
         Return absolute paths of all files included by ``source_file`` according
         to the parsed translation unit ``tu``.
         """
-        includes: List[str] = []
+        includes: list[str] = []
 
         try:
             for include in tu.get_includes():

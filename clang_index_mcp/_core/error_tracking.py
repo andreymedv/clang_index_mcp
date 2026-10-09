@@ -3,7 +3,7 @@
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Handle both package and script imports
 try:
@@ -45,12 +45,12 @@ class ErrorTracker:
         self.error_history: deque[ErrorRecord] = deque(maxlen=1000)
 
         # Operation counters
-        self.operation_counts: Dict[str, int] = {}
-        self.error_counts: Dict[str, int] = {}
+        self.operation_counts: dict[str, int] = {}
+        self.error_counts: dict[str, int] = {}
 
         # Fallback state
         self.fallback_triggered = False
-        self.fallback_reason: Optional[str] = None
+        self.fallback_reason: str | None = None
 
     def record_operation(self, operation: str):
         """
@@ -166,7 +166,7 @@ class ErrorTracker:
 
         return len(recent_errors) / recent_operations
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         """
         Get summary of errors.
 
@@ -176,12 +176,12 @@ class ErrorTracker:
         recent_errors, _ = self._get_recent_errors()
 
         # Count by error type
-        error_by_type: Dict[str, int] = {}
+        error_by_type: dict[str, int] = {}
         for error in recent_errors:
             error_by_type[error.error_type] = error_by_type.get(error.error_type, 0) + 1
 
         # Count by operation
-        error_by_operation: Dict[str, int] = {}
+        error_by_operation: dict[str, int] = {}
         for error in recent_errors:
             error_by_operation[error.operation] = error_by_operation.get(error.operation, 0) + 1
 

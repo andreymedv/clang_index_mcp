@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from mcp.types import TextContent
 
@@ -33,7 +33,7 @@ def resolve_project_root_from_config(config_file: str) -> str:
     return project_path
 
 
-def _validate_config_file(config_file: Any) -> Tuple[Optional[str], Optional[List[TextContent]]]:
+def _validate_config_file(config_file: Any) -> tuple[str | None, list[TextContent] | None]:
     if not config_file or not isinstance(config_file, str) or not config_file.strip():
         return None, [
             TextContent(type="text", text="Error: 'config_file' must be a non-empty string")

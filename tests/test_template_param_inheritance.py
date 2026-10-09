@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._symbols.model import SymbolInfo, get_template_param_base_indices
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 @pytest.fixture(scope="module")

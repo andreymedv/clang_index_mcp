@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Query definitions
@@ -320,7 +320,7 @@ class LMStudioClient:
     def _request(
         self,
         path: str,
-        data: Optional[dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
         method: str = "GET",
     ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
@@ -374,7 +374,7 @@ class LMStudioClient:
 # ---------------------------------------------------------------------------
 
 
-def _count_results(tool_output: str) -> Optional[int]:
+def _count_results(tool_output: str) -> int | None:
     """Try to count result items from MCP tool JSON output."""
     try:
         parsed = json.loads(tool_output)
@@ -404,7 +404,7 @@ def extract_record(
     """Extract a benchmark record from the LM Studio v1 API response."""
     tool_calls: list[dict[str, Any]] = []
     final_answer = ""
-    error: Optional[str] = None
+    error: str | None = None
     empty_result_count = 0
 
     output_items = response.get("output", [])
@@ -594,7 +594,7 @@ class BenchmarkRunner:
                 "error": f"json_decode_error: {e}",
             }
 
-    def handle_interrupt(self, signum: int, frame: Any) -> None:  # noqa: ANN401
+    def handle_interrupt(self, signum: int, frame: Any) -> None:
         """Handle Ctrl-C gracefully."""
         if self._interrupted:
             print("\nForced exit.")
@@ -610,8 +610,8 @@ class BenchmarkRunner:
 
 def filter_queries(
     queries: list[dict[str, Any]],
-    query_ids: Optional[list[str]],
-    categories: Optional[list[str]],
+    query_ids: list[str] | None,
+    categories: list[str] | None,
 ) -> list[dict[str, Any]]:
     """Filter queries by ID or category."""
     result = queries
@@ -624,7 +624,7 @@ def filter_queries(
     return result
 
 
-def filter_models(available: list[str], requested: Optional[list[str]]) -> list[str]:
+def filter_models(available: list[str], requested: list[str] | None) -> list[str]:
     """Filter models by substring match."""
     if not requested:
         return available

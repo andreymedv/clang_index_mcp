@@ -5,7 +5,7 @@ spellings into signatures such as ``int foo(const std::string&)``.  Keeping it
 separate makes it testable without instantiating the full SymbolExtractor.
 """
 
-from typing import Any, List
+from typing import Any
 
 from clang.cindex import Cursor
 
@@ -29,7 +29,7 @@ def get_return_type(cursor: Cursor) -> str:
     return ""
 
 
-def format_args(args: List[Any]) -> str:
+def format_args(args: list[Any]) -> str:
     """Format a list of cursor arguments into a parameter string."""
     param_parts = []
     for arg in args:

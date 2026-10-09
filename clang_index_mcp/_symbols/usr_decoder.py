@@ -7,9 +7,8 @@ algorithm easier to test and reuse without pulling in AST traversal state.
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
 
-_USR_TYPE_CODES: Dict[str, str] = {
+_USR_TYPE_CODES: dict[str, str] = {
     "v": "void",
     "b": "bool",
     "c": "char",
@@ -32,7 +31,7 @@ _USR_TYPE_CODES: Dict[str, str] = {
 _TPARAM_LETTERS = "TUVWXYZABCDE"
 
 
-def _decode_template_param(s: str, pos: int) -> Tuple[str, int]:
+def _decode_template_param(s: str, pos: int) -> tuple[str, int]:
     m = re.match(r"t(\d+)\.(\d+)", s[pos:])
     if m:
         depth = int(m.group(1))
@@ -43,19 +42,19 @@ def _decode_template_param(s: str, pos: int) -> Tuple[str, int]:
     return ("unsigned short", pos + 1)
 
 
-def _decode_pointer_or_reference(s: str, pos: int, ch: str) -> Tuple[str, int]:
+def _decode_pointer_or_reference(s: str, pos: int, ch: str) -> tuple[str, int]:
     suffix = " &&" if ch == "O" else f" {ch}"
     inner, npos = _decode_usr_type(s, pos)
     return (f"{inner}{suffix}", npos)
 
 
-def _decode_cv_qualified(s: str, pos: int, ch: str) -> Tuple[str, int]:
+def _decode_cv_qualified(s: str, pos: int, ch: str) -> tuple[str, int]:
     prefix = "volatile " if ch in ("V", "2") else "const "
     inner, npos = _decode_usr_type(s, pos)
     return (f"{prefix}{inner}", npos)
 
 
-def _try_decode_substitution(s: str, pos: int) -> Optional[Tuple[str, int]]:
+def _try_decode_substitution(s: str, pos: int) -> tuple[str, int] | None:
     if s[pos] != "S" or pos + 1 >= len(s):
         return None
     if not (s[pos + 1].isdigit() or s[pos + 1] == "_"):
@@ -66,7 +65,7 @@ def _try_decode_substitution(s: str, pos: int) -> Optional[Tuple[str, int]]:
     return ("type", end)
 
 
-def _decode_usr_type(s: str, pos: int) -> Tuple[str, int]:
+def _decode_usr_type(s: str, pos: int) -> tuple[str, int]:
     if pos >= len(s):
         return ("?", pos)
 
@@ -94,8 +93,8 @@ def _decode_usr_type(s: str, pos: int) -> Tuple[str, int]:
     return ("?", pos + 1)
 
 
-def _decode_class_ref(s: str, pos: int) -> Tuple[str, int]:
-    parts: List[str] = []
+def _decode_class_ref(s: str, pos: int) -> tuple[str, int]:
+    parts: list[str] = []
     i = pos
     while i < len(s):
         if s[i] != "@":
@@ -124,8 +123,8 @@ def _decode_class_ref(s: str, pos: int) -> Tuple[str, int]:
     return (name if name else "?", i)
 
 
-def _decode_template_args(s: str, pos: int) -> Tuple[str, int]:
-    args: List[str] = []
+def _decode_template_args(s: str, pos: int) -> tuple[str, int]:
+    args: list[str] = []
     i = pos
     while i < len(s):
         ch = s[i]
@@ -141,7 +140,7 @@ def _decode_template_args(s: str, pos: int) -> Tuple[str, int]:
     return (f"<{', '.join(args)}>", i)
 
 
-def _parse_template_definition(s: str, i: int, parts: List[str]) -> int:
+def _parse_template_definition(s: str, i: int, parts: list[str]) -> int:
     mt = re.match(r"@(ST|SP)>", s[i:])
     if not mt:
         return -1
@@ -178,7 +177,7 @@ def _skip_template_parameters(s: str, k: int, param_count: int) -> int:
     return k
 
 
-def _parse_function_template(s: str, i: int, parts: List[str]) -> int:
+def _parse_function_template(s: str, i: int, parts: list[str]) -> int:
     if not s[i:].startswith("@FT@"):
         return -1
 
@@ -206,7 +205,7 @@ def _parse_function_template(s: str, i: int, parts: List[str]) -> int:
         return j
 
 
-def _parse_regular_segment(s: str, i: int, parts: List[str]) -> int:
+def _parse_regular_segment(s: str, i: int, parts: list[str]) -> int:
     m = re.match(r"@([A-Za-z])@", s[i:])
     if not m:
         return i + 1
@@ -243,8 +242,8 @@ def usr_to_display_name(usr: str) -> str:
     if not usr:
         return usr
 
-    s = usr[2:] if usr.startswith("c:") else usr
-    parts: List[str] = []
+    s = usr.removeprefix("c:")
+    parts: list[str] = []
     i = 0
 
     while i < len(s):

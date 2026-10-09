@@ -2,7 +2,6 @@
 
 import time
 from pathlib import Path
-from typing import Optional
 
 from .._core import diagnostics
 
@@ -15,7 +14,7 @@ class RecoveryManager:
     """
 
     @staticmethod
-    def backup_database(db_path, backup_suffix: str = ".backup") -> Optional[str]:
+    def backup_database(db_path, backup_suffix: str = ".backup") -> str | None:
         """
         Create a backup of the database file.
 
@@ -131,7 +130,7 @@ class RecoveryManager:
     def _dump_schema(conn, dump_conn) -> None:
         """Copy schema (tables and indexes) from conn to dump_conn."""
         for line in conn.iterdump():
-            if line.startswith("CREATE TABLE") or line.startswith("CREATE INDEX"):
+            if line.startswith(("CREATE TABLE", "CREATE INDEX")):
                 dump_conn.execute(line)
 
     @staticmethod

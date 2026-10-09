@@ -5,7 +5,7 @@ manager does not depend directly on a concrete error-tracking implementation.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Protocol
 
 
 class CacheRecoveryPort(Protocol):
@@ -29,7 +29,7 @@ class CacheRecoveryPort(Protocol):
         """
         ...
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         """Return a summary of recent errors and operations."""
         ...
 
@@ -37,7 +37,7 @@ class CacheRecoveryPort(Protocol):
         """Reset error tracking state."""
         ...
 
-    def backup_database(self, db_path: Path, backup_suffix: str = ".backup") -> Optional[str]:
+    def backup_database(self, db_path: Path, backup_suffix: str = ".backup") -> str | None:
         """Create a backup of the database file."""
         ...
 

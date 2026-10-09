@@ -14,13 +14,12 @@ Requirements verified:
 
 import json
 import os
-import pickle
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -28,9 +27,11 @@ sys.path.insert(0, str(project_root))
 
 # Try to import clang-dependent modules, skip tests if not available
 try:
-    from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
-    from clang_index_mcp.cpp_analyzer import CppAnalyzer
+    from clang_index_mcp._compilation.compile_commands_manager import (
+        CompileCommandsManager,
+    )
     from clang_index_mcp._symbols.model import SymbolInfo
+    from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
     CLANG_AVAILABLE = True
 except SystemExit:

@@ -1,6 +1,5 @@
 """Tests for TemplateResolver template argument resolution."""
 
-import pytest
 from clang_index_mcp._compilation.template_resolver import TemplateResolver
 
 

@@ -3,7 +3,6 @@
 import json
 import sqlite3
 import time
-from typing import List, Optional
 
 from ..._symbols.model import SymbolInfo
 from .base import BaseRepository
@@ -132,7 +131,7 @@ class SymbolRepository(BaseRepository):
             diagnostics.error(f"Failed to save symbol {symbol.usr}: {e}")
             return False
 
-    def save_symbols_batch(self, symbols: List[SymbolInfo]) -> int:
+    def save_symbols_batch(self, symbols: list[SymbolInfo]) -> int:
         """Batch insert/update symbols in a single transaction (C6)."""
         if not symbols:
             return 0
@@ -147,7 +146,7 @@ class SymbolRepository(BaseRepository):
             diagnostics.error(f"Failed to batch save {len(symbols)} symbols: {e}")
             return 0
 
-    def load_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
+    def load_symbol_by_usr(self, usr: str) -> SymbolInfo | None:
         """Load a symbol by its USR."""
         try:
             cursor = self.conn.execute("SELECT * FROM symbols WHERE usr = ?", (usr,))
@@ -159,7 +158,7 @@ class SymbolRepository(BaseRepository):
             diagnostics.error(f"Failed to load symbol by USR {usr}: {e}")
             return None
 
-    def load_symbols_by_name(self, name: str) -> List[SymbolInfo]:
+    def load_symbols_by_name(self, name: str) -> list[SymbolInfo]:
         """Load all symbols matching a name."""
         try:
             cursor = self.conn.execute("SELECT * FROM symbols WHERE name = ?", (name,))
@@ -190,8 +189,8 @@ class SymbolRepository(BaseRepository):
             return 0
 
     def search_symbols_fts(
-        self, pattern: str, kind: Optional[str] = None, project_only: bool = True
-    ) -> List[SymbolInfo]:
+        self, pattern: str, kind: str | None = None, project_only: bool = True
+    ) -> list[SymbolInfo]:
         """Fast full-text search using FTS5. Falls back to regex on failure."""
         try:
             query = """
@@ -214,8 +213,8 @@ class SymbolRepository(BaseRepository):
             return self.search_symbols_regex(pattern, kind, project_only)
 
     def search_symbols_regex(
-        self, pattern: str, kind: Optional[str] = None, project_only: bool = True
-    ) -> List[SymbolInfo]:
+        self, pattern: str, kind: str | None = None, project_only: bool = True
+    ) -> list[SymbolInfo]:
         """Regex search (fallback for complex patterns)."""
         try:
             query = "SELECT * FROM symbols WHERE name REGEXP ?"
@@ -231,7 +230,7 @@ class SymbolRepository(BaseRepository):
             diagnostics.error(f"Regex search failed for pattern '{pattern}': {e}")
             return []
 
-    def search_symbols_by_file(self, file_path: str) -> List[SymbolInfo]:
+    def search_symbols_by_file(self, file_path: str) -> list[SymbolInfo]:
         """Get all symbols defined in a specific file."""
         try:
             cursor = self.conn.execute("SELECT * FROM symbols WHERE file = ?", (file_path,))
@@ -240,7 +239,7 @@ class SymbolRepository(BaseRepository):
             diagnostics.error(f"Failed to search symbols by file {file_path}: {e}")
             return []
 
-    def search_symbols_by_kind(self, kind: str, project_only: bool = True) -> List[SymbolInfo]:
+    def search_symbols_by_kind(self, kind: str, project_only: bool = True) -> list[SymbolInfo]:
         """Get all symbols of a specific kind."""
         try:
             query = "SELECT * FROM symbols WHERE kind = ?"

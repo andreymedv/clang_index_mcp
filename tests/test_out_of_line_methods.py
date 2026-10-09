@@ -12,7 +12,6 @@ resolved via semantic_parent or qualified_name prefix matching.
 import os
 import shutil
 import sys
-from pathlib import Path
 
 import pytest
 

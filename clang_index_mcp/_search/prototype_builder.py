@@ -6,12 +6,11 @@ dependencies on indexes or locks, so it is easy to test in isolation.
 """
 
 import json
-from typing import List, Optional
 
 from .._symbols.model import SymbolInfo
 
 
-def build_function_prototype(info: SymbolInfo) -> Optional[str]:
+def build_function_prototype(info: SymbolInfo) -> str | None:
     """Build a C++ prototype string for a function/method.
 
     Produces: "[access] [virtual|static] <signature with qualified name> [= 0]"
@@ -57,7 +56,7 @@ def build_function_prototype(info: SymbolInfo) -> Optional[str]:
     return sig
 
 
-def build_class_prototype(info: SymbolInfo) -> Optional[str]:
+def build_class_prototype(info: SymbolInfo) -> str | None:
     """Build a C++ class declaration prototype from SymbolInfo.
 
     Produces: "[template<...>] class|struct qualified_name[ : Base1, Base2, ...]"
@@ -102,7 +101,7 @@ def build_class_prototype(info: SymbolInfo) -> Optional[str]:
     return f"{template_prefix}{kind_str} {qname}{bases_str}"
 
 
-def build_attributes(info: SymbolInfo) -> Optional[List[str]]:
+def build_attributes(info: SymbolInfo) -> list[str] | None:
     """Build attributes list from boolean method/function flags.
 
     Replaces is_virtual, is_pure_virtual, is_const, is_static, is_definition

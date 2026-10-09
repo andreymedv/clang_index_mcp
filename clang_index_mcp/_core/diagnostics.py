@@ -7,7 +7,7 @@ Separates MCP tool output (stdout) from diagnostic messages (stderr by default).
 import os
 import sys
 from enum import IntEnum
-from typing import Dict, Optional, TextIO
+from typing import TextIO
 
 
 class DiagnosticLevel(IntEnum):
@@ -104,10 +104,10 @@ class DiagnosticLogger:
 
 
 # Global diagnostic logger instance
-_global_logger: Optional[DiagnosticLogger] = None
+_global_logger: DiagnosticLogger | None = None
 
 # Maps upper-cased level names to diagnostic levels
-_LEVEL_MAP: Dict[str, DiagnosticLevel] = {
+_LEVEL_MAP: dict[str, DiagnosticLevel] = {
     "DEBUG": DiagnosticLevel.DEBUG,
     "INFO": DiagnosticLevel.INFO,
     "WARNING": DiagnosticLevel.WARNING,
@@ -116,7 +116,7 @@ _LEVEL_MAP: Dict[str, DiagnosticLevel] = {
 }
 
 
-def _parse_level(level_str: str) -> Optional[DiagnosticLevel]:
+def _parse_level(level_str: str) -> DiagnosticLevel | None:
     """Map a level name (case-insensitive) to a DiagnosticLevel, or None if unknown."""
     return _LEVEL_MAP.get(level_str.upper())
 

@@ -47,7 +47,7 @@ def get_loaded_models() -> list[str]:
     try:
         result = subprocess.run(
             ["lms", "ps"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=10,
         )
@@ -218,7 +218,7 @@ def run_scenarios(
         elif explain_all:
             cmd.extend(["--explain-all", "--explain-scope", explain_scope])
 
-        result = subprocess.run(cmd, capture_output=False, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=False, text=True)
         if result.returncode != 0:
             print(f"    WARNING: runner exited {result.returncode} for {sf.name}")
 
@@ -441,7 +441,7 @@ def main() -> None:
                 print(f"  SKIP: could not load {model_arg}")
                 continue
         else:
-            print(f"  Skipping load (--no-load)")
+            print("  Skipping load (--no-load)")
 
         # Resolve actual model ID from lms ps
         actual_id = resolve_model_id(model_arg)

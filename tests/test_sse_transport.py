@@ -6,7 +6,6 @@ Tests the SSE protocol support for the MCP server.
 
 import asyncio
 import json
-from pathlib import Path
 
 import httpx
 import pytest

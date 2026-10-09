@@ -5,8 +5,6 @@ that searches can match symbols that refer to the same type through different
 names (e.g. a typedef and its underlying std::function type).
 """
 
-from typing import List
-
 from .._core import diagnostics
 
 
@@ -21,7 +19,7 @@ class TypeAliasExpander:
         """
         self.cache_manager = cache_manager
 
-    def collect_alias_expansions(self, type_name: str) -> List[str]:
+    def collect_alias_expansions(self, type_name: str) -> list[str]:
         """Collect all alias and canonical type expansions for a given type name."""
         expanded_names = [type_name]
 
@@ -49,7 +47,7 @@ class TypeAliasExpander:
 
         return expanded_names
 
-    def expand_type_name(self, type_name: str) -> List[str]:
+    def expand_type_name(self, type_name: str) -> list[str]:
         """
         Expand a type name to include all equivalent type names (aliases and canonical).
 
@@ -81,6 +79,6 @@ class TypeAliasExpander:
         return self.collect_alias_expansions(type_name)
 
 
-def expand_type_name(type_name: str, cache_manager) -> List[str]:
+def expand_type_name(type_name: str, cache_manager) -> list[str]:
     """Convenience function for one-shot type alias expansion."""
     return TypeAliasExpander(cache_manager).expand_type_name(type_name)

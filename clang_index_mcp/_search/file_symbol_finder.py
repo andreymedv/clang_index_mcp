@@ -7,7 +7,7 @@ out of the main QueryEngine class.
 
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.search_criteria import SearchCriteria
@@ -15,7 +15,7 @@ from .._search.search_engine import SearchEngine
 from .ports.search_deps import SearchDependencies
 
 
-def matches_glob(indexed_file: str, glob_pattern: str, project_root: Optional[str]) -> bool:
+def matches_glob(indexed_file: str, glob_pattern: str, project_root: str | None) -> bool:
     """Check if an indexed file matches a glob pattern using multiple strategies."""
     if fnmatch(indexed_file, glob_pattern):
         return True
@@ -31,8 +31,8 @@ def matches_glob(indexed_file: str, glob_pattern: str, project_root: Optional[st
 
 
 def filter_results_by_files(
-    items: List[Dict[str, Any]], matched_files: Set[str]
-) -> List[Dict[str, Any]]:
+    items: list[dict[str, Any]], matched_files: set[str]
+) -> list[dict[str, Any]]:
     """Filter search results to only include items from specified files."""
     results = []
     for item in items:
@@ -43,7 +43,7 @@ def filter_results_by_files(
     return results
 
 
-def _project_root_str(context: SearchDependencies) -> Optional[str]:
+def _project_root_str(context: SearchDependencies) -> str | None:
     root = context.project_root
     return str(root) if root is not None else None
 
@@ -76,7 +76,7 @@ def find_in_files_glob(
     symbol_pattern: str,
     context: SearchDependencies,
     search_engine: SearchEngine,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search for symbols in files matching a glob pattern."""
     symbol_store = context.symbol_store
     assert symbol_store is not None
@@ -108,7 +108,7 @@ def find_in_files_glob(
     }
 
 
-def resolve_file_path(file_path: str, project_root: Optional[str]) -> Optional[str]:
+def resolve_file_path(file_path: str, project_root: str | None) -> str | None:
     """Resolve a file path to absolute path for matching."""
     if Path(file_path).is_absolute():
         return str(Path(file_path).resolve())
@@ -119,7 +119,7 @@ def resolve_file_path(file_path: str, project_root: Optional[str]) -> Optional[s
     return None
 
 
-def match_item_to_file(item: Dict[str, Any], file_path: str, abs_file_path: Optional[str]) -> bool:
+def match_item_to_file(item: dict[str, Any], file_path: str, abs_file_path: str | None) -> bool:
     """Check if a search result item belongs to the given file."""
     _item_loc = item.get("definition") or item.get("declaration") or {}
     item_file = _item_loc.get("file") or item.get("file", "")
@@ -130,9 +130,7 @@ def match_item_to_file(item: Dict[str, Any], file_path: str, abs_file_path: Opti
 
     if abs_file_path and item_abs == abs_file_path:
         return True
-    if item_file.endswith(file_path) or item_abs.endswith(file_path):
-        return True
-    return False
+    return bool(item_file.endswith(file_path) or item_abs.endswith(file_path))
 
 
 def find_in_file_exact(
@@ -140,7 +138,7 @@ def find_in_file_exact(
     pattern: str,
     context: SearchDependencies,
     search_engine: SearchEngine,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search for symbols in a specific file (exact or suffix match)."""
     results = []
     matched_file = None
@@ -175,7 +173,7 @@ def find_in_file_exact(
 
 def get_path_suggestions(
     partial_path: str, context: SearchDependencies, max_suggestions: int = 5
-) -> List[str]:
+) -> list[str]:
     """Get suggestions for similar file paths based on partial input."""
     symbol_store = context.symbol_store
     assert symbol_store is not None
@@ -213,7 +211,7 @@ def find_in_file(
     pattern: str,
     context: SearchDependencies,
     search_engine: SearchEngine,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search for symbols within a specific file or files matching a glob pattern."""
     glob_chars = set("*?[]")
     is_glob = any(c in file_path for c in glob_chars)
@@ -225,12 +223,12 @@ def find_in_file(
 
 def _find_class_definition_files(
     symbol_name: str,
-    symbol_kind: Optional[str],
+    symbol_kind: str | None,
     simple_name: str,
     project_only: bool,
-    files: Set[str],
+    files: set[str],
     symbol_store,
-) -> Optional[str]:
+) -> str | None:
     """Find files where the class is defined and return its kind."""
     if symbol_kind in (None, "class"):
         for info in symbol_store.get_classes_by_name(simple_name):
@@ -245,12 +243,12 @@ def _find_class_definition_files(
 
 def _find_function_definition_files(
     symbol_name: str,
-    symbol_kind: Optional[str],
+    symbol_kind: str | None,
     simple_name: str,
     project_only: bool,
-    files: Set[str],
+    files: set[str],
     symbol_store,
-) -> Optional[str]:
+) -> str | None:
     """Find files where the function/method is defined and return its kind."""
     kind = None
     if symbol_kind in (None, "function", "method"):
@@ -267,12 +265,12 @@ def _find_function_definition_files(
 
 def _find_symbol_definition_files(
     symbol_name: str,
-    symbol_kind: Optional[str],
+    symbol_kind: str | None,
     simple_name: str,
     project_only: bool,
-    files: Set[str],
+    files: set[str],
     symbol_store,
-) -> Optional[str]:
+) -> str | None:
     """Find files where the symbol is defined and return the first found kind."""
     kind = _find_class_definition_files(
         symbol_name, symbol_kind, simple_name, project_only, files, symbol_store
@@ -287,11 +285,11 @@ def _find_symbol_definition_files(
 
 def _find_symbol_caller_files(
     symbol_name: str,
-    symbol_kind: Optional[str],
+    symbol_kind: str | None,
     simple_name: str,
     project_only: bool,
-    kind: Optional[str],
-    files: Set[str],
+    kind: str | None,
+    files: set[str],
     symbol_store,
     call_graph_service,
 ) -> int:
@@ -322,10 +320,10 @@ def _find_symbol_caller_files(
 
 def _find_class_reference_files(
     symbol_name: str,
-    symbol_kind: Optional[str],
+    symbol_kind: str | None,
     project_only: bool,
-    kind: Optional[str],
-    files: Set[str],
+    kind: str | None,
+    files: set[str],
     symbol_store,
     compilation_env,
 ) -> None:
@@ -345,14 +343,14 @@ def _find_class_reference_files(
 
 async def get_files_containing_symbol(
     symbol_name: str,
-    symbol_kind: Optional[str],
+    symbol_kind: str | None,
     project_only: bool,
     context: SearchDependencies,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get all files that contain references to or define a symbol."""
     symbol_store = context.symbol_store
     assert symbol_store is not None
-    files: Set[str] = set()
+    files: set[str] = set()
     total_refs = 0
     kind = None
 

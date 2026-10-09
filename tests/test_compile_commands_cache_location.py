@@ -6,8 +6,8 @@ import tempfile
 from pathlib import Path
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._persistence.project_identity import ProjectIdentity
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 def test_multiple_builds():

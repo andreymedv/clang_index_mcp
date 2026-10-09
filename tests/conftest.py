@@ -16,7 +16,6 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 
@@ -35,11 +34,8 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 # Import test helpers
 from tests.utils.test_helpers import (
-    cleanup_temp_analyzer,
-    setup_test_analyzer,
     temp_compile_commands,
     temp_config_file,
-    temp_project,
 )
 
 

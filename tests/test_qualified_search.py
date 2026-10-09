@@ -10,8 +10,10 @@ This file tests the qualified name pattern matching capabilities added in Phase 
 
 import pytest
 
-from clang_index_mcp._search.pattern_matcher import detect_pattern_type, matches_qualified_pattern
-from clang_index_mcp._search.search_engine import SearchEngine
+from clang_index_mcp._search.pattern_matcher import (
+    detect_pattern_type,
+    matches_qualified_pattern,
+)
 
 
 class TestPatternTypeDetection:

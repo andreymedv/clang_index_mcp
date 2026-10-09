@@ -15,7 +15,7 @@ Performance: Only called when results are empty. Uses O(1) index lookups, not fu
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -25,12 +25,12 @@ class FallbackResult:
     reason: str  # e.g. "signature_detected", "regex_hint", "qualified_fallback"
     searched_for: str  # Original pattern
     hint: str  # Human-readable explanation
-    alternatives: List[Dict[str, Any]] = field(default_factory=list)  # Max 10
-    suggested_pattern: Optional[str] = None  # Corrected pattern to try
+    alternatives: list[dict[str, Any]] = field(default_factory=list)  # Max 10
+    suggested_pattern: str | None = None  # Corrected pattern to try
 
-    def to_metadata(self) -> Dict[str, Any]:
+    def to_metadata(self) -> dict[str, Any]:
         """Convert to metadata dict for EnhancedQueryResult."""
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "reason": self.reason,
             "searched_for": self.searched_for,
             "hint": self.hint,
@@ -83,7 +83,7 @@ def looks_like_signature(pattern: str) -> bool:
     return False
 
 
-def _extract_identifier_from_signature(pattern: str) -> Optional[str]:
+def _extract_identifier_from_signature(pattern: str) -> str | None:
     """Extract the most likely function/class name from a signature-like pattern.
 
     Heuristic: the last identifier before '(' is usually the function name.
@@ -92,7 +92,7 @@ def _extract_identifier_from_signature(pattern: str) -> Optional[str]:
     if "(" in pattern:
         before_paren = pattern[: pattern.index("(")]
         # Find identifiers in the part before parentheses
-        identifiers: List[str] = _IDENTIFIER_RE.findall(before_paren)
+        identifiers: list[str] = _IDENTIFIER_RE.findall(before_paren)
         if identifiers:
             # Last identifier before ( is usually the function name
             return str(identifiers[-1])
@@ -124,7 +124,7 @@ def _extract_identifier_from_signature(pattern: str) -> Optional[str]:
             "explicit",
             "template",
         }
-        non_keywords: List[str] = [i for i in identifiers if i.lower() not in type_keywords]
+        non_keywords: list[str] = [i for i in identifiers if i.lower() not in type_keywords]
         if non_keywords:
             # Return the longest one (most specific)
             return str(max(non_keywords, key=len))
@@ -149,10 +149,8 @@ def _has_unnecessary_anchors(pattern: str) -> bool:
 def _strip_anchors(pattern: str) -> str:
     """Remove unnecessary ^ and $ anchors."""
     result = pattern
-    if result.startswith("^"):
-        result = result[1:]
-    if result.endswith("$"):
-        result = result[:-1]
+    result = result.removeprefix("^")
+    result = result.removesuffix("$")
     return result
 
 
@@ -172,8 +170,8 @@ def _looks_like_short_regex(pattern: str) -> bool:
 
 
 def _index_lookup_simple(
-    index: Dict[str, List[Any]], name: str, max_results: int = 10
-) -> List[Dict[str, Any]]:
+    index: dict[str, list[Any]], name: str, max_results: int = 10
+) -> list[dict[str, Any]]:
     """Look up a simple name in an index, return formatted alternatives."""
     name_lower = name.lower()
     candidates = index.get(name, [])
@@ -197,11 +195,11 @@ def _index_lookup_simple(
 
 
 def _sample_regex_matches(
-    index: Dict[str, List[Any]],
+    index: dict[str, list[Any]],
     pattern: str,
     max_sample: int = 200,
     max_results: int = 10,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Test a regex pattern against a sample of index entries.
 
     Returns matching alternatives. Bounded to max_sample entries for performance.
@@ -246,14 +244,14 @@ class SmartFallback:
         self,
         pattern: str,
         tool_name: str,
-        class_index: Optional[Dict[str, List[Any]]] = None,
-        function_index: Optional[Dict[str, List[Any]]] = None,
-        file_index: Optional[Dict[str, List[Any]]] = None,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        class_name: Optional[str] = None,
+        class_index: dict[str, list[Any]] | None = None,
+        function_index: dict[str, list[Any]] | None = None,
+        file_index: dict[str, list[Any]] | None = None,
+        file_name: str | None = None,
+        namespace: str | None = None,
+        class_name: str | None = None,
         symbol_store=None,
-    ) -> Optional[FallbackResult]:
+    ) -> FallbackResult | None:
         """Run fallback cascade and return first useful suggestion.
 
         Args:
@@ -313,9 +311,9 @@ class SmartFallback:
     def _detect_signature(
         self,
         pattern: str,
-        primary_index: Dict[str, List[Any]],
-        function_index: Dict[str, List[Any]],
-    ) -> Optional[FallbackResult]:
+        primary_index: dict[str, list[Any]],
+        function_index: dict[str, list[Any]],
+    ) -> FallbackResult | None:
         """Detect signature/prototype used as pattern instead of symbol name."""
         if not looks_like_signature(pattern):
             return None
@@ -349,8 +347,8 @@ class SmartFallback:
         )
 
     def _detect_regex_issues(
-        self, pattern: str, primary_index: Dict[str, List[Any]]
-    ) -> Optional[FallbackResult]:
+        self, pattern: str, primary_index: dict[str, list[Any]]
+    ) -> FallbackResult | None:
         """Detect regex anchoring issues, double escapes, etc."""
         regex_chars = set(".*+?[]{}()|\\^$")
         if not any(c in pattern for c in regex_chars):
@@ -371,8 +369,8 @@ class SmartFallback:
         return self._check_generic_broadening(pattern, primary_index)
 
     def _check_double_escapes(
-        self, pattern: str, primary_index: Dict[str, List[Any]]
-    ) -> Optional[FallbackResult]:
+        self, pattern: str, primary_index: dict[str, list[Any]]
+    ) -> FallbackResult | None:
         """Check for double-escaped regex characters."""
         if not _has_double_escapes(pattern):
             return None
@@ -393,8 +391,8 @@ class SmartFallback:
         return None
 
     def _check_unnecessary_anchors(
-        self, pattern: str, primary_index: Dict[str, List[Any]]
-    ) -> Optional[FallbackResult]:
+        self, pattern: str, primary_index: dict[str, list[Any]]
+    ) -> FallbackResult | None:
         """Check for unnecessary ^ and $ anchors in regex patterns."""
         if not _has_unnecessary_anchors(pattern):
             return None
@@ -427,8 +425,8 @@ class SmartFallback:
         return None
 
     def _check_short_regex(
-        self, pattern: str, primary_index: Dict[str, List[Any]]
-    ) -> Optional[FallbackResult]:
+        self, pattern: str, primary_index: dict[str, list[Any]]
+    ) -> FallbackResult | None:
         """Check for short regex patterns that may need broadening."""
         if not _looks_like_short_regex(pattern):
             return None
@@ -450,8 +448,8 @@ class SmartFallback:
         return None
 
     def _check_generic_broadening(
-        self, pattern: str, primary_index: Dict[str, List[Any]]
-    ) -> Optional[FallbackResult]:
+        self, pattern: str, primary_index: dict[str, list[Any]]
+    ) -> FallbackResult | None:
         """Generic fallback: try broadening with .* prefix/suffix."""
         if pattern.startswith(".*"):
             return None
@@ -476,8 +474,8 @@ class SmartFallback:
         return None
 
     def _detect_qualified_fallback(
-        self, pattern: str, primary_index: Dict[str, List[Any]]
-    ) -> Optional[FallbackResult]:
+        self, pattern: str, primary_index: dict[str, list[Any]]
+    ) -> FallbackResult | None:
         """Detect wrong namespace in qualified name and suggest alternatives."""
         if "::" not in pattern:
             return None
@@ -511,13 +509,13 @@ class SmartFallback:
         self,
         pattern: str,
         file_name: str,
-        file_index: Dict[str, List[Any]],
-        primary_index: Dict[str, List[Any]],
-    ) -> Optional[FallbackResult]:
+        file_index: dict[str, list[Any]],
+        primary_index: dict[str, list[Any]],
+    ) -> FallbackResult | None:
         """Detect file_name filter with wrong case."""
         file_name_lower = file_name.lower()
         matching_files = []
-        for indexed_file in file_index.keys():
+        for indexed_file in file_index:
             indexed_basename = Path(indexed_file).name
             if indexed_basename.lower() == file_name_lower and indexed_basename != file_name:
                 matching_files.append(indexed_basename)

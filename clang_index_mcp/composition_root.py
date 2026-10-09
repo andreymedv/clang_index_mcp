@@ -10,12 +10,10 @@ CppAnalyzer delegates to CompositionRoot for initialization, keeping itself
 as a thin facade over the composed services.
 """
 
-from typing import List, Optional
-
 from ._compilation.clang_parser import ClangParser
 from ._compilation.clang_symbol_parser import ClangSymbolParser
-from ._compilation.compile_commands_manager import CompileCommandsManager
 from ._compilation.compilation_environment import CompilationEnvironment
+from ._compilation.compile_commands_manager import CompileCommandsManager
 from ._compilation.include_extractor import ClangIncludeExtractor
 from ._core import diagnostics
 from ._indexing.indexing_orchestrator import ProjectIndexingOrchestrator
@@ -30,9 +28,9 @@ from ._persistence.sqlite_cache_backend import SqliteCacheBackend
 from ._search.call_graph_service import CallGraphService
 from ._search.dependency_graph import DependencyGraphBuilder
 from ._search.query_engine import QueryEngine
+from ._symbols.ports.parser import TypeAliasRecord
 from ._symbols.symbol_extractor import SymbolExtractor
 from ._symbols.symbol_index_store import SymbolIndexStore
-from ._symbols.ports.parser import TypeAliasRecord
 from .project_context import ProjectContext
 
 
@@ -42,7 +40,7 @@ class AliasPersistenceAdapter:
     def __init__(self, cache_manager: CacheManager):
         self._cache_manager = cache_manager
 
-    def save_aliases(self, aliases: List[TypeAliasRecord]) -> int:
+    def save_aliases(self, aliases: list[TypeAliasRecord]) -> int:
         """Persist aliases via the cache manager."""
         return self._cache_manager.save_type_aliases_batch(aliases)
 
@@ -64,7 +62,7 @@ class CompositionRoot:
     def __init__(
         self,
         project_root: str,
-        config_file: Optional[str] = None,
+        config_file: str | None = None,
         skip_schema_recreation: bool = False,
         use_compile_commands_manager: bool = True,
     ):

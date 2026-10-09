@@ -25,7 +25,7 @@ class TestTransportSelection:
     def test_help_output(self):
         """Test that help output includes transport options."""
         result = subprocess.run(
-            [sys.executable, "-m", "clang_index_mcp", "--help"], capture_output=True, text=True
+            [sys.executable, "-m", "clang_index_mcp", "--help"], check=False, capture_output=True, text=True
         )
 
         assert result.returncode == 0
@@ -42,7 +42,7 @@ class TestTransportSelection:
         env["MCP_DISABLE_SESSION_RESUME"] = "true"
         result = subprocess.run(
             [sys.executable, "-m", "clang_index_mcp", "--transport", "invalid"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=5,
             env=env,

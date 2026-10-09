@@ -16,8 +16,8 @@ import pytest
 
 import clang_index_mcp._mcp.cpp_mcp_server as cpp_mcp_server_module
 from clang_index_mcp._mcp.context import ctx
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 @pytest.fixture(scope="module")

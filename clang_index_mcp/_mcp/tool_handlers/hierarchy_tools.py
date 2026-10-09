@@ -1,15 +1,15 @@
 """Class hierarchy MCP tool handlers."""
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 from mcp.types import TextContent
 
-from ..context import ctx
 from ..._search.hierarchy_format import convert_hierarchy_format, format_hierarchy_error
+from ..context import ctx
 
 
-async def _handle_get_class_hierarchy(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_get_class_hierarchy(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()

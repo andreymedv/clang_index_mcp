@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime
 from enum import Enum
 from threading import Event, Lock
-from typing import Any, List, Optional
+from typing import Any
 
 from .._indexing.progress import IndexingProgress
 from .._symbols.indexing_callbacks import IndexingCallbacks
@@ -32,7 +32,7 @@ class AnalyzerStateManager:
         self._state = AnalyzerState.UNINITIALIZED
         self._lock = Lock()
         self._indexed_event = Event()  # Signals when indexing completes
-        self._progress: Optional[IndexingProgress] = None
+        self._progress: IndexingProgress | None = None
         self._active_tools = 0
         self._tools_event = Event()
         self._tools_event.set()  # Set when 0 tools active
@@ -44,7 +44,7 @@ class AnalyzerStateManager:
             result: AnalyzerState = self._state
             return result
 
-    def wait_for_tools_to_finish(self, timeout: Optional[float] = None) -> bool:
+    def wait_for_tools_to_finish(self, timeout: float | None = None) -> bool:
         """Wait until there are no active tool calls."""
         return bool(self._tools_event.wait(timeout))
 
@@ -98,7 +98,7 @@ class AnalyzerStateManager:
             except ImportError:
                 pass
 
-    def wait_for_indexed(self, timeout: Optional[float] = None) -> bool:
+    def wait_for_indexed(self, timeout: float | None = None) -> bool:
         """
         Wait until indexing completes (or timeout)
 
@@ -121,7 +121,7 @@ class AnalyzerStateManager:
         with self._lock:
             self._progress = progress
 
-    def get_progress(self) -> Optional[IndexingProgress]:
+    def get_progress(self) -> IndexingProgress | None:
         """
         Get current indexing progress (thread-safe)
 
@@ -191,7 +191,7 @@ class BackgroundIndexer:
         """
         self.analyzer = analyzer
         self.state_manager = state_manager
-        self._indexing_task: Optional[asyncio.Task] = None
+        self._indexing_task: asyncio.Task | None = None
 
     async def start_indexing(self, force: bool = False, include_dependencies: bool = True) -> int:
         """
@@ -252,7 +252,7 @@ class BackgroundIndexer:
         """
         return self._indexing_task is not None and not self._indexing_task.done()
 
-    async def wait_for_completion(self, timeout: Optional[float] = None):
+    async def wait_for_completion(self, timeout: float | None = None):
         """
         Wait for indexing to complete
 
@@ -314,7 +314,7 @@ class QueryMetadata:
         total_files: int,
         completion_percentage: float,
         timestamp: str,
-        warning: Optional[str] = None,
+        warning: str | None = None,
     ):
         self.status = status
         self.indexed_files = indexed_files
@@ -349,10 +349,10 @@ class EnhancedQueryResult:
     def __init__(
         self,
         data: Any,
-        metadata: Optional[QueryMetadata] = None,
-        status: Optional[QueryCompletenessStatus] = None,
-        extra_metadata: Optional[dict] = None,
-        next_steps: Optional[List[str]] = None,
+        metadata: QueryMetadata | None = None,
+        status: QueryCompletenessStatus | None = None,
+        extra_metadata: dict | None = None,
+        next_steps: list[str] | None = None,
     ):
         """
         Initialize EnhancedQueryResult.
@@ -368,7 +368,7 @@ class EnhancedQueryResult:
         self.metadata = metadata
         self.status = status
         self.extra_metadata = extra_metadata or {}
-        self.next_steps: List[str] = next_steps or []
+        self.next_steps: list[str] = next_steps or []
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization.
@@ -399,7 +399,7 @@ class EnhancedQueryResult:
         return result
 
     @staticmethod
-    def create_normal(data: Any, next_steps: Optional[List[str]] = None) -> "EnhancedQueryResult":
+    def create_normal(data: Any, next_steps: list[str] | None = None) -> "EnhancedQueryResult":
         """
         Create result for normal case (1-20 results, fully indexed).
 
@@ -410,7 +410,7 @@ class EnhancedQueryResult:
     @staticmethod
     def create_empty(
         data: Any,
-        suggestions: Optional[List[str]] = None,
+        suggestions: list[str] | None = None,
         fallback: Any = None,
     ) -> "EnhancedQueryResult":
         """

@@ -8,7 +8,8 @@ Provides helpers to eliminate boilerplate in tool handlers:
 
 import asyncio
 import json
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from mcp.types import TextContent
 
@@ -18,13 +19,13 @@ from ..state_manager import EnhancedQueryResult
 
 
 async def execute_analyzer_search(
-    arguments: Dict[str, Any],
+    arguments: dict[str, Any],
     analyzer_method: Callable,
     tool_name: str,
-    max_results: Optional[int] = None,
+    max_results: int | None = None,
     use_tool_execution_context: bool = True,
-    next_steps_func: Optional[Callable] = None,
-) -> List[TextContent]:
+    next_steps_func: Callable | None = None,
+) -> list[TextContent]:
     """Execute a search-style analyzer method and return enhanced results.
 
     This eliminates the common boilerplate pattern in search tool handlers:
@@ -106,12 +107,12 @@ async def execute_analyzer_search(
 
 
 async def execute_analyzer_query(
-    arguments: Dict[str, Any],
+    arguments: dict[str, Any],
     analyzer_method: Callable,
     tool_name: str,
-    next_steps_func: Optional[Callable] = None,
-    result_transform_func: Optional[Callable] = None,
-) -> List[TextContent]:
+    next_steps_func: Callable | None = None,
+    result_transform_func: Callable | None = None,
+) -> list[TextContent]:
     """Execute a simple query-style analyzer method and return enhanced result.
 
     This eliminates the common boilerplate pattern in query tool handlers:

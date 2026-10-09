@@ -7,14 +7,14 @@ shared symbol store, call graph, and cache.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, Optional, Set
+from typing import TYPE_CHECKING, Any
 
 from clang.cindex import TranslationUnit
 
+from .._compilation.template_resolver import TemplateResolver
 from .._core import diagnostics
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import SymbolParser
-from .._compilation.template_resolver import TemplateResolver
 
 if TYPE_CHECKING:
     from .._compilation.compilation_environment import CompilationEnvironment
@@ -75,7 +75,7 @@ class SymbolExtractor:
     def get_file_hash(self, file_path: str) -> str:
         return self.cache_orchestrator.get_file_hash(file_path)
 
-    def _parse_json_field(self, field_value: Optional[str]) -> Any:
+    def _parse_json_field(self, field_value: str | None) -> Any:
         """Safely parse a JSON field, returning None on failure."""
         if not field_value:
             return None
@@ -117,7 +117,7 @@ class SymbolExtractor:
     def resolve_deferred_instantiation_bases(self) -> int:
         """Resolve base_classes for template instantiations that couldn't be resolved during parsing."""
         resolved_count = 0
-        for name, infos in self.class_index.items():
+        for infos in self.class_index.values():
             for info in infos:
                 if self._process_deferred_instantiation(info):
                     resolved_count += 1
@@ -141,7 +141,7 @@ class SymbolExtractor:
             diagnostics.warning(f"Error checking header {file_path}: {e}")
             return False
 
-    def _finalize_header_status(self, processed_headers: Dict[str, str]):
+    def _finalize_header_status(self, processed_headers: dict[str, str]):
         """Mark successfully claimed headers as completed in the tracker."""
         for header, file_hash in processed_headers.items():
             try:
@@ -158,11 +158,11 @@ class SymbolExtractor:
             except Exception as e:
                 diagnostics.warning(f"Failed to update dependencies for {source_file}: {e}")
 
-    def index_translation_unit(self, tu: TranslationUnit, source_file: str) -> Dict[str, Any]:
+    def index_translation_unit(self, tu: TranslationUnit, source_file: str) -> dict[str, Any]:
         """Process translation unit, extracting symbols from source and project headers."""
-        processed_files: Set[str] = set()
-        skipped_headers: Set[str] = set()
-        headers_to_extract: Set[str] = set()
+        processed_files: set[str] = set()
+        skipped_headers: set[str] = set()
+        headers_to_extract: set[str] = set()
 
         def should_extract_from_file(file_path: str) -> bool:
             if file_path == source_file:

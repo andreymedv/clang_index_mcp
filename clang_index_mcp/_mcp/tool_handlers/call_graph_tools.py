@@ -2,7 +2,8 @@
 
 import asyncio
 import json
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from mcp.types import TextContent
 
@@ -12,13 +13,13 @@ from ..response_formatters import suggestions
 
 
 async def _handle_call_graph_query(
-    arguments: Dict[str, Any],
+    arguments: dict[str, Any],
     analyzer_method: Callable,
     result_key: str,
     tool_name: str,
     entity_name: str,
     suggestion_func: Callable,
-) -> List[TextContent]:
+) -> list[TextContent]:
     """Generic handler for call graph queries (incoming/outgoing calls).
 
     Args:
@@ -80,7 +81,7 @@ async def _handle_call_graph_query(
         results[result_key] = result_list[:max_results]
 
     # Determine empty suggestions
-    empty_suggestions: Optional[List[str]] = None
+    empty_suggestions: list[str] | None = None
     if not function_found:
         pass  # None -> default "check spelling / broaden pattern"
     elif has_any_in_graph:
@@ -111,7 +112,7 @@ async def _handle_call_graph_query(
     return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
 
-async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_find_incoming_calls(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await _handle_call_graph_query(
@@ -124,7 +125,7 @@ async def _handle_find_incoming_calls(arguments: Dict[str, Any]) -> List[TextCon
     )
 
 
-async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_get_outgoing_calls(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await _handle_call_graph_query(
@@ -137,7 +138,7 @@ async def _handle_get_outgoing_calls(arguments: Dict[str, Any]) -> List[TextCont
     )
 
 
-async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_get_call_sites(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
@@ -147,7 +148,7 @@ async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]
     call_sites = await loop.run_in_executor(
         None, lambda: analyzer.get_call_sites(function_name, class_name)
     )
-    output_sites: Dict[str, Any] = {"call_sites": call_sites}
+    output_sites: dict[str, Any] = {"call_sites": call_sites}
     if not call_sites:
         output_sites["metadata"] = {
             "suggestions": suggestions.for_get_call_sites_empty(function_name, class_name),
@@ -155,7 +156,7 @@ async def _handle_get_call_sites(arguments: Dict[str, Any]) -> List[TextContent]
     return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
 
 
-async def _handle_get_call_path(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_get_call_path(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()
@@ -167,7 +168,7 @@ async def _handle_get_call_path(arguments: Dict[str, Any]) -> List[TextContent]:
         paths = await loop.run_in_executor(
             None, lambda: analyzer.get_call_path(from_function, to_function, max_depth)
         )
-    output_paths: Dict[str, Any] = {"paths": paths}
+    output_paths: dict[str, Any] = {"paths": paths}
     if not paths:
         output_paths["metadata"] = {
             "suggestions": suggestions.for_get_call_path_empty(

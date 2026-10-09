@@ -19,8 +19,9 @@ Usage:
 """
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Optional, Set
+from typing import TYPE_CHECKING
 
 # Handle both package and script imports
 try:
@@ -29,8 +30,8 @@ try:
     from .._incremental.change_scanner import ChangeScanner, ChangeSet
     from .._symbols.indexing_callbacks import IndexingCallbacks
 except ImportError:
-    import diagnostics  # type: ignore[no-redef]
     import change_handler  # type: ignore[no-redef]
+    import diagnostics  # type: ignore[no-redef]
     import worker_orchestrator  # type: ignore[no-redef]
     from change_scanner import ChangeScanner, ChangeSet  # type: ignore[no-redef]
     from indexing_callbacks import IndexingCallbacks  # type: ignore[no-redef]
@@ -50,7 +51,7 @@ class AnalysisResult:
     files_analyzed: int = 0
     files_removed: int = 0
     elapsed_seconds: float = 0.0
-    changes: Optional[ChangeSet] = None
+    changes: ChangeSet | None = None
 
     @staticmethod
     def no_changes() -> "AnalysisResult":
@@ -85,7 +86,7 @@ class IncrementalAnalyzer:
     def __init__(
         self,
         ctx: "IncrementalContext",
-        is_interrupted: Optional[Callable[[], bool]] = None,
+        is_interrupted: Callable[[], bool] | None = None,
     ):
         """
         Initialize incremental analyzer.
@@ -100,7 +101,7 @@ class IncrementalAnalyzer:
 
     def perform_incremental_analysis(
         self,
-        callbacks: Optional[IndexingCallbacks] = None,
+        callbacks: IndexingCallbacks | None = None,
     ) -> AnalysisResult:
         """
         Perform incremental analysis of changed files.
@@ -154,7 +155,7 @@ class IncrementalAnalyzer:
         diagnostics.info(f"Detected changes: {changes}")
 
         # 2. Build re-analysis set
-        files_to_analyze: Set[str] = set()
+        files_to_analyze: set[str] = set()
 
         # Handle compile_commands.json change (broadest impact)
         if changes.compile_commands_changed:
@@ -197,11 +198,11 @@ class IncrementalAnalyzer:
         diagnostics.info(f"Incremental analysis complete: {result}")
         return result
 
-    def _handle_compile_commands_change(self) -> Set[str]:
+    def _handle_compile_commands_change(self) -> set[str]:
         """Handle compile_commands.json change."""
         return change_handler.handle_compile_commands_change(self.ctx)
 
-    def _handle_header_change(self, header_path: str) -> Set[str]:
+    def _handle_header_change(self, header_path: str) -> set[str]:
         """Handle header file change."""
         return change_handler.handle_header_change(self.ctx, header_path)
 
@@ -215,9 +216,9 @@ class IncrementalAnalyzer:
 
     def _reanalyze_files(
         self,
-        files: Set[str],
+        files: set[str],
         start_time: float,
-        callbacks: Optional[IndexingCallbacks] = None,
+        callbacks: IndexingCallbacks | None = None,
     ) -> int:
         """Re-analyze a set of files using parallel processing."""
         return worker_orchestrator.reanalyze_files(

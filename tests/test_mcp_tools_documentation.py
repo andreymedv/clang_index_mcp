@@ -5,10 +5,8 @@ Tests that search_classes, search_functions, and get_class_info
 return documentation fields in their JSON responses.
 """
 
-import json
 import os
 import sys
-from pathlib import Path
 
 import pytest
 

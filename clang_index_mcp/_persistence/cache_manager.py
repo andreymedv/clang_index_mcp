@@ -7,14 +7,14 @@ import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
-from .error_tracking_adapter import ErrorTrackingAdapter
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._persistence.project_identity import ProjectIdentity
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import TypeAliasRecord
+from .error_tracking_adapter import ErrorTrackingAdapter
 
 if TYPE_CHECKING:
     from .._persistence.ports.recovery import CacheRecoveryPort
@@ -31,9 +31,9 @@ class CacheManager:
 
     def __init__(
         self,
-        project_root_or_identity: Union[Path, ProjectIdentity],
+        project_root_or_identity: Path | ProjectIdentity,
         skip_schema_recreation: bool = False,
-        backend: Optional[CacheBackend] = None,
+        backend: CacheBackend | None = None,
         recovery: Optional["CacheRecoveryPort"] = None,
     ):
         """
@@ -63,7 +63,7 @@ class CacheManager:
 
     @staticmethod
     def _resolve_project_identity(
-        project_root_or_identity: Union[Path, ProjectIdentity],
+        project_root_or_identity: Path | ProjectIdentity,
     ) -> tuple[Path, ProjectIdentity]:
         """Normalize constructor input into (project_root, project_identity)."""
         if isinstance(project_root_or_identity, ProjectIdentity):
@@ -304,16 +304,16 @@ class CacheManager:
 
     def save_cache(
         self,
-        class_index: Dict[str, List[SymbolInfo]],
-        function_index: Dict[str, List[SymbolInfo]],
-        file_hashes: Dict[str, str],
+        class_index: dict[str, list[SymbolInfo]],
+        function_index: dict[str, list[SymbolInfo]],
+        file_hashes: dict[str, str],
         indexed_file_count: int,
         include_dependencies: bool = False,
-        config_file_path: Optional[Path] = None,
-        config_file_mtime: Optional[float] = None,
-        compile_commands_path: Optional[Path] = None,
-        compile_commands_mtime: Optional[float] = None,
-        validation_context: Optional[CacheValidationContext] = None,
+        config_file_path: Path | None = None,
+        config_file_mtime: float | None = None,
+        compile_commands_path: Path | None = None,
+        compile_commands_mtime: float | None = None,
+        validation_context: CacheValidationContext | None = None,
     ) -> bool:
         """Save indexes to cache file with configuration metadata"""
         if validation_context is not None:
@@ -339,19 +339,19 @@ class CacheManager:
     def load_cache(
         self,
         include_dependencies: bool = False,
-        config_file_path: Optional[Path] = None,
-        config_file_mtime: Optional[float] = None,
-        compile_commands_path: Optional[Path] = None,
-        compile_commands_mtime: Optional[float] = None,
-        validation_context: Optional[CacheValidationContext] = None,
-    ) -> Optional[Dict[str, Any]]:
+        config_file_path: Path | None = None,
+        config_file_mtime: float | None = None,
+        compile_commands_path: Path | None = None,
+        compile_commands_mtime: float | None = None,
+        validation_context: CacheValidationContext | None = None,
+    ) -> dict[str, Any] | None:
         """Load cache if it exists and is valid, checking for configuration changes"""
         if validation_context is not None:
             config_file_path = validation_context.config_file_path
             config_file_mtime = validation_context.config_file_mtime
             compile_commands_path = validation_context.compile_commands_path
             compile_commands_mtime = validation_context.compile_commands_mtime
-        result: Optional[Dict[str, Any]] = self._safe_backend_call(
+        result: dict[str, Any] | None = self._safe_backend_call(
             "load_cache",
             self.backend.load_cache,
             include_dependencies,
@@ -365,11 +365,11 @@ class CacheManager:
     def save_file_cache(
         self,
         file_path: str,
-        symbols: List[SymbolInfo],
+        symbols: list[SymbolInfo],
         file_hash: str,
-        compile_args_hash: Optional[str] = None,
+        compile_args_hash: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         retry_count: int = 0,
     ) -> bool:
         """Save parsed symbols for a single file with compilation arguments hash"""
@@ -378,8 +378,8 @@ class CacheManager:
         )
 
     def load_file_cache(
-        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, file_path: str, current_hash: str, compile_args_hash: str | None = None
+    ) -> dict[str, Any] | None:
         """Load cached data for a file if hash matches"""
         return self.backend.load_file_cache(file_path, current_hash, compile_args_hash)
 
@@ -419,7 +419,7 @@ class CacheManager:
         except Exception:
             pass  # Silently fail for progress tracking
 
-    def load_progress(self) -> Optional[Dict[str, Any]]:
+    def load_progress(self) -> dict[str, Any] | None:
         """Load indexing progress if available"""
         try:
             progress_file = self.cache_dir / "indexing_progress.json"
@@ -427,12 +427,12 @@ class CacheManager:
                 return None
 
             with open(progress_file, "r") as f:
-                data: Dict[str, Any] = json.load(f)
+                data: dict[str, Any] = json.load(f)
                 return data
         except Exception:
             return None
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         """
         Get summary of cache errors and health status.
 
@@ -447,7 +447,7 @@ class CacheManager:
 
         # Count unique files and error types from parse errors
         unique_files: set[str] = set()
-        error_types: Dict[str, int] = {}
+        error_types: dict[str, int] = {}
         for error in parse_errors:
             unique_files.add(error["file_path"])
             error_type = error.get("error_type", "Unknown")
@@ -471,7 +471,7 @@ class CacheManager:
         file_path: str,
         error: Exception,
         file_hash: str,
-        compile_args_hash: Optional[str],
+        compile_args_hash: str | None,
         retry_count: int,
     ) -> bool:
         """Log a parsing error to the centralized error log for developer analysis.
@@ -510,8 +510,8 @@ class CacheManager:
             return False
 
     def get_parse_errors(
-        self, limit: Optional[int] = None, file_path_filter: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, limit: int | None = None, file_path_filter: str | None = None
+    ) -> list[dict[str, Any]]:
         """Get parse errors from the error log.
 
         Args:
@@ -555,7 +555,7 @@ class CacheManager:
             print(f"Failed to load parse errors: {e}", file=sys.stderr)
             return []
 
-    def get_parse_error_summary(self) -> Dict[str, Any]:
+    def get_parse_error_summary(self) -> dict[str, Any]:
         """Get a summary of parse errors for developer analysis.
 
         Returns:
@@ -581,7 +581,7 @@ class CacheManager:
             "error_log_path": str(self.error_log_path),
         }
 
-    def clear_error_log(self, older_than_days: Optional[int] = None) -> int:
+    def clear_error_log(self, older_than_days: int | None = None) -> int:
         """Clear the error log, optionally keeping recent errors.
 
         Args:
@@ -609,8 +609,7 @@ class CacheManager:
 
                 # Rewrite file with kept errors
                 with open(self.error_log_path, "w") as f:
-                    for error in kept_errors:
-                        f.write(json.dumps(error) + "\n")
+                    f.writelines(json.dumps(error) + "\n" for error in kept_errors)
 
                 return cleared_count
         except Exception as e:
@@ -621,7 +620,7 @@ class CacheManager:
     # Type Aliases (Phase 1.3: Type Alias Tracking)
     # -------------------------------------------------------------------------
 
-    def save_type_aliases_batch(self, aliases: List[TypeAliasRecord]) -> int:
+    def save_type_aliases_batch(self, aliases: list[TypeAliasRecord]) -> int:
         """
         Batch save type aliases to cache.
 
@@ -638,7 +637,7 @@ class CacheManager:
         )
         return result
 
-    def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
+    def get_aliases_for_canonical(self, canonical_type: str) -> list[str]:
         """
         Get all alias names that resolve to a canonical type.
 
@@ -650,13 +649,13 @@ class CacheManager:
         Returns:
             List of alias names
         """
-        result: List[str] = self._safe_backend_call(
+        result: list[str] = self._safe_backend_call(
             "get_aliases_for_canonical",
             lambda: self.backend.get_aliases_for_canonical(canonical_type),
         )
         return result
 
-    def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
+    def get_canonical_for_alias(self, alias_name: str) -> str | None:
         """
         Get canonical type for an alias name.
 
@@ -668,36 +667,36 @@ class CacheManager:
         Returns:
             Canonical type string, or None if not found
         """
-        result: Optional[str] = self._safe_backend_call(
+        result: str | None = self._safe_backend_call(
             "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
         )
         return result
 
-    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+    def get_type_alias_info(self, type_name: str) -> dict[str, Any] | None:
         """
         Get high-level information for a known type alias from the cache.
 
         Returns:
             Dict with canonical_type, aliases, and metadata, or None if not found.
         """
-        result: Optional[Dict[str, Any]] = self._safe_backend_call(
+        result: dict[str, Any] | None = self._safe_backend_call(
             "get_type_alias_info", lambda: self.backend.get_type_alias_info(type_name)
         )
         return result
 
-    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+    def get_type_alias_details(self, alias_names: list[str]) -> list[dict[str, Any]]:
         """
         Get detailed records for a list of alias names from the cache.
 
         Returns:
             List of alias detail dicts.
         """
-        result: List[Dict[str, Any]] = self._safe_backend_call(
+        result: list[dict[str, Any]] = self._safe_backend_call(
             "get_type_alias_details", lambda: self.backend.get_type_alias_details(alias_names)
         )
         return result
 
-    def get_all_alias_mappings(self) -> Dict[str, str]:
+    def get_all_alias_mappings(self) -> dict[str, str]:
         """
         Get all alias → canonical type mappings.
 
@@ -706,7 +705,7 @@ class CacheManager:
         Returns:
             Dictionary mapping alias names to canonical types
         """
-        result: Dict[str, str] = self._safe_backend_call(
+        result: dict[str, str] = self._safe_backend_call(
             "get_all_alias_mappings", lambda: self.backend.get_all_alias_mappings()
         )
         return result

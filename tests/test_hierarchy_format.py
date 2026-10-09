@@ -1,6 +1,7 @@
 """Tests for hierarchy_format module."""
 
 import json
+
 import pytest
 
 from clang_index_mcp._search.hierarchy_format import (

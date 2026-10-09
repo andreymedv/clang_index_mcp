@@ -5,9 +5,13 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
-from clang_index_mcp._incremental.change_scanner import ChangeScanner, ChangeSet, ChangeType
+from clang_index_mcp._incremental.change_scanner import (
+    ChangeScanner,
+    ChangeSet,
+    ChangeType,
+)
 from clang_index_mcp.cpp_analyzer_config import CompileCommandsConfig
 
 

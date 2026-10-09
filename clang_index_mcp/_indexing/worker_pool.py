@@ -10,14 +10,14 @@ composition root.
 """
 
 import multiprocessing
-import sys
 import time
+from collections.abc import Generator
 from concurrent.futures import (
     Executor,
     ProcessPoolExecutor,
 )
 from contextlib import contextmanager
-from typing import Any, Iterator, List, Optional
+from typing import Any
 
 # Handle both package and script imports
 try:
@@ -33,8 +33,8 @@ class WorkerPoolManager:
 
     def __init__(self, max_workers: int):
         self.max_workers = max_workers
-        self.executor: Optional[Executor] = None
-        self.mp_context: Optional[Any] = None
+        self.executor: Executor | None = None
+        self.mp_context: Any | None = None
 
     def setup(self) -> Executor:
         """Initialize and return the process pool executor."""
@@ -111,7 +111,7 @@ class WorkerPoolManager:
             self.executor = None
 
     @contextmanager
-    def managed_executor(self, name: str = "Indexing") -> Iterator[Executor]:
+    def managed_executor(self, name: str = "Indexing") -> Generator[Executor]:
         """Yield a pool executor with interrupt-aware teardown guaranteed.
 
         On KeyboardInterrupt the pool is shut down gracefully (waiting for and
@@ -132,14 +132,11 @@ class WorkerPoolManager:
             return
 
         try:
-            if sys.version_info >= (3, 9):
-                self.executor.shutdown(wait=False, cancel_futures=True)
-            else:
-                self.executor.shutdown(wait=False)
+            self.executor.shutdown(wait=False, cancel_futures=True)
         except Exception:
             self.executor.shutdown(wait=False)
 
-    def _wait_for_workers(self, workers: List[Any], name: str, timeout: float = 5.0):
+    def _wait_for_workers(self, workers: list[Any], name: str, timeout: float = 5.0):
         """Wait for worker processes to finish cleanly with progress updates."""
         num_workers = len(workers)
         start_wait = time.time()
@@ -162,7 +159,7 @@ class WorkerPoolManager:
 
             time.sleep(0.5)
 
-    def _send_sigterm(self, workers: List[Any]):
+    def _send_sigterm(self, workers: list[Any]):
         """Send SIGTERM to a list of worker processes."""
         for w in workers:
             try:
@@ -171,7 +168,7 @@ class WorkerPoolManager:
             except Exception:
                 pass
 
-    def _send_sigkill(self, workers: List[Any]):
+    def _send_sigkill(self, workers: list[Any]):
         """Send SIGKILL to a list of worker processes."""
         for w in workers:
             try:
@@ -180,7 +177,7 @@ class WorkerPoolManager:
             except Exception:
                 pass
 
-    def _terminate_hanging_workers(self, workers: List[Any], name: str):
+    def _terminate_hanging_workers(self, workers: list[Any], name: str):
         """Forcefully terminate worker processes that didn't finish cleanly."""
         alive_workers = [w for w in workers if w.is_alive()]
         if not alive_workers:

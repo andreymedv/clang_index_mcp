@@ -11,13 +11,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._incremental.incremental_analyzer import IncrementalAnalyzer
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 class TestIncrementalAnalysisIntegration(unittest.TestCase):
@@ -415,7 +414,6 @@ class TestIncrementalAnalysisPerformance(unittest.TestCase):
         # TODO: Implement performance comparison test
         # This would create a larger project, do initial analysis,
         # modify one file, and compare incremental vs full re-analysis time
-        pass
 
 
 if __name__ == "__main__":

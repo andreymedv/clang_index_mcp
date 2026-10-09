@@ -1,7 +1,8 @@
 """Shared DTO for indexing/refresh callback pairs."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .._mcp.state_manager import AnalyzerStateManager
@@ -11,8 +12,8 @@ if TYPE_CHECKING:
 class IndexingCallbacks:
     """Progress and tool-availability callbacks forwarded through indexing layers."""
 
-    progress: Optional[Callable[[Any], None]] = None
-    wait_for_tools: Optional[Callable[..., Any]] = None
+    progress: Callable[[Any], None] | None = None
+    wait_for_tools: Callable[..., Any] | None = None
 
     @classmethod
     def from_state_manager(cls, state_manager: "AnalyzerStateManager") -> "IndexingCallbacks":

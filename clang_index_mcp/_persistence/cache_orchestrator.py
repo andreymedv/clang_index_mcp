@@ -7,19 +7,21 @@ Manages cache loading/saving, file caching, header tracking, and progress summar
 
 import json
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from .._core import diagnostics
 from .._persistence.cache_validation_context import CacheValidationContext
 from .._persistence.header_tracker import HeaderProcessingTracker
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from .._compilation.compilation_environment import CompilationEnvironment
     from .._persistence.cache_manager import CacheManager
     from .._search.call_graph_service import CallGraphService
     from .._symbols.symbol_index_store import SymbolIndexStore
     from ..cpp_analyzer_config import CppAnalyzerConfig
-    from pathlib import Path
 
 
 class CacheOrchestrator:
@@ -85,11 +87,11 @@ class CacheOrchestrator:
         """Return the number of headers currently tracked as processed."""
         return self.header_tracker.get_processed_count()
 
-    def get_processed_headers(self) -> Dict[str, str]:
+    def get_processed_headers(self) -> dict[str, str]:
         """Return a snapshot of all processed headers and their file hashes."""
         return self.header_tracker.get_processed_headers()
 
-    def restore_processed_headers(self, processed_headers: Dict[str, str]) -> None:
+    def restore_processed_headers(self, processed_headers: dict[str, str]) -> None:
         """Restore processed headers from a previously saved snapshot."""
         self.header_tracker.restore_processed_headers(processed_headers)
 
@@ -204,7 +206,7 @@ class CacheOrchestrator:
                 diagnostics.debug("compile_commands.json changed - resetting header tracking")
                 self.clear_header_tracker()
 
-        except (json.JSONDecodeError, IOError, OSError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             # JSON corruption or file access errors - this can happen with concurrent writes
             # in multi-process mode. Simply start fresh.
             diagnostics.debug(
@@ -272,11 +274,11 @@ class CacheOrchestrator:
     def save_file_cache(
         self,
         file_path: str,
-        symbols: List[Any],
+        symbols: list[Any],
         file_hash: str,
-        compile_args_hash: Optional[str] = None,
+        compile_args_hash: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         retry_count: int = 0,
     ):
         """Save parsed symbols for a single file to cache"""
@@ -285,8 +287,8 @@ class CacheOrchestrator:
         )
 
     def load_file_cache(
-        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, file_path: str, current_hash: str, compile_args_hash: str | None = None
+    ) -> dict[str, Any] | None:
         """Load cached data for a file if still valid
 
         Returns:
@@ -296,7 +298,7 @@ class CacheOrchestrator:
 
     def try_load_cached_index(
         self, file_path: str, current_hash: str, compile_args_hash: str, force: bool
-    ) -> Optional[Tuple[bool, bool]]:
+    ) -> tuple[bool, bool] | None:
         """Try to load index from per-file cache. Returns result tuple or None if not cached."""
         from .._core import diagnostics
 
@@ -323,8 +325,8 @@ class CacheOrchestrator:
     def handle_cache_initial_index(
         self,
         force: bool,
-        refresh_fn: Optional[Callable[[bool], int]] = None,
-    ) -> Optional[int]:
+        refresh_fn: Callable[[bool], int] | None = None,
+    ) -> int | None:
         """Try to load from cache if not forcing.
 
         Args:

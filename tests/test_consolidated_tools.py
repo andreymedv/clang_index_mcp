@@ -5,15 +5,10 @@ and system state injection.
 """
 
 import json
-import os
-import sys
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from clang_index_mcp._mcp.tool_registry import ToolRegistry
-
 from mcp.types import TextContent
 
 from clang_index_mcp._mcp.consolidated_tools import (
@@ -83,7 +78,7 @@ class TestListToolsB:
 
     def test_find_symbols_by_pattern_has_detail_level_enum(self) -> None:
         tools = list_tools_b()
-        search = [t for t in tools if t.name == "find_symbols_by_pattern"][0]
+        search = next(t for t in tools if t.name == "find_symbols_by_pattern")
         props = search.inputSchema["properties"]
         assert "output_detail_level" in props
         assert set(props["output_detail_level"]["enum"]) == {
@@ -94,7 +89,7 @@ class TestListToolsB:
 
     def test_find_outgoing_calls_has_return_format_enum(self) -> None:
         tools = list_tools_b()
-        tool = [t for t in tools if t.name == "find_outgoing_calls"][0]
+        tool = next(t for t in tools if t.name == "find_outgoing_calls")
         props = tool.inputSchema["properties"]
         assert "return_format" in props
         assert set(props["return_format"]["enum"]) == {
@@ -105,7 +100,7 @@ class TestListToolsB:
 
     def test_trace_execution_path_params(self) -> None:
         tools = list_tools_b()
-        tool = [t for t in tools if t.name == "trace_execution_path"][0]
+        tool = next(t for t in tools if t.name == "trace_execution_path")
         assert set(tool.inputSchema["required"]) == {
             "source_function",
             "target_function",
@@ -774,7 +769,11 @@ class TestModuleImports:
 
     def test_module_imports(self) -> None:
         """consolidated_tools module should be importable."""
-        from clang_index_mcp._mcp.consolidated_tools import TOOL_NAMES, handle_tool_call_b, list_tools_b
+        from clang_index_mcp._mcp.consolidated_tools import (
+            TOOL_NAMES,
+            handle_tool_call_b,
+            list_tools_b,
+        )
 
         assert callable(list_tools_b)
         assert callable(handle_tool_call_b)  # type: ignore[arg-type]

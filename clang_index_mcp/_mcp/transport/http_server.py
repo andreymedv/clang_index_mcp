@@ -8,7 +8,6 @@ import asyncio
 import contextlib
 import json
 import logging
-from typing import Optional
 from uuid import uuid4
 
 import uvicorn
@@ -209,7 +208,7 @@ class MCPHTTPServer:
 
     async def _validate_json_body(
         self, request: Request, session_id: str
-    ) -> tuple[bytes, Optional[Response]]:
+    ) -> tuple[bytes, Response | None]:
         """Read and validate JSON body, returning the body and an optional error response."""
         body = await request.body()
         try:
@@ -353,7 +352,7 @@ class MCPHTTPServer:
         except Exception as e:
             logger.exception(f"Unexpected error in handle_http_message: {e}")
             return JSONResponse(
-                {"error": f"Server error: {str(e)}"},
+                {"error": f"Server error: {e!s}"},
                 status_code=500,
                 headers={"mcp-session-id": session_id},
             )

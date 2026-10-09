@@ -148,7 +148,7 @@ def run_diagnosis(scenario_id, scenario):
     print(f"  Arguments: {json.dumps(tool_args, indent=4)}")
 
     if tool_name == scenario["expected_tool"]:
-        print(f"\n  ✅ Correct tool chosen on first call!")
+        print("\n  ✅ Correct tool chosen on first call!")
     else:
         print(f"\n  ❌ Wrong tool: expected {scenario['expected_tool']}, got {tool_name}")
 

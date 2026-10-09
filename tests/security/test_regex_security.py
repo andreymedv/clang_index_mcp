@@ -11,7 +11,6 @@ import os
 
 # Import test infrastructure
 import sys
-import time
 
 import pytest
 
