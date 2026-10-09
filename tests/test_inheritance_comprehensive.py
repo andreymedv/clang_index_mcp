@@ -537,20 +537,20 @@ class TestNameCollision:
         assert "Base" in bases
 
     def test_case31_template_param_base_has_index(self, analyzer):
-        """WrapperCollidesWithBase has template_param_base_indices marking param bases."""
+        """Verify WrapperCollidesWithBase marks template-param bases via template_param_base_indices."""
         info = get_info_or_skip(
             analyzer, "WrapperCollidesWithBase", "inheritance_test::WrapperCollidesWithBase"
         )
-        if info and "error" not in info:
-            # template_param_base_indices should mark which bases are template params
-            indices = info.get("template_param_base_indices", [])
-            bases = info.get("base_classes", [])
-            # The first base (index 0) should be the template param
-            if bases:
-                assert 0 in indices, (
-                    f"WrapperCollidesWithBase's first base should be a template param. "
-                    f"bases={bases}, indices={indices}"
-                )
+        assert info is not None, "Should find WrapperCollidesWithBase"
+        assert "error" not in info, f"Should not have error: {info}"
+        # template_param_base_indices should mark which bases are template params
+        indices = info.get("template_param_base_indices", [])
+        bases = info.get("base_classes", [])
+        assert len(bases) > 0, "WrapperCollidesWithBase should have at least one base class"
+        assert 0 in indices, (
+            f"WrapperCollidesWithBase's first base should be a template param. "
+            f"bases={bases}, indices={indices}"
+        )
 
     def test_case33_concrete_from_other_namespace(self, analyzer):
         """ConcreteWidgetChild inherits from other::Widget."""
@@ -608,7 +608,7 @@ class TestExternTemplate:
         assert len(results) > 0, "Should find ExternParamInherit"
 
     def test_case40_extern_fixed_base(self, analyzer):
-        """ExternFixedInherit<T> always inherits from ExternFixedBase (fixed)."""
+        """Verify ExternFixedInherit<T> has ExternFixedBase as base via search or class info."""
         results = analyzer.search_classes("ExternFixedInherit")
         assert len(results) > 0
         # The template definition should have ExternFixedBase as base
@@ -621,11 +621,12 @@ class TestExternTemplate:
         info = get_info_or_skip(
             analyzer, "ExternFixedInherit", "inheritance_test::ExternFixedInherit"
         )
-        if info and "error" not in info:
-            bases = info.get("base_classes", [])
-            assert any(
-                "ExternFixedBase" in b for b in bases
-            ), f"ExternFixedInherit should have ExternFixedBase, got {bases}"
+        assert info is not None, "Should find ExternFixedInherit via get_class_info"
+        assert "error" not in info, f"Should not have error: {info}"
+        bases = info.get("base_classes", [])
+        assert any(
+            "ExternFixedBase" in b for b in bases
+        ), f"ExternFixedInherit should have ExternFixedBase, got {bases}"
 
     def test_case38_extern_instantiation_has_resolved_bases(self, analyzer):
         """Extern template instantiation ExternParamInherit<ExternBase> should have
@@ -686,7 +687,7 @@ class TestSpecialization:
     """Patterns 42-46: Full/partial specializations with varying bases."""
 
     def test_case42_primary_has_spec_base_a(self, analyzer):
-        """SpecPrimary<T> primary template inherits from SpecBaseA."""
+        """Verify SpecPrimary<T> primary template inherits from SpecBaseA."""
         results = analyzer.search_classes("SpecPrimary")
         primary = None
         for r in results:
@@ -695,11 +696,11 @@ class TestSpecialization:
             ) not in ("full_specialization", "partial_specialization"):
                 primary = r
                 break
-        if primary:
-            bases = base_names(primary.get("base_classes", []))
-            assert (
-                "SpecBaseA" in bases
-            ), f"SpecPrimary primary should inherit from SpecBaseA, got {bases}"
+        assert primary is not None, "Should find SpecPrimary primary template (non-specialization)"
+        bases = base_names(primary.get("base_classes", []))
+        assert (
+            "SpecBaseA" in bases
+        ), f"SpecPrimary primary should inherit from SpecBaseA, got {bases}"
 
     def test_case42_int_specialization_has_spec_base_b(self, analyzer):
         """SpecPrimary<int> specialization inherits from SpecBaseB."""
@@ -934,14 +935,15 @@ class TestAdvancedPatterns:
         assert "OuterBase" in bases
 
     def test_case61_inner_class_inherits(self, analyzer):
-        """OuterClass::InnerClass inherits from OuterBase."""
+        """Verify OuterClass::InnerClass inherits from OuterBase."""
         info = analyzer.get_class_info("inheritance_test::OuterClass::InnerClass")
         if info is None or "error" in (info or {}):
             # Try simpler name
             info = analyzer.get_class_info("InnerClass")
-        if info and "error" not in info:
-            bases = base_names(info.get("base_classes", []))
-            assert "OuterBase" in bases, f"InnerClass should inherit from OuterBase, got {bases}"
+        assert info is not None, "Should find InnerClass (qualified or simple)"
+        assert "error" not in info, f"Should not have error: {info}"
+        bases = base_names(info.get("base_classes", []))
+        assert "OuterBase" in bases, f"InnerClass should inherit from OuterBase, got {bases}"
 
     def test_case62_uses_default_template_param(self, analyzer):
         """UsesDefault inherits from DefaultParamInherit<> (default=DefaultTemplateBase)."""
@@ -1089,8 +1091,9 @@ class TestHierarchyQualifiedNames:
             assert "::" in qname, f"qualified_name should include namespace, got '{qname}'"
 
     def test_get_derived_classes_qualified_name_has_simple_name(self, analyzer):
-        """qualified_name should contain a simple class name as the last component."""
+        """Verify every qualified_name in derived-class results ends with a non-empty simple name."""
         derived = analyzer.get_derived_classes("inheritance_test::SingleBase")
+        assert len(derived) > 0, "Expected at least one derived class of SingleBase"
         for d in derived:
             qname = d["qualified_name"]
             simple = qname.split("::")[-1]

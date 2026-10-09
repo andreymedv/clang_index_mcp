@@ -199,8 +199,9 @@ class TestCrossSpecializationQueries:
         assert "DerivedB" in names, "Should find DerivedB (from Base<DerivedB>)"
 
     def test_derived_base_classes_preserved(self, analyzer):
-        """Test that base_classes info is preserved in results."""
+        """Verify that derived-class results preserve base_classes info pointing to Container specializations."""
         derived = analyzer.get_derived_classes("Container")
+        assert len(derived) > 0, "Should find at least one class derived from Container"
 
         # Verify base classes are included
         for d in derived:
@@ -311,9 +312,10 @@ class TestTemplateEdgeCases:
         assert "class_template" in kinds, "Tuple should be indexed as template"
 
     def test_project_only_filtering(self, analyzer):
-        """Test project_only parameter with templates."""
+        """Verify project_only filtering returns only project-local derived classes."""
         # All results should be from project (not dependencies)
         derived = analyzer.get_derived_classes("Container", project_only=True)
+        assert len(derived) > 0, "Should find at least one project-local derived class"
 
         for d in derived:
             assert d.get(
@@ -1183,19 +1185,21 @@ class TestTemplateBaseClassImprovement:
 
         for inst in instantiations:
             base_classes = inst.get("base_classes", [])
-            # If the instantiation has resolved base classes, verify they're correct
-            if base_classes:
-                # Should be 'InterfaceA' or 'InterfaceB', not empty or type-parameter
-                for bc in base_classes:
-                    assert (
-                        "type-parameter" not in bc
-                    ), f"Instantiation base class should be resolved: {bc}"
-                    assert bc in [
-                        "InterfaceA",
-                        "InterfaceB",
-                        "testns::InterfaceA",
-                        "testns::InterfaceB",
-                    ], f"Unexpected base class: {bc}"
+            assert len(base_classes) > 0, (
+                f"Explicit instantiation {inst.get('qualified_name', '?')} should have resolved bases, "
+                f"got empty base_classes"
+            )
+            # Should be 'InterfaceA' or 'InterfaceB', not empty or type-parameter
+            for bc in base_classes:
+                assert (
+                    "type-parameter" not in bc
+                ), f"Instantiation base class should be resolved: {bc}"
+                assert bc in [
+                    "InterfaceA",
+                    "InterfaceB",
+                    "testns::InterfaceA",
+                    "testns::InterfaceB",
+                ], f"Unexpected base class: {bc}"
 
     def test_concrete_class_base_includes_template_arg(self, param_inheritance_analyzer):
         """
@@ -1448,12 +1452,7 @@ class TestBaseClassResolutionFromIndex:
         assert result == [], "Should return empty list when primary_usr is None"
 
     def test_crtp_base_shows_param_name(self, analyzer):
-        """
-        Test CRTP pattern in existing test fixture shows parameter name.
-
-        Base<Derived> doesn't inherit from Derived in the fixture,
-        but derived classes show Base<DerivedA> which is correct.
-        """
+        """Verify CRTP Base template is found and has no direct base classes (derived classes inherit from it)."""
         results = analyzer.search_classes("Base")
 
         # Find the CRTP base template
@@ -1465,14 +1464,12 @@ class TestBaseClassResolutionFromIndex:
             ),
             None,
         )
+        assert base_template is not None, "Should find CRTP Base class_template in results"
 
-        # The existing Base<Derived> doesn't inherit from Derived,
-        # so this test just verifies the fixture works
-        if base_template:
-            # Base<Derived> has no base classes in the fixture
-            # (it doesn't inherit from Derived, the derived classes inherit from Base<Derived>)
-            # This is expected - the fixture tests CRTP usage, not parameter inheritance
-            assert base_template.get("base_classes", []) == []
+        # Base<Derived> has no base classes in the fixture
+        # (it doesn't inherit from Derived, the derived classes inherit from Base<Derived>)
+        # This is expected - the fixture tests CRTP usage, not parameter inheritance
+        assert base_template.get("base_classes", []) == []
 
 
 class TestFalsePositiveTemplateSpecialization:
@@ -1747,11 +1744,12 @@ class TestDependentTypeHierarchy:
         ), f"IntContainer should inherit from Container, got base_keys: {base_keys}"
 
     def test_dependent_type_marked_in_hierarchy(self, analyzer):
-        """Dependent type bases (typename T::X) should appear with is_dependent_type flag."""
+        """Verify dependent-type base nodes carry the is_dependent_type flag with a typename-like key."""
         # Classes with template-dependent bases will have those bases as stub nodes
         # The stub node for a dependent type has is_dependent_type=True
         # We verify by looking at any node in the classes dict
         # that has is_dependent_type set if it matches a typename pattern
+        found_dependent = False
         for hierarchy_name in ["IntContainer", "DoubleContainer"]:
             hierarchy = analyzer.get_class_hierarchy(hierarchy_name)
             if "error" in hierarchy:
@@ -1761,8 +1759,9 @@ class TestDependentTypeHierarchy:
                     assert key.startswith("typename ") or (
                         "<" in key and ">" in key and not key.endswith(">")
                     ), f"is_dependent_type node has unexpected key: {key}"
-                    return  # Found one - test passes
-        # If no dependent types found, that's also OK (they may not appear in this fixture)
+                    found_dependent = True
+        if not found_dependent:
+            pytest.skip("No dependent-type nodes found in hierarchy (valid environment outcome)")
 
     def test_non_dependent_nodes_not_marked(self, analyzer):
         """Regular resolved classes should not be marked as dependent."""

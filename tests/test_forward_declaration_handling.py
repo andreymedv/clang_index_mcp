@@ -333,7 +333,7 @@ struct Widget : WidgetBase {
         ), "Should be multi-line definition"
 
     def test_namespaced_forward_declaration(self, tmp_path):
-        """Test forward declaration in namespace."""
+        """Verify that forward-declared namespaced structs resolve to their definitions with base classes."""
         header_h = tmp_path / "header.h"
         header_h.write_text("""
 namespace app {
@@ -356,10 +356,12 @@ struct Button : ButtonBase {
         analyzer = CppAnalyzer(project_root=str(tmp_path))
         analyzer.index_file(str(header_h))
 
-        # Test with various qualified name forms
+        # Test with various qualified name forms; at least one must resolve
+        resolved_any = False
         for name in ["Button", "ui::Button", "app::ui::Button"]:
             info = analyzer.get_class_info(name)
             if info and "error" not in info:
+                resolved_any = True
                 # Definition should have base classes
                 assert "ButtonBase" in str(info.get("base_classes", [])), f"No base for {name}"
                 # Definition spans multiple lines
@@ -367,6 +369,7 @@ struct Button : ButtonBase {
                 assert _info_loc.get("end_line", 0) > _info_loc.get(
                     "start_line", 0
                 ), f"Should be multi-line definition for {name}"
+        assert resolved_any, "At least one of Button/ui::Button/app::ui::Button should resolve"
 
 
 class TestIsRicherDefinition:

@@ -59,15 +59,15 @@ class TestMacroTypeAlias:
         ), f"DataBuilderUPtr should be found, but got: {result}"
 
     def test_macro_type_alias_canonical(self, analyzer):
-        """Test that macro-expanded type alias has correct canonical type."""
+        """Verify the canonical type of DataBuilderUPtr resolves to unique_ptr or DataBuilder."""
         result = analyzer.get_type_alias_info("DataBuilderUPtr")
+        assert "error" not in result, f"Should resolve DataBuilderUPtr without error, got: {result}"
 
-        if "error" not in result:
-            # Should resolve to unique_ptr<DataBuilder, ...>
-            canonical = result.get("canonical_type", "")
-            assert (
-                "unique_ptr" in canonical.lower() or "DataBuilder" in canonical
-            ), f"Canonical type should contain unique_ptr or DataBuilder, got: {canonical}"
+        # Should resolve to unique_ptr<DataBuilder, ...>
+        canonical = result.get("canonical_type", "")
+        assert (
+            "unique_ptr" in canonical.lower() or "DataBuilder" in canonical
+        ), f"Canonical type should contain unique_ptr or DataBuilder, got: {canonical}"
 
     def test_macro_type_alias_in_search(self, analyzer):
         """Test that macro-expanded type aliases appear in search results."""
