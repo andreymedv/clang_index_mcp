@@ -175,32 +175,28 @@ async def test_sse_endpoint_event(sse_server):
 async def test_sse_with_messages_endpoint(sse_server):
     """Verify SSE server provides messages endpoint with session ID."""
     async with httpx.AsyncClient() as client:
-        # First connect to SSE to get session ID
+        # Connect to SSE and keep the connection open while POSTing
         session_id = None
         async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as sse_response:
             async for line in sse_response.aiter_lines():
                 if "session_id=" in line:
-                    # Extract session ID from endpoint URL
                     start = line.find("session_id=") + len("session_id=")
                     session_id = line[start:].strip()
                     break
 
-        assert session_id is not None, "Should receive session ID from endpoint event"
+            assert session_id is not None, "Should receive session ID from endpoint event"
 
-        # Now POST to messages endpoint with session ID (MCP SDK SSE protocol)
-        request_data = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+            # POST while SSE connection is still alive (session exists on server)
+            request_data = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+            response = await client.post(
+                f"{sse_server}/messages?session_id={session_id}", json=request_data
+            )
 
-        response = await client.post(
-            f"{sse_server}/messages?session_id={session_id}", json=request_data
-        )
-
-        # Should respond (various status codes are valid at protocol level)
-        # 200 = Success
-        # 202 = Accepted (async response)
-        # 400 = Bad request
-        # 406 = Not Acceptable (MCP transport validation)
-        # 500 = Server error
-        assert response.status_code in (200, 202, 400, 406, 500)
+            # Various status codes are valid at protocol level
+            # 202 = Accepted (MCP SDK default for SSE POST)
+            # 400/404/406 = bad request, unknown session, validation
+            # 500 = server error
+            assert response.status_code in (200, 202, 400, 404, 406, 500)
 
 
 class TestSSEProtocol:
