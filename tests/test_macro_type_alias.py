@@ -126,44 +126,36 @@ class TestMacroTypeAliasDebug:
     """Debug tests to understand the issue."""
 
     def test_debug_all_indexed_aliases(self, analyzer):
-        """Debug: Print all indexed type aliases."""
-        # Query all aliases from the cache
+        """Verify that the macro_alias fixture project has indexed type aliases. Internal requirement: analyzer produces non-empty alias list from fixture."""
         aliases = analyzer.cache_manager.backend.conn.execute(
             "SELECT alias_name, qualified_name, canonical_type, file, line FROM type_aliases"
         ).fetchall()
 
-        print(f"\n=== All indexed type aliases ({len(aliases)}) ===")
+        assert len(aliases) > 0, "Expected at least one type alias to be indexed from macro_alias fixture"
+        alias_names = {row["alias_name"] for row in aliases}
+        assert len(alias_names) > 0, "Alias names should be non-empty"
+        # Each alias should have a file and line
         for alias in aliases:
-            print(f"  {alias['alias_name']}")
-            print(f"    qualified_name: {alias['qualified_name']}")
-            print(f"    canonical_type: {alias['canonical_type']}")
-            print(f"    file: {alias['file']}")
-            print(f"    line: {alias['line']}")
-            print()
-
-        # This test is for debugging - always passes
-        # Look at the output to understand what's being indexed
-        assert True
+            assert alias["file"], f"Alias {alias['alias_name']} should have a file"
+            assert alias["line"] >= 1, f"Alias {alias['alias_name']} should have a valid line number"
 
     def test_debug_indexed_files(self, analyzer):
-        """Debug: Print all indexed files."""
+        """Verify that the macro_alias fixture project has indexed files. Internal requirement: analyzer indexes at least one file from fixture."""
         files = list(analyzer.context.symbol_store.file_index.keys())
-        print(f"\n=== All indexed files ({len(files)}) ===")
-        for f in sorted(files):
-            print(f"  {f}")
-
-        assert True
+        assert len(files) > 0, "Expected at least one file to be indexed from macro_alias fixture"
+        # All indexed paths should be absolute
+        for f in files:
+            assert f.startswith("/") or (len(f) > 1 and f[1] == ":"), (
+                f"Indexed file path should be absolute, got: {f}"
+            )
 
     def test_debug_header_tracking(self, analyzer):
-        """Debug: Print header tracking state."""
+        """Verify that the macro_alias fixture project has tracked headers. Internal requirement: header_tracker table is populated after indexing fixture."""
         headers = analyzer.cache_manager.backend.conn.execute(
             "SELECT header_path, processed_by FROM header_tracker"
         ).fetchall()
 
-        print(f"\n=== Header tracking ({len(headers)}) ===")
+        assert len(headers) > 0, "Expected at least one tracked header from macro_alias fixture"
         for h in headers:
-            print(f"  {h['header_path']}")
-            print(f"    processed_by: {h['processed_by']}")
-            print()
-
-        assert True
+            assert h["header_path"], "Tracked header should have a non-empty path"
+            assert h["processed_by"], f"Header {h['header_path']} should have a processed_by value"

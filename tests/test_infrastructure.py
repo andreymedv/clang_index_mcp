@@ -249,11 +249,23 @@ class TestTestFixtures:
         assert "functionB()" in content
 
 
-def test_pytest_markers_registered():
-    """Test that custom pytest markers are registered."""
-    # This test verifies that conftest.py registered custom markers
-    # The markers should be available through pytest's marker system
-    pass  # pytest will validate markers during collection
+def test_pytest_markers_registered(pytestconfig):
+    """Verify custom pytest markers are registered via conftest.py. Internal requirement: --strict-markers is enabled."""
+    expected_markers = [
+        "base_functionality",
+        "error_handling",
+        "security",
+        "robustness",
+        "edge_case",
+        "platform",
+        "slow",
+        "critical",
+        "workflow",
+    ]
+    registered_lines = pytestconfig.getini("markers")
+    registered_names = {line.split(":")[0].strip() for line in registered_lines}
+    for marker in expected_markers:
+        assert marker in registered_names, f"Marker '{marker}' not registered in conftest.py"
 
 
 if __name__ == "__main__":

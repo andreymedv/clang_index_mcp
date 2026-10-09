@@ -50,17 +50,23 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
 
         # Index should handle disk full gracefully
-        # Indexing itself should succeed, cache saving may fail
+        oserror_raised = False
+        indexed_count = -1
         try:
             indexed_count = analyzer.index_project()
             # Analyzer should not crash even if cache can't be saved
             # In-memory indexes should still work
             classes = analyzer.search_classes("TestClass")
-            # May or may not find class depending on when error occurs
+            assert isinstance(classes, list), "search_classes should return a list even when cache write fails"
         except OSError:
             # If OSError propagates, that's also acceptable behavior
             # As long as it's not an unhandled crash
-            pass
+            oserror_raised = True
+
+        # One of these paths must have been taken
+        assert indexed_count >= 0 or oserror_raised, (
+            "Analyzer should either complete indexing or raise OSError, not crash silently"
+        )
 
 
 @pytest.mark.error_handling
