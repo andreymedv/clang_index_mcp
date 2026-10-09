@@ -135,7 +135,6 @@ async def test_sse_stream_endpoint(sse_server):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=True)
 async def test_sse_session_id_in_endpoint_event(sse_server):
     """Verify SSE stream includes session ID in endpoint event (MCP SDK behavior)."""
     async with httpx.AsyncClient() as client:
@@ -153,7 +152,6 @@ async def test_sse_session_id_in_endpoint_event(sse_server):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=True)
 async def test_sse_endpoint_event(sse_server):
     """Verify SSE stream sends an endpoint event (MCP SDK behavior)."""
     async with httpx.AsyncClient() as client:
@@ -174,7 +172,6 @@ async def test_sse_endpoint_event(sse_server):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=True)
 async def test_sse_with_messages_endpoint(sse_server):
     """Verify SSE server provides messages endpoint with session ID."""
     async with httpx.AsyncClient() as client:
@@ -227,7 +224,6 @@ class TestSSEProtocol:
                 assert "no-store" in cache_control or "no-cache" in cache_control
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=True)
     async def test_sse_reconnection(self, sse_server):
         """Verify SSE stream can be reconnected — each connection gets a new session."""
         async with httpx.AsyncClient() as client:
