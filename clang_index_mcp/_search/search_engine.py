@@ -1,6 +1,5 @@
 """Search functionality for C++ symbols."""
 
-import threading
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from .._core.regex_validator import RegexValidator
@@ -12,6 +11,7 @@ from .._symbols.model import (
     is_richer_definition,
     omit_empty,
 )
+from .._symbols.ports.lock_provider import LockProvider
 from .pattern_matcher import detect_pattern_type, matches_qualified_pattern
 from .prototype_builder import (
     build_attributes,
@@ -35,7 +35,7 @@ class SearchEngine:
         function_index: dict[str, list[SymbolInfo]] | None = None,
         file_index: dict[str, list[SymbolInfo]] | None = None,
         usr_index: dict[str, SymbolInfo] | None = None,
-        index_lock: threading.RLock | None = None,
+        index_lock: LockProvider | None = None,
         cache_manager=None,  # Phase 1.3: Type Alias Tracking support
         symbol_store: Optional["SymbolIndexStore"] = None,
     ):
