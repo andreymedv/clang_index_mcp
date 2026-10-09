@@ -135,11 +135,10 @@ async def test_sse_stream_endpoint(sse_server):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=False)
 async def test_sse_session_id_in_endpoint_event(sse_server):
-    """Test that SSE stream includes session ID in endpoint event (MCP SDK behavior)."""
+    """Verify SSE stream includes session ID in endpoint event (MCP SDK behavior)."""
     async with httpx.AsyncClient() as client:
-        async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response:
+        async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as response:
             # MCP SDK's SseServerTransport sends session ID in the "endpoint" event
             session_id_found = False
             async for line in response.aiter_lines():
@@ -153,9 +152,8 @@ async def test_sse_session_id_in_endpoint_event(sse_server):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=False)
 async def test_sse_endpoint_event(sse_server):
-    """Test that SSE stream sends endpoint event (MCP SDK behavior)."""
+    """Verify SSE stream sends an endpoint event (MCP SDK behavior)."""
     async with httpx.AsyncClient() as client:
         async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as response:
             endpoint_event_found = False
@@ -174,36 +172,31 @@ async def test_sse_endpoint_event(sse_server):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=False)
 async def test_sse_with_messages_endpoint(sse_server):
-    """Test that SSE server provides messages endpoint with session ID."""
+    """Verify SSE server provides messages endpoint with session ID."""
     async with httpx.AsyncClient() as client:
-        # First connect to SSE to get session ID
+        # Connect to SSE and keep the connection open while POSTing
         session_id = None
-        async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as sse_response:
+        async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as sse_response:
             async for line in sse_response.aiter_lines():
                 if "session_id=" in line:
-                    # Extract session ID from endpoint URL
                     start = line.find("session_id=") + len("session_id=")
                     session_id = line[start:].strip()
                     break
 
-        assert session_id is not None, "Should receive session ID from endpoint event"
+            assert session_id is not None, "Should receive session ID from endpoint event"
 
-        # Now POST to messages endpoint with session ID (MCP SDK SSE protocol)
-        request_data = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+            # POST while SSE connection is still alive (session exists on server)
+            request_data = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+            response = await client.post(
+                f"{sse_server}/messages?session_id={session_id}", json=request_data
+            )
 
-        response = await client.post(
-            f"{sse_server}/messages?session_id={session_id}", json=request_data
-        )
-
-        # Should respond (various status codes are valid at protocol level)
-        # 200 = Success
-        # 202 = Accepted (async response)
-        # 400 = Bad request
-        # 406 = Not Acceptable (MCP transport validation)
-        # 500 = Server error
-        assert response.status_code in (200, 202, 400, 406, 500)
+            # Various status codes are valid at protocol level
+            # 202 = Accepted (MCP SDK default for SSE POST)
+            # 400/404/406 = bad request, unknown session, validation
+            # 500 = server error
+            assert response.status_code in (200, 202, 400, 404, 406, 500)
 
 
 class TestSSEProtocol:
@@ -227,13 +220,12 @@ class TestSSEProtocol:
                 assert "no-store" in cache_control or "no-cache" in cache_control
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Flaky in CI: peer closed connection (timing)", strict=False)
     async def test_sse_reconnection(self, sse_server):
-        """Test SSE stream can be reconnected (each connection gets new session)."""
+        """Verify SSE stream can be reconnected — each connection gets a new session."""
         async with httpx.AsyncClient() as client:
             # First connection
             session_id_1 = None
-            async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response1:
+            async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as response1:
                 # Extract session ID from endpoint event
                 async for line in response1.aiter_lines():
                     if "session_id=" in line:
@@ -244,7 +236,7 @@ class TestSSEProtocol:
 
             # Second connection (MCP SDK creates new session per connection)
             session_id_2 = None
-            async with client.stream("GET", f"{sse_server}/sse", timeout=2.0) as response2:
+            async with client.stream("GET", f"{sse_server}/sse", timeout=5.0) as response2:
                 async for line in response2.aiter_lines():
                     if "session_id=" in line:
                         start = line.find("session_id=") + len("session_id=")

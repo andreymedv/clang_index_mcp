@@ -231,8 +231,10 @@ class CacheManager:
         """
         diagnostics.warning(f"Attempting recovery from {type(error).__name__} in {operation}")
 
-        # For database corruption, try repair
-        if isinstance(error, sqlite3.DatabaseError) and "corrupt" in str(error).lower():
+        # For database corruption, try repair (sqlite3 uses both "corrupt" and "malformed")
+        if isinstance(error, sqlite3.DatabaseError) and (
+            "corrupt" in str(error).lower() or "malformed" in str(error).lower()
+        ):
             diagnostics.info("Database corruption detected, attempting repair...")
 
             # Create backup first

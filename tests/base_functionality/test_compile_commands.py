@@ -28,7 +28,8 @@ class TestCompileCommands:
     """Test compile_commands.json support - REQ-1.6"""
 
     def test_compile_commands_loading(self, temp_project_dir):
-        """Test loading valid compile_commands.json - Task 1.1.10"""
+        """Verify compile_commands.json is loaded, indexing completes without
+        crashing, and post-index stats reflect the indexer state."""
         # Create a simple C++ file (no includes needed)
         src_file = temp_project_dir / "src" / "main.cpp"
         src_file.write_text("""
@@ -70,10 +71,10 @@ int main() {
         # So we verify the file was at least attempted
         assert indexed_count >= 0, "Index should complete without crashing"
 
-        # Verify the file was found and processed (even if parsing failed)
+        # Verify the stats reflect a completed indexing run
         stats_after = analyzer.get_stats()
-        # File count might be 0 if parsing failed, but that's OK for this test
-        # The key is compile_commands loaded successfully
+        assert isinstance(stats_after, dict), "get_stats should return a dict after indexing"
+        assert "file_count" in stats_after, "stats should include file_count"
 
     def test_missing_compile_commands_fallback(self, temp_project_dir):
         """Test fallback behavior when compile_commands.json is missing"""

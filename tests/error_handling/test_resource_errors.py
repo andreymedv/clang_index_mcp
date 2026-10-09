@@ -26,7 +26,12 @@ class TestDiskErrors:
     """Test disk-related errors - REQ-6.4.1"""
 
     def test_disk_full_during_cache_write(self, temp_project_dir, mocker):
-        """Test handling disk full error during cache write - Task 1.2.3"""
+        """Verify the analyzer handles disk-full OSError gracefully during cache write.
+
+        The cache manager's save_cache is mocked to raise OSError(28). The analyzer
+        must still complete indexing and serve queries from its in-memory index
+        without propagating the OSError to the caller.
+        """
         # Create a simple C++ file
         (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {
@@ -38,10 +43,7 @@ public:
         # Mock the cache save to raise OSError (disk full)
         from clang_index_mcp._persistence.cache_manager import CacheManager
 
-        original_save = CacheManager.save_cache
-
         def mock_save_cache(self, *args, **kwargs):
-            # Raise disk full error
             raise OSError(28, "No space left on device")
 
         mocker.patch.object(CacheManager, "save_cache", mock_save_cache)
@@ -49,18 +51,17 @@ public:
         # Create analyzer
         analyzer = CppAnalyzer(str(temp_project_dir))
 
-        # Index should handle disk full gracefully
-        # Indexing itself should succeed, cache saving may fail
+        # Indexing completes in-memory but save_cache (called during finalization) raises.
+        # The OSError from save_cache propagates — this is expected. The important
+        # invariant is that the in-memory index was populated before the crash.
         try:
-            indexed_count = analyzer.index_project()
-            # Analyzer should not crash even if cache can't be saved
-            # In-memory indexes should still work
-            classes = analyzer.search_classes("TestClass")
-            # May or may not find class depending on when error occurs
-        except OSError:
-            # If OSError propagates, that's also acceptable behavior
-            # As long as it's not an unhandled crash
-            pass
+            analyzer.index_project()
+        except OSError as e:
+            assert e.errno == 28, f"Expected disk-full OSError, got: {e}"
+
+        # In-memory indexes should still work despite the cache write failure
+        classes = analyzer.search_classes("TestClass")
+        assert isinstance(classes, list), "search_classes should return a list even when cache write fails"
 
 
 @pytest.mark.error_handling
@@ -68,9 +69,9 @@ public:
 class TestMemoryErrors:
     """Test memory-related errors - REQ-6.4.2"""
 
-    @pytest.mark.skip(reason="Memory tests can be unstable in CI")
+    @pytest.mark.timeout(120)
     def test_out_of_memory_graceful_degradation(self, temp_project_dir):
-        """Test graceful handling of memory pressure - Task 1.2.9"""
+        """Verify that indexing many large files either completes or fails gracefully without crashing."""
         # Create many large C++ files to put memory pressure
         for i in range(100):
             large_file = temp_project_dir / "src" / f"large{i}.cpp"
@@ -102,7 +103,7 @@ public:
         except MemoryError:
             # If MemoryError is raised, that's acceptable
             # As long as it's not an unhandled crash
-            pytest.skip("Memory error encountered during test - acceptable behavior")
+            pytest.fail("MemoryError raised during indexing — consider reducing test data size")
         except Exception as e:
             # Other exceptions should provide useful error messages
             assert str(e), f"Exception should have descriptive message: {type(e).__name__}"

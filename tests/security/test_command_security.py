@@ -27,79 +27,164 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 class TestCommandInjectionPrevention:
     """Test command injection prevention - REQ-10.3"""
 
-    def test_command_injection_prevention(self, temp_project_dir):
-        """Test prevention of shell injection in compile_commands - Task 1.3.3"""
-        # Create legitimate source file
+    def test_semicolon_injection_not_executed(self, temp_project_dir):
+        """Verify semicolon-separated shell commands are not executed.
+
+        Security requirement: Shell metacharacters in compile_commands.json
+        'command' field must be parsed as compiler arguments, not interpreted
+        by a shell. The injected 'rm -rf /' must never execute.
+        """
         src_file = temp_project_dir / "src" / "test.cpp"
         src_file.write_text("class Test {};")
 
-        # Test Case 1: Shell command injection with semicolon
-        cc1 = [
+        sentinel = temp_project_dir / "cmd_inject_semicolon.txt"
+        assert not sentinel.exists()
+
+        cc = [
             {
                 "directory": str(temp_project_dir),
-                "command": f"g++ -c {src_file}; rm -rf /",
+                "command": f"g++ -c {src_file}; touch {sentinel}",
                 "file": str(src_file),
             }
         ]
-        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc1))
+        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc))
 
-        analyzer1 = CppAnalyzer(str(temp_project_dir))
-        # Should not execute rm -rf /
-        count1 = analyzer1.index_project()
-        assert count1 >= 0, "Should not crash on injected commands"
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+        assert count >= 0
 
-        # Test Case 2: Backtick command substitution
-        cc2 = [
+        # Security assertion: the injected command must NOT have executed
+        assert not sentinel.exists(), (
+            "Shell injection via semicolon executed: sentinel file was created"
+        )
+
+        analyzer.close()
+
+    def test_backtick_substitution_not_executed(self, temp_project_dir):
+        """Verify backtick command substitution is not executed.
+
+        Security requirement: Backtick-enclosed expressions in compile arguments
+        must be treated as literal strings, not as command substitution.
+        """
+        src_file = temp_project_dir / "src" / "test.cpp"
+        src_file.write_text("class Test {};")
+
+        sentinel = temp_project_dir / "cmd_inject_backtick.txt"
+        assert not sentinel.exists()
+
+        cc = [
             {
                 "directory": str(temp_project_dir),
-                "command": f"g++ `whoami` -c {src_file}",
+                "command": f"g++ `touch {sentinel}` -c {src_file}",
                 "file": str(src_file),
             }
         ]
-        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc2))
+        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc))
 
-        analyzer2 = CppAnalyzer(str(temp_project_dir))
-        count2 = analyzer2.index_project()
-        assert count2 >= 0, "Should handle backtick injection safely"
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+        assert count >= 0
 
-        # Test Case 3: Pipe to shell command
-        cc3 = [
+        # Security assertion: backtick command substitution must NOT execute.
+        # If shell interpretation occurred, the sentinel would be created.
+        assert not sentinel.exists(), (
+            "Shell injection via backticks executed: sentinel file was created"
+        )
+
+        analyzer.close()
+
+    def test_pipe_to_shell_not_executed(self, temp_project_dir):
+        """Verify pipe operators are not interpreted by a shell.
+
+        Security requirement: Pipe characters in compile commands must be
+        treated as literal argument text, not as shell pipe operators.
+        """
+        src_file = temp_project_dir / "src" / "test.cpp"
+        src_file.write_text("class Test {};")
+
+        sentinel = temp_project_dir / "cmd_inject_pipe.txt"
+        assert not sentinel.exists()
+
+        cc = [
             {
                 "directory": str(temp_project_dir),
-                "command": f"g++ -c {src_file} | sh",
+                "command": f"g++ -c {src_file} | touch {sentinel}",
                 "file": str(src_file),
             }
         ]
-        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc3))
+        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc))
 
-        analyzer3 = CppAnalyzer(str(temp_project_dir))
-        count3 = analyzer3.index_project()
-        assert count3 >= 0, "Should handle pipe injection safely"
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+        assert count >= 0
 
-        # Test Case 4: Command substitution $()
-        cc4 = [
+        # Security assertion: pipe must not execute shell command
+        assert not sentinel.exists(), (
+            "Shell injection via pipe executed: sentinel file was created"
+        )
+
+        analyzer.close()
+
+    def test_dollar_command_substitution_not_executed(self, temp_project_dir):
+        """Verify $() command substitution is not executed.
+
+        Security requirement: Dollar-paren expressions in compile arguments
+        must be treated as literal strings, not as command substitution.
+        """
+        src_file = temp_project_dir / "src" / "test.cpp"
+        src_file.write_text("class Test {};")
+
+        sentinel = temp_project_dir / "cmd_inject_dollar.txt"
+        assert not sentinel.exists()
+
+        cc = [
             {
                 "directory": str(temp_project_dir),
-                "command": f"g++ $(rm -rf /) -c {src_file}",
+                "command": f"g++ $(touch {sentinel}) -c {src_file}",
                 "file": str(src_file),
             }
         ]
-        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc4))
+        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc))
 
-        analyzer4 = CppAnalyzer(str(temp_project_dir))
-        count4 = analyzer4.index_project()
-        assert count4 >= 0, "Should handle $() injection safely"
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+        assert count >= 0
 
-        # Test Case 5: Double ampersand (background execution)
-        cc5 = [
+        # Security assertion: $() command substitution must not execute
+        assert not sentinel.exists(), (
+            "Shell injection via $() executed: sentinel file was created"
+        )
+
+        analyzer.close()
+
+    def test_double_ampersand_not_executed(self, temp_project_dir):
+        """Verify && operators are not interpreted by a shell.
+
+        Security requirement: Logical AND operators in compile commands must
+        be treated as literal argument text, not as shell command chaining.
+        """
+        src_file = temp_project_dir / "src" / "test.cpp"
+        src_file.write_text("class Test {};")
+
+        sentinel = temp_project_dir / "cmd_inject_ampersand.txt"
+        assert not sentinel.exists()
+
+        cc = [
             {
                 "directory": str(temp_project_dir),
-                "command": f"g++ -c {src_file} && malicious_command",
+                "command": f"g++ -c {src_file} && touch {sentinel}",
                 "file": str(src_file),
             }
         ]
-        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc5))
+        (temp_project_dir / "compile_commands.json").write_text(json.dumps(cc))
 
-        analyzer5 = CppAnalyzer(str(temp_project_dir))
-        count5 = analyzer5.index_project()
-        assert count5 >= 0, "Should handle && injection safely"
+        analyzer = CppAnalyzer(str(temp_project_dir))
+        count = analyzer.index_project()
+        assert count >= 0
+
+        # Security assertion: && chaining must not execute the second command
+        assert not sentinel.exists(), (
+            "Shell injection via && executed: sentinel file was created"
+        )
+
+        analyzer.close()

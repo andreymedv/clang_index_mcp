@@ -250,10 +250,25 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         self.assertEqual(summary["total_operations"], 0)
 
     def test_fallback_to_json_on_init_error(self):
-        """Test fallback to JSON when SQLite init fails"""
-        # This test is for a feature not yet fully implemented
-        # Skip for now - backend switching on init errors
-        self.skipTest("Backend fallback on init not yet implemented")
+        """Verify that a backend failure is handled gracefully (not swallowed) and the error is tracked."""
+        # Simulate backend failure by injecting a mock that raises on save
+        broken_backend = Mock()
+        broken_backend.save_cache.side_effect = OSError("disk I/O error")
+        broken_backend.load_cache.side_effect = OSError("disk I/O error")
+        broken_backend.close = Mock()
+
+        cm = CacheManager(self.temp_project_dir, backend=broken_backend, recovery=self.recovery_adapter)
+        self.cache_managers.append(cm)
+
+        # save_cache should return False (error handled), not raise
+        result = cm.save_cache(
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+        )
+        self.assertFalse(result, "save_cache should return False when backend fails")
+
+        # Error should be tracked in the error summary
+        summary = cm.get_error_summary()
+        self.assertGreater(summary["total_errors"], 0, "Backend error should be tracked")
 
     def test_safe_backend_call_handles_errors(self):
         """Test that _safe_backend_call handles exceptions"""
@@ -329,14 +344,9 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         )
 
         # Verify recovery was attempted
-        # Note: Recovery is only triggered for database corruption with "corrupt" in message
-        if "corrupt" in str(corruption_error).lower():
-            self.recovery_manager.backup_database.assert_called_once()
-            self.recovery_manager.attempt_repair.assert_called_once()
-        else:
-            # If not triggered, just verify error was tracked
-            summary = cache_manager.get_error_summary()
-            self.assertGreater(summary["total_errors"], 0)
+        # Recovery is triggered for database corruption (detected by "corrupt" or "malformed" in message)
+        self.recovery_manager.backup_database.assert_called_once()
+        self.recovery_manager.attempt_repair.assert_called_once()
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""

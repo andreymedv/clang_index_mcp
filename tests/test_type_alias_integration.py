@@ -11,15 +11,13 @@ Tests the complete integration of type alias tracking through:
 import os
 import sys
 
-import pytest
-
 # Add the clang_index_mcp directory to the path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from tests.utils.test_helpers import temp_compile_commands
+from tests.utils._helpers import temp_compile_commands
 
 # ============================================================================
 # IT-1: search_classes Type Expansion Integration
@@ -28,45 +26,6 @@ from tests.utils.test_helpers import temp_compile_commands
 
 class TestSearchClassesTypeExpansion:
     """Integration tests for search_classes with type alias expansion (IT-1)."""
-
-    @pytest.mark.skip(reason="Phase 1.6: Automatic type expansion in search not yet implemented")
-    def test_search_by_alias_finds_canonical_class(self, temp_project_dir):
-        """IT-1.1: Searching by alias name should find canonical class (Future Phase)."""
-        # Create class with alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
-/// Main widget class
-class Widget {
-public:
-    void show();
-};
-
-/// Alias for Widget
-using WidgetAlias = Widget;
-""")
-
-        temp_compile_commands(
-            temp_project_dir,
-            [
-                {
-                    "file": "src/test.cpp",
-                    "directory": str(temp_project_dir),
-                    "arguments": ["-std=c++17"],
-                }
-            ],
-        )
-
-        analyzer = CppAnalyzer(str(temp_project_dir))
-        analyzer.index_project()
-
-        # NOTE: This requires Phase 1.6 - integrating expand_type_name() into search_classes()
-        # Search by alias name - should expand to canonical and find Widget
-        results = analyzer.search_classes("WidgetAlias")
-
-        # Should find Widget class (canonical type)
-        assert len(results) >= 1
-        # At least one result should be Widget (the canonical class)
-        class_names = [r["qualified_name"].split("::")[-1] for r in results]
-        assert "Widget" in class_names
 
     def test_search_by_canonical_includes_aliases(self, temp_project_dir):
         """IT-1.2: Searching by canonical name should also match aliases."""
@@ -104,87 +63,6 @@ typedef Button ButtonType;
         # Verify Button is in results
         class_names = [r["qualified_name"].split("::")[-1] for r in results]
         assert "Button" in class_names
-
-    @pytest.mark.skip(reason="Phase 1.6: Automatic type expansion in search not yet implemented")
-    def test_search_respects_alias_chain(self, temp_project_dir):
-        """IT-1.3: Search should resolve alias chains to canonical type (Future Phase)."""
-        # Create alias chain
-        (temp_project_dir / "src" / "test.cpp").write_text("""
-/// Real class definition
-class RealClass {
-public:
-    void method();
-};
-
-using AliasOne = RealClass;
-using AliasTwo = AliasOne;
-""")
-
-        temp_compile_commands(
-            temp_project_dir,
-            [
-                {
-                    "file": "src/test.cpp",
-                    "directory": str(temp_project_dir),
-                    "arguments": ["-std=c++17"],
-                }
-            ],
-        )
-
-        analyzer = CppAnalyzer(str(temp_project_dir))
-        analyzer.index_project()
-
-        # NOTE: This requires Phase 1.6 - integrating expand_type_name() into search_classes()
-        # Search by final alias in chain
-        results = analyzer.search_classes("AliasTwo")
-
-        # Should resolve chain and find RealClass
-        assert len(results) >= 1
-        class_names = [r["qualified_name"].split("::")[-1] for r in results]
-        assert "RealClass" in class_names
-
-    @pytest.mark.skip(reason="Phase 1.6: Automatic type expansion in search not yet implemented")
-    def test_search_with_namespace_scoped_alias(self, temp_project_dir):
-        """IT-1.4: Search handles namespace-scoped aliases correctly (Future Phase)."""
-        # Create namespace-scoped alias
-        (temp_project_dir / "src" / "test.cpp").write_text("""
-namespace widgets {
-    /// Widget class in namespace
-    class Widget {
-    public:
-        void show();
-    };
-}
-
-namespace ui {
-    /// Alias to widgets::Widget
-    using Widget = widgets::Widget;
-}
-""")
-
-        temp_compile_commands(
-            temp_project_dir,
-            [
-                {
-                    "file": "src/test.cpp",
-                    "directory": str(temp_project_dir),
-                    "arguments": ["-std=c++17"],
-                }
-            ],
-        )
-
-        analyzer = CppAnalyzer(str(temp_project_dir))
-        analyzer.index_project()
-
-        # NOTE: This requires Phase 1.6 - integrating expand_type_name() into search_classes()
-        # Search by qualified alias name
-        results = analyzer.search_classes("ui::Widget")
-
-        # Should find canonical widgets::Widget
-        assert len(results) >= 1
-        # Check that we found the right class
-        qualified_names = [r.get("qualified_name", "") for r in results]
-        assert any("Widget" in name for name in qualified_names)
 
 
 # ============================================================================

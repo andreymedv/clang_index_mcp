@@ -422,7 +422,8 @@ class MyClass {};
         assert len(response["results"]) > 0
 
     def test_incremental_indexing(self, temp_project_dir):
-        """Test incremental indexing after file modifications"""
+        """Verify incremental re-indexing detects file modifications and
+        refreshes only the changed file, making new symbols discoverable."""
         test_file = temp_project_dir / "src" / "test.cpp"
         test_file.write_text("class TestClass {};")
 
@@ -434,7 +435,7 @@ class MyClass {};
 
         # Refresh index using refresh_if_needed
         count = analyzer.refresh_if_needed()
-        assert count >= 0
+        assert count > 0, "Refresh should detect and re-index the modified file"
 
         # Verify new class is found
         classes = analyzer.search_classes("NewClass")
@@ -473,12 +474,13 @@ class InvalidClass {
         assert len(valid_prefix) >= 1  # Should find at least ValidClass
 
     def test_empty_project(self, temp_project_dir):
-        """Test behavior with empty project"""
+        """Verify an empty project (no source files) indexes zero files
+        and search returns an empty list without errors."""
         analyzer = CppAnalyzer(str(temp_project_dir))
         count = analyzer.index_project()
 
         # Should handle gracefully
-        assert count >= 0
+        assert count == 0, "Empty project should index zero files"
 
         # Search should return empty results, not error
         classes = analyzer.search_classes(".*")
@@ -539,7 +541,7 @@ class TestMCPServerToolsAdditional:
                 analyzer = CppAnalyzer(tmp.name)
                 # If it succeeds, it should handle it gracefully
                 count = analyzer.index_project()
-                assert count >= 0  # Should not crash
+                assert count == 0, "File (not directory) should index zero C++ files"
             except (ValueError, OSError):
                 pass  # Error is acceptable
 

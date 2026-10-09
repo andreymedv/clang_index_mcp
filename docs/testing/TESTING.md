@@ -196,7 +196,7 @@ tests/
 │   └── call_graph/
 ├── utils/                 # Test utilities and helpers
 │   ├── __init__.py
-│   └── test_helpers.py
+│   └── _helpers.py
 ├── conftest.py            # Pytest fixtures and configuration
 └── test_infrastructure.py # Infrastructure smoke tests
 ```
@@ -391,7 +391,7 @@ def test_example(temp_project_dir, analyzer):
 ### Using Test Helpers
 
 ```python
-from tests.utils.test_helpers import (
+from tests.utils._helpers import (
     temp_project,
     temp_compile_commands,
     setup_test_analyzer

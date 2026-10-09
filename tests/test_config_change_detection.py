@@ -415,9 +415,32 @@ class TestConfigChangeDetection(unittest.TestCase):
         self.assertIsNone(cache_data, "Cache should be invalidated when config path changes")
 
     def test_backward_compatibility_with_old_cache(self):
-        """Test that old cache format without timestamps is handled gracefully"""
-        # Skip this test - it's testing JSON backward compatibility which doesn't apply to SQLite backend
-        self.skipTest("JSON backward compatibility test not applicable to SQLite backend")
+        """Verify that a cache missing config/CC timestamps is invalidated on next check."""
+        config_file = self._create_config_file()
+        cc_file = self._create_compile_commands_file()
+
+        # Save cache data without config/CC path or timestamp metadata (simulating old cache)
+        self.cache_manager.save_cache(
+            self.sample_class_index,
+            self.sample_function_index,
+            self.sample_file_hashes,
+            self.sample_indexed_count,
+        )
+
+        # Attempt to load the cache with current timestamps — missing metadata should cause invalidation
+        config_mtime = config_file.stat().st_mtime
+        cc_mtime = cc_file.stat().st_mtime
+
+        cache_data = self.cache_manager.load_cache(
+            include_dependencies=False,
+            config_file_path=config_file,
+            config_file_mtime=config_mtime,
+            compile_commands_path=cc_file,
+            compile_commands_mtime=cc_mtime,
+        )
+
+        # Cache should be invalidated because the old format lacks the required timestamp metadata
+        self.assertIsNone(cache_data, "Cache without timestamp metadata should be invalidated")
 
 
 def suite():

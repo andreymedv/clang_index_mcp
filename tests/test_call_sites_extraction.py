@@ -314,23 +314,23 @@ class TestMCPToolIntegration:
         assert result["total_call_sites"] == len(result["call_sites"])
 
     def test_find_incoming_calls_call_sites_have_required_fields(self, analyzer):
-        """Test that call_sites entries have all required fields."""
+        """Verify that each call_site entry contains all required fields with correct types."""
         analyzer.index_project()
 
         result = analyzer.find_incoming_calls("helper")
 
-        if result["call_sites"]:
-            cs = result["call_sites"][0]
+        assert len(result["call_sites"]) > 0, "Should find at least one call site for 'helper'"
+        cs = result["call_sites"][0]
 
-            # Verify all required fields present
-            required_fields = ["file", "line", "caller", "caller_file", "caller_signature"]
-            for field in required_fields:
-                assert field in cs, f"Missing required field: {field}"
+        # Verify all required fields present
+        required_fields = ["file", "line", "caller", "caller_file", "caller_signature"]
+        for field in required_fields:
+            assert field in cs, f"Missing required field: {field}"
 
-            # Verify types
-            assert isinstance(cs["file"], str)
-            assert isinstance(cs["line"], int)
-            assert isinstance(cs["caller"], str)
+        # Verify types
+        assert isinstance(cs["file"], str)
+        assert isinstance(cs["line"], int)
+        assert isinstance(cs["caller"], str)
 
     def test_get_call_sites_returns_correct_format(self, analyzer):
         """Test that get_call_sites returns properly formatted results."""
@@ -534,7 +534,7 @@ class TestCallGraphEmptyResultFlags:
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
         """Helper: write source to a temp project, index, return analyzer."""
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
@@ -635,7 +635,7 @@ class TestProjectOnlyFlag:
 
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> "CppAnalyzer":
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
@@ -757,7 +757,7 @@ class TestAutoExpansion:
 
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
@@ -940,7 +940,7 @@ class TestTemplateMediated:
 
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)

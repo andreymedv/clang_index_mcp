@@ -15,10 +15,9 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 @pytest.mark.edge_case
 @pytest.mark.slow
 class TestScale:
-    @pytest.mark.skip(reason="Slow test - creates 10k files")
     def test_extremely_large_project(self, temp_project_dir):
-        """Test indexing 10,000+ files - Task 1.5.6"""
-        for i in range(100):  # Reduced for practicality
+        """Verify that indexing a project with many source files succeeds and returns a positive count."""
+        for i in range(100):
             (temp_project_dir / "src" / f"file{i}.cpp").write_text(f"class Class{i} {{}};")
         analyzer = CppAnalyzer(str(temp_project_dir))
         count = analyzer.index_project()

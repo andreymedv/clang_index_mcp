@@ -33,7 +33,7 @@ from clang_index_mcp._compilation.compile_commands_manager import CompileCommand
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 # Import test helpers
-from tests.utils.test_helpers import (
+from tests.utils._helpers import (
     temp_compile_commands,
     temp_config_file,
 )

@@ -372,19 +372,13 @@ async def test_check_system_status_immediately_after_set_project_directory(large
 
 
 def test_no_runtime_error_during_concurrent_search(large_cpp_project):
-    """
-    Test for Issue #cplusplus_mcp-4p2: Verify no RuntimeError during concurrent indexing and queries
+    """Verify no RuntimeError during concurrent indexing and queries.
 
-    This test specifically targets the "dictionary changed size during iteration" error
-    that occurred when SearchEngine iterated over shared dictionaries without lock protection.
-
-    The test:
-    1. Starts indexing in a background thread
-    2. Repeatedly queries while indexing is active
-    3. Verifies no RuntimeError is raised
-
-    Before the fix: RuntimeError: dictionary changed size during iteration
-    After the fix: Queries work safely during indexing (may return partial results)
+    Specifically targets the "dictionary changed size during iteration" error
+    that occurred when SearchEngine iterated over shared dictionaries without
+    lock protection.  Unexpected RuntimeErrors (any message other than
+    "dictionary changed size") are re-raised so they cannot be silently
+    swallowed.
     """
     analyzer = CppAnalyzer(str(large_cpp_project))
 
@@ -416,6 +410,7 @@ def test_no_runtime_error_during_concurrent_search(large_cpp_project):
                     if "dictionary changed size" in str(e):
                         errors.append(("search_classes", e))
                         break
+                    raise  # unexpected RuntimeError must not be swallowed
 
                 try:
                     analyzer.search_functions("")
@@ -423,6 +418,7 @@ def test_no_runtime_error_during_concurrent_search(large_cpp_project):
                     if "dictionary changed size" in str(e):
                         errors.append(("search_functions", e))
                         break
+                    raise  # unexpected RuntimeError must not be swallowed
 
                 try:
                     analyzer.search_symbols("")
@@ -430,6 +426,7 @@ def test_no_runtime_error_during_concurrent_search(large_cpp_project):
                     if "dictionary changed size" in str(e):
                         errors.append(("search_symbols", e))
                         break
+                    raise  # unexpected RuntimeError must not be swallowed
 
         except Exception as e:
             errors.append(("query_thread", e))

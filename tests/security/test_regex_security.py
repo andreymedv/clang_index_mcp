@@ -63,7 +63,12 @@ class TestRegexDoSPrevention:
             analyzer.search_functions("(a*)+c")
 
     def test_safe_patterns_allowed(self, temp_project_dir):
-        """Test that safe regex patterns are allowed - Task 1.3.2"""
+        """Verify safe regex patterns are accepted and don't trigger ReDoS protection.
+
+        Security requirement: Patterns without nested quantifiers or catastrophic
+        backtracking risk must be allowed through the validator. If they were
+        incorrectly rejected, it would be a false-positive denial of service.
+        """
         # Create test file
         test_content = "class TestClass {};\nclass AnotherClass {};"
         (temp_project_dir / "src" / "test.cpp").write_text(test_content)
@@ -72,21 +77,30 @@ class TestRegexDoSPrevention:
         analyzer = CppAnalyzer(str(temp_project_dir))
         analyzer.index_project()
 
-        # Safe patterns should work without exceptions
+        # Security assertion: safe patterns must complete without RegexValidationError.
+        # They must return a list (not raise). verify results are a list type.
         results = analyzer.search_classes("Test.*")
-        assert len(results) >= 0  # Should complete successfully
+        assert isinstance(results, (list, tuple)), "Safe pattern must return list, not raise"
+        # Class "TestClass" should match "Test.*"
+        flat = results[0] if isinstance(results, tuple) else results
+        assert len(flat) >= 1, "Safe pattern 'Test.*' should find TestClass"
 
         results = analyzer.search_classes(".*Class")
-        assert len(results) >= 0
+        assert isinstance(results, (list, tuple)), "Safe pattern must return list, not raise"
+        flat = results[0] if isinstance(results, tuple) else results
+        assert len(flat) >= 1, "Safe pattern '.*Class' should find TestClass and AnotherClass"
 
         results = analyzer.search_functions("[a-zA-Z]+")
-        assert len(results) >= 0
+        assert isinstance(results, (list, tuple)), "Safe pattern must return list, not raise"
 
     def test_contains_pattern_allowed(self, temp_project_dir):
-        """Test that .*X.* 'contains' patterns are allowed.
+        """Verify .*X.* 'contains' patterns are accepted and find matching symbols.
 
-        This is the most natural regex for 'find symbols containing X'.
-        Both humans and LLMs commonly use it. Must not be rejected.
+        Security requirement: The .*X.* pattern is the most natural regex for
+        'find symbols containing X' and must not be rejected as ReDoS. It uses
+        independent quantifiers (no nested backtracking). False rejection would
+        block legitimate searches. Additionally, verify that allowed patterns
+        actually return the expected results.
         """
         test_content = "class TestClass {};\nclass AnotherClass {};"
         (temp_project_dir / "src" / "test.cpp").write_text(test_content)
@@ -108,9 +122,9 @@ class TestRegexDoSPrevention:
         results = analyzer.search_classes("Test.*")
         assert len(results) >= 1
 
-        # Multiple independent quantifiers on functions
+        # Multiple independent quantifiers on functions — must not be rejected as ReDoS
         results = analyzer.search_functions(".*get.*")
-        assert len(results) >= 0
+        assert isinstance(results, (list, tuple)), "Contains pattern must return list, not raise"
 
     def test_validator_contains_patterns_safe(self):
         """Test that .*X.* patterns pass validation.

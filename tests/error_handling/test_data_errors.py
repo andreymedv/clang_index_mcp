@@ -27,7 +27,9 @@ class TestCorruptCompileCommands:
     """Test handling of corrupt compile_commands.json - REQ-6.5.1"""
 
     def test_corrupt_compile_commands_handling(self, temp_project_dir):
-        """Test handling of various corrupted compile_commands.json formats - Task 1.2.4"""
+        """Verify the analyzer falls back to default args and indexes source files
+        when compile_commands.json is corrupt (truncated, invalid, missing fields,
+        or wrong types). Each case must still index at least the project's .cpp file."""
         # Create a valid C++ file
         (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {
@@ -43,14 +45,14 @@ public:
         analyzer1 = CppAnalyzer(str(temp_project_dir))
         # Should fall back to default args and not crash
         count1 = analyzer1.index_project()
-        assert count1 >= 0, "Should handle truncated JSON gracefully"
+        assert count1 > 0, "Truncated JSON: fallback should index project files"
 
         # Test Case 2: Invalid JSON
         cc_file.write_text("this is not JSON at all { invalid }")
 
         analyzer2 = CppAnalyzer(str(temp_project_dir))
         count2 = analyzer2.index_project()
-        assert count2 >= 0, "Should handle invalid JSON gracefully"
+        assert count2 > 0, "Invalid JSON: fallback should index project files"
 
         # Test Case 3: Missing required fields
         cc_file.write_text(
@@ -66,7 +68,7 @@ public:
 
         analyzer3 = CppAnalyzer(str(temp_project_dir))
         count3 = analyzer3.index_project()
-        assert count3 >= 0, "Should handle missing fields gracefully"
+        assert count3 > 0, "Missing fields: fallback should index project files"
 
         # Test Case 4: Wrong types
         cc_file.write_text(
@@ -83,7 +85,7 @@ public:
 
         analyzer4 = CppAnalyzer(str(temp_project_dir))
         count4 = analyzer4.index_project()
-        assert count4 >= 0, "Should handle wrong types gracefully"
+        assert count4 > 0, "Wrong types: fallback should index project files"
 
         # Verify that despite corrupt compile_commands, indexing still works
         classes = analyzer4.search_classes("TestClass")

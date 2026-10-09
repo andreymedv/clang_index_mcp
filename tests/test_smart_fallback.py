@@ -321,19 +321,19 @@ class TestSmartFallbackRegex:
         assert result is None
 
     def test_valid_regex_with_results_not_triggered(self):
-        """Regex hint should not be triggered if we don't call it (results exist)."""
+        """Verify regex hint is not triggered when pattern already matches index entries. Internal requirement: valid regexes with matches produce no fallback."""
         # SmartFallback is only called when results are empty, so this tests
-        # that when called with a pattern that WOULD match, we still get a result
-        # because the broadening finds matches
+        # that when called with a pattern that WOULD match, no fallback is suggested
         result = self.fb.analyze_empty_result(
             pattern=".*Reporter",
             tool_name="search_classes",
             class_index=self.index,
             function_index={},
         )
-        # .*Reporter would actually match, so in practice this wouldn't be called.
-        # But if it is, broadening shouldn't hurt.
-        # Result could be None (no issue detected) which is fine.
+        # .*Reporter matches all entries in self.index, so no fallback needed
+        assert result is None, (
+            f"Valid regex matching index entries should not trigger fallback, got: {result}"
+        )
 
 
 class TestSmartFallbackQualified:

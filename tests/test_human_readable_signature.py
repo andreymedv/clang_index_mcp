@@ -283,16 +283,16 @@ public:
         assert "()" in proto
 
     def test_const_method_signature(self, project_dir):
-        """Verify const qualifier is preserved in prototype."""
+        """Verify const qualifier is preserved in the prototype of a class method."""
         analyzer = CppAnalyzer(str(project_dir))
         analyzer.index_project()
 
         results = analyzer.search_functions("method")
         # Find the one from MyClass
         my_results = [r for r in results if r.get("parent_class") == "MyClass"]
-        if my_results:
-            proto = my_results[0].get("prototype", "")
-            assert "const" in proto
+        assert len(my_results) > 0, "Should find at least one 'method' in MyClass"
+        proto = my_results[0].get("prototype", "")
+        assert "const" in proto
 
     def test_get_function_signature_tool_format(self, project_dir):
         """Verify get_function_signature returns human-readable format with class scope."""
@@ -307,12 +307,12 @@ public:
         assert "(" in sig
 
     def test_get_function_signature_with_class_scope(self, project_dir):
-        """Verify class scope is injected into method signatures."""
+        """Verify class scope (MyClass::) is injected into static method signatures."""
         analyzer = CppAnalyzer(str(project_dir))
         analyzer.index_project()
 
         sigs = analyzer.get_function_signature("staticMethod", class_name="MyClass")
-        if sigs:
-            sig = sigs[0]
-            assert "MyClass::" in sig
-            assert "staticMethod" in sig
+        assert len(sigs) > 0, "Should find at least one signature for MyClass::staticMethod"
+        sig = sigs[0]
+        assert "MyClass::" in sig
+        assert "staticMethod" in sig

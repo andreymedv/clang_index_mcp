@@ -112,13 +112,12 @@ public:
         analyzer = CppAnalyzer(str(temp_project_dir))
         indexed_count = analyzer.index_project()
 
-        # Should have indexed at least the existing file
-        # (may be 0 if compile_commands filtering is strict)
-        # The key is that analyzer shouldn't crash
+        # Verify indexing did not crash and returned a valid count
+        assert indexed_count >= 0, f"indexed_count should be non-negative, got {indexed_count}"
 
-        # Verify existing file was processed
+        # Verify existing file was processed without error
         existing_classes = analyzer.search_classes("ExistingClass")
-        # Analyzer should either find it or gracefully handle missing file
+        assert isinstance(existing_classes, list), "search_classes should return a list"
 
 
 @pytest.mark.error_handling

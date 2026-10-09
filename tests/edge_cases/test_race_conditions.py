@@ -17,7 +17,8 @@ from clang_index_mcp.cpp_analyzer import CppAnalyzer
 @pytest.mark.edge_case
 class TestConcurrentModification:
     def test_concurrent_file_modification(self, temp_project_dir):
-        """Test file modification during parsing - Task 1.5.4"""
+        """Verify the indexer handles concurrent file modification during parsing
+        without crashing and still indexes the file successfully."""
         file = temp_project_dir / "src" / "concurrent.cpp"
         file.write_text("class Test1 {};")
         analyzer = CppAnalyzer(str(temp_project_dir))
@@ -30,4 +31,4 @@ class TestConcurrentModification:
         thread.start()
         count = analyzer.index_project()
         thread.join()
-        assert count >= 0, "Should handle concurrent modifications"
+        assert count > 0, "Should index file despite concurrent modification"

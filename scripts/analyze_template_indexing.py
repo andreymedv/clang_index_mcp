@@ -26,7 +26,7 @@ if not find_and_configure_libclang():
     sys.exit(1)
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer  # noqa: E402
-from tests.utils.test_helpers import write_template_compile_commands  # noqa: E402
+from tests.utils._helpers import write_template_compile_commands  # noqa: E402
 
 
 def _prepare_template_project(fixture_path: Path, dest: Path) -> Path:

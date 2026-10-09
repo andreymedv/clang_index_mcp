@@ -18,7 +18,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from tests.utils.test_helpers import temp_compile_commands
+from tests.utils._helpers import temp_compile_commands
 
 # ============================================================================
 # IT-T1: get_type_alias_info Template Alias Integration

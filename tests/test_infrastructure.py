@@ -19,7 +19,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from tests.utils.test_helpers import (
+from tests.utils._helpers import (
     create_simple_cpp_file,
     env_var,
     temp_compile_commands,
@@ -62,21 +62,17 @@ class TestInfrastructure:
         assert Path(analyzer.project_root).exists()
 
     def test_indexed_analyzer_fixture(self, indexed_analyzer):
-        """Test that indexed_analyzer fixture provides a working analyzer."""
+        """Verify that the indexed_analyzer fixture creates a working analyzer with indexed content."""
         assert isinstance(indexed_analyzer, CppAnalyzer)
 
-        # Check that it has indexed content
-        # Note: Header-defined classes may not be indexed in all environments
-        # depending on libclang availability and configuration
+        # The fixture indexes a project; at least one search should return results
         classes = indexed_analyzer.search_classes("TestClass")
         classes2 = indexed_analyzer.search_classes("AnotherClass")
 
-        # At minimum, verify the analyzer was created and can search
-        # The actual results depend on libclang's ability to parse headers
-        if len(classes) == 0 and len(classes2) == 0:
-            import pytest
-
-            pytest.skip("Libclang may not be available or configured to parse headers")
+        assert len(classes) > 0 or len(classes2) > 0, (
+            "indexed_analyzer fixture should produce searchable content — "
+            "if libclang is unavailable, the fixture itself should fail"
+        )
 
     def test_compile_commands_file_fixture(self, compile_commands_file):
         """Test that compile_commands_file fixture creates valid JSON."""
@@ -123,7 +119,7 @@ class TestInfrastructure:
 
 
 class TestHelperFunctions:
-    """Test the helper functions from test_helpers.py."""
+    """Test the helper functions from _helpers.py."""
 
     def test_temp_project_context_manager(self):
         """Test temp_project context manager."""
@@ -249,11 +245,23 @@ class TestTestFixtures:
         assert "functionB()" in content
 
 
-def test_pytest_markers_registered():
-    """Test that custom pytest markers are registered."""
-    # This test verifies that conftest.py registered custom markers
-    # The markers should be available through pytest's marker system
-    pass  # pytest will validate markers during collection
+def test_pytest_markers_registered(pytestconfig):
+    """Verify custom pytest markers are registered via conftest.py. Internal requirement: --strict-markers is enabled."""
+    expected_markers = [
+        "base_functionality",
+        "error_handling",
+        "security",
+        "robustness",
+        "edge_case",
+        "platform",
+        "slow",
+        "critical",
+        "workflow",
+    ]
+    registered_lines = pytestconfig.getini("markers")
+    registered_names = {line.split(":")[0].strip() for line in registered_lines}
+    for marker in expected_markers:
+        assert marker in registered_names, f"Marker '{marker}' not registered in conftest.py"
 
 
 if __name__ == "__main__":

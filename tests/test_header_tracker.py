@@ -404,9 +404,14 @@ class TestHeaderProcessingTrackerEdgeCases:
         assert tracker.is_processed(unicode_path, "hash")
 
     def test_invalidate_non_existent_header(self):
-        """Invalidating non-existent header should not error."""
+        """Verify invalidating a header that was never claimed does not raise. Internal requirement: invalidate_header is idempotent."""
         tracker = HeaderProcessingTracker()
-        tracker.invalidate_header("/non/existent.h")  # Should not raise
+        tracker.invalidate_header("/non/existent.h")
+        # Tracker state should remain clean
+        assert tracker.get_processed_count() == 0
+        assert not tracker.is_processed("/non/existent.h", "any_hash")
+        # A second invalidation should also be safe
+        tracker.invalidate_header("/non/existent.h")
 
     def test_mark_completed_not_in_progress(self):
         """Marking completed a header not in progress should work."""
