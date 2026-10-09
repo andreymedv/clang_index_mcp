@@ -26,7 +26,12 @@ class TestDiskErrors:
     """Test disk-related errors - REQ-6.4.1"""
 
     def test_disk_full_during_cache_write(self, temp_project_dir, mocker):
-        """Test handling disk full error during cache write - Task 1.2.3"""
+        """Verify the analyzer handles disk-full OSError gracefully during cache write.
+
+        The cache manager's save_cache is mocked to raise OSError(28). The analyzer
+        must still complete indexing and serve queries from its in-memory index
+        without propagating the OSError to the caller.
+        """
         # Create a simple C++ file
         (temp_project_dir / "src" / "test.cpp").write_text("""
 class TestClass {
@@ -38,10 +43,7 @@ public:
         # Mock the cache save to raise OSError (disk full)
         from clang_index_mcp._persistence.cache_manager import CacheManager
 
-        original_save = CacheManager.save_cache
-
         def mock_save_cache(self, *args, **kwargs):
-            # Raise disk full error
             raise OSError(28, "No space left on device")
 
         mocker.patch.object(CacheManager, "save_cache", mock_save_cache)
@@ -49,24 +51,13 @@ public:
         # Create analyzer
         analyzer = CppAnalyzer(str(temp_project_dir))
 
-        # Index should handle disk full gracefully
-        oserror_raised = False
-        indexed_count = -1
-        try:
-            indexed_count = analyzer.index_project()
-            # Analyzer should not crash even if cache can't be saved
-            # In-memory indexes should still work
-            classes = analyzer.search_classes("TestClass")
-            assert isinstance(classes, list), "search_classes should return a list even when cache write fails"
-        except OSError:
-            # If OSError propagates, that's also acceptable behavior
-            # As long as it's not an unhandled crash
-            oserror_raised = True
+        # Index should handle disk full gracefully — no OSError should propagate
+        indexed_count = analyzer.index_project()
+        assert indexed_count >= 0, "Analyzer should complete indexing even when cache write fails"
 
-        # One of these paths must have been taken
-        assert indexed_count >= 0 or oserror_raised, (
-            "Analyzer should either complete indexing or raise OSError, not crash silently"
-        )
+        # In-memory indexes should still work
+        classes = analyzer.search_classes("TestClass")
+        assert isinstance(classes, list), "search_classes should return a list even when cache write fails"
 
 
 @pytest.mark.error_handling
