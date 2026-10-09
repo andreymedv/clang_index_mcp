@@ -19,7 +19,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from tests.utils.test_helpers import (
+from tests.utils._helpers import (
     create_simple_cpp_file,
     env_var,
     temp_compile_commands,
@@ -123,7 +123,7 @@ class TestInfrastructure:
 
 
 class TestHelperFunctions:
-    """Test the helper functions from test_helpers.py."""
+    """Test the helper functions from _helpers.py."""
 
     def test_temp_project_context_manager(self):
         """Test temp_project context manager."""

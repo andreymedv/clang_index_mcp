@@ -15,7 +15,7 @@ if project_root not in sys.path:
 
 from clang_index_mcp._search.type_alias_expander import expand_type_name
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from tests.utils.test_helpers import temp_compile_commands
+from tests.utils._helpers import temp_compile_commands
 
 # ============================================================================
 # UT-1: Alias Extraction Tests

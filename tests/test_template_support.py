@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
-from tests.utils.test_helpers import write_template_compile_commands
+from tests.utils._helpers import write_template_compile_commands
 
 
 @pytest.fixture(scope="module")

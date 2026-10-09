@@ -275,7 +275,7 @@ class TestCacheBenchmarks:
         return symbols
 
     def test_bulk_write_performance(self, temp_dir):
-        """Benchmark bulk symbol write performance"""
+        """Verify bulk write throughput meets minimum acceptable threshold."""
         cache_manager = CacheManager(temp_dir)
         try:
             backend = cache_manager.backend
@@ -291,16 +291,10 @@ class TestCacheBenchmarks:
 
             throughput = len(symbols) / elapsed
             # 5000 symbols/sec is ideal but 1000 is the acceptable minimum.
-            # On shared CI runners the observed throughput can drop below that
-            # because of slow disk or CPU contention, so we warn instead of failing.
-            if throughput <= 1000:
-                warnings.warn(
-                    f"Bulk write throughput {throughput:.0f} symbols/sec is below "
-                    f"the expected minimum of 1000 symbols/sec. "
-                    f"This is usually caused by slow/overloaded CI hardware.",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            assert throughput > 1000, (
+                f"Bulk write throughput {throughput:.0f} symbols/sec is below "
+                f"the expected minimum of 1000 symbols/sec."
+            )
 
             print(
                 f"\nBulk write performance: {throughput:.0f} symbols/sec ({elapsed*1000:.2f}ms for {len(symbols)} symbols)"

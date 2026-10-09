@@ -227,7 +227,7 @@ namespace MyNamespace {
         self.assertEqual(_loc2["line"], _loc1["line"])
 
     def test_large_project_performance(self):
-        """Test SQLite backend with moderately large project"""
+        """Verify cached (warm) indexing is faster than cold indexing."""
         import time
 
         # Create multiple files with multiple classes
@@ -253,8 +253,12 @@ namespace MyNamespace {
         count2 = analyzer2.index_project()
         warm_time = time.time() - start
 
-        # Warm start should be significantly faster
-        # (though this depends on libclang initialization)
+        # Warm start should be significantly faster than cold start
+        self.assertLess(
+            warm_time,
+            cold_time * 2,
+            f"Warm start ({warm_time:.3f}s) should be faster than cold start ({cold_time:.3f}s)",
+        )
         self.assertGreater(count2, 10)
 
         # Verify some symbols

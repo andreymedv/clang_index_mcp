@@ -534,7 +534,7 @@ class TestCallGraphEmptyResultFlags:
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
         """Helper: write source to a temp project, index, return analyzer."""
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
@@ -635,7 +635,7 @@ class TestProjectOnlyFlag:
 
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> "CppAnalyzer":
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
@@ -757,7 +757,7 @@ class TestAutoExpansion:
 
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
@@ -940,7 +940,7 @@ class TestTemplateMediated:
 
     @staticmethod
     def _make_analyzer(tmp_path, source: str) -> CppAnalyzer:
-        from tests.utils.test_helpers import temp_compile_commands
+        from tests.utils._helpers import temp_compile_commands
 
         src_file = tmp_path / "main.cpp"
         src_file.write_text(source)
