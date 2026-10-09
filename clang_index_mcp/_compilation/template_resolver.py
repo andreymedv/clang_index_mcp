@@ -9,7 +9,7 @@ suitable for use across architectural layers.
 """
 
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 
 class TemplateResolver:
@@ -20,7 +20,7 @@ class TemplateResolver:
     """
 
     @staticmethod
-    def extract_args_from_displayname(displayname: str) -> List[str]:
+    def extract_args_from_displayname(displayname: str) -> list[str]:
         """Extract template arguments from a displayname like 'MyTemplate<Arg1, Arg2>'.
 
         Handles nested templates correctly by tracking angle bracket depth.
@@ -41,7 +41,7 @@ class TemplateResolver:
 
         args_str = displayname[args_start + 1 : args_end]
 
-        template_args: List[str] = []
+        template_args: list[str] = []
         depth = 0
         current = ""
         for c in args_str:
@@ -63,8 +63,8 @@ class TemplateResolver:
 
     @staticmethod
     def build_param_mapping(
-        template_params: List[Dict[str, Any]], template_args: List[str]
-    ) -> Dict[str, str]:
+        template_params: list[dict[str, Any]], template_args: list[str]
+    ) -> dict[str, str]:
         """Build mapping from template parameter names to template arguments.
 
         Args:
@@ -74,7 +74,7 @@ class TemplateResolver:
         Returns:
             Dict mapping parameter names to argument strings.
         """
-        param_to_arg: Dict[str, str] = {}
+        param_to_arg: dict[str, str] = {}
         for i, param in enumerate(template_params):
             if i < len(template_args):
                 param_name = param.get("name", "")
@@ -84,10 +84,10 @@ class TemplateResolver:
 
     @staticmethod
     def substitute_in_bases(
-        base_classes: List[str],
-        param_to_arg: Dict[str, str],
-        template_args: List[str],
-    ) -> List[str]:
+        base_classes: list[str],
+        param_to_arg: dict[str, str],
+        template_args: list[str],
+    ) -> list[str]:
         """Resolve base classes by substituting parameter names with actual arguments.
 
         Handles both named parameters (e.g., 'T' -> 'int') and indexed parameters
@@ -101,7 +101,7 @@ class TemplateResolver:
         Returns:
             List of resolved base class names.
         """
-        resolved: List[str] = []
+        resolved: list[str] = []
         for base in base_classes:
             if base in param_to_arg:
                 resolved.append(param_to_arg[base])

@@ -24,7 +24,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Set, cast
+from typing import TYPE_CHECKING, cast
 
 from .._core.file_scanner import FileScanner
 
@@ -64,10 +64,10 @@ class ChangeSet:
     """
 
     compile_commands_changed: bool = False
-    added_files: Set[str] = field(default_factory=set)
-    modified_files: Set[str] = field(default_factory=set)
-    modified_headers: Set[str] = field(default_factory=set)
-    removed_files: Set[str] = field(default_factory=set)
+    added_files: set[str] = field(default_factory=set)
+    modified_files: set[str] = field(default_factory=set)
+    modified_headers: set[str] = field(default_factory=set)
+    removed_files: set[str] = field(default_factory=set)
 
     def is_empty(self) -> bool:
         """
@@ -243,7 +243,7 @@ class ChangeScanner:
         else:
             diagnostics.debug("No changes detected")
 
-    def _get_cached_hash(self, file_path: str) -> Optional[str]:
+    def _get_cached_hash(self, file_path: str) -> str | None:
         """Get cached hash from database or in-memory cache. Returns None if not found."""
         try:
             backend = self.ctx.cache_manager.backend
@@ -324,7 +324,7 @@ class ChangeScanner:
             diagnostics.warning(f"Error checking compile_commands.json: {e}")
             return False
 
-    def _get_cached_source_files(self) -> Set[str]:
+    def _get_cached_source_files(self) -> set[str]:
         """
         Get list of source files from cache.
 
@@ -338,7 +338,7 @@ class ChangeScanner:
             # Query all files from file_metadata table
             backend = self.ctx.cache_manager.backend
             if hasattr(backend, "get_all_cached_file_paths"):
-                return cast(Set[str], backend.get_all_cached_file_paths())
+                return cast(set[str], backend.get_all_cached_file_paths())
             else:
                 # Cached file list requires SQLite backend
                 # Return empty set (will trigger full re-analysis)

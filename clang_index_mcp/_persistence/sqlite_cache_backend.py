@@ -6,15 +6,15 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from .._symbols.model import SymbolInfo
-from .._symbols.ports.parser import TypeAliasRecord
 from .._persistence import type_alias_repository
-from .._persistence.repositories.symbol_repository import SymbolRepository
 from .._persistence.repositories.call_site_repository import CallSiteRepository
 from .._persistence.repositories.file_metadata_repository import FileMetadataRepository
 from .._persistence.repositories.maintenance_service import MaintenanceService
+from .._persistence.repositories.symbol_repository import SymbolRepository
+from .._symbols.model import SymbolInfo
+from .._symbols.ports.parser import TypeAliasRecord
 
 # Handle both package and script imports
 try:
@@ -58,7 +58,7 @@ class SqliteCacheBackend:
                                    Workers should rely on main process to ensure schema is current.
         """
         self.db_path = Path(db_path)
-        self.conn: Optional[sqlite3.Connection] = None
+        self.conn: sqlite3.Connection | None = None
         self._last_access = 0
         self._connection_timeout = 300  # 5 minutes idle timeout
         self._skip_schema_recreation = skip_schema_recreation
@@ -236,7 +236,7 @@ class SqliteCacheBackend:
 
         return lock_context()
 
-    def _check_schema_version(self) -> Tuple[bool, bool]:
+    def _check_schema_version(self) -> tuple[bool, bool]:
         """Check if schema needs recreation. Returns (needs_recreate, schema_ok)."""
         if not self.db_path.exists():
             return False, False
@@ -423,7 +423,7 @@ class SqliteCacheBackend:
 
         self._last_access = time.time()
 
-    def get_connection(self) -> Optional[sqlite3.Connection]:
+    def get_connection(self) -> sqlite3.Connection | None:
         """Return the raw SQLite connection.
 
         This is a transitional method for components like DependencyGraphBuilder
@@ -463,15 +463,15 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._symbol_repo.save_symbol(symbol)
 
-    def save_symbols_batch(self, symbols: List[SymbolInfo]) -> int:
+    def save_symbols_batch(self, symbols: list[SymbolInfo]) -> int:
         self._ensure_connected()
         return self._symbol_repo.save_symbols_batch(symbols)
 
-    def load_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
+    def load_symbol_by_usr(self, usr: str) -> SymbolInfo | None:
         self._ensure_connected()
         return self._symbol_repo.load_symbol_by_usr(usr)
 
-    def load_symbols_by_name(self, name: str) -> List[SymbolInfo]:
+    def load_symbols_by_name(self, name: str) -> list[SymbolInfo]:
         self._ensure_connected()
         return self._symbol_repo.load_symbols_by_name(name)
 
@@ -487,10 +487,10 @@ class SqliteCacheBackend:
         self,
         file_path: str,
         file_hash: str,
-        compile_args_hash: Optional[str] = None,
+        compile_args_hash: str | None = None,
         symbol_count: int = 0,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         retry_count: int = 0,
     ) -> bool:
         self._ensure_connected()
@@ -504,11 +504,11 @@ class SqliteCacheBackend:
             retry_count,
         )
 
-    def get_file_metadata(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_file_metadata(self, file_path: str) -> dict[str, Any] | None:
         self._ensure_connected()
         return self._file_metadata_repo.get_file_metadata(file_path)
 
-    def load_all_file_hashes(self) -> Dict[str, str]:
+    def load_all_file_hashes(self) -> dict[str, str]:
         self._ensure_connected()
         return self._file_metadata_repo.load_all_file_hashes()
 
@@ -516,31 +516,31 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._file_metadata_repo.update_cache_metadata(key, value)
 
-    def get_cache_metadata(self, key: str) -> Optional[str]:
+    def get_cache_metadata(self, key: str) -> str | None:
         self._ensure_connected()
         return self._file_metadata_repo.get_cache_metadata(key)
 
     def search_symbols_fts(
-        self, pattern: str, kind: Optional[str] = None, project_only: bool = True
-    ) -> List[SymbolInfo]:
+        self, pattern: str, kind: str | None = None, project_only: bool = True
+    ) -> list[SymbolInfo]:
         self._ensure_connected()
         return self._symbol_repo.search_symbols_fts(pattern, kind, project_only)
 
     def search_symbols_regex(
-        self, pattern: str, kind: Optional[str] = None, project_only: bool = True
-    ) -> List[SymbolInfo]:
+        self, pattern: str, kind: str | None = None, project_only: bool = True
+    ) -> list[SymbolInfo]:
         self._ensure_connected()
         return self._symbol_repo.search_symbols_regex(pattern, kind, project_only)
 
-    def search_symbols_by_file(self, file_path: str) -> List[SymbolInfo]:
+    def search_symbols_by_file(self, file_path: str) -> list[SymbolInfo]:
         self._ensure_connected()
         return self._symbol_repo.search_symbols_by_file(file_path)
 
-    def search_symbols_by_kind(self, kind: str, project_only: bool = True) -> List[SymbolInfo]:
+    def search_symbols_by_kind(self, kind: str, project_only: bool = True) -> list[SymbolInfo]:
         self._ensure_connected()
         return self._symbol_repo.search_symbols_by_kind(kind, project_only)
 
-    def get_symbol_stats(self) -> Dict[str, Any]:
+    def get_symbol_stats(self) -> dict[str, Any]:
         self._ensure_connected()
         return self._maintenance.get_symbol_stats()
 
@@ -566,23 +566,23 @@ class SqliteCacheBackend:
 
     def auto_maintenance(
         self, vacuum_threshold_mb: float = 100.0, vacuum_min_waste_mb: float = 10.0
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         self._ensure_connected()
         return self._maintenance.auto_maintenance(vacuum_threshold_mb, vacuum_min_waste_mb)
 
-    def check_integrity(self, full: bool = False) -> Tuple[bool, str]:
+    def check_integrity(self, full: bool = False) -> tuple[bool, str]:
         self._ensure_connected()
         return self._maintenance.check_integrity(full)
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         self._ensure_connected()
         return self._maintenance.get_health_status()
 
-    def get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
+    def get_table_sizes(self) -> dict[str, dict[str, Any]]:
         self._ensure_connected()
         return self._maintenance.get_table_sizes()
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         self._ensure_connected()
         return self._maintenance.get_cache_stats(
             db_path=str(self.db_path),
@@ -590,7 +590,7 @@ class SqliteCacheBackend:
             last_access=self._last_access,
         )
 
-    def monitor_performance(self, operation: str = "search") -> Dict[str, float]:
+    def monitor_performance(self, operation: str = "search") -> dict[str, float]:
         self._ensure_connected()
         return self._maintenance.monitor_performance(operation)
 
@@ -600,15 +600,15 @@ class SqliteCacheBackend:
 
     def save_cache(
         self,
-        class_index: Dict[str, List],
-        function_index: Dict[str, List],
-        file_hashes: Dict[str, str],
+        class_index: dict[str, list],
+        function_index: dict[str, list],
+        file_hashes: dict[str, str],
         indexed_file_count: int,
         include_dependencies: bool = False,
-        config_file_path: Optional[Path] = None,
-        config_file_mtime: Optional[float] = None,
-        compile_commands_path: Optional[Path] = None,
-        compile_commands_mtime: Optional[float] = None,
+        config_file_path: Path | None = None,
+        config_file_mtime: float | None = None,
+        compile_commands_path: Path | None = None,
+        compile_commands_mtime: float | None = None,
     ) -> bool:
         """
         Save indexes to SQLite cache (CacheBackend protocol method).
@@ -666,7 +666,7 @@ class SqliteCacheBackend:
             return False
 
     def _check_config_changes(
-        self, config_file_path: Optional[Path], config_file_mtime: Optional[float]
+        self, config_file_path: Path | None, config_file_mtime: float | None
     ) -> bool:
         """Check if config file has changed since caching."""
         cached_config = self.get_cache_metadata("config_file_path")
@@ -685,7 +685,7 @@ class SqliteCacheBackend:
         return True
 
     def _check_compile_commands_changes(
-        self, compile_commands_path: Optional[Path], compile_commands_mtime: Optional[float]
+        self, compile_commands_path: Path | None, compile_commands_mtime: float | None
     ) -> bool:
         """Check if compile_commands.json has changed since caching."""
         cached_cc = self.get_cache_metadata("compile_commands_path")
@@ -706,10 +706,10 @@ class SqliteCacheBackend:
     def _validate_cache_metadata(
         self,
         include_dependencies: bool,
-        config_file_path: Optional[Path],
-        config_file_mtime: Optional[float],
-        compile_commands_path: Optional[Path],
-        compile_commands_mtime: Optional[float],
+        config_file_path: Path | None,
+        config_file_mtime: float | None,
+        compile_commands_path: Path | None,
+        compile_commands_mtime: float | None,
     ) -> bool:
         """Validate if the cache metadata matches the current configuration."""
         # Check if cache has been initialized (has metadata)
@@ -733,7 +733,7 @@ class SqliteCacheBackend:
 
         return True
 
-    def _load_symbols_from_db(self) -> Tuple[Dict[str, List[Any]], Dict[str, List[Any]]]:
+    def _load_symbols_from_db(self) -> tuple[dict[str, list[Any]], dict[str, list[Any]]]:
         """Load symbols from database and build class and function indexes."""
         cursor = self._conn.execute("SELECT * FROM symbols")
 
@@ -767,11 +767,11 @@ class SqliteCacheBackend:
     def load_cache(
         self,
         include_dependencies: bool = False,
-        config_file_path: Optional[Path] = None,
-        config_file_mtime: Optional[float] = None,
-        compile_commands_path: Optional[Path] = None,
-        compile_commands_mtime: Optional[float] = None,
-    ) -> Optional[Dict[str, Any]]:
+        config_file_path: Path | None = None,
+        config_file_mtime: float | None = None,
+        compile_commands_path: Path | None = None,
+        compile_commands_mtime: float | None = None,
+    ) -> dict[str, Any] | None:
         """
         Load cache from SQLite if valid (CacheBackend protocol method).
 
@@ -831,11 +831,11 @@ class SqliteCacheBackend:
     def save_file_cache(
         self,
         file_path: str,
-        symbols: List,
+        symbols: list,
         file_hash: str,
-        compile_args_hash: Optional[str] = None,
+        compile_args_hash: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         retry_count: int = 0,
     ) -> bool:
         """
@@ -879,8 +879,8 @@ class SqliteCacheBackend:
             return False
 
     def load_file_cache(
-        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, file_path: str, current_hash: str, compile_args_hash: str | None = None
+    ) -> dict[str, Any] | None:
         """
         Load cached data for a file if hash matches (CacheBackend protocol method).
 
@@ -950,21 +950,21 @@ class SqliteCacheBackend:
 
     # Phase 3: Call Sites Methods (v8.0)
 
-    def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
+    def save_call_sites_batch(self, call_sites: list[dict[str, Any]]) -> int:
         self._ensure_connected()
         return self._call_site_repo.save_call_sites_batch(call_sites)
 
-    def get_call_sites_for_caller(self, caller_usr: str) -> List[Dict[str, Any]]:
+    def get_call_sites_for_caller(self, caller_usr: str) -> list[dict[str, Any]]:
         self._ensure_connected()
         return self._call_site_repo.get_call_sites_for_caller(caller_usr)
 
-    def get_call_sites_for_callee(self, callee_usr: str) -> List[Dict[str, Any]]:
+    def get_call_sites_for_callee(self, callee_usr: str) -> list[dict[str, Any]]:
         self._ensure_connected()
         return self._call_site_repo.get_call_sites_for_callee(callee_usr)
 
     def get_template_mediated_call_sites(
-        self, caller_usrs: List[str], callee_usr: str
-    ) -> List[Dict[str, Any]]:
+        self, caller_usrs: list[str], callee_usr: str
+    ) -> list[dict[str, Any]]:
         self._ensure_connected()
         return self._call_site_repo.get_template_mediated_call_sites(caller_usrs, callee_usr)
 
@@ -976,7 +976,7 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._call_site_repo.delete_call_sites_by_usr(usr)
 
-    def load_all_call_sites(self) -> List[Dict[str, Any]]:
+    def load_all_call_sites(self) -> list[dict[str, Any]]:
         self._ensure_connected()
         return self._call_site_repo.load_all_call_sites()
 
@@ -984,32 +984,32 @@ class SqliteCacheBackend:
     # Type Aliases Storage and Lookup (Phase 1.3: Type Alias Tracking)
     # -------------------------------------------------------------------------
 
-    def save_type_aliases_batch(self, aliases: List[TypeAliasRecord]) -> int:
+    def save_type_aliases_batch(self, aliases: list[TypeAliasRecord]) -> int:
         """Batch insert type aliases using transaction."""
         self._ensure_connected()
         return type_alias_repository.save_type_aliases_batch(self._conn, aliases)
 
-    def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
+    def get_aliases_for_canonical(self, canonical_type: str) -> list[str]:
         """Get all alias names that resolve to a given canonical type."""
         self._ensure_connected()
         return type_alias_repository.get_aliases_for_canonical(self._conn, canonical_type)
 
-    def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
+    def get_canonical_for_alias(self, alias_name: str) -> str | None:
         """Get canonical type for a given alias name (short or qualified)."""
         self._ensure_connected()
         return type_alias_repository.get_canonical_for_alias(self._conn, alias_name)
 
-    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+    def get_type_alias_info(self, type_name: str) -> dict[str, Any] | None:
         """Get high-level info for a known alias from the type_aliases table."""
         self._ensure_connected()
         return type_alias_repository.get_type_alias_info(self._conn, type_name)
 
-    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+    def get_type_alias_details(self, alias_names: list[str]) -> list[dict[str, Any]]:
         """Get detailed records from the type_aliases table for a list of alias names."""
         self._ensure_connected()
         return type_alias_repository.get_type_alias_details(self._conn, alias_names)
 
-    def get_all_cached_file_paths(self) -> Set[str]:
+    def get_all_cached_file_paths(self) -> set[str]:
         self._ensure_connected()
         return self._file_metadata_repo.get_all_cached_file_paths()
 
@@ -1017,7 +1017,7 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._file_metadata_repo.set_compile_args_hash(file_path, args_hash)
 
-    def get_compile_args_hash(self, file_path: str) -> Optional[str]:
+    def get_compile_args_hash(self, file_path: str) -> str | None:
         self._ensure_connected()
         return self._file_metadata_repo.get_compile_args_hash(file_path)
 
@@ -1025,7 +1025,7 @@ class SqliteCacheBackend:
         self._ensure_connected()
         return self._file_metadata_repo.clear_compile_args_hashes()
 
-    def get_all_alias_mappings(self) -> Dict[str, str]:
+    def get_all_alias_mappings(self) -> dict[str, str]:
         """Get all alias → canonical mappings."""
         self._ensure_connected()
         return type_alias_repository.get_all_alias_mappings(self._conn)

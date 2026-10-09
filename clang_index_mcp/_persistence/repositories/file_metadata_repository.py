@@ -1,7 +1,7 @@
 """SQLite-backed file metadata and cache metadata operations."""
 
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 from .base import BaseRepository
 
@@ -18,10 +18,10 @@ class FileMetadataRepository(BaseRepository):
         self,
         file_path: str,
         file_hash: str,
-        compile_args_hash: Optional[str] = None,
+        compile_args_hash: str | None = None,
         symbol_count: int = 0,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         retry_count: int = 0,
     ) -> bool:
         """Update or insert file metadata."""
@@ -50,7 +50,7 @@ class FileMetadataRepository(BaseRepository):
             diagnostics.error(f"Failed to update file metadata for {file_path}: {e}")
             return False
 
-    def get_file_metadata(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_file_metadata(self, file_path: str) -> dict[str, Any] | None:
         """Get metadata for a file."""
         try:
             cursor = self.conn.execute(
@@ -58,7 +58,7 @@ class FileMetadataRepository(BaseRepository):
             )
             row = cursor.fetchone()
             if row:
-                result: Dict[str, Any] = {
+                result: dict[str, Any] = {
                     "file_path": row["file_path"],
                     "file_hash": row["file_hash"],
                     "compile_args_hash": row["compile_args_hash"],
@@ -79,7 +79,7 @@ class FileMetadataRepository(BaseRepository):
             diagnostics.error(f"Failed to get file metadata for {file_path}: {e}")
             return None
 
-    def load_all_file_hashes(self) -> Dict[str, str]:
+    def load_all_file_hashes(self) -> dict[str, str]:
         """Load all file hashes for cache validation."""
         try:
             cursor = self.conn.execute("SELECT file_path, file_hash FROM file_metadata")
@@ -104,7 +104,7 @@ class FileMetadataRepository(BaseRepository):
             diagnostics.error(f"Failed to update cache metadata {key}: {e}")
             return False
 
-    def get_cache_metadata(self, key: str) -> Optional[str]:
+    def get_cache_metadata(self, key: str) -> str | None:
         """Get cache metadata value."""
         try:
             cursor = self.conn.execute("SELECT value FROM cache_metadata WHERE key = ?", (key,))
@@ -114,7 +114,7 @@ class FileMetadataRepository(BaseRepository):
             diagnostics.error(f"Failed to get cache metadata {key}: {e}")
             return None
 
-    def get_all_cached_file_paths(self) -> Set[str]:
+    def get_all_cached_file_paths(self) -> set[str]:
         """Return all file paths stored in file_metadata table."""
         try:
             cursor = self.conn.execute("SELECT file_path FROM file_metadata")
@@ -150,7 +150,7 @@ class FileMetadataRepository(BaseRepository):
             self.conn.rollback()
             return False
 
-    def get_compile_args_hash(self, file_path: str) -> Optional[str]:
+    def get_compile_args_hash(self, file_path: str) -> str | None:
         """Return the stored compile arguments hash for a file."""
         try:
             cursor = self.conn.execute(

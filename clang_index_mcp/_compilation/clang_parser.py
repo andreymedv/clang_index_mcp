@@ -1,6 +1,7 @@
-from typing import Any, Callable, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
-from clang.cindex import Index, TranslationUnit, TranslationUnitLoadError, Diagnostic
+from clang.cindex import Diagnostic, Index, TranslationUnit, TranslationUnitLoadError
 
 from .._core import diagnostics
 
@@ -17,7 +18,7 @@ class ClangParser:
 
     def __init__(
         self,
-        log_parse_error: Callable[[str, Exception, str, Optional[str], int], Any],
+        log_parse_error: Callable[[str, Exception, str, str | None, int], Any],
     ):
         """
         Initialize ClangParser.
@@ -30,8 +31,8 @@ class ClangParser:
         self._index: Index = Index.create()
 
     def try_parse_with_fallback(
-        self, file_path: str, args: List[str]
-    ) -> Tuple[Optional[TranslationUnit], Optional[str]]:
+        self, file_path: str, args: list[str]
+    ) -> tuple[TranslationUnit | None, str | None]:
         """Try parsing with progressive fallback if initial attempt fails."""
         parse_options_attempts = [
             (
@@ -82,7 +83,7 @@ class ClangParser:
 
     def _extract_diagnostics(
         self, tu: TranslationUnit
-    ) -> Tuple[List[Diagnostic], List[Diagnostic]]:
+    ) -> tuple[list[Diagnostic], list[Diagnostic]]:
         """Extract error and warning diagnostics from translation unit."""
         error_diagnostics = []
         warning_diagnostics = []
@@ -105,7 +106,7 @@ class ClangParser:
         return error_diagnostics, warning_diagnostics
 
     @staticmethod
-    def _format_diagnostics(diagnostics_list: List[Diagnostic], max_count: int = 5) -> str:
+    def _format_diagnostics(diagnostics_list: list[Diagnostic], max_count: int = 5) -> str:
         """Format libclang diagnostics into a readable string."""
         if not diagnostics_list:
             return ""
@@ -137,7 +138,7 @@ class ClangParser:
         current_hash: str,
         compile_args_hash: str,
         retry_count: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract and process diagnostics. Returns error message if any."""
         error_diagnostics, warning_diagnostics = self._extract_diagnostics(tu)
         cache_error_msg = None

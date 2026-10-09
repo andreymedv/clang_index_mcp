@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Handle both package and script imports
 try:
@@ -27,16 +27,16 @@ class CompileCommandsConfig:
     compile_commands_cache_enabled: bool = True
     fallback_to_hardcoded: bool = True
     cache_expiry_seconds: int = 300
-    supported_extensions: List[str] = field(
+    supported_extensions: list[str] = field(
         default_factory=lambda: list(FileScanner.CPP_EXTENSIONS)
     )
-    sanitization_rules_file: Optional[str] = None
+    sanitization_rules_file: str | None = None
 
     @classmethod
     def _build(
         cls,
-        mapping: Dict[str, Any],
-        sanitization_rules_file: Optional[str] = None,
+        mapping: dict[str, Any],
+        sanitization_rules_file: str | None = None,
     ) -> "CompileCommandsConfig":
         """Shared construction from a normalized flat-key mapping."""
         return cls(
@@ -52,7 +52,7 @@ class CompileCommandsConfig:
         )
 
     @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "CompileCommandsConfig":
+    def from_dict(cls, data: dict[str, Any] | None) -> "CompileCommandsConfig":
         """Build a CompileCommandsConfig from a legacy flat-key dictionary."""
         if data is None:
             return cls()
@@ -97,12 +97,12 @@ class CppAnalyzerConfig:
         "diagnostics": {"level": "info", "enabled": True},  # debug, info, warning, error, fatal
     }
 
-    def __init__(self, project_root: Path, config_path: Optional[Path] = None) -> None:
+    def __init__(self, project_root: Path, config_path: Path | None = None) -> None:
         self.project_root = project_root
         self.config_path = config_path  # Pre-specified config path
         self.config = self._load_config()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration from file or use defaults."""
         config = self.DEFAULT_CONFIG.copy()
 
@@ -143,16 +143,16 @@ class CppAnalyzerConfig:
 
         return config
 
-    def get_exclude_directories(self) -> List[str]:
+    def get_exclude_directories(self) -> list[str]:
         """Get list of directories to exclude."""
-        result: List[str] = self.config.get(
+        result: list[str] = self.config.get(
             "exclude_directories", self.DEFAULT_CONFIG["exclude_directories"]
         )
         return result
 
-    def get_dependency_directories(self) -> List[str]:
+    def get_dependency_directories(self) -> list[str]:
         """Get list of directories that contain dependencies."""
-        result: List[str] = self.config.get(
+        result: list[str] = self.config.get(
             "dependency_directories", self.DEFAULT_CONFIG["dependency_directories"]
         )
         return result
@@ -169,7 +169,7 @@ class CppAnalyzerConfig:
         result: float = self.config.get("max_file_size_mb", self.DEFAULT_CONFIG["max_file_size_mb"])
         return result
 
-    def get_max_workers(self) -> Optional[int]:
+    def get_max_workers(self) -> int | None:
         """Get maximum number of worker processes for parallel indexing.
 
         Returns:
@@ -227,7 +227,7 @@ class CppAnalyzerConfig:
         compile_commands = self.config.get("compile_commands", {})
 
         # Translate nested config keys to the normalized flat keys _build expects.
-        normalized: Dict[str, Any] = {
+        normalized: dict[str, Any] = {
             "compile_commands_enabled": compile_commands.get("enabled", True),
             "compile_commands_path": compile_commands.get("path", "compile_commands.json"),
             "compile_commands_cache_enabled": compile_commands.get("cache_enabled", True),

@@ -1,7 +1,7 @@
 """Search functionality for C++ symbols."""
 
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from .._core.regex_validator import RegexValidator
 from .._search.search_criteria import SearchCriteria
@@ -13,7 +13,11 @@ from .._symbols.model import (
     omit_empty,
 )
 from .pattern_matcher import detect_pattern_type, matches_qualified_pattern
-from .prototype_builder import build_attributes, build_class_prototype, build_function_prototype
+from .prototype_builder import (
+    build_attributes,
+    build_class_prototype,
+    build_function_prototype,
+)
 from .symbol_name_utils import extract_simple_name, strip_template_args
 
 if TYPE_CHECKING:
@@ -27,11 +31,11 @@ class SearchEngine:
 
     def __init__(
         self,
-        class_index: Optional[Dict[str, List[SymbolInfo]]] = None,
-        function_index: Optional[Dict[str, List[SymbolInfo]]] = None,
-        file_index: Optional[Dict[str, List[SymbolInfo]]] = None,
-        usr_index: Optional[Dict[str, SymbolInfo]] = None,
-        index_lock: Optional[threading.RLock] = None,
+        class_index: dict[str, list[SymbolInfo]] | None = None,
+        function_index: dict[str, list[SymbolInfo]] | None = None,
+        file_index: dict[str, list[SymbolInfo]] | None = None,
+        usr_index: dict[str, SymbolInfo] | None = None,
+        index_lock: threading.RLock | None = None,
         cache_manager=None,  # Phase 1.3: Type Alias Tracking support
         symbol_store: Optional["SymbolIndexStore"] = None,
     ):
@@ -56,7 +60,7 @@ class SearchEngine:
             self.index_lock = index_lock
         self.cache_manager = cache_manager  # Phase 1.3: For alias lookups
 
-    def _resolve_specialization_of(self, primary_template_usr: Optional[str]) -> Optional[str]:
+    def _resolve_specialization_of(self, primary_template_usr: str | None) -> str | None:
         """
         Resolve primary template USR to its qualified name for LLM-friendly output.
 
@@ -132,8 +136,8 @@ class SearchEngine:
         info: SymbolInfo,
         pattern: str,
         project_only: bool,
-        file_name: Optional[str],
-        namespace: Optional[str],
+        file_name: str | None,
+        namespace: str | None,
     ) -> bool:
         """Check if a class symbol matches the search criteria."""
         qualified_name = info.qualified_name if info.qualified_name else info.name
@@ -146,12 +150,11 @@ class SearchEngine:
         if file_name and file_name not in info.file:
             return False
 
-        if namespace is not None and not self._matches_namespace(info.namespace, namespace):
-            return False
+        return not (
+            namespace is not None and not self._matches_namespace(info.namespace, namespace)
+        )
 
-        return True
-
-    def _symbol_result_tail(self, info: SymbolInfo) -> Dict[str, Any]:
+    def _symbol_result_tail(self, info: SymbolInfo) -> dict[str, Any]:
         """Build the result fields shared by every symbol response shape."""
         return {
             "specialization_of": self._resolve_specialization_of(info.primary_template_usr),
@@ -160,7 +163,7 @@ class SearchEngine:
             "doc_comment": info.doc_comment,
         }
 
-    def _create_class_result(self, info: SymbolInfo, include_base_classes: bool) -> Dict[str, Any]:
+    def _create_class_result(self, info: SymbolInfo, include_base_classes: bool) -> dict[str, Any]:
         """Build a result dictionary for a class search hit."""
         entry = {
             "prototype": build_class_prototype(info),
@@ -179,7 +182,7 @@ class SearchEngine:
     def search_classes(
         self,
         criteria: SearchCriteria,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Search for classes matching a pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
@@ -205,7 +208,7 @@ class SearchEngine:
         if pattern_type == "regex":
             RegexValidator.validate_or_raise(pattern)
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         with self.index_lock:
             for name, infos in self.class_index.items():
@@ -229,9 +232,9 @@ class SearchEngine:
         pattern: str,
         pattern_type: str,
         project_only: bool,
-        class_name: Optional[str],
-        namespace: Optional[str],
-        signature_pattern: Optional[str],
+        class_name: str | None,
+        namespace: str | None,
+        signature_pattern: str | None,
     ) -> bool:
         """Helper to check if a function symbol matches the search criteria."""
         if info.kind not in ("function", "method", "function_template"):
@@ -273,9 +276,9 @@ class SearchEngine:
 
         return True
 
-    def _create_function_result(self, info: SymbolInfo, include_attributes: bool) -> Dict[str, Any]:
+    def _create_function_result(self, info: SymbolInfo, include_attributes: bool) -> dict[str, Any]:
         """Build a result dictionary for a function search hit."""
-        d: Dict[str, Any] = {
+        d: dict[str, Any] = {
             "prototype": build_function_prototype(info),
             "qualified_name": info.qualified_name or info.name,
             "namespace": info.namespace,
@@ -295,15 +298,15 @@ class SearchEngine:
         pattern: str,
         pattern_type: str,
         project_only: bool,
-        class_name: Optional[str],
-        namespace: Optional[str],
-        signature_pattern: Optional[str],
+        class_name: str | None,
+        namespace: str | None,
+        signature_pattern: str | None,
         include_attributes: bool,
-        index: Dict[str, List[SymbolInfo]],
-        file_name: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        index: dict[str, list[SymbolInfo]],
+        file_name: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Search for functions in the given index, optionally filtering by file."""
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         with self.index_lock:
             for key, infos in index.items():
                 if file_name is not None and file_name not in key:
@@ -323,8 +326,8 @@ class SearchEngine:
 
     @staticmethod
     def _apply_max_results(
-        results: List[Dict[str, Any]], max_results: Optional[int]
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+        results: list[dict[str, Any]], max_results: int | None
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Truncate results if max_results is specified."""
         if max_results is not None:
             return (results[:max_results], len(results))
@@ -333,7 +336,7 @@ class SearchEngine:
     def search_functions(
         self,
         criteria: SearchCriteria,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Search for functions matching a pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
@@ -393,7 +396,7 @@ class SearchEngine:
     def search_symbols(
         self,
         criteria: SearchCriteria,
-    ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
+    ) -> dict[str, list[dict[str, Any]]] | tuple[dict[str, list[dict[str, Any]]], int]:
         """Search for any symbols matching a pattern.
 
         Phase 2 (Qualified Names): Supports qualified pattern matching.
@@ -418,7 +421,7 @@ class SearchEngine:
 
         Task: T2.2.3 (Qualified Names Phase 2)
         """
-        results: Dict[str, List[Dict[str, Any]]] = {"classes": [], "functions": []}
+        results: dict[str, list[dict[str, Any]]] = {"classes": [], "functions": []}
 
         symbol_types = criteria.symbol_types
         # Filter symbol types
@@ -434,7 +437,7 @@ class SearchEngine:
                 namespace=criteria.namespace,
             )
             results["classes"] = cast(
-                List[Dict[str, Any]],
+                list[dict[str, Any]],
                 self.search_classes(class_criteria),
             )
 
@@ -447,7 +450,7 @@ class SearchEngine:
                 include_attributes=criteria.include_attributes,
             )
             results["functions"] = cast(
-                List[Dict[str, Any]],
+                list[dict[str, Any]],
                 self.search_functions(function_criteria),
             )
 
@@ -471,7 +474,7 @@ class SearchEngine:
 
         return results
 
-    def get_symbols_in_file(self, file_path: str) -> List[SymbolInfo]:
+    def get_symbols_in_file(self, file_path: str) -> list[SymbolInfo]:
         """Get all symbols in a specific file"""
         with self.index_lock:
             # Return a copy to prevent concurrent modification during iteration
@@ -479,7 +482,7 @@ class SearchEngine:
 
     def _find_class_candidate(
         self, class_name: str, lookup_name: str, is_qualified: bool, has_template_args: bool
-    ) -> Union[SymbolInfo, Dict[str, Any], None]:
+    ) -> SymbolInfo | dict[str, Any] | None:
         """Find the best matching SymbolInfo for a class name, or an ambiguity error."""
         simple_name = extract_simple_name(lookup_name)
 
@@ -502,8 +505,8 @@ class SearchEngine:
             return self._disambiguate_simple_class(infos, class_name, has_template_args)
 
     def _disambiguate_qualified_class(
-        self, infos: List[SymbolInfo], lookup_name: str
-    ) -> Optional[SymbolInfo]:
+        self, infos: list[SymbolInfo], lookup_name: str
+    ) -> SymbolInfo | None:
         """Find the best match among candidates for a qualified name."""
         matching_candidates = []
         for candidate in infos:
@@ -526,8 +529,8 @@ class SearchEngine:
         return info or matching_candidates[0]
 
     def _disambiguate_simple_class(
-        self, infos: List[SymbolInfo], class_name: str, has_template_args: bool
-    ) -> Union[SymbolInfo, Dict[str, Any]]:
+        self, infos: list[SymbolInfo], class_name: str, has_template_args: bool
+    ) -> SymbolInfo | dict[str, Any]:
         """Find the best match or return an ambiguity error for a simple name."""
         if len(infos) > 1:
             if has_template_args:
@@ -551,7 +554,7 @@ class SearchEngine:
 
         return info or infos[0]
 
-    def _create_ambiguity_error(self, message: str, matches: List[SymbolInfo]) -> Dict[str, Any]:
+    def _create_ambiguity_error(self, message: str, matches: list[SymbolInfo]) -> dict[str, Any]:
         """Create a standardized ambiguity error dictionary."""
         return {
             "error": message,
@@ -571,11 +574,11 @@ class SearchEngine:
         }
 
     def _find_class_methods(
-        self, simple_name: str, class_qualified_name: Optional[str]
-    ) -> List[Dict[str, Any]]:
+        self, simple_name: str, class_qualified_name: str | None
+    ) -> list[dict[str, Any]]:
         """Find all methods belonging to a specific class."""
         methods = []
-        for name, func_infos in self.function_index.items():
+        for func_infos in self.function_index.values():
             for func_info in func_infos:
                 # Match by parent_class (simple name) OR qualified_name prefix
                 if func_info.parent_class == simple_name:
@@ -606,7 +609,7 @@ class SearchEngine:
                 )
         return methods
 
-    def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
+    def get_class_info(self, class_name: str) -> dict[str, Any] | None:
         """Get detailed information about a class.
 
         Args:
@@ -642,9 +645,9 @@ class SearchEngine:
             # Find all methods of this class
             methods = self._find_class_methods(simple_name, class_qualified_name)
 
-        def _method_sort_line(m: Dict[str, Any]) -> int:
+        def _method_sort_line(m: dict[str, Any]) -> int:
             """Extract line number for sorting from declaration or definition."""
-            loc: Dict[str, Any] = m.get("declaration") or m.get("definition") or {}
+            loc: dict[str, Any] = m.get("declaration") or m.get("definition") or {}
             return int(loc.get("line", 0))
 
         return omit_empty(
@@ -665,7 +668,7 @@ class SearchEngine:
             }
         )
 
-    def _lookup_function_infos(self, simple_name: str) -> List[Any]:
+    def _lookup_function_infos(self, simple_name: str) -> list[Any]:
         """Look up function infos by simple name with case-insensitive fallback."""
         infos = self.function_index.get(simple_name, [])
         if infos:
@@ -700,8 +703,8 @@ class SearchEngine:
         return f"{scope}::{sig}"
 
     def get_function_signature(
-        self, function_name: str, class_name: Optional[str] = None
-    ) -> List[str]:
+        self, function_name: str, class_name: str | None = None
+    ) -> list[str]:
         """Get function signatures matching the name.
 
         Args:

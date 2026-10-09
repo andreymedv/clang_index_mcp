@@ -1,7 +1,8 @@
 """Parser port for the symbols/domain layer."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Protocol
+from typing import Protocol
 
 from clang.cindex import TranslationUnit
 
@@ -14,11 +15,11 @@ class CallSiteRecord:
 
     caller_usr: str
     callee_usr: str
-    file: Optional[str]
-    line: Optional[int]
-    column: Optional[int]
-    display_name: Optional[str] = None
-    template_project_types: Optional[str] = None
+    file: str | None
+    line: int | None
+    column: int | None
+    display_name: str | None = None
+    template_project_types: str | None = None
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ class TypeAliasRecord:
     alias_kind: str
     namespace: str
     is_template_alias: bool
-    template_params: Optional[str] = None
+    template_params: str | None = None
     created_at: float = 0.0
 
 
@@ -43,10 +44,10 @@ class TypeAliasRecord:
 class ParseResult:
     """Result returned by a symbol parser after AST traversal."""
 
-    symbols: List[SymbolInfo]
-    call_sites: List[CallSiteRecord]
-    type_aliases: List[TypeAliasRecord]
-    processed_headers: Dict[str, str]
+    symbols: list[SymbolInfo]
+    call_sites: list[CallSiteRecord]
+    type_aliases: list[TypeAliasRecord]
+    processed_headers: dict[str, str]
 
 
 class SymbolParser(Protocol):
@@ -56,7 +57,7 @@ class SymbolParser(Protocol):
         self,
         tu: TranslationUnit,
         source_file: str,
-        should_extract_from_file: Optional[Callable[[str], bool]] = None,
+        should_extract_from_file: Callable[[str], bool] | None = None,
     ) -> ParseResult:
         """Parse a translation unit and return extracted symbol data."""
         ...

@@ -7,11 +7,11 @@ Provides alternative output formats for class hierarchy data:
 - cpp_with_meta: C++ pseudocode with comment metadata
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 
 def convert_hierarchy_format(
-    hierarchy: Dict[str, Any],
+    hierarchy: dict[str, Any],
     output_format: str,
 ) -> str:
     """Convert hierarchy data to specified output format.
@@ -43,7 +43,7 @@ def convert_hierarchy_format(
     return json.dumps(hierarchy, indent=2)
 
 
-def _format_compact_json(hierarchy: Dict[str, Any]) -> str:
+def _format_compact_json(hierarchy: dict[str, Any]) -> str:
     """Format hierarchy as compact JSON with abbreviated keys."""
     import json
 
@@ -81,11 +81,11 @@ def _format_compact_json(hierarchy: Dict[str, Any]) -> str:
 
 
 def _build_topological_graph(
-    classes: Dict[str, Any],
-) -> tuple[Dict[str, int], Dict[str, List[str]]]:
+    classes: dict[str, Any],
+) -> tuple[dict[str, int], dict[str, list[str]]]:
     """Build a dependency graph for topological sorting."""
-    in_degree: Dict[str, int] = dict.fromkeys(classes, 0)
-    dependents: Dict[str, List[str]] = {name: [] for name in classes}
+    in_degree: dict[str, int] = dict.fromkeys(classes, 0)
+    dependents: dict[str, list[str]] = {name: [] for name in classes}
 
     for name, info in classes.items():
         bases = info.get("base_classes", [])
@@ -97,13 +97,13 @@ def _build_topological_graph(
 
 
 def _topological_sort(
-    classes: Dict[str, Any],
-    in_degree: Dict[str, int],
-    dependents: Dict[str, List[str]],
-) -> List[str]:
+    classes: dict[str, Any],
+    in_degree: dict[str, int],
+    dependents: dict[str, list[str]],
+) -> list[str]:
     """Perform topological sort on the class dependency graph."""
     queue = [name for name, deg in in_degree.items() if deg == 0]
-    sorted_names: List[str] = []
+    sorted_names: list[str] = []
 
     while queue:
         # Sort for deterministic output
@@ -123,9 +123,9 @@ def _topological_sort(
     return sorted_names
 
 
-def _find_unresolved_bases(classes: Dict[str, Any]) -> Set[str]:
+def _find_unresolved_bases(classes: dict[str, Any]) -> set[str]:
     """Find bases that are not in the classes dict (external/unresolved)."""
-    unresolved_bases: Set[str] = set()
+    unresolved_bases: set[str] = set()
     for _name, info in classes.items():
         for base in info.get("base_classes", []):
             if base not in classes:
@@ -134,15 +134,15 @@ def _find_unresolved_bases(classes: Dict[str, Any]) -> Set[str]:
 
 
 def _generate_cpp_lines(
-    classes: Dict[str, Any],
-    sorted_names: List[str],
-    unresolved_bases: Set[str],
+    classes: dict[str, Any],
+    sorted_names: list[str],
+    unresolved_bases: set[str],
     queried_class: str,
     truncated: bool,
     include_meta: bool,
-) -> List[str]:
+) -> list[str]:
     """Generate C++ pseudocode lines for the given classes."""
-    lines: List[str] = []
+    lines: list[str] = []
     lines.append(f"// Class hierarchy for: {queried_class}")
     if truncated:
         lines.append("// Note: Hierarchy was truncated (max_nodes/max_depth limit)")
@@ -179,7 +179,7 @@ def _generate_cpp_lines(
     return lines
 
 
-def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False) -> str:
+def _format_cpp_pseudocode(hierarchy: dict[str, Any], include_meta: bool = False) -> str:
     """Format hierarchy as C++ pseudocode.
 
     Outputs classes in topological order (bases before derived) with
@@ -213,7 +213,7 @@ def _format_cpp_pseudocode(hierarchy: Dict[str, Any], include_meta: bool = False
     return "\n".join(lines)
 
 
-def _build_class_declaration(name: str, info: Dict[str, Any]) -> str:
+def _build_class_declaration(name: str, info: dict[str, Any]) -> str:
     """Build a C++ class declaration line.
 
     Examples:

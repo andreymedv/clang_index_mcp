@@ -15,5 +15,5 @@ class PersistenceContext:
     """SQLite-backed cache, file-cache orchestration, and refresh integration."""
 
     cache_manager: CacheManager
-    cache_orchestrator: Optional[CacheOrchestrator] = None
+    cache_orchestrator: CacheOrchestrator | None = None
     refresh_pipeline: Optional["RefreshPipeline"] = None

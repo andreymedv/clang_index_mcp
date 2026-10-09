@@ -1,12 +1,13 @@
 
 import asyncio
-import os
 import json
-import pytest
 from unittest.mock import MagicMock, patch
-from clang_index_mcp._mcp import cpp_mcp_server
+
+import pytest
+
 from clang_index_mcp._mcp.context import ctx
 from clang_index_mcp._mcp.state_manager import AnalyzerState
+
 
 @pytest.mark.asyncio
 async def test_sync_project_after_failed_resume():

@@ -1,13 +1,13 @@
 """Shared base class for SQLite-backed repositories."""
 
 import sqlite3
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 
 class BaseRepository:
     """Provides common connection access for SQLite-backed repositories."""
 
-    def __init__(self, conn_getter: Callable[[], Optional[sqlite3.Connection]]):
+    def __init__(self, conn_getter: Callable[[], sqlite3.Connection | None]):
         """
         Args:
             conn_getter: Callable returning the current SQLite connection.
@@ -22,7 +22,7 @@ class BaseRepository:
         assert connection is not None, "Database connection not initialized"
         return connection
 
-    def _count_and_delete(self, table: str, condition: str, params: Tuple) -> int:
+    def _count_and_delete(self, table: str, condition: str, params: tuple) -> int:
         """Count rows matching ``condition`` in ``table``, then delete them.
 
         Returns the number of deleted rows (0 when nothing matched).

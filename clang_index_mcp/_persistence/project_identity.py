@@ -14,7 +14,6 @@ Design:
 
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 
 class ProjectIdentity:
@@ -50,7 +49,7 @@ class ProjectIdentity:
         config_file_path: Absolute path to configuration file (optional)
     """
 
-    def __init__(self, source_directory: Path, config_file_path: Optional[Path] = None):
+    def __init__(self, source_directory: Path, config_file_path: Path | None = None):
         """
         Initialize project identity.
 

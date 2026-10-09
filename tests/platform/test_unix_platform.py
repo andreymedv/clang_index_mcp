@@ -2,7 +2,6 @@
 Unix-specific tests. REQ-13.1, Priority: P1"""
 
 import os
-import stat
 import sys
 
 import pytest

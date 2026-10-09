@@ -6,14 +6,14 @@ and call paths between functions.
 """
 
 import json
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from .._core import diagnostics
+from .._persistence.cache_manager import CacheManager
 from .._search.call_graph import CallGraphAnalyzer
 from .._search.dependency_graph import DependencyGraphBuilder
-from .._persistence.cache_manager import CacheManager
-from .._symbols.usr_decoder import usr_to_display_name
 from .._symbols.model import build_location_objects, omit_empty
+from .._symbols.usr_decoder import usr_to_display_name
 
 
 class CallGraphService:
@@ -37,14 +37,14 @@ class CallGraphService:
         self.query_engine: Any = None
 
         self.call_graph_analyzer = CallGraphAnalyzer()
-        self.dependency_graph: Optional[DependencyGraphBuilder] = None
+        self.dependency_graph: DependencyGraphBuilder | None = None
 
     def set_dependencies(self, symbol_store: Any, query_engine: Any) -> None:
         """Wire symbol store and query engine after they are created."""
         self.symbol_store = symbol_store
         self.query_engine = query_engine
 
-    def set_dependency_graph(self, builder: Optional[DependencyGraphBuilder]) -> None:
+    def set_dependency_graph(self, builder: DependencyGraphBuilder | None) -> None:
         """Set the dependency graph builder, wired by the composition root."""
         self.dependency_graph = builder
         if builder is not None:
@@ -60,7 +60,7 @@ class CallGraphService:
     # Call site streaming (used during indexing)
     # ------------------------------------------------------------------
 
-    def _process_call_buffer(self, calls_buffer: List[Any]) -> None:
+    def _process_call_buffer(self, calls_buffer: list[Any]) -> None:
         """Process the call buffer and add relationships to the call graph analyzer."""
         if not calls_buffer:
             return
@@ -70,7 +70,7 @@ class CallGraphService:
 
         self.call_graph_analyzer.process_call_buffer(calls_buffer)
 
-    def stream_call_sites(self, file_path: str, call_sites: List[Dict]):
+    def stream_call_sites(self, file_path: str, call_sites: list[dict]):
         """Stream call sites to SQLite and update in-memory call graph."""
         diagnostics.debug(f"Streaming {len(call_sites)} call sites from {file_path} to SQLite")
         cache_manager = self.cache_manager
@@ -98,7 +98,7 @@ class CallGraphService:
         class_name: str = "",
         include_call_sites: bool = True,
         project_only: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Find all functions that call the specified function.
 
@@ -115,8 +115,8 @@ class CallGraphService:
                 - callers: List of caller function info (backward compatible)
                 - call_sites: List of call site locations (Phase 3, if include_call_sites=True)
         """
-        callers_list: List[Dict[str, Any]] = []
-        call_sites_list: List[Dict[str, Any]] = []
+        callers_list: list[dict[str, Any]] = []
+        call_sites_list: list[dict[str, Any]] = []
 
         target_functions = self.query_engine.search_functions(
             function_name, project_only=False, class_name=class_name
@@ -139,7 +139,7 @@ class CallGraphService:
         target_qualified_name = (
             target_functions[0]["qualified_name"] if target_functions else function_name
         )
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "function": function_name,
             "callers": callers_list,
             "_function_found": len(target_usrs) > 0,
@@ -156,7 +156,7 @@ class CallGraphService:
 
     def find_callees(
         self, function_name: str, class_name: str = "", project_only: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Find all functions called by the specified function.
 
@@ -171,7 +171,7 @@ class CallGraphService:
                 - function: The source function name
                 - callees: List of callee function info
         """
-        callees_list: List[Dict[str, Any]] = []
+        callees_list: list[dict[str, Any]] = []
 
         target_functions = self.query_engine.search_functions(
             function_name, project_only=False, class_name=class_name
@@ -197,7 +197,7 @@ class CallGraphService:
             "_target_qualified_name": target_qualified_name,
         }
 
-    def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
+    def get_call_sites(self, function_name: str, class_name: str = "") -> list[dict[str, Any]]:
         """
         Get all call sites FROM a specific function with line-level precision (Phase 3).
 
@@ -208,7 +208,7 @@ class CallGraphService:
         Returns:
             List of call site dictionaries with exact file:line:column locations
         """
-        call_sites_list: List[Dict[str, Any]] = []
+        call_sites_list: list[dict[str, Any]] = []
 
         source_functions = self.query_engine.search_functions(
             function_name, project_only=False, class_name=class_name
@@ -230,7 +230,7 @@ class CallGraphService:
 
     def get_call_path(
         self, from_function: str, to_function: str, max_depth: int = 10
-    ) -> List[List[str]]:
+    ) -> list[list[str]]:
         """Find call paths from one function to another using BFS"""
         from_funcs = self.query_engine.search_functions(from_function, project_only=False)
         to_funcs = self.query_engine.search_functions(to_function, project_only=False)
@@ -247,7 +247,7 @@ class CallGraphService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _collect_target_usrs(self, target_functions: List[Dict[str, Any]]) -> Set[str]:
+    def _collect_target_usrs(self, target_functions: list[dict[str, Any]]) -> set[str]:
         """Collect USRs for target functions by matching file/line metadata."""
         target_usrs = set()
         for func in target_functions:
@@ -261,7 +261,7 @@ class CallGraphService:
                     target_usrs.add(symbol.usr)
         return target_usrs
 
-    def _add_known_symbol(self, usr: str, out_list: List[Dict[str, Any]]) -> bool:
+    def _add_known_symbol(self, usr: str, out_list: list[dict[str, Any]]) -> bool:
         """Append the project-index entry for usr if known. Returns True if added."""
         info = self.symbol_store.get_symbol_by_usr(usr)
         if info is None:
@@ -280,7 +280,7 @@ class CallGraphService:
         )
         return True
 
-    def _add_external_symbol(self, usr: str, out_list: List[Dict[str, Any]]) -> None:
+    def _add_external_symbol(self, usr: str, out_list: list[dict[str, Any]]) -> None:
         """Append a fallback entry for a usr that has no project-index metadata."""
         rich = self.symbol_store.resolve_symbol_info(usr)
         if rich is not None:
@@ -294,7 +294,7 @@ class CallGraphService:
             )
 
     def _add_caller(
-        self, caller_usr: str, callers_list: List[Dict[str, Any]], project_only: bool
+        self, caller_usr: str, callers_list: list[dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single caller to the callers list, respecting project_only filter."""
         if self._add_known_symbol(caller_usr, callers_list):
@@ -303,7 +303,7 @@ class CallGraphService:
             self._add_external_symbol(caller_usr, callers_list)
 
     def _add_call_site(
-        self, call_site, call_sites_list: List[Dict[str, Any]], project_only: bool
+        self, call_site, call_sites_list: list[dict[str, Any]], project_only: bool
     ) -> None:
         """Add a single call site to the call sites list, respecting project_only filter."""
         caller_info = self.symbol_store.get_symbol_by_usr(call_site.caller_usr)
@@ -328,11 +328,11 @@ class CallGraphService:
                 }
             )
 
-    def _build_call_site_entry(self, call_site: Any) -> Dict[str, Any]:
+    def _build_call_site_entry(self, call_site: Any) -> dict[str, Any]:
         """Build a call site entry for a callee that exists in the project index."""
         target_info = self.symbol_store.get_symbol_by_usr(call_site.callee_usr)
         assert target_info is not None
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "target": target_info.name,
             "target_signature": target_info.signature,
             "target_file": target_info.file,
@@ -346,7 +346,7 @@ class CallGraphService:
         return entry
 
     def _add_external_call_site(
-        self, call_site: Any, call_sites_list: List[Dict[str, Any]]
+        self, call_site: Any, call_sites_list: list[dict[str, Any]]
     ) -> None:
         """Add an external call site if it is template-mediated."""
         if not (call_site.display_name and call_site.template_project_types):
@@ -370,9 +370,9 @@ class CallGraphService:
     def _add_callee(
         self,
         callee_usr: str,
-        callees_list: List[Dict[str, Any]],
+        callees_list: list[dict[str, Any]],
         project_only: bool,
-        target_usrs: Set[str],
+        target_usrs: set[str],
     ) -> None:
         """Add a single callee to the callees list, respecting project_only filter."""
         if self._add_known_symbol(callee_usr, callees_list):
@@ -386,7 +386,7 @@ class CallGraphService:
         if not project_only:
             self._add_external_symbol(callee_usr, callees_list)
 
-    def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> List[List[str]]:
+    def _find_paths_bfs(self, from_usrs: set, to_usrs: set, max_depth: int) -> list[list[str]]:
         """Perform BFS to find paths between sets of USRs."""
         paths = []
         for from_usr in from_usrs:
@@ -422,7 +422,7 @@ class CallGraphService:
 
     def _get_template_mediated_info(
         self, target_usrs: set, callee_usr: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Check if a callee has template-mediated project type relevance.
 
         When an external template function (e.g. std::make_shared) is called with a

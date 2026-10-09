@@ -5,7 +5,7 @@ These utilities detect changes between two snapshots of compile commands and
 manage per-file argument hashes stored in an optional cache backend.
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 # Handle both package and script imports
 try:
@@ -22,8 +22,8 @@ except ImportError:
 
 
 def compute_commands_diff(
-    old_commands: Dict[str, List[str]], new_commands: Dict[str, List[str]]
-) -> Tuple[Set[str], Set[str], Set[str]]:
+    old_commands: dict[str, list[str]], new_commands: dict[str, list[str]]
+) -> tuple[set[str], set[str], set[str]]:
     """
     Compute difference between two compile-command maps.
 
@@ -45,14 +45,12 @@ def compute_commands_diff(
     return added, removed, changed
 
 
-def hash_args(args: List[str]) -> str:
+def hash_args(args: list[str]) -> str:
     """Return a stable hash of a compilation argument list."""
     return hash_compile_args(args, normalize_order=False)
 
 
-def store_command_hashes(
-    commands: Dict[str, List[str]], cache_backend: Optional[CacheBackend]
-) -> int:
+def store_command_hashes(commands: dict[str, list[str]], cache_backend: CacheBackend | None) -> int:
     """Store argument hashes for the given compile commands in SQLite."""
     if cache_backend is None:
         return 0
@@ -68,7 +66,7 @@ def store_command_hashes(
     return stored
 
 
-def get_stored_args_hash(file_path: str, cache_backend: Optional[CacheBackend]) -> str:
+def get_stored_args_hash(file_path: str, cache_backend: CacheBackend | None) -> str:
     """Return the stored argument hash for a file, or empty string."""
     if cache_backend is None:
         return ""
@@ -77,7 +75,7 @@ def get_stored_args_hash(file_path: str, cache_backend: Optional[CacheBackend]) 
 
 
 def has_args_changed(
-    file_path: str, current_args: List[str], cache_backend: Optional[CacheBackend]
+    file_path: str, current_args: list[str], cache_backend: CacheBackend | None
 ) -> bool:
     """Return True if the stored argument hash differs from the current args."""
     stored_hash = get_stored_args_hash(file_path, cache_backend)
@@ -86,7 +84,7 @@ def has_args_changed(
     return stored_hash != hash_args(current_args)
 
 
-def clear_stored_command_hashes(cache_backend: Optional[CacheBackend]) -> int:
+def clear_stored_command_hashes(cache_backend: CacheBackend | None) -> int:
     """Clear all stored compilation argument hashes."""
     if cache_backend is None:
         return 0

@@ -13,7 +13,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 # Import test infrastructure
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))

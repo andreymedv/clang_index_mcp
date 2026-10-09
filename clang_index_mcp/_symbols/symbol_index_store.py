@@ -7,14 +7,14 @@ and index maintenance operations.
 
 import dataclasses
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .._persistence.cache_manager import CacheManager
 
 from .._core import diagnostics
-from .._symbols.model import CLASS_KINDS, SymbolInfo, is_richer_definition
 from .._symbols import symbol_resolver, template_symbol_indexer
+from .._symbols.model import CLASS_KINDS, SymbolInfo, is_richer_definition
 from .._symbols.ports.alias_persistence import AliasPersistence
 from .._symbols.ports.call_graph import CallGraphPort
 from .._symbols.ports.lock_provider import LockProvider
@@ -50,13 +50,13 @@ class SymbolIndexStore:
         self._cache_manager = cache_manager
 
         # Indexes for fast lookup
-        self.class_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
-        self.function_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
-        self.file_index: Dict[str, List[SymbolInfo]] = defaultdict(list)
-        self.usr_index: Dict[str, SymbolInfo] = {}
+        self.class_index: dict[str, list[SymbolInfo]] = defaultdict(list)
+        self.function_index: dict[str, list[SymbolInfo]] = defaultdict(list)
+        self.file_index: dict[str, list[SymbolInfo]] = defaultdict(list)
+        self.usr_index: dict[str, SymbolInfo] = {}
 
         # Track indexed files and hashes
-        self.file_hashes: Dict[str, str] = {}
+        self.file_hashes: dict[str, str] = {}
         self._indexed_file_count = 0
 
     def _remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
@@ -109,7 +109,7 @@ class SymbolIndexStore:
 
     def _handle_symbol_definition_wins(
         self, info: SymbolInfo, existing_symbol: SymbolInfo
-    ) -> Optional[SymbolInfo]:
+    ) -> SymbolInfo | None:
         """Apply definition-wins logic when a symbol already exists in the USR index.
 
         Shared by bulk_write_symbols and merge_symbol_into_indexes so both
@@ -160,7 +160,7 @@ class SymbolIndexStore:
         file_symbols.append(symbol)
 
     def apply_cached_symbols(
-        self, file_path: str, cached_symbols: List[SymbolInfo], current_hash: str
+        self, file_path: str, cached_symbols: list[SymbolInfo], current_hash: str
     ) -> None:
         """Apply cached symbols to indexes and update file hash."""
         # Build updates for class_index and function_index
@@ -225,7 +225,7 @@ class SymbolIndexStore:
         self._add_to_file_index(symbol)
         return True
 
-    def populate_indexes_from_cache(self, cache_data: Dict[str, Any]) -> None:
+    def populate_indexes_from_cache(self, cache_data: dict[str, Any]) -> None:
         """Populate main and file indexes from cache data."""
         # Load indexes - Memory optimization: SymbolInfo objects come directly
         # from SQLite backend (no dict conversion needed, saves ~500 MB peak)
@@ -275,9 +275,9 @@ class SymbolIndexStore:
 
     def bulk_write_symbols(
         self,
-        symbols: List[SymbolInfo],
-        calls: List[CallSiteRecord],
-        aliases: List[TypeAliasRecord],
+        symbols: list[SymbolInfo],
+        calls: list[CallSiteRecord],
+        aliases: list[TypeAliasRecord],
     ) -> int:
         """
         Bulk write collected symbols to shared indexes with a single lock acquisition.
@@ -330,7 +330,7 @@ class SymbolIndexStore:
     # file_hashes accessors
     # ------------------------------------------------------------------
 
-    def get_file_hash(self, file_path: str) -> Optional[str]:
+    def get_file_hash(self, file_path: str) -> str | None:
         """Return the stored hash for a file, or None if not tracked."""
         return symbol_resolver.get_file_hash(self, file_path)
 
@@ -367,14 +367,14 @@ class SymbolIndexStore:
     # Bulk mutation methods
     # ------------------------------------------------------------------
 
-    def clear_all_indexes(self) -> List[SymbolInfo]:
+    def clear_all_indexes(self) -> list[SymbolInfo]:
         """Clear all in-memory indexes and file hashes.
 
         Returns the list of symbols that were in file_index (used by workers
         to persist their results before clearing).
         """
         symbols = list(self.file_index.values())
-        flat: List[SymbolInfo] = []
+        flat: list[SymbolInfo] = []
         for batch in symbols:
             flat.extend(batch)
         self.file_index.clear()
@@ -405,15 +405,15 @@ class SymbolIndexStore:
     # Read accessors
     # ------------------------------------------------------------------
 
-    def get_classes_by_name(self, name: str) -> List[SymbolInfo]:
+    def get_classes_by_name(self, name: str) -> list[SymbolInfo]:
         """Return all class symbols with the given simple name."""
         return symbol_resolver.get_classes_by_name(self, name)
 
-    def get_functions_by_name(self, name: str) -> List[SymbolInfo]:
+    def get_functions_by_name(self, name: str) -> list[SymbolInfo]:
         """Return all function symbols with the given simple name."""
         return symbol_resolver.get_functions_by_name(self, name)
 
-    def get_symbols_in_file(self, file_path: str) -> List[SymbolInfo]:
+    def get_symbols_in_file(self, file_path: str) -> list[SymbolInfo]:
         """Return all symbols in a given file."""
         return symbol_resolver.get_symbols_in_file(self, file_path)
 
@@ -457,7 +457,7 @@ class SymbolIndexStore:
         """Return total number of function symbols (including duplicates by name)."""
         return symbol_resolver.total_function_symbols(self)
 
-    def get_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
+    def get_symbol_by_usr(self, usr: str) -> SymbolInfo | None:
         """
         Resolve a USR to a SymbolInfo.
 
@@ -466,7 +466,7 @@ class SymbolIndexStore:
         """
         return symbol_resolver.get_symbol_by_usr(self, usr)
 
-    def resolve_symbol_info(self, usr: str) -> Optional[Dict[str, Any]]:
+    def resolve_symbol_info(self, usr: str) -> dict[str, Any] | None:
         """
         Return a rich symbol dict for a USR, using the backend fallback if needed.
 
@@ -490,7 +490,7 @@ class SymbolIndexStore:
             diagnostics.debug(f"Removed file {file_path} from file_index")
 
     @staticmethod
-    def extract_template_base_name_from_usr(usr: str) -> Optional[str]:
+    def extract_template_base_name_from_usr(usr: str) -> str | None:
         """
         Extract the base template name from a USR.
 
@@ -504,17 +504,17 @@ class SymbolIndexStore:
         """
         return template_symbol_indexer.extract_template_base_name_from_usr(usr)
 
-    def _add_class_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
+    def _add_class_template_symbols(self, base_name: str, results: list[SymbolInfo]) -> None:
         """Add class template and specialization symbols to results."""
         template_symbol_indexer.add_class_template_symbols(self.class_index, base_name, results)
 
-    def _add_function_template_symbols(self, base_name: str, results: List[SymbolInfo]) -> None:
+    def _add_function_template_symbols(self, base_name: str, results: list[SymbolInfo]) -> None:
         """Add function template and specialization symbols to results."""
         template_symbol_indexer.add_function_template_symbols(
             self.function_index, base_name, results
         )
 
-    def find_template_specializations(self, base_name: str) -> List[SymbolInfo]:
+    def find_template_specializations(self, base_name: str) -> list[SymbolInfo]:
         """
         Find all specializations of a template by base name.
 

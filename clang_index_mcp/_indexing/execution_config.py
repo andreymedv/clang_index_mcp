@@ -6,7 +6,6 @@ worker count, and pool lifecycle management.
 """
 
 import os
-from typing import Optional
 
 from .._core import diagnostics
 from .._indexing.worker_pool import WorkerPoolManager
@@ -15,7 +14,7 @@ from .._indexing.worker_pool import WorkerPoolManager
 class ExecutionConfig:
     """Manages parallel execution configuration and worker pool lifecycle."""
 
-    def __init__(self, config_max_workers: Optional[int] = None):
+    def __init__(self, config_max_workers: int | None = None):
         cpu_count = os.cpu_count() or 1
 
         if config_max_workers is not None:

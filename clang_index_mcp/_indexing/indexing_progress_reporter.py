@@ -8,8 +8,8 @@ of reporting indexing progress.
 import os
 import sys
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Callable, Optional
 
 from .._core import diagnostics
 from .._indexing.progress import IndexingProgress
@@ -59,7 +59,7 @@ class IndexingProgressReporter:
         cache_hits: int,
         start_time: float,
         is_terminal: bool,
-        progress_callback: Optional[Callable],
+        progress_callback: Callable | None,
         file_path: str,
     ):
         """Log progress and invoke callback."""
@@ -106,7 +106,7 @@ class IndexingProgressReporter:
         start_time: float,
         last_report_time: float,
         is_terminal: bool,
-        progress_callback: Optional[Callable],
+        progress_callback: Callable | None,
         file_path: str,
     ) -> float:
         """Report progress if enough time has passed; return updated last_report_time."""

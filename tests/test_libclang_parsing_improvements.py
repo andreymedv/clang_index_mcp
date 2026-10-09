@@ -7,10 +7,8 @@ This test suite covers:
 3. C++ stdlib path detection (commit 4b450ff)
 """
 
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 

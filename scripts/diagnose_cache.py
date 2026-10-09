@@ -14,12 +14,14 @@ Diagnoses cache health and suggests fixes for common issues:
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend  # noqa: E402
+from clang_index_mcp._persistence.sqlite_cache_backend import (  # noqa: E402
+    SqliteCacheBackend,
+)
 
 
 class CacheDiagnostic:
@@ -33,7 +35,7 @@ class CacheDiagnostic:
         self.warnings = []
         self.suggestions = []
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """Run all diagnostics."""
         results = {
             "cache_dir": str(self.cache_dir),
@@ -54,7 +56,7 @@ class CacheDiagnostic:
 
         return results
 
-    def _diagnose_sqlite(self, results: Dict[str, Any]):
+    def _diagnose_sqlite(self, results: dict[str, Any]):
         """Run SQLite-specific diagnostics."""
         try:
             backend = SqliteCacheBackend(self.db_path)
@@ -97,7 +99,7 @@ class CacheDiagnostic:
                 "Database may be corrupted. Try running sqlite_cache_backend.auto_maintenance()"
             )
 
-    def _check_integrity(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_integrity(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check database integrity."""
         check = {
             "name": "Integrity Check",
@@ -122,7 +124,7 @@ class CacheDiagnostic:
 
         return check
 
-    def _check_schema_version(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_schema_version(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check schema version."""
         check = {
             "name": "Schema Version",
@@ -165,7 +167,7 @@ class CacheDiagnostic:
 
         return check
 
-    def _check_indexes(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_indexes(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check that all required indexes exist."""
         check = {
             "name": "Index Health",
@@ -208,7 +210,7 @@ class CacheDiagnostic:
 
         return check
 
-    def _check_fts5_health(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_fts5_health(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check FTS5 index health."""
         check = {
             "name": "FTS5 Health",
@@ -248,7 +250,7 @@ class CacheDiagnostic:
 
         return check
 
-    def _check_wal_mode(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_wal_mode(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check WAL mode configuration."""
         check = {
             "name": "WAL Mode",
@@ -273,7 +275,7 @@ class CacheDiagnostic:
 
         return check
 
-    def _check_database_size(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_database_size(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check database size."""
         check = {
             "name": "Database Size",
@@ -311,7 +313,7 @@ class CacheDiagnostic:
 
         return check
 
-    def _check_symbol_sanity(self, backend: SqliteCacheBackend) -> Dict[str, Any]:
+    def _check_symbol_sanity(self, backend: SqliteCacheBackend) -> dict[str, Any]:
         """Check symbol counts for sanity."""
         check = {
             "name": "Symbol Counts",
@@ -338,7 +340,7 @@ class CacheDiagnostic:
         return check
 
 
-def print_diagnostic_results(results: Dict[str, Any]):
+def print_diagnostic_results(results: dict[str, Any]):
     """Print diagnostic results."""
     print("=" * 70)
     print("CACHE DIAGNOSTIC REPORT")

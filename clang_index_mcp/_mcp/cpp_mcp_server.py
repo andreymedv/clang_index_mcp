@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 # Import diagnostics early
 try:
@@ -26,13 +26,16 @@ except ImportError:
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from .tool_registry import ToolRegistry
 from . import consolidated_tools  # noqa: F401
+from .tool_registry import ToolRegistry
 
 try:
     from .._core.libclang_setup import configure_libclang, get_libclang_runtime_info
 except ImportError:
-    from libclang_setup import configure_libclang, get_libclang_runtime_info  # type: ignore[no-redef]
+    from libclang_setup import (  # type: ignore[no-redef]
+        configure_libclang,
+        get_libclang_runtime_info,
+    )
 
 
 def find_and_configure_libclang():
@@ -59,7 +62,7 @@ try:
         AnalyzerState,
         BackgroundIndexer,
     )
-    from .tool_call_logger import ToolCallLogger  # noqa: F401  # type: ignore[no-redef]
+    from .tool_call_logger import ToolCallLogger  # type: ignore[no-redef]
 except ImportError:
     # Fall back to direct import (when run as script)
     from cpp_analyzer import CppAnalyzer  # type: ignore[no-redef]
@@ -69,8 +72,8 @@ except ImportError:
     )
     from tool_call_logger import ToolCallLogger  # type: ignore[no-redef]  # noqa: F401
 
-from .context import ctx  # noqa: E402
 from .config_validation import resolve_project_root_from_config  # noqa: E402
+from .context import ctx  # noqa: E402
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -81,8 +84,8 @@ server = Server("cpp-analyzer")
 
 
 @server.list_tools()
-async def list_tools() -> List[Tool]:
-    return cast(List[Tool], ToolRegistry.call_tool("list_tools_b"))
+async def list_tools() -> list[Tool]:
+    return cast(list[Tool], ToolRegistry.call_tool("list_tools_b"))
 
 
 def _count_results_from_text(result_text: str) -> int:
@@ -104,7 +107,7 @@ def _count_results_from_text(result_text: str) -> int:
     return 0
 
 
-def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextContent]) -> None:
+def _try_log_tool_call(name: str, arguments: dict[str, Any], result: list[TextContent]) -> None:
     """Log a tool call for telemetry. Never raises."""
     try:
         if ctx.tool_call_logger is None or not ctx.tool_call_logger.enabled:
@@ -119,9 +122,9 @@ def _try_log_tool_call(name: str, arguments: Dict[str, Any], result: List[TextCo
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     result = cast(
-        List[TextContent], await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
+        list[TextContent], await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
     )
     _try_log_tool_call(name, arguments, result)
     return result
@@ -129,6 +132,19 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
 # Import domain rules from focused modules.
 from .query_policy import QUERY_TOOL_NAMES, _check_tool_readiness  # noqa: E402
+from .tool_handlers.call_graph_tools import (  # noqa: E402
+    _handle_find_incoming_calls,
+    _handle_get_call_path,
+    _handle_get_call_sites,
+    _handle_get_outgoing_calls,
+)
+from .tool_handlers.hierarchy_tools import _handle_get_class_hierarchy  # noqa: E402
+from .tool_handlers.project_tools import (  # noqa: E402
+    _handle_check_system_status,
+    _handle_refresh_project,
+    _handle_set_project_directory,
+    _handle_wait_for_indexing,
+)
 
 # Import tool handlers from focused submodules.
 from .tool_handlers.search_tools import (  # noqa: E402
@@ -138,19 +154,6 @@ from .tool_handlers.search_tools import (  # noqa: E402
     _handle_search_classes,
     _handle_search_functions,
     _handle_search_symbols,
-)
-from .tool_handlers.hierarchy_tools import _handle_get_class_hierarchy  # noqa: E402
-from .tool_handlers.call_graph_tools import (  # noqa: E402
-    _handle_find_incoming_calls,
-    _handle_get_call_path,
-    _handle_get_call_sites,
-    _handle_get_outgoing_calls,
-)
-from .tool_handlers.project_tools import (  # noqa: E402
-    _handle_check_system_status,
-    _handle_refresh_project,
-    _handle_set_project_directory,
-    _handle_wait_for_indexing,
 )
 from .tool_handlers.transport_tools import (  # noqa: E402
     _install_signal_handlers,
@@ -182,7 +185,7 @@ _UNGATED_HANDLERS = {
 }
 
 
-async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_tool_call(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     try:
         # 1. Management tools (handle their own state checks)
         if name == "set_project_directory":
@@ -208,7 +211,7 @@ async def _handle_tool_call(name: str, arguments: Dict[str, Any]) -> List[TextCo
         return [
             TextContent(
                 type="text",
-                text=f"Internal error: {str(e)}\n\n"
+                text=f"Internal error: {e!s}\n\n"
                 "This is a server-side issue, not a user error. "
                 "Try restarting the MCP server.",
             )

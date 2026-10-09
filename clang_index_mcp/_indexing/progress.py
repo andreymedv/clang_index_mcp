@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass
@@ -13,9 +12,9 @@ class IndexingProgress:
     indexed_files: int
     failed_files: int
     cache_hits: int
-    current_file: Optional[str]
+    current_file: str | None
     start_time: datetime
-    estimated_completion: Optional[datetime]
+    estimated_completion: datetime | None
 
     @property
     def completion_percentage(self) -> float:

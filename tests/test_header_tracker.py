@@ -5,10 +5,7 @@ as documented in REQUIREMENTS.md Section 11.
 """
 
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
-
-import pytest
 
 from clang_index_mcp._persistence.header_tracker import HeaderProcessingTracker
 

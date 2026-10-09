@@ -12,7 +12,6 @@ import tempfile
 import unittest
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from unittest.mock import patch
 
 # Import test infrastructure
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -63,7 +62,7 @@ def worker_write_symbols(args):
 
 def worker_read_symbols(args):
     """Worker function that reads symbols from cache (runs in separate process)"""
-    cache_dir, worker_id, expected_count = args
+    cache_dir, worker_id, _expected_count = args
 
     cache_manager = None
     try:
@@ -264,7 +263,6 @@ class TestProcessPoolPerformance(unittest.TestCase):
 
         symbols_per_worker = 250
         num_workers = 4
-        total_symbols = symbols_per_worker * num_workers
 
         # Test 1: Sequential writes
         start = time.time()

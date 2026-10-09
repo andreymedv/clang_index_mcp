@@ -15,12 +15,10 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from typing import Any, Dict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from clang_index_mcp._persistence.cache_manager import CacheManager
-from clang_index_mcp._symbols.model import SymbolInfo
 
 
 class TestConfigChangeDetection(unittest.TestCase):

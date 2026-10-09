@@ -17,7 +17,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Setup libclang
-from clang_index_mcp._mcp.cpp_mcp_server import find_and_configure_libclang  # noqa: E402
+from clang_index_mcp._mcp.cpp_mcp_server import (  # noqa: E402
+    find_and_configure_libclang,
+)
 
 if not find_and_configure_libclang():
     print("Error: Could not find libclang library!")

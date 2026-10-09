@@ -1,6 +1,6 @@
 """Application-layer query policies: search scope parsing, result metadata, and tool readiness."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from mcp.types import TextContent
 
@@ -35,7 +35,7 @@ QUERY_TOOL_NAMES = frozenset(
 )
 
 
-def _parse_search_scope(arguments: Dict[str, Any]) -> bool:
+def _parse_search_scope(arguments: dict[str, Any]) -> bool:
     """Convert search_scope string enum to project_only bool.
 
     Returns True (project_only) for 'project_code_only' (default),
@@ -54,10 +54,10 @@ def _create_search_result(
     data: Any,
     state_manager: AnalyzerStateManager,
     tool_name: str,
-    max_results: Optional[int] = None,
-    total_count: Optional[int] = None,
+    max_results: int | None = None,
+    total_count: int | None = None,
     fallback: Any = None,
-    empty_suggestions: Optional[List[str]] = None,
+    empty_suggestions: list[str] | None = None,
 ) -> EnhancedQueryResult:
     """
     Create an EnhancedQueryResult with appropriate metadata based on special conditions.
@@ -110,7 +110,7 @@ def _create_search_result(
     return EnhancedQueryResult.create_normal(data)
 
 
-def _check_tool_readiness(name: str) -> Optional[List[TextContent]]:
+def _check_tool_readiness(name: str) -> list[TextContent] | None:
     """
     Check if a tool is ready to be executed based on current analyzer state.
     Returns None if ready, or a List[TextContent] with an error message if not.

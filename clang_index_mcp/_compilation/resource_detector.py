@@ -11,7 +11,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 # Handle both package and script imports
 try:
@@ -20,7 +19,7 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 
-def build_fallback_args(project_root: Path, clang_resource_dir: Optional[str]) -> List[str]:
+def build_fallback_args(project_root: Path, clang_resource_dir: str | None) -> list[str]:
     """Build the fallback compilation arguments (current hardcoded approach)."""
     args = [
         "-std=c++17",
@@ -70,11 +69,11 @@ def validate_resource_dir(include_dir: str) -> bool:
     return os.path.isdir(include_dir) and os.path.isfile(os.path.join(include_dir, "stddef.h"))
 
 
-def get_resource_dir_from_clang() -> Optional[str]:
+def get_resource_dir_from_clang() -> str | None:
     """Try to get the clang resource directory by invoking clang directly."""
     try:
         result = subprocess.run(
-            ["clang", "-print-resource-dir"], capture_output=True, text=True, timeout=5
+            ["clang", "-print-resource-dir"], check=False, capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             include_dir = os.path.join(result.stdout.strip(), "include")
@@ -86,7 +85,7 @@ def get_resource_dir_from_clang() -> Optional[str]:
     return None
 
 
-def find_resource_dir_in_common_locations() -> Optional[str]:
+def find_resource_dir_in_common_locations() -> str | None:
     """Search for the clang resource directory in common system locations."""
     clang_lib_dir = "/usr/lib/clang"
     if not os.path.isdir(clang_lib_dir):
@@ -107,7 +106,7 @@ def find_resource_dir_in_common_locations() -> Optional[str]:
     return None
 
 
-def detect_clang_resource_dir() -> Optional[str]:
+def detect_clang_resource_dir() -> str | None:
     """
     Detect the clang resource directory containing builtin headers.
 
@@ -142,7 +141,7 @@ def detect_clang_resource_dir() -> Optional[str]:
         return None
 
 
-def get_libcxx_path(sysroot: Optional[str]) -> Optional[str]:
+def get_libcxx_path(sysroot: str | None) -> str | None:
     """Get the path for libc++ headers."""
     if sysroot:
         cxx_path = os.path.join(sysroot, "usr", "include", "c++", "v1")
@@ -159,7 +158,7 @@ def get_libcxx_path(sysroot: Optional[str]) -> Optional[str]:
     return None
 
 
-def get_libstdcxx_path(sysroot: Optional[str]) -> Optional[str]:
+def get_libstdcxx_path(sysroot: str | None) -> str | None:
     """Get the path for libstdc++ headers."""
     if sysroot:
         cxx_base = os.path.join(sysroot, "usr", "include", "c++")
@@ -179,7 +178,7 @@ def get_libstdcxx_path(sysroot: Optional[str]) -> Optional[str]:
     return None
 
 
-def get_bundled_cxx_stdlib_path() -> Optional[str]:
+def get_bundled_cxx_stdlib_path() -> str | None:
     """Get C++ stdlib include path from bundled libclang directory.
 
     When libclang is bundled with C++ standard library headers (e.g.
@@ -214,7 +213,7 @@ def get_bundled_cxx_stdlib_path() -> Optional[str]:
     return None
 
 
-def detect_system_c_headers_dir(clang_resource_dir: Optional[str]) -> Optional[str]:
+def detect_system_c_headers_dir(clang_resource_dir: str | None) -> str | None:
     """Detect the system C header directory for #include_next resolution.
 
     When using bundled libc++ headers, the wrapper headers (like stdio.h)
@@ -243,7 +242,7 @@ def detect_system_c_headers_dir(clang_resource_dir: Optional[str]) -> Optional[s
     return None
 
 
-def extract_stdlib_and_sysroot(arguments: List[str]) -> Tuple[Optional[str], Optional[str]]:
+def extract_stdlib_and_sysroot(arguments: list[str]) -> tuple[str | None, str | None]:
     """Extract -stdlib and -isysroot flags from arguments."""
     stdlib = None
     sysroot = None
@@ -265,7 +264,7 @@ def extract_stdlib_and_sysroot(arguments: List[str]) -> Tuple[Optional[str], Opt
     return stdlib, sysroot
 
 
-def detect_cxx_stdlib_path(arguments: List[str]) -> Optional[str]:
+def detect_cxx_stdlib_path(arguments: list[str]) -> str | None:
     """
     Detect the C++ standard library include path based on compile arguments.
 
@@ -303,7 +302,7 @@ def detect_cxx_stdlib_path(arguments: List[str]) -> Optional[str]:
     return get_bundled_cxx_stdlib_path()
 
 
-def find_std_insert_position(arguments: List[str]) -> int:
+def find_std_insert_position(arguments: list[str]) -> int:
     """Find insertion position after -std= flag if present."""
     for i, arg in enumerate(arguments):
         if arg.startswith("-std="):
@@ -311,7 +310,7 @@ def find_std_insert_position(arguments: List[str]) -> int:
     return 0
 
 
-def is_path_in_args(path: str, arguments: List[str]) -> bool:
+def is_path_in_args(path: str, arguments: list[str]) -> bool:
     """Check if a path is already present in arguments."""
     for arg in arguments:
         if path in arg:
@@ -319,14 +318,14 @@ def is_path_in_args(path: str, arguments: List[str]) -> bool:
     return False
 
 
-def insert_system_include(arguments: List[str], insert_pos: int, path: str) -> int:
+def insert_system_include(arguments: list[str], insert_pos: int, path: str) -> int:
     """Insert -isystem path at insert_pos and return updated position."""
     arguments.insert(insert_pos, "-isystem")
     arguments.insert(insert_pos + 1, path)
     return insert_pos + 2
 
 
-def add_builtin_includes(arguments: List[str], clang_resource_dir: Optional[str]) -> List[str]:
+def add_builtin_includes(arguments: list[str], clang_resource_dir: str | None) -> list[str]:
     """
     Add clang builtin include directory and C++ stdlib to arguments if not already present.
 

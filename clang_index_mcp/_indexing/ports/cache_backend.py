@@ -6,7 +6,7 @@ than on the persistence implementation.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ..._symbols.model import SymbolInfo
 from ..._symbols.ports.parser import TypeAliasRecord
@@ -18,15 +18,15 @@ class CacheBackend(Protocol):
 
     def save_cache(
         self,
-        class_index: Dict[str, List[SymbolInfo]],
-        function_index: Dict[str, List[SymbolInfo]],
-        file_hashes: Dict[str, str],
+        class_index: dict[str, list[SymbolInfo]],
+        function_index: dict[str, list[SymbolInfo]],
+        file_hashes: dict[str, str],
         indexed_file_count: int,
         include_dependencies: bool = False,
-        config_file_path: Optional[Path] = None,
-        config_file_mtime: Optional[float] = None,
-        compile_commands_path: Optional[Path] = None,
-        compile_commands_mtime: Optional[float] = None,
+        config_file_path: Path | None = None,
+        config_file_mtime: float | None = None,
+        compile_commands_path: Path | None = None,
+        compile_commands_mtime: float | None = None,
     ) -> bool:
         """Save indexes to cache with configuration metadata."""
         ...
@@ -34,30 +34,30 @@ class CacheBackend(Protocol):
     def load_cache(
         self,
         include_dependencies: bool = False,
-        config_file_path: Optional[Path] = None,
-        config_file_mtime: Optional[float] = None,
-        compile_commands_path: Optional[Path] = None,
-        compile_commands_mtime: Optional[float] = None,
-    ) -> Optional[Dict[str, Any]]:
+        config_file_path: Path | None = None,
+        config_file_mtime: float | None = None,
+        compile_commands_path: Path | None = None,
+        compile_commands_mtime: float | None = None,
+    ) -> dict[str, Any] | None:
         """Load cache if it exists and is valid."""
         ...
 
     def save_file_cache(
         self,
         file_path: str,
-        symbols: List[SymbolInfo],
+        symbols: list[SymbolInfo],
         file_hash: str,
-        compile_args_hash: Optional[str] = None,
+        compile_args_hash: str | None = None,
         success: bool = True,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         retry_count: int = 0,
     ) -> bool:
         """Save parsed symbols for a single file."""
         ...
 
     def load_file_cache(
-        self, file_path: str, current_hash: str, compile_args_hash: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, file_path: str, current_hash: str, compile_args_hash: str | None = None
+    ) -> dict[str, Any] | None:
         """Load cached data for a file if hash matches."""
         ...
 
@@ -65,27 +65,27 @@ class CacheBackend(Protocol):
         """Remove cached data for a deleted file."""
         ...
 
-    def save_type_aliases_batch(self, aliases: List[TypeAliasRecord]) -> int:
+    def save_type_aliases_batch(self, aliases: list[TypeAliasRecord]) -> int:
         """Batch insert type aliases using transaction."""
         ...
 
-    def get_aliases_for_canonical(self, canonical_type: str) -> List[str]:
+    def get_aliases_for_canonical(self, canonical_type: str) -> list[str]:
         """Get all alias names that resolve to a given canonical type."""
         ...
 
-    def get_canonical_for_alias(self, alias_name: str) -> Optional[str]:
+    def get_canonical_for_alias(self, alias_name: str) -> str | None:
         """Get canonical type for a given alias name."""
         ...
 
-    def get_all_alias_mappings(self) -> Dict[str, str]:
+    def get_all_alias_mappings(self) -> dict[str, str]:
         """Get all alias -> canonical mappings."""
         ...
 
-    def get_type_alias_info(self, type_name: str) -> Optional[Dict[str, Any]]:
+    def get_type_alias_info(self, type_name: str) -> dict[str, Any] | None:
         """Get high-level information for a known type alias."""
         ...
 
-    def get_type_alias_details(self, alias_names: List[str]) -> List[Dict[str, Any]]:
+    def get_type_alias_details(self, alias_names: list[str]) -> list[dict[str, Any]]:
         """Get detailed records for a list of alias names."""
         ...
 
@@ -93,7 +93,7 @@ class CacheBackend(Protocol):
         """Return all file paths stored in file_metadata table."""
         ...
 
-    def load_symbol_by_usr(self, usr: str) -> Optional[SymbolInfo]:
+    def load_symbol_by_usr(self, usr: str) -> SymbolInfo | None:
         """Load a single symbol by its USR from persistent storage.
 
         Used to resolve external (non-project) symbols that are not held
@@ -105,7 +105,7 @@ class CacheBackend(Protocol):
         """Store or update the compile arguments hash for a file."""
         ...
 
-    def get_compile_args_hash(self, file_path: str) -> Optional[str]:
+    def get_compile_args_hash(self, file_path: str) -> str | None:
         """Return the stored compile arguments hash for a file."""
         ...
 
@@ -117,7 +117,7 @@ class CacheBackend(Protocol):
         """Delete all call sites from a specific file."""
         ...
 
-    def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
+    def save_call_sites_batch(self, call_sites: list[dict[str, Any]]) -> int:
         """Batch insert call sites using transaction."""
         ...
 

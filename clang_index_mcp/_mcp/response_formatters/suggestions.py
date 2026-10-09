@@ -1,10 +1,10 @@
 """Conditional next-step suggestions for MCP tool responses."""
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
+def for_get_class_info(result_data: dict[str, Any]) -> list[str]:
     """Generate next-step suggestions for get_class_info results (public: get_class_info).
 
     Args:
@@ -16,10 +16,10 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
     if not result_data or "error" in result_data:
         return []
 
-    hints: List[str] = []
+    hints: list[str] = []
 
     # Suggest finding implementations of pure virtual methods
-    methods: List[Dict[str, Any]] = result_data.get("methods") or []
+    methods: list[dict[str, Any]] = result_data.get("methods") or []
     has_pure_virtual = any("pure_virtual" in (m.get("attributes") or []) for m in methods)
     if has_pure_virtual:
         class_name = result_data.get("qualified_name") or ""
@@ -49,11 +49,11 @@ def for_get_class_info(result_data: Dict[str, Any]) -> List[str]:
 
 
 def for_search_classes(
-    results: List[Dict[str, Any]],
+    results: list[dict[str, Any]],
     pattern: str = "",
-    file_name: Optional[str] = None,
-    namespace: Optional[str] = None,
-) -> List[str]:
+    file_name: str | None = None,
+    namespace: str | None = None,
+) -> list[str]:
     """Generate next-step suggestions for search_classes results (public: find_symbols_by_pattern).
 
     Args:
@@ -68,7 +68,7 @@ def for_search_classes(
     if pattern == "" or file_name or namespace:
         return []
 
-    hints: List[str] = []
+    hints: list[str] = []
     if len(results) > 3:
         # Many results — suggest get_class_info for top match only.
         # For small result sets, avoid nudging the model into extra follow-up
@@ -81,7 +81,7 @@ def for_search_classes(
     return hints
 
 
-def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
+def for_search_functions(results: list[dict[str, Any]]) -> list[str]:
     """Generate next-step suggestions for search_functions results (public: find_symbols_by_pattern).
 
     Args:
@@ -100,9 +100,9 @@ def for_search_functions(results: List[Dict[str, Any]]) -> List[str]:
 
 def for_find_incoming_calls(
     function_name: str,
-    result_data: Dict[str, Any],
-    qualified_name: Optional[str] = None,
-) -> List[str]:
+    result_data: dict[str, Any],
+    qualified_name: str | None = None,
+) -> list[str]:
     """Generate next-step suggestions for find_incoming_calls results (public: find_incoming_calls).
 
     Args:
@@ -113,7 +113,7 @@ def for_find_incoming_calls(
     Returns:
         List of suggestion strings, empty if none warranted.
     """
-    callers: List[Any] = result_data.get("callers") or [] if isinstance(result_data, dict) else []
+    callers: list[Any] = result_data.get("callers") or [] if isinstance(result_data, dict) else []
     if not callers:
         return []
     return []
@@ -121,9 +121,9 @@ def for_find_incoming_calls(
 
 def for_get_outgoing_calls(
     function_name: str,
-    result_data: Dict[str, Any],
-    qualified_name: Optional[str] = None,
-) -> List[str]:
+    result_data: dict[str, Any],
+    qualified_name: str | None = None,
+) -> list[str]:
     """Generate next-step suggestions for get_outgoing_calls results (public: find_outgoing_calls).
 
     Args:
@@ -134,7 +134,7 @@ def for_get_outgoing_calls(
     Returns:
         List of suggestion strings, empty if none warranted.
     """
-    callees: List[Any] = result_data.get("callees") or [] if isinstance(result_data, dict) else []
+    callees: list[Any] = result_data.get("callees") or [] if isinstance(result_data, dict) else []
     if not callees:
         return []
     return []
@@ -143,7 +143,7 @@ def for_get_outgoing_calls(
 def for_get_call_sites_empty(
     function_name: str,
     class_name: str = "",
-) -> List[str]:
+) -> list[str]:
     """Suggestion when get_call_sites returns no call sites (via find_outgoing_calls).
 
     Guides the caller to use find_outgoing_calls to distinguish between 'no body',
@@ -158,11 +158,13 @@ def for_get_call_sites_empty(
     """
     name = f"{class_name}::{function_name}" if class_name else function_name
     return [
-        f"No call sites found within '{name}'. "
-        f"Call find_outgoing_calls('{name}') to check why — "
-        "if it reports 'all callees outside project', "
-        "the function calls only external libraries; "
-        "use search_scope='include_external_libraries' to list them."
+        (
+            f"No call sites found within '{name}'. "
+            f"Call find_outgoing_calls('{name}') to check why — "
+            "if it reports 'all callees outside project', "
+            "the function calls only external libraries; "
+            "use search_scope='include_external_libraries' to list them."
+        )
     ]
 
 
@@ -170,7 +172,7 @@ def for_get_call_path_empty(
     from_function: str,
     to_function: str,
     max_depth: int,
-) -> List[str]:
+) -> list[str]:
     """Suggestion when get_call_path returns no paths (public: trace_execution_path).
 
     Args:
@@ -182,8 +184,10 @@ def for_get_call_path_empty(
         List with one actionable suggestion string.
     """
     return [
-        f"No call path found from '{from_function}' to '{to_function}' "
-        f"within max_depth={max_depth}. "
-        "Try increasing max_depth or verify both functions exist "
-        "with find_symbols_by_pattern."
+        (
+            f"No call path found from '{from_function}' to '{to_function}' "
+            f"within max_depth={max_depth}. "
+            "Try increasing max_depth or verify both functions exist "
+            "with find_symbols_by_pattern."
+        )
     ]

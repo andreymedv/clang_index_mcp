@@ -7,11 +7,11 @@ and compilation argument resolution.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from .._core import diagnostics
-from .._contexts import ProjectIdentityContext
 from .._compilation.compile_commands_manager import CompileCommandsManager
+from .._contexts import ProjectIdentityContext
+from .._core import diagnostics
 from .._core.file_scanner import FileScanner
 from .._persistence.persistence_context import PersistenceContext
 from .._symbols.symbol_context import SymbolContext
@@ -51,14 +51,14 @@ class CompilationEnvironment:
         self.file_scanner.DEPENDENCY_DIRS = set(identity.config.get_dependency_directories())
 
         # Compile commands manager (initialized later by CppAnalyzer)
-        self.compile_commands_manager: Optional[CompileCommandsManager] = None
+        self.compile_commands_manager: CompileCommandsManager | None = None
 
         # Configuration
         self.include_dependencies = identity.config.get_include_dependencies()
         self.max_parse_retries = identity.config.config.get("max_parse_retries", 2)
 
         # Precomputed compile args for worker mode
-        self.provided_compile_args: Optional[List[str]] = None
+        self.provided_compile_args: list[str] | None = None
 
     def is_project_file(self, file_path: str) -> bool:
         """
@@ -93,7 +93,7 @@ class CompilationEnvironment:
         """Return True when a compile-commands manager is initialized and enabled."""
         return self.compile_commands_manager is not None and self.compile_commands_manager.enabled
 
-    def add_vcpkg_fallback_includes(self, args: List[str]) -> None:
+    def add_vcpkg_fallback_includes(self, args: list[str]) -> None:
         """Append vcpkg fallback include paths when compile_commands.json does not cover a file."""
         vcpkg_include = self.identity.project_root / "vcpkg_installed" / "x64-windows" / "include"
         if vcpkg_include.exists():
@@ -108,7 +108,7 @@ class CompilationEnvironment:
                 args.append(f"-I{path}")
                 break
 
-    def compute_compile_args_hash(self, args: List[str]) -> str:
+    def compute_compile_args_hash(self, args: list[str]) -> str:
         """Compute hash of compilation arguments for cache validation."""
         from .._core.file_utils import hash_compile_args
 
@@ -120,7 +120,7 @@ class CompilationEnvironment:
         self.file_scanner.include_dependencies = self.include_dependencies
         return self.file_scanner.should_skip_file(file_path)
 
-    def find_cpp_files(self, include_dependencies: bool = False) -> List[str]:
+    def find_cpp_files(self, include_dependencies: bool = False) -> list[str]:
         """Find all C++ files in the project
 
         When compile_commands.json is loaded and has entries, returns ONLY the files
@@ -142,7 +142,7 @@ class CompilationEnvironment:
         self.file_scanner.include_dependencies = include_dependencies
         return self.file_scanner.find_cpp_files()
 
-    def get_compile_args_for_file(self, file_path_obj: Path) -> List[str]:
+    def get_compile_args_for_file(self, file_path_obj: Path) -> list[str]:
         """Get compilation arguments for a file, handling worker and fallback modes."""
         if self.provided_compile_args is not None:
             # Worker mode: use compile args provided by main process
@@ -157,7 +157,7 @@ class CompilationEnvironment:
             self.add_vcpkg_fallback_includes(args)
         return args
 
-    def prepare_worker_compile_args(self, files: List[str]) -> Dict[str, List[str]]:
+    def prepare_worker_compile_args(self, files: list[str]) -> dict[str, list[str]]:
         """Pre-calculate compile arguments for each file to save worker memory."""
         file_compile_args = {}
         assert self.compile_commands_manager is not None
@@ -171,7 +171,7 @@ class CompilationEnvironment:
             file_compile_args[file_path] = args
         return file_compile_args
 
-    def get_compile_commands_stats(self) -> Dict[str, Any]:
+    def get_compile_commands_stats(self) -> dict[str, Any]:
         """Get compile commands statistics"""
         # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
         if not self.has_active_compile_commands():
@@ -180,7 +180,7 @@ class CompilationEnvironment:
         assert self.compile_commands_manager is not None
         return self.compile_commands_manager.get_stats()
 
-    def log_compilation_environment(self, files: List[str]) -> None:
+    def log_compilation_environment(self, files: list[str]) -> None:
         """Log libclang compilation environment for diagnostics."""
         if self.compile_commands_manager is None:
             return
@@ -209,7 +209,7 @@ class CompilationEnvironment:
                 f"system_include_dirs={profile.get('system_include_dirs')}"
             )
 
-    def handle_deleted_files(self, current_files: Set[str]) -> int:
+    def handle_deleted_files(self, current_files: set[str]) -> int:
         """Find and remove deleted files from indexes and cache."""
         tracked_files = set(self.symbol_store.iter_file_paths())
         deleted_files = set()
@@ -230,7 +230,7 @@ class CompilationEnvironment:
             deleted_count += 1
         return deleted_count
 
-    def identify_refresh_files(self, current_files: Set[str]) -> Tuple[List[str], List[str]]:
+    def identify_refresh_files(self, current_files: set[str]) -> tuple[list[str], list[str]]:
         """Identify modified and new files needing refresh."""
         tracked_files = set(self.symbol_store.iter_file_paths())
         new_files = list(current_files - tracked_files)
@@ -244,7 +244,7 @@ class CompilationEnvironment:
                 modified_files.append(file_path)
         return modified_files, new_files
 
-    def prepare_refresh_compile_args(self, all_files_to_process: List[str]) -> Dict[str, List[str]]:
+    def prepare_refresh_compile_args(self, all_files_to_process: list[str]) -> dict[str, list[str]]:
         """Prepare compilation arguments for all files in main process."""
         file_compile_args = {}
         for file_path in all_files_to_process:

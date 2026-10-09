@@ -9,12 +9,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._symbols.signature_builder import (
     build_human_readable_signature,
     extract_params_from_type_spelling,
     extract_trailing_qualifiers,
 )
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 
 
 class TestExtractParamsFromTypeSpelling:

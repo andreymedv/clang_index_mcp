@@ -6,13 +6,13 @@ persistence layer.
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .._core import diagnostics
 from .._symbols.ports.parser import TypeAliasRecord
 
 
-def save_type_aliases_batch(conn: sqlite3.Connection, aliases: List[TypeAliasRecord]) -> int:
+def save_type_aliases_batch(conn: sqlite3.Connection, aliases: list[TypeAliasRecord]) -> int:
     """Batch insert type aliases using a transaction."""
     if not aliases:
         return 0
@@ -53,7 +53,7 @@ def save_type_aliases_batch(conn: sqlite3.Connection, aliases: List[TypeAliasRec
         return 0
 
 
-def get_aliases_for_canonical(conn: sqlite3.Connection, canonical_type: str) -> List[str]:
+def get_aliases_for_canonical(conn: sqlite3.Connection, canonical_type: str) -> list[str]:
     """Get all alias names (short and qualified) that resolve to a canonical type."""
     try:
         cursor = conn.execute(
@@ -77,7 +77,7 @@ def get_aliases_for_canonical(conn: sqlite3.Connection, canonical_type: str) -> 
         return []
 
 
-def get_canonical_for_alias(conn: sqlite3.Connection, alias_name: str) -> Optional[str]:
+def get_canonical_for_alias(conn: sqlite3.Connection, alias_name: str) -> str | None:
     """Get the canonical type for a given alias name (short or qualified)."""
     try:
         cursor = conn.execute(
@@ -101,7 +101,7 @@ def get_canonical_for_alias(conn: sqlite3.Connection, alias_name: str) -> Option
         return None
 
 
-def get_type_alias_info(conn: sqlite3.Connection, type_name: str) -> Optional[Dict[str, Any]]:
+def get_type_alias_info(conn: sqlite3.Connection, type_name: str) -> dict[str, Any] | None:
     """Get high-level info for a known alias from the type_aliases table."""
     try:
         cursor = conn.execute(
@@ -137,10 +137,10 @@ def get_type_alias_info(conn: sqlite3.Connection, type_name: str) -> Optional[Di
 
 
 def get_type_alias_details(
-    conn: sqlite3.Connection, alias_names: List[str]
-) -> List[Dict[str, Any]]:
+    conn: sqlite3.Connection, alias_names: list[str]
+) -> list[dict[str, Any]]:
     """Get detailed records from the type_aliases table for a list of alias names."""
-    unique_aliases: Dict[str, Dict[str, Any]] = {}
+    unique_aliases: dict[str, dict[str, Any]] = {}
     try:
         for alias_name in alias_names:
             cursor = conn.execute(
@@ -172,7 +172,7 @@ def get_type_alias_details(
     return list(unique_aliases.values())
 
 
-def get_all_alias_mappings(conn: sqlite3.Connection) -> Dict[str, str]:
+def get_all_alias_mappings(conn: sqlite3.Connection) -> dict[str, str]:
     """Get all alias → canonical mappings, including qualified names."""
     try:
         cursor = conn.execute("""

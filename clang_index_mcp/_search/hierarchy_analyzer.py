@@ -13,9 +13,8 @@ relationship which does not participate in inheritance reachability — walking
 """
 
 from collections import deque
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from .._symbols.model import SymbolInfo
 from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.symbol_name_utils import (
     extract_simple_name,
@@ -30,6 +29,7 @@ from .._search.template_analyzer import (
     resolve_class_key,
     substitute_template_params,
 )
+from .._symbols.model import SymbolInfo
 
 
 def resolve_base_key(raw: str, symbol_store, index_lock) -> str:
@@ -51,7 +51,7 @@ def _info_rank(info: SymbolInfo) -> int:
     return 0
 
 
-def lookup_class_infos(key: str, symbol_store, index_lock) -> List[SymbolInfo]:
+def lookup_class_infos(key: str, symbol_store, index_lock) -> list[SymbolInfo]:
     """Look up class symbols for a plain class key (best match first)."""
     is_qual = "::" in key
     simple = extract_simple_name(key)
@@ -75,9 +75,9 @@ class HierarchyGraph:
     """Inheritance adjacency with first-class template specialization nodes."""
 
     def __init__(self) -> None:
-        self.nodes: Dict[str, Dict[str, Any]] = {}
+        self.nodes: dict[str, dict[str, Any]] = {}
 
-    def ensure_node(self, key: str) -> Dict[str, Any]:
+    def ensure_node(self, key: str) -> dict[str, Any]:
         if key not in self.nodes:
             self.nodes[key] = {
                 "qualified_name": key,
@@ -111,14 +111,14 @@ def build_hierarchy_graph(symbol_store, index_lock) -> HierarchyGraph:
     return graph
 
 
-def _snapshot_class_infos(symbol_store, index_lock) -> List[SymbolInfo]:
+def _snapshot_class_infos(symbol_store, index_lock) -> list[SymbolInfo]:
     with index_lock:
         return [info for _, infos in symbol_store.iter_class_items() for info in infos]
 
 
-def _pick_primary_infos(infos: List[SymbolInfo]) -> Dict[str, SymbolInfo]:
+def _pick_primary_infos(infos: list[SymbolInfo]) -> dict[str, SymbolInfo]:
     """Pick one representative per plain node key (full specs get own keys)."""
-    chosen: Dict[str, SymbolInfo] = {}
+    chosen: dict[str, SymbolInfo] = {}
     for info in infos:
         if info.is_template_specialization:
             continue
@@ -172,9 +172,9 @@ def _ensure_spec_node(graph: HierarchyGraph, spec_key: str, symbol_store, index_
 def _fill_spec_node(
     graph: HierarchyGraph,
     spec_key: str,
-    primary: Optional[SymbolInfo],
-    args: List[str],
-    spec: Optional[SymbolInfo],
+    primary: SymbolInfo | None,
+    args: list[str],
+    spec: SymbolInfo | None,
     symbol_store,
     index_lock,
 ) -> None:
@@ -200,7 +200,7 @@ def _fill_spec_node(
         graph.add_edge(spec_key, resolve_class_key(raw, symbol_store, index_lock))
 
 
-def _lookup_primary_template(name_key: str, symbol_store, index_lock) -> Optional[SymbolInfo]:
+def _lookup_primary_template(name_key: str, symbol_store, index_lock) -> SymbolInfo | None:
     for info in lookup_class_infos(name_key, symbol_store, index_lock):
         if info.kind == "class_template":
             return info
@@ -233,7 +233,7 @@ def _aggregate_instantiations(graph: HierarchyGraph) -> None:
 
 
 def should_skip_hierarchy_node(
-    current: str, visited: Set[str], initial_visited: Optional[Set[str]], start_key: str
+    current: str, visited: set[str], initial_visited: set[str] | None, start_key: str
 ) -> bool:
     """Decide if a node should be skipped during BFS."""
     if current in visited:
@@ -244,7 +244,7 @@ def should_skip_hierarchy_node(
     return False
 
 
-def _neighbors(node_data: Dict[str, Any], direction: str) -> List[str]:
+def _neighbors(node_data: dict[str, Any], direction: str) -> list[str]:
     """Neighbor keys for BFS: inheritance edges, plus hub aggregation on the way down."""
     if direction == "up":
         return list(node_data.get("base_classes", []))
@@ -258,16 +258,16 @@ def _neighbors(node_data: Dict[str, Any], direction: str) -> List[str]:
 def bfs_traverse_hierarchy(
     start_key: str,
     direction: str,
-    max_depth: Optional[int],
-    max_nodes: Optional[int],
-    classes: Dict[str, Any],
+    max_depth: int | None,
+    max_nodes: int | None,
+    classes: dict[str, Any],
     graph: HierarchyGraph,
-    initial_visited: Optional[Set[str]] = None,
-) -> Tuple[Set[str], bool]:
+    initial_visited: set[str] | None = None,
+) -> tuple[set[str], bool]:
     """Perform BFS traversal in specified direction for class hierarchy.
     Returns (set of visited keys, truncated flag).
     """
-    visited: Set[str] = initial_visited if initial_visited is not None else set()
+    visited: set[str] = initial_visited if initial_visited is not None else set()
     queue: deque = deque([(start_key, 0)])
     local_truncated = False
 
@@ -303,7 +303,7 @@ def bfs_traverse_hierarchy(
     return visited, local_truncated
 
 
-def _scope_edges_to_graph(classes: Dict[str, Any]) -> None:
+def _scope_edges_to_graph(classes: dict[str, Any]) -> None:
     """Restrict node edge lists to nodes present in the result graph.
 
     Keeps the response a sound reachability graph: every base/derived (and
@@ -322,7 +322,7 @@ def _scope_edges_to_graph(classes: Dict[str, Any]) -> None:
 
 def _resolve_start_key(
     class_name: str, graph: HierarchyGraph, symbol_store, index_lock
-) -> Optional[str]:
+) -> str | None:
     """Resolve the query name to its canonical start node key."""
     if is_specialization_key(class_name):
         key = resolve_class_key(class_name, symbol_store, index_lock)
@@ -341,13 +341,13 @@ def _resolve_start_key(
 
 def get_class_hierarchy(
     class_name: str,
-    max_nodes: Optional[int],
-    max_depth: Optional[int],
+    max_nodes: int | None,
+    max_depth: int | None,
     direction: str,
     symbol_store,
     index_lock,
     edge_scope: str = "path",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get the inheritance graph for a class as a flat adjacency list."""
     if direction not in ("up", "down", "both"):
         return {"error": f"Invalid direction '{direction}'. Must be one of: up, down, both"}
@@ -359,7 +359,7 @@ def get_class_hierarchy(
     if start_key is None:
         return {"error": f"Class '{class_name}' not found"}
 
-    classes: Dict[str, Any] = {}
+    classes: dict[str, Any] = {}
     truncated = False
 
     if direction == "up":
@@ -388,7 +388,7 @@ def get_class_hierarchy(
     if edge_scope == "path":
         _scope_edges_to_graph(classes)
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "queried_class": start_key,
         "direction": direction,
         "edge_scope": edge_scope,

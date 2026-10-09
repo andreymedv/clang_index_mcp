@@ -1,7 +1,7 @@
 """SQLite-backed database maintenance, health checks, and performance monitoring."""
 
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from ..._symbols.model import SymbolInfo
 from .base import BaseRepository
@@ -16,10 +16,10 @@ except ImportError:
 class MaintenanceService(BaseRepository):
     """Handles database maintenance, integrity checks, health status, and perf monitoring."""
 
-    def get_symbol_stats(self) -> Dict[str, Any]:
+    def get_symbol_stats(self) -> dict[str, Any]:
         """Get detailed symbol statistics."""
         try:
-            stats: Dict[str, Any] = {}
+            stats: dict[str, Any] = {}
             cursor = self.conn.execute("SELECT COUNT(*) FROM symbols")
             stats["total_symbols"] = cursor.fetchone()[0]
             cursor = self.conn.execute("""
@@ -130,11 +130,11 @@ class MaintenanceService(BaseRepository):
 
     def auto_maintenance(
         self, vacuum_threshold_mb: float = 100.0, vacuum_min_waste_mb: float = 10.0
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run automatic maintenance based on database health."""
         try:
             diagnostics.info("Running auto-maintenance...")
-            results: Dict[str, Any] = {
+            results: dict[str, Any] = {
                 "analyze": False,
                 "optimize": False,
                 "vacuum": False,
@@ -171,7 +171,7 @@ class MaintenanceService(BaseRepository):
             diagnostics.error(f"Auto-maintenance failed: {e}")
             return {"error": str(e)}
 
-    def check_integrity(self, full: bool = False) -> Tuple[bool, str]:
+    def check_integrity(self, full: bool = False) -> tuple[bool, str]:
         """Check database integrity with detailed reporting."""
         try:
             diagnostics.info(f"Running {'full' if full else 'quick'} integrity check...")
@@ -197,7 +197,7 @@ class MaintenanceService(BaseRepository):
             diagnostics.error(message)
             return False, message
 
-    def _check_fts5_health(self, health: Dict[str, Any], stats: Dict[str, Any]) -> None:
+    def _check_fts5_health(self, health: dict[str, Any], stats: dict[str, Any]) -> None:
         """Check FTS5 index health and update health dict."""
         try:
             cursor = self.conn.execute("SELECT COUNT(*) FROM symbols_fts")
@@ -216,7 +216,7 @@ class MaintenanceService(BaseRepository):
             health["errors"].append(f"FTS5 check failed: {e}")
             health["checks"]["fts_index"] = {"status": "error", "error": str(e)}
 
-    def _check_wal_mode(self, health: Dict[str, Any]) -> None:
+    def _check_wal_mode(self, health: dict[str, Any]) -> None:
         """Check WAL journal mode and update health dict."""
         try:
             cursor = self.conn.execute("PRAGMA journal_mode")
@@ -233,7 +233,7 @@ class MaintenanceService(BaseRepository):
             health["errors"].append(f"WAL check failed: {e}")
 
     @staticmethod
-    def _determine_overall_status(health: Dict[str, Any]) -> None:
+    def _determine_overall_status(health: dict[str, Any]) -> None:
         """Set overall health status based on errors and warnings."""
         if health["errors"]:
             health["status"] = "error"
@@ -242,10 +242,10 @@ class MaintenanceService(BaseRepository):
         else:
             health["status"] = "healthy"
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get comprehensive database health status."""
         try:
-            health: Dict[str, Any] = {
+            health: dict[str, Any] = {
                 "status": "unknown",
                 "checks": {},
                 "warnings": [],
@@ -271,10 +271,10 @@ class MaintenanceService(BaseRepository):
             diagnostics.error(f"Failed to get health status: {e}")
             return {"status": "error", "errors": [str(e)]}
 
-    def get_table_sizes(self) -> Dict[str, Dict[str, Any]]:
+    def get_table_sizes(self) -> dict[str, dict[str, Any]]:
         """Get size information for all tables."""
         try:
-            tables: Dict[str, Dict[str, Any]] = {}
+            tables: dict[str, dict[str, Any]] = {}
             cursor = self.conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             )
@@ -293,13 +293,13 @@ class MaintenanceService(BaseRepository):
 
     def get_cache_stats(
         self,
-        db_path: Optional[str] = None,
+        db_path: str | None = None,
         connection_timeout: int = 300,
         last_access: float = 0.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get comprehensive cache statistics."""
         try:
-            stats: Dict[str, Any] = {}
+            stats: dict[str, Any] = {}
             symbol_stats = self.get_symbol_stats()
             stats.update(symbol_stats)
             cursor = self.conn.execute("""
@@ -338,10 +338,10 @@ class MaintenanceService(BaseRepository):
             diagnostics.error(f"Failed to get cache stats: {e}")
             return {}
 
-    def monitor_performance(self, operation: str = "search") -> Dict[str, float]:
+    def monitor_performance(self, operation: str = "search") -> dict[str, float]:
         """Monitor database performance with sample queries."""
         try:
-            metrics: Dict[str, float] = {}
+            metrics: dict[str, float] = {}
             if operation == "search":
                 start = time.time()
                 cursor = self.conn.execute(

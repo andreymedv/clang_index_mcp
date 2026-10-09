@@ -181,8 +181,8 @@ class TestFunctionTemplates:
         [
             # Bug 1: FT name follows descriptors with no @ prefix
             (
-                "c:@N@std@FT@>2#T#pTmake_unique#P&&t0.1#"
-                "^_MakeUniq<type-parameter-0-0>:::__single_object#",
+                ("c:@N@std@FT@>2#T#pTmake_unique#P&&t0.1#"
+                    "^_MakeUniq<type-parameter-0-0>:::__single_object#"),
                 "std::make_unique",
             ),
             # Simple FT with one type param
@@ -302,13 +302,13 @@ class TestDecodeClassRef:
     """Direct tests for _decode_class_ref()."""
 
     def test_simple_class(self):
-        name, pos = _decode_class_ref("@S@MyClass", 0)
+        name, _pos = _decode_class_ref("@S@MyClass", 0)
         assert name == "MyClass"
 
     def test_namespaced_class(self):
-        name, pos = _decode_class_ref("@N@std@S@string", 0)
+        name, _pos = _decode_class_ref("@N@std@S@string", 0)
         assert name == "std::string"
 
     def test_class_with_template(self):
-        name, pos = _decode_class_ref("@N@std@S@vector>#i", 0)
+        name, _pos = _decode_class_ref("@N@std@S@vector>#i", 0)
         assert name == "std::vector<int>"

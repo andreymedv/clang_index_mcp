@@ -9,7 +9,7 @@ reporting, and finalization.
 import sys
 import time
 from concurrent.futures import as_completed
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from .._core import diagnostics
 from .._symbols.indexing_callbacks import IndexingCallbacks
@@ -78,7 +78,7 @@ class ProjectIndexingOrchestrator:
         self,
         include_dependencies: bool,
         force: bool = False,
-        callbacks: Optional[IndexingCallbacks] = None,
+        callbacks: IndexingCallbacks | None = None,
     ) -> int:
         """
         Index all C++ files in the project.
@@ -153,7 +153,7 @@ class ProjectIndexingOrchestrator:
             indexed_count, len(files), start_time, is_terminal, cache_hits, failed_count
         )
 
-    def _prepare_indexing_files(self, include_dependencies: bool) -> List[str]:
+    def _prepare_indexing_files(self, include_dependencies: bool) -> list[str]:
         """Find C++ files to index and log compilation environment."""
         diagnostics.debug(f"Finding C++ files (include_dependencies={include_dependencies})...")
         files = self.compilation_env.find_cpp_files(include_dependencies=include_dependencies)
@@ -180,7 +180,7 @@ class ProjectIndexingOrchestrator:
         self.cache_orchestrator.last_index_time = time.time() - start_time
 
         if is_terminal:
-            print("", file=sys.stderr)
+            print(file=sys.stderr)
 
         with self.concurrency.index_lock:
             class_count = self.symbol_store.total_class_symbols()
@@ -209,7 +209,7 @@ class ProjectIndexingOrchestrator:
         return indexed_count
 
     @staticmethod
-    def _update_indexing_counts(success: bool, was_cached: bool) -> Tuple[int, int, int]:
+    def _update_indexing_counts(success: bool, was_cached: bool) -> tuple[int, int, int]:
         """Return (indexed_delta, cache_delta, failed_delta) for a single result."""
         if success:
             return 1, 1 if was_cached else 0, 0

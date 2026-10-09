@@ -6,7 +6,7 @@ and re-indexes them incrementally.
 """
 
 import time
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from .._core import diagnostics
 from .._symbols.indexing_callbacks import IndexingCallbacks
@@ -65,7 +65,7 @@ class RefreshPipeline:
     def refresh_if_needed(
         self,
         include_dependencies: bool,
-        callbacks: Optional[IndexingCallbacks] = None,
+        callbacks: IndexingCallbacks | None = None,
     ) -> int:
         """
         Refresh index for changed files and remove deleted files.
@@ -111,7 +111,7 @@ class RefreshPipeline:
         self._finalize_refresh(refreshed, deleted)
         return refreshed
 
-    def _prepare_refresh_set(self, include_dependencies: bool) -> Tuple[List[str], List[str], int]:
+    def _prepare_refresh_set(self, include_dependencies: bool) -> tuple[list[str], list[str], int]:
         """Identify files to refresh and handle deleted files. Returns (modified, new, deleted_count)."""
         current_files = set(self.compilation_env.find_cpp_files(include_dependencies))
         deleted_count = self.compilation_env.handle_deleted_files(current_files)
@@ -121,13 +121,13 @@ class RefreshPipeline:
     def _run_refresh_loop(
         self,
         executor: "Executor",
-        modified_files: List[str],
-        new_files: List[str],
+        modified_files: list[str],
+        new_files: list[str],
         total_to_check: int,
         start_time: float,
         include_dependencies: bool,
-        callbacks: Optional[IndexingCallbacks],
-    ) -> Tuple[int, int]:
+        callbacks: IndexingCallbacks | None,
+    ) -> tuple[int, int]:
         """Run the parallel refresh loop and return (refreshed_count, failed_count)."""
         from concurrent.futures import as_completed
 

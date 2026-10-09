@@ -1,7 +1,6 @@
 """Compilation and libclang parsing context."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 from clang.cindex import Index
 
@@ -14,5 +13,5 @@ class CompilationContext:
     """libclang and compile-command related services."""
 
     index: Index
-    compilation_env: Optional[CompilationEnvironment] = None
-    clang_parser: Optional[ClangParser] = None
+    compilation_env: CompilationEnvironment | None = None
+    clang_parser: ClangParser | None = None

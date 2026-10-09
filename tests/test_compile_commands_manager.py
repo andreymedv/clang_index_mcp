@@ -6,14 +6,12 @@ integration functionality.
 """
 
 import json
-import os
 
 # Add the clang_index_mcp directory to the path so we can import the modules
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from clang_index_mcp._compilation.compile_commands_manager import CompileCommandsManager
 
@@ -600,8 +598,7 @@ class TestCompileCommandsManager(unittest.TestCase):
 
     def test_fallback_args_windows(self):
         """Test fallback arguments generation on Windows."""
-        with patch("sys.platform", "win32"):
-            with patch("glob.glob") as mock_glob:
+        with patch("sys.platform", "win32"), patch("glob.glob") as mock_glob:
                 mock_glob.return_value = [
                     "C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/ucrt"
                 ]
@@ -727,7 +724,7 @@ int main() {
                     "-o",
                     "main",
                 ],
-                "command": f"clang++ -std=c++17 -I include -I . -Wall -Wextra -o main src/main.cpp",
+                "command": "clang++ -std=c++17 -I include -I . -Wall -Wextra -o main src/main.cpp",
             },
             {
                 "file": "src/utils.cpp",
@@ -745,7 +742,7 @@ int main() {
                     "-o",
                     "utils.o",
                 ],
-                "command": f"clang++ -std=c++17 -I include -I . -Wall -Wextra -c src/utils.cpp -o utils.o",
+                "command": "clang++ -std=c++17 -I include -I . -Wall -Wextra -c src/utils.cpp -o utils.o",
             },
             {
                 "file": "tests/test_utils.cpp",
@@ -765,7 +762,7 @@ int main() {
                     "-o",
                     "test_utils.o",
                 ],
-                "command": f"clang++ -std=c++17 -I include -I . -I tests -Wall -Wextra -c tests/test_utils.cpp -o test_utils.o",
+                "command": "clang++ -std=c++17 -I include -I . -I tests -Wall -Wextra -c tests/test_utils.cpp -o test_utils.o",
             },
         ]
 

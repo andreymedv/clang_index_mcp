@@ -2,7 +2,6 @@
 
 import json
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass(slots=True)
@@ -20,7 +19,7 @@ class SymbolInfo:
     namespace: str = ""  # Namespace portion (e.g., "ns1::ns2" from "ns1::ns2::Class")
     access: str = "public"  # public, private, protected
     parent_class: str = ""  # For methods, the containing class
-    base_classes: List[str] = field(default_factory=list)  # For classes
+    base_classes: list[str] = field(default_factory=list)  # For classes
     usr: str = ""  # Unified Symbol Resolution - unique identifier
     # Note: calls/called_by fields removed in v9.0 (Task 1.2 memory optimization)
     # Call graph data is now stored in call_sites table and queried on-demand
@@ -32,26 +31,26 @@ class SymbolInfo:
 
     # Template tracking (Template Search Support)
     is_template: bool = False  # True for any template-related symbol
-    template_kind: Optional[str] = None  # 'class_template', 'function_template', etc.
-    template_parameters: Optional[str] = None  # JSON array for generic templates
-    primary_template_usr: Optional[str] = None  # USR of primary template for specializations
+    template_kind: str | None = None  # 'class_template', 'function_template', etc.
+    template_parameters: str | None = None  # JSON array for generic templates
+    primary_template_usr: str | None = None  # USR of primary template for specializations
     # JSON array of template argument names for specializations (e.g., '["ExternBase"]')
     # Transient: only used during indexing for deferred base_classes resolution, not persisted
-    template_arguments: Optional[str] = None
+    template_arguments: str | None = None
 
     # Line ranges (Phase 1: LLM Integration)
-    start_line: Optional[int] = None  # First line of symbol definition
-    end_line: Optional[int] = None  # Last line of symbol definition
+    start_line: int | None = None  # First line of symbol definition
+    end_line: int | None = None  # Last line of symbol definition
 
     # Header file location (for declarations separate from definitions)
-    header_file: Optional[str] = None  # Path to header file (if declaration separate)
-    header_line: Optional[int] = None  # Declaration line in header
-    header_start_line: Optional[int] = None  # Declaration start line
-    header_end_line: Optional[int] = None  # Declaration end line
+    header_file: str | None = None  # Path to header file (if declaration separate)
+    header_line: int | None = None  # Declaration line in header
+    header_start_line: int | None = None  # Declaration start line
+    header_end_line: int | None = None  # Declaration end line
 
     # Documentation (Phase 2: LLM Integration)
-    brief: Optional[str] = None  # Brief description (first line of documentation)
-    doc_comment: Optional[str] = None  # Full documentation comment
+    brief: str | None = None  # Brief description (first line of documentation)
+    doc_comment: str | None = None  # Full documentation comment
 
     # Virtual/abstract method indicators (Phase 5: LLM Integration)
     is_virtual: bool = False  # True if method is virtual
@@ -101,7 +100,7 @@ def is_richer_definition(new_symbol: "SymbolInfo", existing_symbol: "SymbolInfo"
     return False
 
 
-def get_template_param_base_indices(info: "SymbolInfo") -> List[int]:
+def get_template_param_base_indices(info: "SymbolInfo") -> list[int]:
     """Return indices of base_classes entries that are template parameters.
 
     Cross-references base_classes with template_parameters JSON to identify

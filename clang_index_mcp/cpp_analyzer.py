@@ -18,12 +18,12 @@ analyzer.context.symbol_store) or through the public wrapper methods
 
 import sys
 from types import TracebackType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Literal
 
-from .composition_root import CompositionRoot
 from ._indexing.indexing_pipeline import IndexingResult
 from ._search.smart_fallback import FallbackResult
 from ._symbols.indexing_callbacks import IndexingCallbacks
+from .composition_root import CompositionRoot
 
 # Handle both package and script imports
 try:
@@ -54,7 +54,7 @@ class CppAnalyzer:
     def __init__(
         self,
         project_root: str,
-        config_file: Optional[str] = None,
+        config_file: str | None = None,
         skip_schema_recreation: bool = False,
         use_compile_commands_manager: bool = True,
     ) -> None:
@@ -132,9 +132,9 @@ class CppAnalyzer:
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> Literal[False]:
         """Context manager exit."""
         self.close()
@@ -152,7 +152,7 @@ class CppAnalyzer:
             # Suppress errors during shutdown - resources will be cleaned up by OS
             pass
 
-    def get_compile_commands_stats(self) -> Dict[str, Any]:
+    def get_compile_commands_stats(self) -> dict[str, Any]:
         """Get compile commands statistics (delegates to compilation_env)."""
         return self._root.compilation_env.get_compile_commands_stats()
 
@@ -182,7 +182,7 @@ class CppAnalyzer:
         self,
         force: bool = False,
         include_dependencies: bool = True,
-        callbacks: Optional[IndexingCallbacks] = None,
+        callbacks: IndexingCallbacks | None = None,
     ) -> int:
         """
         Index all C++ files in the project.
@@ -202,7 +202,7 @@ class CppAnalyzer:
             callbacks=callbacks,
         )
 
-    def pop_last_fallback(self) -> Optional[FallbackResult]:
+    def pop_last_fallback(self) -> FallbackResult | None:
         """Return and clear the last fallback result (delegates to query_engine)."""
         return self._root.query_engine.pop_last_fallback()
 
@@ -210,11 +210,11 @@ class CppAnalyzer:
         self,
         pattern: str,
         project_only: bool = True,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
+        file_name: str | None = None,
+        namespace: str | None = None,
+        max_results: int | None = None,
         include_base_classes: bool = True,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Search for classes matching pattern (delegates to query_engine)."""
         return self._root.query_engine.search_classes(
             pattern, project_only, file_name, namespace, max_results, include_base_classes
@@ -224,13 +224,13 @@ class CppAnalyzer:
         self,
         pattern: str,
         project_only: bool = True,
-        class_name: Optional[str] = None,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        signature_pattern: Optional[str] = None,
+        class_name: str | None = None,
+        file_name: str | None = None,
+        namespace: str | None = None,
+        max_results: int | None = None,
+        signature_pattern: str | None = None,
         include_attributes: bool = False,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Search for functions matching pattern (delegates to query_engine)."""
         return self._root.query_engine.search_functions(
             pattern,
@@ -243,13 +243,13 @@ class CppAnalyzer:
             include_attributes,
         )
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> dict[str, int]:
         """Get indexer statistics (delegates to query_engine)."""
         return self._root.query_engine.get_stats()
 
     def refresh_if_needed(
         self,
-        callbacks: Optional[IndexingCallbacks] = None,
+        callbacks: IndexingCallbacks | None = None,
     ) -> int:
         """
         Refresh index for changed files and remove deleted files.
@@ -265,17 +265,17 @@ class CppAnalyzer:
             callbacks=callbacks,
         )
 
-    def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
+    def get_class_info(self, class_name: str) -> dict[str, Any] | None:
         """Get detailed information about a specific class (delegates to query_engine)."""
         return self._root.query_engine.get_class_info(class_name)
 
     def get_function_signature(
-        self, function_name: str, class_name: Optional[str] = None
-    ) -> List[str]:
+        self, function_name: str, class_name: str | None = None
+    ) -> list[str]:
         """Get signature details for functions (delegates to query_engine)."""
         return self._root.query_engine.get_function_signature(function_name, class_name)
 
-    def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
+    def get_type_alias_info(self, type_name: str) -> dict[str, Any]:
         """Get comprehensive type alias information (delegates to query_engine)."""
         return self._root.query_engine.get_type_alias_info(type_name)
 
@@ -283,11 +283,11 @@ class CppAnalyzer:
         self,
         pattern: str,
         project_only: bool = True,
-        symbol_types: Optional[List[str]] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        signature_pattern: Optional[str] = None,
-    ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
+        symbol_types: list[str] | None = None,
+        namespace: str | None = None,
+        max_results: int | None = None,
+        signature_pattern: str | None = None,
+    ) -> dict[str, list[dict[str, Any]]] | tuple[dict[str, list[dict[str, Any]]], int]:
         """Search for all symbols (classes and functions) matching pattern (delegates to query_engine)."""
         return self._root.query_engine.search_symbols(
             pattern, project_only, symbol_types, namespace, max_results, signature_pattern
@@ -295,7 +295,7 @@ class CppAnalyzer:
 
     def get_derived_classes(
         self, class_name: str, project_only: bool = True
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get all classes that derive from the given class (delegates to query_engine)."""
         return self._root.query_engine.get_derived_classes(class_name, project_only)
 
@@ -303,22 +303,22 @@ class CppAnalyzer:
         """Check indirect inheritance through template parameters (delegates to query_engine)."""
         return self._root.query_engine.check_template_param_inheritance(base_class, target_class)
 
-    def get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
+    def get_template_param_inheritance_indices(self, template_name: str) -> list[int]:
         """Get template parameter indices that a template inherits from (delegates to query_engine)."""
         return self._root.query_engine.get_template_param_inheritance_indices(template_name)
 
-    def parse_template_args(self, args_str: str) -> List[str]:
+    def parse_template_args(self, args_str: str) -> list[str]:
         """Parse template arguments from a string (delegates to query_engine)."""
         return self._root.query_engine.parse_template_args(args_str)
 
     def get_class_hierarchy(
         self,
         class_name: str,
-        max_nodes: Optional[int] = 200,
-        max_depth: Optional[int] = None,
+        max_nodes: int | None = 200,
+        max_depth: int | None = None,
         direction: str = "both",
         edge_scope: str = "path",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get the inheritance graph for a class as a flat adjacency list (delegates to query_engine)."""
         return self._root.query_engine.get_class_hierarchy(
             class_name, max_nodes, max_depth, direction, edge_scope
@@ -330,7 +330,7 @@ class CppAnalyzer:
         class_name: str = "",
         include_call_sites: bool = True,
         project_only: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Find all functions that call the specified function."""
         return self._root.call_graph_service.find_incoming_calls(
             function_name, class_name, include_call_sites, project_only
@@ -338,35 +338,35 @@ class CppAnalyzer:
 
     def find_callees(
         self, function_name: str, class_name: str = "", project_only: bool = True
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Find all functions called by the specified function."""
         return self._root.call_graph_service.find_callees(function_name, class_name, project_only)
 
-    def get_call_sites(self, function_name: str, class_name: str = "") -> List[Dict[str, Any]]:
+    def get_call_sites(self, function_name: str, class_name: str = "") -> list[dict[str, Any]]:
         """Get all call sites FROM a specific function."""
         return self._root.call_graph_service.get_call_sites(function_name, class_name)
 
     def get_call_path(
         self, from_function: str, to_function: str, max_depth: int = 10
-    ) -> List[List[str]]:
+    ) -> list[list[str]]:
         """Find call paths from one function to another using BFS."""
         return self._root.call_graph_service.get_call_path(from_function, to_function, max_depth)
 
-    def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
+    def find_in_file(self, file_path: str, pattern: str) -> dict[str, Any]:
         """Search for symbols within a specific file or files matching a glob pattern (delegates to query_engine)."""
         return self._root.query_engine.find_in_file(file_path, pattern)
 
     async def get_files_containing_symbol(
-        self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
-    ) -> Dict[str, Any]:
+        self, symbol_name: str, symbol_kind: str | None = None, project_only: bool = True
+    ) -> dict[str, Any]:
         """Get all files that contain references to or define a symbol (delegates to query_engine)."""
         return await self._root.query_engine.get_files_containing_symbol(
             symbol_name, symbol_kind, project_only
         )
 
     def get_parse_errors(
-        self, limit: Optional[int] = None, file_path_filter: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, limit: int | None = None, file_path_filter: str | None = None
+    ) -> list[dict[str, Any]]:
         """Get parse errors from the error log (for developer analysis).
 
         Args:
@@ -378,7 +378,7 @@ class CppAnalyzer:
         """
         return self.cache_manager.get_parse_errors(limit, file_path_filter)
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         """Get a summary of parse errors for developer analysis.
 
         Returns:
@@ -386,7 +386,7 @@ class CppAnalyzer:
         """
         return self.cache_manager.get_error_summary()
 
-    def clear_error_log(self, older_than_days: Optional[int] = None) -> int:
+    def clear_error_log(self, older_than_days: int | None = None) -> int:
         """Clear the error log, optionally keeping recent errors.
 
         Args:

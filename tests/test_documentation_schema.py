@@ -7,7 +7,6 @@ Tests SQLite schema updates, data storage, and retrieval of documentation fields
 import os
 import sqlite3
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -16,9 +15,9 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from clang_index_mcp._persistence.sqlite_cache_backend import SqliteCacheBackend
 from clang_index_mcp._symbols.model import SymbolInfo
+from clang_index_mcp.cpp_analyzer import CppAnalyzer
 from tests.utils.test_helpers import temp_compile_commands
 
 # ============================================================================

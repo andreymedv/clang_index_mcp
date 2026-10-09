@@ -3,8 +3,8 @@
 from .dependency_repository import DependencyRepository
 from .include_extractor import IncludeExtractor
 from .search_deps import (
-    SearchCallGraphService,
     SearchCacheManager,
+    SearchCallGraphService,
     SearchCompilationEnv,
     SearchConcurrency,
     SearchDependencies,
@@ -14,8 +14,8 @@ from .search_deps import (
 __all__ = [
     "DependencyRepository",
     "IncludeExtractor",
-    "SearchCallGraphService",
     "SearchCacheManager",
+    "SearchCallGraphService",
     "SearchCompilationEnv",
     "SearchConcurrency",
     "SearchDependencies",

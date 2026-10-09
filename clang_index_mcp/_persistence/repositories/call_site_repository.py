@@ -2,7 +2,7 @@
 
 import sqlite3
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from .base import BaseRepository
 
@@ -12,7 +12,7 @@ except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
 
-def _row_to_call_site_dict(row: sqlite3.Row, usr_keys: Tuple[str, ...] = ()) -> Dict[str, Any]:
+def _row_to_call_site_dict(row: sqlite3.Row, usr_keys: tuple[str, ...] = ()) -> dict[str, Any]:
     """Convert a call_sites result row to a dict of the mapped columns.
 
     Args:
@@ -20,7 +20,7 @@ def _row_to_call_site_dict(row: sqlite3.Row, usr_keys: Tuple[str, ...] = ()) -> 
         usr_keys: USR columns the query selected and that should be included
                   (subset of "caller_usr" / "callee_usr"), in output order.
     """
-    result: Dict[str, Any] = {key: row[key] for key in usr_keys}
+    result: dict[str, Any] = {key: row[key] for key in usr_keys}
     result.update(
         {
             "file": row["file"],
@@ -36,7 +36,7 @@ def _row_to_call_site_dict(row: sqlite3.Row, usr_keys: Tuple[str, ...] = ()) -> 
 class CallSiteRepository(BaseRepository):
     """Handles call site persistence: batch insert, query by caller/callee, delete."""
 
-    def save_call_sites_batch(self, call_sites: List[Dict[str, Any]]) -> int:
+    def save_call_sites_batch(self, call_sites: list[dict[str, Any]]) -> int:
         """Batch insert call sites in a single transaction (C6)."""
         if not call_sites:
             return 0
@@ -70,7 +70,7 @@ class CallSiteRepository(BaseRepository):
             diagnostics.error(f"Failed to batch save {len(call_sites)} call sites: {e}")
             return 0
 
-    def get_call_sites_for_caller(self, caller_usr: str) -> List[Dict[str, Any]]:
+    def get_call_sites_for_caller(self, caller_usr: str) -> list[dict[str, Any]]:
         """Get all call sites from a specific caller function."""
         try:
             cursor = self.conn.execute(
@@ -88,7 +88,7 @@ class CallSiteRepository(BaseRepository):
             diagnostics.error(f"Failed to get call sites for caller {caller_usr}: {e}")
             return []
 
-    def get_call_sites_for_callee(self, callee_usr: str) -> List[Dict[str, Any]]:
+    def get_call_sites_for_callee(self, callee_usr: str) -> list[dict[str, Any]]:
         """Get all call sites to a specific callee function."""
         try:
             cursor = self.conn.execute(
@@ -107,8 +107,8 @@ class CallSiteRepository(BaseRepository):
             return []
 
     def get_template_mediated_call_sites(
-        self, caller_usrs: List[str], callee_usr: str
-    ) -> List[Dict[str, Any]]:
+        self, caller_usrs: list[str], callee_usr: str
+    ) -> list[dict[str, Any]]:
         """Get call sites between callers and callee that have template metadata."""
         if not caller_usrs:
             return []
@@ -154,7 +154,7 @@ class CallSiteRepository(BaseRepository):
             diagnostics.error(f"Failed to delete call sites for USR {usr}: {e}")
             return 0
 
-    def load_all_call_sites(self) -> List[Dict[str, Any]]:
+    def load_all_call_sites(self) -> list[dict[str, Any]]:
         """Load all call sites from the database."""
         try:
             cursor = self.conn.execute("""

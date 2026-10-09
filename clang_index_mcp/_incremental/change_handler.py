@@ -4,13 +4,13 @@ Each function handles one kind of change detected by the ChangeScanner:
 compile_commands.json changes, header changes, source changes, and removed files.
 """
 
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .._contexts.incremental_context import IncrementalContext
 
 
-def handle_compile_commands_change(ctx: "IncrementalContext") -> Set[str]:
+def handle_compile_commands_change(ctx: "IncrementalContext") -> set[str]:
     """
     Handle compile_commands.json change.
 
@@ -36,7 +36,7 @@ def handle_compile_commands_change(ctx: "IncrementalContext") -> Set[str]:
     cc_manager.load_compile_commands()
     new_commands = cc_manager.file_to_command_map
 
-    files_to_analyze: Set[str]
+    files_to_analyze: set[str]
     if cc_manager.cache_backend is not None and hasattr(
         cc_manager.cache_backend, "set_compile_args_hash"
     ):
@@ -74,7 +74,7 @@ def handle_compile_commands_change(ctx: "IncrementalContext") -> Set[str]:
     return files_to_analyze
 
 
-def handle_header_change(ctx: "IncrementalContext", header_path: str) -> Set[str]:
+def handle_header_change(ctx: "IncrementalContext", header_path: str) -> set[str]:
     """
     Handle header file change.
 

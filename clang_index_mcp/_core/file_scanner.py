@@ -3,17 +3,26 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import ClassVar
 
 
 class FileScanner:
     """Handles file discovery and filtering for C++ projects."""
 
     # C++ file extensions
-    CPP_EXTENSIONS = {".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hxx", ".h++"}
+    CPP_EXTENSIONS: ClassVar[set[str]] = {
+        ".cpp",
+        ".cc",
+        ".cxx",
+        ".c++",
+        ".h",
+        ".hpp",
+        ".hxx",
+        ".h++",
+    }
 
     # Header-only extensions
-    HEADER_EXTENSIONS = {".h", ".hpp", ".hxx", ".h++"}
+    HEADER_EXTENSIONS: ClassVar[set[str]] = {".h", ".hpp", ".hxx", ".h++"}
 
     # Source-only extensions
     SOURCE_EXTENSIONS = CPP_EXTENSIONS - HEADER_EXTENSIONS
@@ -33,7 +42,7 @@ class FileScanner:
         # Path.resolve() issues stat syscalls for every path component.  The same
         # header/source paths are checked thousands of times during AST traversal,
         # so cache the resolved result to avoid repeated kernel calls.
-        self._resolved_path_cache: Dict[str, Path] = {}
+        self._resolved_path_cache: dict[str, Path] = {}
 
     def should_skip_directory(self, dir_path: str) -> bool:
         """Check if a directory should be skipped"""
@@ -55,18 +64,12 @@ class FileScanner:
             rel_path = Path(file_path).relative_to(self.project_root)
         except ValueError:
             # File is outside project root
-            if not self.include_dependencies:
-                return True
-            else:
-                return False
+            return bool(not self.include_dependencies)
 
         # Check if file is in a top-level excluded directory
-        if len(rel_path.parts) > 0 and rel_path.parts[0] in self.EXCLUDE_DIRS:
-            return True
+        return bool(len(rel_path.parts) > 0 and rel_path.parts[0] in self.EXCLUDE_DIRS)
 
-        return False
-
-    def find_cpp_files(self) -> List[str]:
+    def find_cpp_files(self) -> list[str]:
         """Find all C++ files in the project"""
         files = []
 

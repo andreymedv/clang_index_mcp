@@ -7,7 +7,7 @@ and file-based symbol lookup.
 """
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from .._search.file_symbol_finder import find_in_file, get_files_containing_symbol
 from .._search.hierarchy_analyzer import get_class_hierarchy
@@ -58,8 +58,8 @@ class QueryEngine(SearchDependencies):
         compilation_env: "CompilationEnvironment",
         call_graph_service: "CallGraphService",
         project_root: "Path",
-        search_engine: Optional[SearchEngine] = None,
-        smart_fallback: Optional[SmartFallback] = None,
+        search_engine: SearchEngine | None = None,
+        smart_fallback: SmartFallback | None = None,
     ) -> None:
         """
         Initialize query engine.
@@ -87,7 +87,7 @@ class QueryEngine(SearchDependencies):
             cache_manager=cache_manager,
         )
         self.smart_fallback = smart_fallback or SmartFallback()
-        self._last_fallback: Optional[FallbackResult] = None
+        self._last_fallback: FallbackResult | None = None
 
     @property
     def symbol_store(self) -> "SymbolIndexStore":
@@ -127,7 +127,7 @@ class QueryEngine(SearchDependencies):
         """
         return self
 
-    def pop_last_fallback(self) -> Optional[FallbackResult]:
+    def pop_last_fallback(self) -> FallbackResult | None:
         """Return and clear the last fallback result.
 
         Called by the MCP server layer to retrieve smart suggestions
@@ -142,7 +142,7 @@ class QueryEngine(SearchDependencies):
         criteria: SearchCriteria,
         engine_method: str,
         tool_name: str,
-        fallback_kwargs: Dict[str, Any],
+        fallback_kwargs: dict[str, Any],
         empty_result: _T,
     ) -> _T:
         """Run an engine search with a regex-error guard and smart fallback on empty results."""
@@ -168,11 +168,11 @@ class QueryEngine(SearchDependencies):
         self,
         pattern: str,
         project_only: bool = True,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
+        file_name: str | None = None,
+        namespace: str | None = None,
+        max_results: int | None = None,
         include_base_classes: bool = True,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Search for classes matching pattern"""
         criteria = SearchCriteria(
             pattern=pattern,
@@ -194,13 +194,13 @@ class QueryEngine(SearchDependencies):
         self,
         pattern: str,
         project_only: bool = True,
-        class_name: Optional[str] = None,
-        file_name: Optional[str] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        signature_pattern: Optional[str] = None,
+        class_name: str | None = None,
+        file_name: str | None = None,
+        namespace: str | None = None,
+        max_results: int | None = None,
+        signature_pattern: str | None = None,
         include_attributes: bool = False,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], int]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
         """Search for functions matching pattern, optionally within a specific class"""
         criteria = SearchCriteria(
             pattern=pattern,
@@ -220,10 +220,10 @@ class QueryEngine(SearchDependencies):
             [],
         )
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get indexer statistics"""
         with self.concurrency.index_lock:
-            stats: Dict[str, Any] = {
+            stats: dict[str, Any] = {
                 "class_count": self.symbol_store.total_class_symbols(),
                 "function_count": self.symbol_store.total_function_symbols(),
                 "file_count": self.symbol_store.indexed_file_count,
@@ -236,7 +236,7 @@ class QueryEngine(SearchDependencies):
 
             return stats
 
-    def get_class_info(self, class_name: str) -> Optional[Dict[str, Any]]:
+    def get_class_info(self, class_name: str) -> dict[str, Any] | None:
         """Get detailed information about a specific class, including direct derived classes."""
         result = self.search_engine.get_class_info(class_name)
         if result and "error" not in result:
@@ -252,8 +252,8 @@ class QueryEngine(SearchDependencies):
         return result
 
     def get_function_signature(
-        self, function_name: str, class_name: Optional[str] = None
-    ) -> List[str]:
+        self, function_name: str, class_name: str | None = None
+    ) -> list[str]:
         """Get signature details for functions with given name, optionally within a specific class"""
         return self.search_engine.get_function_signature(function_name, class_name)
 
@@ -261,11 +261,11 @@ class QueryEngine(SearchDependencies):
         self,
         pattern: str,
         project_only: bool = True,
-        symbol_types: Optional[List[str]] = None,
-        namespace: Optional[str] = None,
-        max_results: Optional[int] = None,
-        signature_pattern: Optional[str] = None,
-    ) -> Union[Dict[str, List[Dict[str, Any]]], Tuple[Dict[str, List[Dict[str, Any]]], int]]:
+        symbol_types: list[str] | None = None,
+        namespace: str | None = None,
+        max_results: int | None = None,
+        signature_pattern: str | None = None,
+    ) -> dict[str, list[dict[str, Any]]] | tuple[dict[str, list[dict[str, Any]]], int]:
         """Search for all symbols (classes and functions) matching pattern."""
         criteria = SearchCriteria(
             pattern=pattern,
@@ -275,7 +275,7 @@ class QueryEngine(SearchDependencies):
             max_results=max_results,
             signature_pattern=signature_pattern,
         )
-        empty_result: Dict[str, List[Dict[str, Any]]] = {"classes": [], "functions": []}
+        empty_result: dict[str, list[dict[str, Any]]] = {"classes": [], "functions": []}
         return self._guarded_search(
             criteria,
             "search_symbols",
@@ -284,17 +284,17 @@ class QueryEngine(SearchDependencies):
             empty_result,
         )
 
-    def get_type_alias_info(self, type_name: str) -> Dict[str, Any]:
+    def get_type_alias_info(self, type_name: str) -> dict[str, Any]:
         """Get comprehensive type alias information."""
         return get_type_alias_info(type_name, self)
 
-    def find_in_file(self, file_path: str, pattern: str) -> Dict[str, Any]:
+    def find_in_file(self, file_path: str, pattern: str) -> dict[str, Any]:
         """Search for symbols within a specific file or files matching a glob pattern."""
         return find_in_file(file_path, pattern, self, self.search_engine)
 
     async def get_files_containing_symbol(
-        self, symbol_name: str, symbol_kind: Optional[str] = None, project_only: bool = True
-    ) -> Dict[str, Any]:
+        self, symbol_name: str, symbol_kind: str | None = None, project_only: bool = True
+    ) -> dict[str, Any]:
         """Get all files that contain references to or define a symbol."""
         return await get_files_containing_symbol(symbol_name, symbol_kind, project_only, self)
 
@@ -306,7 +306,7 @@ class QueryEngine(SearchDependencies):
             base_class, target_class, self.symbol_store, self.concurrency.index_lock
         )
 
-    def get_template_param_inheritance_indices(self, template_name: str) -> List[int]:
+    def get_template_param_inheritance_indices(self, template_name: str) -> list[int]:
         """Get the template parameter indices that a template inherits from."""
         from .._search import template_analyzer
 
@@ -314,7 +314,7 @@ class QueryEngine(SearchDependencies):
             template_name, self.symbol_store, self.concurrency.index_lock
         )
 
-    def parse_template_args(self, args_str: str) -> List[str]:
+    def parse_template_args(self, args_str: str) -> list[str]:
         """Parse template arguments from a string like 'A, B<C, D>, E'."""
         from .._search import template_analyzer
 
@@ -322,7 +322,7 @@ class QueryEngine(SearchDependencies):
 
     def get_derived_classes(
         self, class_name: str, project_only: bool = True
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get all classes that derive from the given class."""
         return get_derived_classes(
             class_name,
@@ -334,11 +334,11 @@ class QueryEngine(SearchDependencies):
     def get_class_hierarchy(
         self,
         class_name: str,
-        max_nodes: Optional[int] = 200,
-        max_depth: Optional[int] = None,
+        max_nodes: int | None = 200,
+        max_depth: int | None = None,
         direction: str = "both",
         edge_scope: str = "path",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get the inheritance graph for a class as a flat adjacency list."""
         return get_class_hierarchy(
             class_name,

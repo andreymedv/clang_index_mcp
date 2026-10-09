@@ -2,17 +2,17 @@
 
 import asyncio
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from mcp.types import TextContent
 
 from ..context import ctx
 from ..query_policy import _create_search_result
 from ..response_formatters import suggestions
-from .execution_utils import execute_analyzer_search, execute_analyzer_query
+from .execution_utils import execute_analyzer_query, execute_analyzer_search
 
 
-async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_search_classes(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await execute_analyzer_search(
@@ -36,7 +36,7 @@ async def _handle_search_classes(arguments: Dict[str, Any]) -> List[TextContent]
     )
 
 
-async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_search_functions(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await execute_analyzer_search(
@@ -57,7 +57,7 @@ async def _handle_search_functions(arguments: Dict[str, Any]) -> List[TextConten
     )
 
 
-async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_get_class_info(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await execute_analyzer_query(
@@ -68,7 +68,7 @@ async def _handle_get_class_info(arguments: Dict[str, Any]) -> List[TextContent]
     )
 
 
-async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_get_type_alias_info(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await execute_analyzer_query(
@@ -78,7 +78,7 @@ async def _handle_get_type_alias_info(arguments: Dict[str, Any]) -> List[TextCon
     )
 
 
-async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_search_symbols(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     return await execute_analyzer_search(
@@ -97,7 +97,7 @@ async def _handle_search_symbols(arguments: Dict[str, Any]) -> List[TextContent]
     )
 
 
-async def _handle_find_in_file(arguments: Dict[str, Any]) -> List[TextContent]:
+async def _handle_find_in_file(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
     loop = asyncio.get_event_loop()

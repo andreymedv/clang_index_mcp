@@ -9,7 +9,6 @@ Tests the complete integration of template alias tracking through:
 
 import os
 import sys
-from pathlib import Path
 
 import pytest
 

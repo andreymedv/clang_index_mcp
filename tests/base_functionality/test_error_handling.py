@@ -14,7 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 # Import test infrastructure
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))

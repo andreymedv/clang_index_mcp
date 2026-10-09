@@ -13,7 +13,7 @@ Key Features:
 The builder now depends on ports rather than concrete SQLite/libclang types.
 """
 
-from typing import TYPE_CHECKING, Dict, List, Set, Union
+from typing import TYPE_CHECKING
 
 from clang.cindex import TranslationUnit
 
@@ -48,19 +48,19 @@ class DependencyGraphBuilder:
         self._repository = repository
         self._include_extractor = include_extractor
 
-    def extract_includes_from_tu(self, tu: TranslationUnit, source_file: str) -> List[str]:
+    def extract_includes_from_tu(self, tu: TranslationUnit, source_file: str) -> list[str]:
         """Extract all includes from a translation unit."""
         return self._include_extractor.extract_includes(tu, source_file)
 
-    def update_dependencies(self, source_file: str, included_files: List[str]) -> int:
+    def update_dependencies(self, source_file: str, included_files: list[str]) -> int:
         """Update dependency graph for a source file."""
         return self._repository.update_dependencies(source_file, included_files)
 
-    def find_dependents(self, header_path: str) -> Set[str]:
+    def find_dependents(self, header_path: str) -> set[str]:
         """Find all files that directly depend on a header."""
         return self._repository.find_dependents(header_path)
 
-    def find_transitive_dependents(self, header_path: str) -> Set[str]:
+    def find_transitive_dependents(self, header_path: str) -> set[str]:
         """Find all files that depend on a header transitively."""
         return self._repository.find_transitive_dependents(header_path)
 
@@ -68,7 +68,7 @@ class DependencyGraphBuilder:
         """Remove all dependencies for a file."""
         return self._repository.remove_file_dependencies(file_path)
 
-    def get_dependency_stats(self) -> Dict[str, Union[int, float]]:
+    def get_dependency_stats(self) -> dict[str, int | float]:
         """Get statistics about the dependency graph."""
         return self._repository.get_dependency_stats()
 

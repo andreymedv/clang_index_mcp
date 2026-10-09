@@ -5,14 +5,12 @@ from clang cursors and normalizes them, so SymbolExtractor does not need to own
 every small AST helper.
 """
 
-from typing import Dict, Optional
-
 from clang.cindex import Cursor
 
 from .._core import diagnostics
 
 
-def extract_brief_comment(cursor: Cursor) -> Optional[str]:
+def extract_brief_comment(cursor: Cursor) -> str | None:
     """Extract and truncate brief comment from cursor."""
     brief_comment = cursor.brief_comment
     if not brief_comment:
@@ -23,7 +21,7 @@ def extract_brief_comment(cursor: Cursor) -> Optional[str]:
     return brief
 
 
-def extract_raw_doc_comment(cursor: Cursor) -> Optional[str]:
+def extract_raw_doc_comment(cursor: Cursor) -> str | None:
     """Extract and truncate full documentation comment from cursor."""
     raw_comment = cursor.raw_comment
     if not raw_comment:
@@ -34,7 +32,7 @@ def extract_raw_doc_comment(cursor: Cursor) -> Optional[str]:
     return doc_comment
 
 
-def extract_brief_from_doc(doc_comment: str) -> Optional[str]:
+def extract_brief_from_doc(doc_comment: str) -> str | None:
     """Extract first meaningful line from a documentation comment."""
     for line in doc_comment.split("\n"):
         cleaned = line.strip().lstrip("/*!/").lstrip("*").strip()
@@ -45,9 +43,9 @@ def extract_brief_from_doc(doc_comment: str) -> Optional[str]:
     return None
 
 
-def extract_documentation(cursor: Cursor) -> Dict[str, Optional[str]]:
+def extract_documentation(cursor: Cursor) -> dict[str, str | None]:
     """Extract documentation from cursor comments."""
-    result: Dict[str, Optional[str]] = {"brief": None, "doc_comment": None}
+    result: dict[str, str | None] = {"brief": None, "doc_comment": None}
 
     try:
         result["brief"] = extract_brief_comment(cursor)

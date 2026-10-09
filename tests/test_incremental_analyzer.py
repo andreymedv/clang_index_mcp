@@ -7,8 +7,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from clang_index_mcp._incremental.change_scanner import ChangeSet
+from clang_index_mcp._incremental.incremental_analyzer import (
+    AnalysisResult,
+    IncrementalAnalyzer,
+)
 from clang_index_mcp.cpp_analyzer_config import CompileCommandsConfig
-from clang_index_mcp._incremental.incremental_analyzer import AnalysisResult, IncrementalAnalyzer
 
 
 def _fake_process_file_worker(spec):

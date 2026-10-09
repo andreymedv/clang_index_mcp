@@ -7,9 +7,6 @@ Covers Phase 1 scope: simple non-template aliases.
 
 import os
 import sys
-from pathlib import Path
-
-import pytest
 
 # Add the clang_index_mcp directory to the path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

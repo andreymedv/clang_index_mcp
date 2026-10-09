@@ -4,7 +4,7 @@ Isolates lookup/accessor methods so SymbolIndexStore can focus on index
 management.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .._core import diagnostics
 from .._symbols.model import build_location_objects, omit_empty
@@ -19,7 +19,7 @@ def contains_usr(store: "SymbolIndexStore", usr: str) -> bool:
     return usr in store.usr_index
 
 
-def get_file_hash(store: "SymbolIndexStore", file_path: str) -> Optional[str]:
+def get_file_hash(store: "SymbolIndexStore", file_path: str) -> str | None:
     """Return the stored hash for a file, or None if not tracked."""
     return store.file_hashes.get(file_path)
 
@@ -29,17 +29,17 @@ def has_file_hash(store: "SymbolIndexStore", file_path: str) -> bool:
     return file_path in store.file_hashes
 
 
-def get_classes_by_name(store: "SymbolIndexStore", name: str) -> List["SymbolInfo"]:
+def get_classes_by_name(store: "SymbolIndexStore", name: str) -> list["SymbolInfo"]:
     """Return all class symbols with the given simple name."""
     return store.class_index.get(name, [])
 
 
-def get_functions_by_name(store: "SymbolIndexStore", name: str) -> List["SymbolInfo"]:
+def get_functions_by_name(store: "SymbolIndexStore", name: str) -> list["SymbolInfo"]:
     """Return all function symbols with the given simple name."""
     return store.function_index.get(name, [])
 
 
-def get_symbols_in_file(store: "SymbolIndexStore", file_path: str) -> List["SymbolInfo"]:
+def get_symbols_in_file(store: "SymbolIndexStore", file_path: str) -> list["SymbolInfo"]:
     """Return all symbols in a given file."""
     return store.file_index.get(file_path, [])
 
@@ -106,14 +106,14 @@ def get_symbol_by_usr(store: "SymbolIndexStore", usr: str) -> Optional["SymbolIn
     backend = store._cache_manager.backend
     if backend is not None:
         try:
-            info: Optional["SymbolInfo"] = backend.load_symbol_by_usr(usr)
+            info: SymbolInfo | None = backend.load_symbol_by_usr(usr)
             return info
         except Exception as e:
             diagnostics.warning(f"Failed to load symbol by USR {usr}: {e}")
     return None
 
 
-def resolve_symbol_info(store: "SymbolIndexStore", usr: str) -> Optional[Dict[str, Any]]:
+def resolve_symbol_info(store: "SymbolIndexStore", usr: str) -> dict[str, Any] | None:
     """
     Return a rich symbol dict for a USR, using the backend fallback if needed.
 

@@ -65,7 +65,7 @@ def build_tools_text(tools):
 def ask_claude(prompt, model):
     result = subprocess.run(
         ["claude", "-p", "--model", model],
-        input=prompt,
+        check=False, input=prompt,
         capture_output=True,
         text=True,
         timeout=60,
@@ -195,7 +195,7 @@ def print_result(r, verbose=False):
     print(f"     Tool:  expected={r['expected_tool']}  actual={r['actual_tool']}")
 
     if not r["tool_match"]:
-        print(f"     ❌ Wrong tool")
+        print("     ❌ Wrong tool")
 
     for param, pr in r.get("param_results", {}).items():
         icon2 = "✅" if pr["pass"] else "❌"

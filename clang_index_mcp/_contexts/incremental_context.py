@@ -6,16 +6,14 @@ on the CppAnalyzer facade.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
 from typing import TYPE_CHECKING
 
+from .._compilation.compilation_environment import CompilationEnvironment
 from .._core.concurrency_context import ConcurrencyContext
-from ..cpp_analyzer_config import CppAnalyzerConfig
 from .._persistence.cache_manager import CacheManager
 from .._persistence.cache_orchestrator import CacheOrchestrator
-from .._compilation.compilation_environment import CompilationEnvironment
 from .._symbols.symbol_index_store import SymbolIndexStore
+from ..cpp_analyzer_config import CppAnalyzerConfig
 
 if TYPE_CHECKING:
     from .._search.call_graph import CallGraphAnalyzer
@@ -41,4 +39,4 @@ class IncrementalContext:
     call_graph_analyzer: "CallGraphAnalyzer"
     call_graph_service: "CallGraphService"
     dependency_graph: "DependencyGraphBuilder"
-    config_file: Optional[str] = None
+    config_file: str | None = None

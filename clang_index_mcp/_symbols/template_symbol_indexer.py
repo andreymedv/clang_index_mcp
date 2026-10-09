@@ -1,14 +1,14 @@
 """Template specialization lookup helpers for SymbolIndexStore."""
 
 import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .._symbols.model import SymbolInfo
     from .symbol_index_store import SymbolIndexStore
 
 
-def extract_template_base_name_from_usr(usr: str) -> Optional[str]:
+def extract_template_base_name_from_usr(usr: str) -> str | None:
     """
     Extract the base template name from a USR.
 
@@ -38,7 +38,7 @@ def extract_template_base_name_from_usr(usr: str) -> Optional[str]:
     return None
 
 
-def add_class_template_symbols(class_index, base_name: str, results: List["SymbolInfo"]) -> None:
+def add_class_template_symbols(class_index, base_name: str, results: list["SymbolInfo"]) -> None:
     """Add class template and specialization symbols to results."""
     if base_name not in class_index:
         return
@@ -51,7 +51,7 @@ def add_class_template_symbols(class_index, base_name: str, results: List["Symbo
 
 
 def add_function_template_symbols(
-    function_index, base_name: str, results: List["SymbolInfo"]
+    function_index, base_name: str, results: list["SymbolInfo"]
 ) -> None:
     """Add function template and specialization symbols to results."""
     if base_name not in function_index:
@@ -66,7 +66,7 @@ def add_function_template_symbols(
                 results.append(symbol)
 
 
-def find_template_specializations(store: "SymbolIndexStore", base_name: str) -> List["SymbolInfo"]:
+def find_template_specializations(store: "SymbolIndexStore", base_name: str) -> list["SymbolInfo"]:
     """
     Find all specializations of a template by base name.
 
@@ -75,7 +75,7 @@ def find_template_specializations(store: "SymbolIndexStore", base_name: str) -> 
     2. Explicit full specializations (kind=class, function with template args in USR)
     3. Partial specializations (kind=partial_specialization)
     """
-    results: List["SymbolInfo"] = []
+    results: list[SymbolInfo] = []
 
     with store.index_lock:
         add_class_template_symbols(store.class_index, base_name, results)

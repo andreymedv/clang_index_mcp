@@ -40,13 +40,17 @@ def check_system_compiler():
 
     if platform.system() == "Darwin":
         try:
-            result = subprocess.run(["clang", "--version"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["clang", "--version"], check=False, capture_output=True, text=True
+            )
             print(result.stdout)
         except FileNotFoundError:
             print("clang not found in PATH")
     elif platform.system() == "Linux":
         try:
-            result = subprocess.run(["gcc", "--version"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["gcc", "--version"], check=False, capture_output=True, text=True
+            )
             print(result.stdout.split("\n")[0])
         except FileNotFoundError:
             print("gcc not found in PATH")

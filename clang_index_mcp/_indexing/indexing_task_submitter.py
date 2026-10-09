@@ -7,7 +7,7 @@ items to the process pool executor.
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 from .. import worker_bootstrap
 from .._indexing.indexing_task_spec import IndexingTaskSpec
@@ -24,11 +24,11 @@ def submit_file_task(
     executor: "Executor",
     *,
     project_root: str,
-    config_file: Optional[str],
+    config_file: str | None,
     file_path: str,
     force: bool,
     include_dependencies: bool,
-    compile_args: List[str],
+    compile_args: list[str],
 ) -> "Future":
     """Submit a single file-indexing task to the executor."""
     return executor.submit(
@@ -69,8 +69,8 @@ class IndexingTaskSubmitter:
         self.compilation_env = compilation_env
 
     def submit_indexing_tasks(
-        self, executor: "Executor", files: List[str], force: bool, include_dependencies: bool
-    ) -> Dict["Future", str]:
+        self, executor: "Executor", files: list[str], force: bool, include_dependencies: bool
+    ) -> dict["Future", str]:
         """Submit indexing tasks to the process pool executor."""
         config_file_str = (
             str(self.project_identity.config_file_path)
@@ -95,12 +95,12 @@ class IndexingTaskSubmitter:
     def submit_refresh_tasks(
         self,
         executor: "Executor",
-        modified_files: List[str],
-        new_files: List[str],
+        modified_files: list[str],
+        new_files: list[str],
         include_dependencies: bool,
-    ) -> Dict["Future", str]:
+    ) -> dict["Future", str]:
         """Submit indexing tasks for modified and new files."""
-        future_to_file: Dict["Future", str] = {}
+        future_to_file: dict[Future, str] = {}
         config_file_str = (
             str(self.project_identity.config_file_path)
             if self.project_identity.config_file_path

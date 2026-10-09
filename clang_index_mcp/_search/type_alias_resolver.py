@@ -4,32 +4,29 @@ Centralizes lookup of canonical types, alias details, and ambiguity handling so
 that type-alias queries are isolated from the rest of query-engine logic.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from .._search.pattern_matcher import matches_qualified_pattern
 from .._search.ports.search_deps import SearchDependencies
 from .._symbols.model import SymbolInfo
 
-if TYPE_CHECKING:
-    pass
 
-
-def get_alias_details_from_db(alias_names: List[str], cache_manager) -> List[Dict[str, Any]]:
+def get_alias_details_from_db(alias_names: list[str], cache_manager) -> list[dict[str, Any]]:
     """Query the cache backend for detailed information about a set of aliases."""
-    return cast(List[Dict[str, Any]], cache_manager.get_type_alias_details(alias_names))
+    return cast(list[dict[str, Any]], cache_manager.get_type_alias_details(alias_names))
 
 
-def get_info_for_known_alias(type_name: str, cache_manager) -> Optional[Dict[str, Any]]:
+def get_info_for_known_alias(type_name: str, cache_manager) -> dict[str, Any] | None:
     """Attempt to get type alias info from the cache if type_name is a known alias."""
-    return cast(Optional[Dict[str, Any]], cache_manager.get_type_alias_info(type_name))
+    return cast(dict[str, Any] | None, cache_manager.get_type_alias_info(type_name))
 
 
 def find_type_matches(
     type_name: str,
     context: SearchDependencies,
-) -> List[SymbolInfo]:
+) -> list[SymbolInfo]:
     """Search class index for matching types and return list of matches."""
-    matches: List[SymbolInfo] = []
+    matches: list[SymbolInfo] = []
     assert context.symbol_store is not None
     with context.concurrency.index_lock:
         for name, infos in context.symbol_store.iter_class_items():
@@ -40,12 +37,10 @@ def find_type_matches(
     return matches
 
 
-def check_type_ambiguity(type_name: str, matches: List[SymbolInfo]) -> Optional[Dict[str, Any]]:
+def check_type_ambiguity(type_name: str, matches: list[SymbolInfo]) -> dict[str, Any] | None:
     """Check for ambiguity among matches and return error dict if ambiguous."""
     if len(matches) > 1:
-        unique_qualified_names = set(
-            m.qualified_name if m.qualified_name else m.name for m in matches
-        )
+        unique_qualified_names = {m.qualified_name if m.qualified_name else m.name for m in matches}
         if len(unique_qualified_names) > 1:
             return {
                 "error": f"Ambiguous type name '{type_name}'",
@@ -68,7 +63,7 @@ def check_type_ambiguity(type_name: str, matches: List[SymbolInfo]) -> Optional[
 def get_type_alias_info(
     type_name: str,
     context: SearchDependencies,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get comprehensive type alias information."""
     input_canonical = context.cache_manager.get_canonical_for_alias(type_name)
     input_was_alias = False

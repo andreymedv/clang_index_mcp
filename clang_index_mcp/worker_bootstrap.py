@@ -27,7 +27,7 @@ import io
 import os
 import signal
 import sys
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 # Handle both package and script imports
 try:
@@ -124,9 +124,9 @@ def process_file_worker(spec: IndexingTaskSpec):
     result = _worker_analyzer.index_file_with_result(spec.file_path, spec.force, write_cache=False)
 
     # Extract symbols from this file
-    symbols: List[Any] = []
-    call_sites: List[Any] = []
-    processed_headers: Dict[str, str] = {}
+    symbols: list[Any] = []
+    call_sites: list[Any] = []
+    processed_headers: dict[str, str] = {}
     if result.success:
         for fpath, file_symbols in context.symbol_store.iter_file_items():
             symbols.extend(file_symbols)

@@ -9,12 +9,16 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
+from clang_index_mcp._mcp.state_manager import (
+    AnalyzerState,
+    AnalyzerStateManager,
+    QueryBehaviorPolicy,
+)
 from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
-from clang_index_mcp._mcp.state_manager import AnalyzerState, AnalyzerStateManager, QueryBehaviorPolicy
 
 
 @pytest.fixture

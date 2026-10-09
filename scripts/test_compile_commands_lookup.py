@@ -69,9 +69,7 @@ def test_compile_commands_lookup(project_path_str: str, test_file_str: str):
         # Try to find similar paths
         print("   Searching for similar paths in compile_commands.json...")
         file_name = test_file.name
-        matching_entries = [
-            path for path in ccm.compile_commands.keys() if Path(path).name == file_name
-        ]
+        matching_entries = [path for path in ccm.compile_commands if Path(path).name == file_name]
 
         if matching_entries:
             print(f"   Found {len(matching_entries)} file(s) with same name:")

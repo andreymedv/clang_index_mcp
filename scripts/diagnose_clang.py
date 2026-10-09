@@ -70,7 +70,10 @@ def check_libclang_package():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "show", "libclang"], capture_output=True, text=True
+            [sys.executable, "-m", "pip", "show", "libclang"],
+            check=False,
+            capture_output=True,
+            text=True,
         )
 
         if result.returncode == 0:
@@ -211,6 +214,7 @@ def install_libclang(force=False):
         print_info("Installing libclang>=16.0.0...")
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", "libclang>=16.0.0"],
+            check=False,
             capture_output=True,
             text=True,
         )
@@ -385,9 +389,8 @@ def main():
                     return 0
             else:
                 print_error("Automatic fix failed")
-        elif "package_outdated" in issues:
-            if install_libclang(force=True):
-                print_success("Upgraded libclang package")
+        elif "package_outdated" in issues and install_libclang(force=True):
+            print_success("Upgraded libclang package")
 
     # Provide manual solutions
     if issues:

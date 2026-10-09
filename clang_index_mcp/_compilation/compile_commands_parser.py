@@ -10,7 +10,8 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 from clang.cindex import CompilationDatabase
 
 # Handle both package and script imports
@@ -19,12 +20,12 @@ try:
     from .._core.argument_sanitizer import ArgumentSanitizer
     from . import compile_commands_cache
 except ImportError:
+    import compile_commands_cache  # type: ignore[no-redef]
     import diagnostics  # type: ignore[no-redef]
     from argument_sanitizer import ArgumentSanitizer  # type: ignore[no-redef]
-    import compile_commands_cache  # type: ignore[no-redef]
 
 
-def filter_arguments(arguments: List[str]) -> List[str]:
+def filter_arguments(arguments: list[str]) -> list[str]:
     """Filter out compiler executable, -o, -c, and source files from arguments.
 
     Args:
@@ -41,11 +42,10 @@ def filter_arguments(arguments: List[str]) -> List[str]:
         first_arg = arguments[0]
         compiler_names = {"gcc", "g++", "clang", "clang++", "cc", "c++", "cl", "cl.exe"}
         basename = first_arg.split("/")[-1].split("\\")[-1].lower()
-        if basename.endswith(".exe"):
-            basename = basename[:-4]
+        basename = basename.removesuffix(".exe")
 
         # Skip compiler executable if present
-        if basename in compiler_names or first_arg.startswith("/") or first_arg.startswith("\\"):
+        if basename in compiler_names or first_arg.startswith(("/", "\\")):
             i_arg = 1
 
     # Filter out -o, -c, and source files
@@ -90,8 +90,8 @@ def normalize_path(file_path: str, directory: str, project_root: Path) -> str:
 
 
 def normalize_single_argument(
-    arg: str, next_arg: Optional[str], directory: str
-) -> Tuple[List[str], int]:
+    arg: str, next_arg: str | None, directory: str
+) -> tuple[list[str], int]:
     """Normalize a single argument and its optional successor. Returns (new_args, consumed_count)."""
     if arg == "-I" and next_arg is not None:
         include_path = next_arg
@@ -121,7 +121,7 @@ def normalize_single_argument(
     return [arg], 1
 
 
-def normalize_arguments(arguments: List[str], directory: str) -> List[str]:
+def normalize_arguments(arguments: list[str], directory: str) -> list[str]:
     """
     Normalize relative include paths in arguments to absolute paths.
 
@@ -132,7 +132,7 @@ def normalize_arguments(arguments: List[str], directory: str) -> List[str]:
     Returns:
         List of arguments with normalized include paths
     """
-    normalized: List[str] = []
+    normalized: list[str] = []
     i = 0
 
     while i < len(arguments):
@@ -144,7 +144,7 @@ def normalize_arguments(arguments: List[str], directory: str) -> List[str]:
     return normalized
 
 
-def sanitize_args_for_libclang(args: List[str], argument_sanitizer: ArgumentSanitizer) -> List[str]:
+def sanitize_args_for_libclang(args: list[str], argument_sanitizer: ArgumentSanitizer) -> list[str]:
     """Sanitize compiler arguments for use with libclang using rule-based system.
 
     Uses the ArgumentSanitizer with loaded rules to remove arguments that can
@@ -172,7 +172,7 @@ def process_compile_command_entry(
     compdb: CompilationDatabase,
     project_root: Path,
     argument_sanitizer: ArgumentSanitizer,
-) -> Optional[Tuple[str, dict]]:
+) -> tuple[str, dict] | None:
     """Process a single compile command entry. Returns (normalized_path, command_dict) or None."""
     if not isinstance(entry, dict):
         diagnostics.warning(f"Skipping invalid command at index {index}")
@@ -214,14 +214,14 @@ def parse_compile_commands_from_db(
     compile_commands_file: Path,
     project_root: Path,
     argument_sanitizer: ArgumentSanitizer,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Parse compile commands from CompilationDatabase and build file-to-command mapping.
 
     This method uses the CompilationDatabase API to get compile commands,
     which handles command parsing internally without needing shlex.
     """
-    compile_commands: Dict[str, Any] = {}
-    file_to_command_map: Dict[str, Any] = {}
+    compile_commands: dict[str, Any] = {}
+    file_to_command_map: dict[str, Any] = {}
 
     try:
         with open(compile_commands_file, "r", encoding="utf-8") as f:
@@ -255,9 +255,9 @@ def load_compile_commands(
     compile_commands_path: str,
     fallback_to_hardcoded: bool,
     cache_enabled: bool,
-    cache_dir: Optional[Path],
+    cache_dir: Path | None,
     argument_sanitizer: ArgumentSanitizer,
-) -> Tuple[bool, Dict[str, Any], Dict[str, Any], float]:
+) -> tuple[bool, dict[str, Any], dict[str, Any], float]:
     """Load compile commands from compile_commands.json file.
 
     Optimized for large files:

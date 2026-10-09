@@ -10,10 +10,10 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
-def normalize_path(path: str, base_directory: Optional[str] = None) -> Path:
+def normalize_path(path: str, base_directory: str | None = None) -> Path:
     """Normalize a path, handling both absolute and relative paths.
 
     Args:
@@ -157,7 +157,7 @@ def filter_compile_commands(
 
         with open(output_path, "w") as f:
             json.dump(filtered_entries, f, indent=2)
-    except IOError as e:
+    except OSError as e:
         print(f"Error: Failed to write output file: {e}", file=sys.stderr)
         sys.exit(1)
 

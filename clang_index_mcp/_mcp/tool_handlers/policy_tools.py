@@ -1,8 +1,8 @@
 """Query policy helpers for the C++ MCP server."""
 
+from ..._core import diagnostics
 from ..context import ctx
 from ..state_manager import QueryBehaviorPolicy
-from ..._core import diagnostics
 
 
 def _parse_query_policy(policy_str: str) -> QueryBehaviorPolicy:

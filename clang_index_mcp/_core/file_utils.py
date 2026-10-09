@@ -2,7 +2,6 @@
 
 import hashlib
 from pathlib import Path
-from typing import List
 
 
 def hash_file(file_path: str | Path, chunk_size: int = 8192) -> str:
@@ -38,7 +37,7 @@ def hash_file(file_path: str | Path, chunk_size: int = 8192) -> str:
     return hash_md5.hexdigest()
 
 
-def hash_compile_args(args: List[str], normalize_order: bool = True) -> str:
+def hash_compile_args(args: list[str], normalize_order: bool = True) -> str:
     """
     Hash compilation arguments for change detection.
 

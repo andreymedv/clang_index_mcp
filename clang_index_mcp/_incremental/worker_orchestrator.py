@@ -5,8 +5,9 @@ and reporting progress during incremental refresh.
 """
 
 import os
+from collections.abc import Callable
 from concurrent.futures import Executor, as_completed
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from .._contexts.incremental_context import IncrementalContext
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 
 def process_future_result(
     result_merger: "WorkerResultMerger", result: Any, file_path: str
-) -> Tuple[bool, bool]:
+) -> tuple[bool, bool]:
     """Process the result from a future and merge it into the analyzer.
 
     Delegates to WorkerResultMerger.merge_worker_result so the incremental path
@@ -56,11 +57,11 @@ def report_progress(
 def submit_tasks(
     ctx: "IncrementalContext",
     executor: Executor,
-    file_list: List[str],
-) -> Dict[Any, str]:
+    file_list: list[str],
+) -> dict[Any, str]:
     """Submit re-analysis tasks to the process pool executor."""
-    from .._indexing.indexing_task_submitter import submit_file_task
     from .._incremental.compile_args_resolver import get_file_compile_args
+    from .._indexing.indexing_task_submitter import submit_file_task
 
     compilation_env = ctx.compilation_env
     file_compile_args = get_file_compile_args(ctx, file_list)
@@ -80,13 +81,13 @@ def submit_tasks(
 
 
 def process_loop(
-    future_to_file: Dict[Any, str],
+    future_to_file: dict[Any, str],
     start_time: float,
     total: int,
     callbacks: Optional["IndexingCallbacks"],
     is_interrupted: Callable[[], bool],
     result_merger: "WorkerResultMerger",
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Process results from futures in a loop."""
     from .._core import diagnostics
 
@@ -106,7 +107,7 @@ def process_loop(
         file_path = future_to_file[future]
         try:
             result = future.result()
-            success, was_cached = process_future_result(result_merger, result, file_path)
+            success, _was_cached = process_future_result(result_merger, result, file_path)
 
             if success:
                 analyzed += 1
@@ -127,10 +128,10 @@ def process_loop(
 
 def reanalyze_files(
     ctx: "IncrementalContext",
-    files: Set[str],
+    files: set[str],
     start_time: float,
     callbacks: Optional["IndexingCallbacks"] = None,
-    is_interrupted: Optional[Callable[[], bool]] = None,
+    is_interrupted: Callable[[], bool] | None = None,
 ) -> int:
     """
     Re-analyze a set of files using parallel processing.
@@ -152,7 +153,7 @@ def reanalyze_files(
 
 def _run_analysis_loop(
     ctx: "IncrementalContext",
-    file_list: List[str],
+    file_list: list[str],
     start_time: float,
     total: int,
     callbacks: Optional["IndexingCallbacks"],

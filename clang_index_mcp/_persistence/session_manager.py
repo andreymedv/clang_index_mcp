@@ -8,7 +8,7 @@ allowing automatic resume on server restart.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .._core import diagnostics
 
@@ -54,7 +54,7 @@ class SessionManager:
         except Exception as e:
             diagnostics.warning(f"Failed to save session: {e}")
 
-    def load_session(self) -> Optional[Dict[str, Any]]:
+    def load_session(self) -> dict[str, Any] | None:
         """Load last session from disk
 
         Returns:

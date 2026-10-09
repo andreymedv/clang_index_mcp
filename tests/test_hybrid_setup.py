@@ -3,14 +3,15 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
-from clang_index_mcp._mcp.cpp_mcp_server import _handle_tool_call
 from clang_index_mcp._mcp.context import ctx
+from clang_index_mcp._mcp.cpp_mcp_server import _handle_tool_call
+from clang_index_mcp.cpp_analyzer_config import CppAnalyzerConfig
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,7 @@ import re
 import time
 from collections import Counter, deque
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .._search.smart_fallback import PROTOTYPE_PATTERN, looks_like_signature
 
@@ -56,7 +56,7 @@ def _classify_pattern(pattern: str) -> str:
     return "plain_name"
 
 
-def _extract_pattern_features(pattern: str) -> Dict[str, bool]:
+def _extract_pattern_features(pattern: str) -> dict[str, bool]:
     """Extract boolean features from a pattern for analysis."""
     type_keywords = {
         "void",
@@ -100,7 +100,7 @@ class ToolCallLogger:
     def log_tool_call(
         self,
         name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result_count: int,
         result_text: str,
         analyzer: Any = None,
@@ -116,13 +116,13 @@ class ToolCallLogger:
     def _log_tool_call_inner(
         self,
         name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result_count: int,
         result_text: str,
         analyzer: Any,
     ) -> None:
         now = time.time()
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "tool_name": name,
             "arguments": arguments,
             "result_count": result_count,
@@ -171,7 +171,7 @@ class ToolCallLogger:
         with open(self.log_path, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def _add_fallback_counts(self, entry: Dict[str, Any], analyzer: Any, clean_name: str) -> None:
+    def _add_fallback_counts(self, entry: dict[str, Any], analyzer: Any, clean_name: str) -> None:
         """Add simple_name_fallback and case_insensitive_fallback counts."""
         # Simple name lookup in class_index and function_index
         symbol_store = analyzer.context.symbol_store
@@ -194,7 +194,7 @@ class ToolCallLogger:
                 ci_count += len(symbols)
         entry["case_insensitive_fallback_count"] = ci_count
 
-    def _extract_filters(self, arguments: Dict[str, Any]) -> List[str]:
+    def _extract_filters(self, arguments: dict[str, Any]) -> list[str]:
         """Return list of filter arguments that were provided."""
         filter_keys = [
             "class_name",
@@ -206,7 +206,7 @@ class ToolCallLogger:
         ]
         return [k for k in filter_keys if arguments.get(k)]
 
-    def _add_distribution(self, entry: Dict[str, Any], result_text: str) -> None:
+    def _add_distribution(self, entry: dict[str, Any], result_text: str) -> None:
         """Add class/namespace distribution from result_text JSON."""
         try:
             parsed = json.loads(result_text)

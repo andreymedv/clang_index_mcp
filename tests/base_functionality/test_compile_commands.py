@@ -12,7 +12,6 @@ import os
 
 # Import test infrastructure
 import sys
-from pathlib import Path
 
 import pytest
 

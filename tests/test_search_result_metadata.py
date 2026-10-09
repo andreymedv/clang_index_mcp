@@ -10,8 +10,6 @@ Tests the "silence = success" design principle:
   - partial: indexing incomplete
 """
 
-import json
-from unittest.mock import Mock, patch
 
 import pytest
 
@@ -21,7 +19,6 @@ from clang_index_mcp._mcp.state_manager import (
     EnhancedQueryResult,
     IndexingProgress,
     QueryCompletenessStatus,
-    QueryMetadata,
 )
 
 

@@ -5,9 +5,7 @@ even when there are non-fatal libclang parsing errors, taking advantage of
 libclang's error recovery and partial AST generation.
 """
 
-from pathlib import Path
 
-import pytest
 
 from clang_index_mcp.cpp_analyzer import CppAnalyzer
 

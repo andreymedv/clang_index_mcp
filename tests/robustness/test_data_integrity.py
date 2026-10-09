@@ -12,7 +12,6 @@ import os
 # Import test infrastructure
 import sys
 import threading
-import time
 
 import pytest
 
