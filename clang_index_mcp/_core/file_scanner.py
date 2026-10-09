@@ -27,15 +27,13 @@ class FileScanner:
     # Source-only extensions
     SOURCE_EXTENSIONS = CPP_EXTENSIONS - HEADER_EXTENSIONS
 
-    # Directories to exclude (set by configuration)
-    EXCLUDE_DIRS: set[str] = set()
-
-    # Directories that contain dependencies (set by configuration)
-    DEPENDENCY_DIRS: set[str] = set()
-
     def __init__(self, project_root: Path, include_dependencies: bool = False):
         self.project_root = project_root
         self.include_dependencies = include_dependencies
+        # Directories to exclude (set by configuration)
+        self.exclude_dirs: set[str] = set()
+        # Directories that contain dependencies (set by configuration)
+        self.dependency_dirs: set[str] = set()
         # Resolve once; project_root is typically already resolved by callers,
         # but normalizing here lets is_project_file use cheap relative_to checks.
         self._resolved_project_root = Path(project_root).resolve()
@@ -51,7 +49,7 @@ class FileScanner:
             rel_path = Path(dir_path).relative_to(self.project_root)
             # If the relative path has no parent, it's a top-level directory
             if len(rel_path.parts) == 1:
-                return rel_path.parts[0] in self.EXCLUDE_DIRS
+                return rel_path.parts[0] in self.exclude_dirs
         except ValueError:
             # Directory is outside project root
             pass
@@ -67,7 +65,7 @@ class FileScanner:
             return bool(not self.include_dependencies)
 
         # Check if file is in a top-level excluded directory
-        return bool(len(rel_path.parts) > 0 and rel_path.parts[0] in self.EXCLUDE_DIRS)
+        return bool(len(rel_path.parts) > 0 and rel_path.parts[0] in self.exclude_dirs)
 
     def find_cpp_files(self) -> list[str]:
         """Find all C++ files in the project"""
@@ -108,7 +106,7 @@ class FileScanner:
 
             # Check if file is in a dependency directory (at any level)
             for part in rel_path.parts:
-                if part in self.DEPENDENCY_DIRS:
+                if part in self.dependency_dirs:
                     return False
 
             return True

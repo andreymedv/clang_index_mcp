@@ -47,8 +47,8 @@ class CompilationEnvironment:
 
         # File scanner
         self.file_scanner = FileScanner(identity.project_root)
-        self.file_scanner.EXCLUDE_DIRS = set(identity.config.get_exclude_directories())
-        self.file_scanner.DEPENDENCY_DIRS = set(identity.config.get_dependency_directories())
+        self.file_scanner.exclude_dirs = set(identity.config.get_exclude_directories())
+        self.file_scanner.dependency_dirs = set(identity.config.get_dependency_directories())
 
         # Compile commands manager (initialized later by CppAnalyzer)
         self.compile_commands_manager: CompileCommandsManager | None = None
