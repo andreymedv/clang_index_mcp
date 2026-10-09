@@ -326,22 +326,28 @@ int divide(int a, int b) {
         self.assertTrue(result.changes.compile_commands_changed)
 
     def test_file_deletion(self):
-        """Test that deleting a file removes it from cache."""
+        """Verify that deleting a source file causes the incremental analyzer to report its removal from cache."""
+        import time
+
         # Initialize analyzer
         analyzer = CppAnalyzer(project_root=str(self.test_dir), config_file=str(self.config_file))
 
         # Initial analysis
         analyzer.index_project()
 
-        # Verify file was actually indexed (can fail due to database locking in ProcessPool)
+        # Verify file was actually indexed; retry to handle SQLite WAL contention in ProcessPool
         utils_cpp_path = str(self.utils_cpp)
-        file_metadata = analyzer.cache_manager.backend.get_file_metadata(utils_cpp_path)
+        file_metadata = None
+        for _attempt in range(3):
+            file_metadata = analyzer.cache_manager.backend.get_file_metadata(utils_cpp_path)
+            if file_metadata is not None:
+                break
+            time.sleep(0.5)
 
-        if file_metadata is None:
-            # File wasn't indexed (database locking issue), skip this assertion
-            self.skipTest(
-                "File was not indexed due to database contention - skipping deletion test"
-            )
+        self.assertIsNotNone(
+            file_metadata,
+            f"File {utils_cpp_path} was not indexed after retries — possible database contention",
+        )
 
         # Delete utils.cpp
         self.utils_cpp.unlink()
@@ -359,10 +365,6 @@ int divide(int a, int b) {
         self.assertEqual(result.files_removed, 1)
         self.assertIn(utils_cpp_path, result.changes.removed_files)
 
-    @unittest.skipIf(
-        not hasattr(sys, "real_prefix") and not hasattr(sys, "base_prefix"),
-        "Requires libclang - skip in minimal environments",
-    )
     def test_compile_commands_modification(self):
         """Test that modifying compile_commands.json triggers selective re-analysis."""
         # Initialize analyzer

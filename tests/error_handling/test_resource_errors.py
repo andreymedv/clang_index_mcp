@@ -65,9 +65,9 @@ public:
 class TestMemoryErrors:
     """Test memory-related errors - REQ-6.4.2"""
 
-    @pytest.mark.skip(reason="Memory tests can be unstable in CI")
+    @pytest.mark.timeout(120)
     def test_out_of_memory_graceful_degradation(self, temp_project_dir):
-        """Test graceful handling of memory pressure - Task 1.2.9"""
+        """Verify that indexing many large files either completes or fails gracefully without crashing."""
         # Create many large C++ files to put memory pressure
         for i in range(100):
             large_file = temp_project_dir / "src" / f"large{i}.cpp"
@@ -99,7 +99,7 @@ public:
         except MemoryError:
             # If MemoryError is raised, that's acceptable
             # As long as it's not an unhandled crash
-            pytest.skip("Memory error encountered during test - acceptable behavior")
+            pytest.fail("MemoryError raised during indexing — consider reducing test data size")
         except Exception as e:
             # Other exceptions should provide useful error messages
             assert str(e), f"Exception should have descriptive message: {type(e).__name__}"

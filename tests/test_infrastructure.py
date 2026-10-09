@@ -62,21 +62,17 @@ class TestInfrastructure:
         assert Path(analyzer.project_root).exists()
 
     def test_indexed_analyzer_fixture(self, indexed_analyzer):
-        """Test that indexed_analyzer fixture provides a working analyzer."""
+        """Verify that the indexed_analyzer fixture creates a working analyzer with indexed content."""
         assert isinstance(indexed_analyzer, CppAnalyzer)
 
-        # Check that it has indexed content
-        # Note: Header-defined classes may not be indexed in all environments
-        # depending on libclang availability and configuration
+        # The fixture indexes a project; at least one search should return results
         classes = indexed_analyzer.search_classes("TestClass")
         classes2 = indexed_analyzer.search_classes("AnotherClass")
 
-        # At minimum, verify the analyzer was created and can search
-        # The actual results depend on libclang's ability to parse headers
-        if len(classes) == 0 and len(classes2) == 0:
-            import pytest
-
-            pytest.skip("Libclang may not be available or configured to parse headers")
+        assert len(classes) > 0 or len(classes2) > 0, (
+            "indexed_analyzer fixture should produce searchable content — "
+            "if libclang is unavailable, the fixture itself should fail"
+        )
 
     def test_compile_commands_file_fixture(self, compile_commands_file):
         """Test that compile_commands_file fixture creates valid JSON."""
