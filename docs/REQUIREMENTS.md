@@ -13,6 +13,8 @@ This document captures the functional requirements for the Clang Index MCP Serve
 5. [Compilation Configuration Requirements](#5-compilation-configuration-requirements)
 6. [Caching and Performance Requirements](#6-caching-and-performance-requirements)
    - 6.6 [Failure Tracking and Retry Logic](#66-failure-tracking-and-retry-logic)
+   - 6.7 [Cache Write Failure Handling](#67-cache-write-failure-handling)
+   - 6.8 [CacheManager Return-Value and Error Contract](#68-cachemanager-return-value-and-error-contract)
 7. [Project Management Requirements](#7-project-management-requirements)
    - 7.6 [Centralized Error Logging (Developer-Only)](#76-centralized-error-logging-developer-only)
 8. [Statistics and Monitoring Requirements](#8-statistics-and-monitoring-requirements)
@@ -1001,6 +1003,46 @@ derived_classes lists regardless of traversal direction.
 
 **REQ-6.6.10**: **Purpose**: Prevent wasting time re-parsing files that consistently fail (missing dependencies, syntax errors) while still allowing retries in case issues are fixed.
 
+### 6.7 Cache Write Failure Handling
+
+**REQ-6.7.1**: A failed cache write SHALL NOT abort, interrupt, or roll back indexing. Indexing SHALL continue and results SHALL remain available in memory for the current session.
+
+**REQ-6.7.2**: On write failure the system SHALL preserve the existing cache contents (last known-good state). Clearing or deleting the cache SHALL NOT be performed as a response to a write error.
+
+**REQ-6.7.3**: The system SHALL classify cache write errors and handle each class:
+
+- Transient errors (SQLITE_BUSY / database locked, network filesystem timeout): retry with bounded exponential backoff, then report failure
+- Resource errors (disk full, permission denied): report failure immediately without retry; preserve the cache; surface a clear diagnostic message (per REQ-9.4.1)
+- Corruption errors (sqlite3.DatabaseError with "corrupt"/"malformed"): perform recovery per REQ-9.3.4 (backup, then repair/rebuild), then retry the write once
+
+**REQ-6.7.4**: Cache write failures SHALL be logged with operation name, error type, and error message, per REQ-7.6.12 and REQ-10.13.2. A failure to log SHALL NOT break the main flow.
+
+**REQ-6.7.5**: Batch write operations (e.g. type-alias batches) SHALL report the number of records actually persisted. On total failure the reported count SHALL be 0.
+
+**REQ-6.7.6**: These requirements apply to all cache write paths: index cache (`save_cache`), per-file cache (`save_file_cache`), type aliases (`save_type_aliases_batch`), and progress / header-tracking persistence.
+
+**Purpose**: The cache is an optimization, not a source of truth. Losing the ability to write it must never lose indexing results or destroy previously cached data.
+
+### 6.8 CacheManager Return-Value and Error Contract
+
+**REQ-6.8.1**: Every CacheManager method backed by the cache backend SHALL declare an explicit return type and SHALL document how backend failure is represented.
+
+**REQ-6.8.2**: null/None SHALL be reserved exclusively for "not found" / "no value". It SHALL NOT be used to represent a backend error.
+
+**REQ-6.8.3**: Methods whose declared return type excludes null (bool, int, list, dict, str) SHALL always return a value of that type and SHALL NOT return null on any code path. Static type checkers SHALL verify this.
+
+**REQ-6.8.4**: Backend failure SHALL be represented by exactly one of the following, fixed in the method signature:
+
+- Write / status methods: bool or persisted-count (False / 0 = the operation did not succeed).
+- Read methods with a legitimate "not found" result: return None for "not found" and report backend failure through the error-summary channel (REQ-6.8.6) so callers can distinguish "empty" from "degraded".
+- Read methods where an empty result is an acceptable degraded value: return an empty collection (list/dict) and report failure through the error-summary channel.
+
+**REQ-6.8.5**: The internal error wrapper (`_safe_backend_call`) SHALL NOT convert exceptions into None. It SHALL either (a) re-raise after recording the error and attempting recovery, or (b) return a typed outcome that separates "value" from "error". After a successful recovery the original operation SHALL be retried once before failure is reported.
+
+**REQ-6.8.6**: The system SHALL expose the most recent backend error state (operation, error type, message, timestamp) via the existing error-summary API, so callers can tell an empty result from a degraded one.
+
+**REQ-6.8.7**: All cache backend entry points SHALL route through the same error wrapper. No method SHALL call the backend directly and bypass error handling (e.g. `save_file_cache`, `load_file_cache`, `remove_file_cache`, `ensure_schema_current`).
+
 ---
 
 ## 7. Project Management Requirements
@@ -1857,9 +1899,17 @@ These requirements imply the following testing needs:
 
 ## Document Version
 
-- **Version**: 3.3
-- **Date**: 2025-11-17
-- **Status**: Production-ready with tools-during-analysis and header extraction features
+- **Version**: 3.4
+- **Date**: 2026-10-11
+- **Status**: Production-ready with explicit cache failure handling contract
+- **Changes from v3.3**:
+  - Added Section 6.7: Cache Write Failure Handling (6 requirements)
+    - Cache write failure never aborts indexing or destroys existing cache
+    - Error classification (transient / resource / corruption) with per-class handling
+  - Added Section 6.8: CacheManager Return-Value and Error Contract (7 requirements)
+    - None reserved for "not found"; typed safe values on failure
+    - Typed error wrapper with retry-once-after-recovery
+    - Error-state channel for empty-vs-degraded distinction
 - **Changes from v3.2**:
   - Added Section 10: Tools During Analysis Requirements (69 new requirements)
     - REQ-10.1: Query Execution During Indexing (4 requirements)
