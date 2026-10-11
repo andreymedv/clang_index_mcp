@@ -89,7 +89,7 @@ class CacheBackend(Protocol):
         """Get detailed records for a list of alias names."""
         ...
 
-    def get_all_cached_file_paths(self):
+    def get_all_cached_file_paths(self) -> set[str]:
         """Return all file paths stored in file_metadata table."""
         ...
 
