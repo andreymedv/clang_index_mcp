@@ -7,14 +7,17 @@ import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
+from .._persistence.outcome import BackendOutcome
 from .._persistence.project_identity import ProjectIdentity
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import TypeAliasRecord
 from .error_tracking_adapter import ErrorTrackingAdapter
+
+T = TypeVar("T")
 
 if TYPE_CHECKING:
     from .._persistence.ports.recovery import CacheRecoveryPort
@@ -28,6 +31,11 @@ except ImportError:
 
 class CacheManager:
     """Manages caching for the C++ analyzer with pluggable backends."""
+
+    #: Extra attempts after a successful recovery (REQ-6.8.5). Epic child ent.6
+    #: can override this to plug in classification/backoff without redesigning
+    #: the wrapper.
+    _max_retries_after_recovery: int = 1
 
     def __init__(
         self,
@@ -273,9 +281,21 @@ class CacheManager:
 
         return False
 
-    def _safe_backend_call(self, operation: str, func, *args, **kwargs):
+    def _safe_backend_call(
+        self,
+        operation: str,
+        func: Callable[..., T],
+        *args: Any,
+        **kwargs: Any,
+    ) -> BackendOutcome[T]:
         """
-        Safely call a backend method with error tracking.
+        Safely call a backend method with error tracking, recovery, and retry.
+
+        Never raises and never returns bare None. Success is reported as
+        ``BackendOutcome(value=...)`` (value may legitimately be None for
+        "not found"); failure is reported as ``BackendOutcome(error=...)``.
+        After a successful recovery the call is retried once (REQ-6.8.5);
+        ``recovered`` is True only when that retried call succeeds.
 
         Args:
             operation: Operation name for tracking
@@ -283,20 +303,48 @@ class CacheManager:
             *args, **kwargs: Arguments to pass to method
 
         Returns:
-            Result from backend method, or None on error
+            BackendOutcome carrying either the backend value or the error.
         """
         try:
             self.recovery.record_operation(operation)
             result = func(*args, **kwargs)
-            return result
+            return BackendOutcome(value=result)
+        except Exception as error:
+            return self._resolve_backend_failure(operation, func, args, kwargs, error)
 
-        except Exception as e:
-            diagnostics.error(f"Backend error in {operation}: {e}")
+    def _resolve_backend_failure(
+        self,
+        operation: str,
+        func: Callable[..., T],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        error: Exception,
+    ) -> BackendOutcome[T]:
+        """Handle a failed backend call without ever raising (REQ-6.8.5)."""
+        diagnostics.error(f"Backend error in {operation}: {type(error).__name__}: {error}")
 
-            # Handle error and attempt recovery if needed
-            self._handle_backend_error(e, operation)
+        recovery_succeeded = False
+        try:
+            recovery_succeeded = self._handle_backend_error(error, operation)
+        except Exception as handling_error:
+            diagnostics.error(
+                f"Error handling failed in {operation}: "
+                f"{type(handling_error).__name__}: {handling_error}"
+            )
+            return BackendOutcome(error=error)
 
-            return None
+        if recovery_succeeded and self._max_retries_after_recovery > 0:
+            try:
+                retried = func(*args, **kwargs)
+                return BackendOutcome(value=retried, recovered=True)
+            except Exception as retry_error:
+                diagnostics.error(
+                    f"Retry after recovery failed in {operation}: "
+                    f"{type(retry_error).__name__}: {retry_error}"
+                )
+                return BackendOutcome(error=retry_error)
+
+        return BackendOutcome(error=error)
 
     def get_file_hash(self, file_path: str) -> str:
         """Calculate hash of a file using chunked reads."""
@@ -323,7 +371,7 @@ class CacheManager:
             config_file_mtime = validation_context.config_file_mtime
             compile_commands_path = validation_context.compile_commands_path
             compile_commands_mtime = validation_context.compile_commands_mtime
-        result = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "save_cache",
             self.backend.save_cache,
             class_index,
@@ -336,7 +384,7 @@ class CacheManager:
             compile_commands_path,
             compile_commands_mtime,
         )
-        return result if result is not None else False
+        return outcome.value if outcome.ok and outcome.value is not None else False
 
     def load_cache(
         self,
@@ -353,7 +401,7 @@ class CacheManager:
             config_file_mtime = validation_context.config_file_mtime
             compile_commands_path = validation_context.compile_commands_path
             compile_commands_mtime = validation_context.compile_commands_mtime
-        result: dict[str, Any] | None = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "load_cache",
             self.backend.load_cache,
             include_dependencies,
@@ -362,7 +410,7 @@ class CacheManager:
             compile_commands_path,
             compile_commands_mtime,
         )
-        return result
+        return outcome.value if outcome.ok else None
 
     def save_file_cache(
         self,
@@ -675,10 +723,10 @@ class CacheManager:
         Returns:
             Number of aliases successfully saved
         """
-        result: int = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "save_type_aliases_batch", lambda: self.backend.save_type_aliases_batch(aliases)
         )
-        return result
+        return outcome.value if outcome.ok and outcome.value is not None else 0
 
     def get_aliases_for_canonical(self, canonical_type: str) -> list[str]:
         """
@@ -692,11 +740,11 @@ class CacheManager:
         Returns:
             List of alias names
         """
-        result: list[str] = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_aliases_for_canonical",
             lambda: self.backend.get_aliases_for_canonical(canonical_type),
         )
-        return result
+        return outcome.value if outcome.ok and outcome.value is not None else []
 
     def get_canonical_for_alias(self, alias_name: str) -> str | None:
         """
@@ -710,10 +758,10 @@ class CacheManager:
         Returns:
             Canonical type string, or None if not found
         """
-        result: str | None = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
         )
-        return result
+        return outcome.value if outcome.ok else None
 
     def get_type_alias_info(self, type_name: str) -> dict[str, Any] | None:
         """
@@ -722,10 +770,10 @@ class CacheManager:
         Returns:
             Dict with canonical_type, aliases, and metadata, or None if not found.
         """
-        result: dict[str, Any] | None = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_type_alias_info", lambda: self.backend.get_type_alias_info(type_name)
         )
-        return result
+        return outcome.value if outcome.ok else None
 
     def get_type_alias_details(self, alias_names: list[str]) -> list[dict[str, Any]]:
         """
@@ -734,10 +782,10 @@ class CacheManager:
         Returns:
             List of alias detail dicts.
         """
-        result: list[dict[str, Any]] = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_type_alias_details", lambda: self.backend.get_type_alias_details(alias_names)
         )
-        return result
+        return outcome.value if outcome.ok and outcome.value is not None else []
 
     def get_all_alias_mappings(self) -> dict[str, str]:
         """
@@ -748,7 +796,7 @@ class CacheManager:
         Returns:
             Dictionary mapping alias names to canonical types
         """
-        result: dict[str, str] = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_all_alias_mappings", lambda: self.backend.get_all_alias_mappings()
         )
-        return result
+        return outcome.value if outcome.ok and outcome.value is not None else {}
