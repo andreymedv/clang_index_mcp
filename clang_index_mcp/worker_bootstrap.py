@@ -138,6 +138,7 @@ def process_file_worker(spec: IndexingTaskSpec):
         processed_headers = context.cache_orchestrator.get_processed_headers()
 
     # Clean up worker indexes to prevent memory leaks (Issue #14)
+    cache_write_ok = bool(getattr(context.symbol_store, "last_alias_write_ok", True))
     context.symbol_store.clear_all_indexes()
 
     # Force garbage collection to free TranslationUnit objects.
@@ -159,4 +160,7 @@ def process_file_worker(spec: IndexingTaskSpec):
         result.compile_args_hash,
         result.error_message,
         result.retry_count,
+        # Optional trailing DATA flag: worker-side cache/alias write outcome.
+        # Failures never raise across the process boundary (epic child .8).
+        cache_write_ok,
     )

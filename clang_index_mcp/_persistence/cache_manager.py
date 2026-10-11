@@ -130,6 +130,7 @@ class CacheManager:
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
         self.recovery = self._init_recovery(recovery)
         self.backend = backend if backend is not None else self._create_backend()
+        self._error_summary_extra_provider: Callable[[], dict[str, Any]] | None = None
 
     @staticmethod
     def _resolve_project_identity(
@@ -703,8 +704,25 @@ class CacheManager:
         summary["total_errors"] = tracker_summary["total_errors"] + len(parse_errors)
         summary["unique_files"] = len(unique_files)
         summary["error_types"] = error_types
+        if self._error_summary_extra_provider is not None:
+            try:
+                extra = self._error_summary_extra_provider()
+                if extra is not None:
+                    summary["cache_writer"] = extra
+            except Exception:
+                pass
 
         return summary
+
+    def set_error_summary_extra_provider(
+        self, provider: Callable[[], dict[str, Any]] | None
+    ) -> None:
+        """Register a callback merged into get_error_summary (additive keys).
+
+        Used by the background cache writer to expose failure counters and
+        write-disabled mode state on the child .3 error-summary channel.
+        """
+        self._error_summary_extra_provider = provider
 
     def reset_error_tracking(self):
         """Reset error tracking state (useful for testing)."""

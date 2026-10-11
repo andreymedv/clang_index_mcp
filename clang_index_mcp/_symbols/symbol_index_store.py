@@ -58,6 +58,8 @@ class SymbolIndexStore:
         # Track indexed files and hashes
         self.file_hashes: dict[str, str] = {}
         self._indexed_file_count = 0
+        # Worker-side alias write outcome (DATA, never an exception across processes).
+        self.last_alias_write_ok: bool = True
 
     def _remove_symbol_from_indexes(self, symbol: SymbolInfo) -> None:
         """Remove a single symbol from class/function/USR indexes and call graph."""
@@ -308,11 +310,20 @@ class SymbolIndexStore:
             # Add all collected call relationships
             self.call_graph_port.process_call_buffer(calls)
 
-            # Persist all collected type aliases
+            # Persist all collected type aliases. Write failures must never
+            # raise across a process boundary (worker writes aliases directly);
+            # the failure is reported as DATA via last_alias_write_ok.
+            self.last_alias_write_ok = True
             if aliases:
                 diagnostics.debug(f"Processing {len(aliases)} type aliases from buffer")
-                saved_count = self._alias_persistence.save_aliases(aliases)
-                diagnostics.debug(f"Saved {saved_count} type aliases to cache")
+                try:
+                    saved_count = self._alias_persistence.save_aliases(aliases)
+                    diagnostics.debug(f"Saved {saved_count} type aliases to cache")
+                except Exception as e:
+                    self.last_alias_write_ok = False
+                    diagnostics.warning(
+                        f"Type alias persistence failed ({len(aliases)} aliases): {e}"
+                    )
 
         return added_count
 
