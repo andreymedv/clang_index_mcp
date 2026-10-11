@@ -1,4 +1,4 @@
-.PHONY: help setup clean test test-fast test-coverage lint format check install run dev
+.PHONY: help setup clean test test-fast test-coverage lint format check install run dev basedpyright-gate
 
 # Detect operating system
 ifeq ($(OS),Windows_NT)
@@ -114,6 +114,11 @@ type-check: ## Run type checking with mypy
 	@echo "$(BLUE)Running type checks...$(NC)"
 	$(PYTHON) -m mypy clang_index_mcp/ --ignore-missing-imports
 	@echo "$(GREEN)Type checking complete!$(NC)"
+
+basedpyright-gate: ## Regression guard: basedpyright clean on cache_manager.py
+	@echo "$(BLUE)Running basedpyright gate on cache_manager.py...$(NC)"
+	basedpyright clang_index_mcp/_persistence/cache_manager.py
+	@echo "$(GREEN)basedpyright gate passed!$(NC)"
 
 check: format-check lint type-check ## Run all checks (format, lint, type)
 	@echo "$(GREEN)All checks passed!$(NC)"
