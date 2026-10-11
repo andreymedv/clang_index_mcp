@@ -281,6 +281,30 @@ class CacheManager:
 
         return False
 
+    def _map_outcome(
+        self,
+        operation: str,
+        outcome: BackendOutcome[T],
+        default: T,
+        *,
+        log_note: str | None = None,
+    ) -> T:
+        """Map a backend outcome to a typed safe value (REQ-6.8.4).
+
+        On failure, mark the operation degraded through the error-state channel
+        so callers can distinguish "empty" from "unavailable" (REQ-6.8.6), then
+        return ``default``. On success, return the backend value, folding a
+        legitimate None into ``default`` for methods whose declared type
+        excludes None.
+        """
+        if outcome.ok and outcome.value is not None:
+            return outcome.value
+        if not outcome.ok:
+            self.mark_degraded(operation)
+            if log_note is not None and outcome.error is not None:
+                diagnostics.warning(f"{log_note}: {type(outcome.error).__name__}: {outcome.error}")
+        return default
+
     def _safe_backend_call(
         self,
         operation: str,
@@ -384,7 +408,7 @@ class CacheManager:
             compile_commands_path,
             compile_commands_mtime,
         )
-        return outcome.value if outcome.ok and outcome.value is not None else False
+        return self._map_outcome("save_cache", outcome, False)
 
     def load_cache(
         self,
@@ -410,7 +434,13 @@ class CacheManager:
             compile_commands_path,
             compile_commands_mtime,
         )
-        return outcome.value if outcome.ok else None
+        # Error and genuine miss converge to the same safe action: full re-parse.
+        return self._map_outcome(
+            "load_cache",
+            outcome,
+            None,
+            log_note="load_cache failed; treating as cache miss",
+        )
 
     def save_file_cache(
         self,
@@ -726,7 +756,12 @@ class CacheManager:
         outcome = self._safe_backend_call(
             "save_type_aliases_batch", lambda: self.backend.save_type_aliases_batch(aliases)
         )
-        return outcome.value if outcome.ok and outcome.value is not None else 0
+        return self._map_outcome(
+            "save_type_aliases_batch",
+            outcome,
+            0,
+            log_note=f"save_type_aliases_batch failed; {len(aliases)} aliases not persisted",
+        )
 
     def get_aliases_for_canonical(self, canonical_type: str) -> list[str]:
         """
@@ -744,7 +779,7 @@ class CacheManager:
             "get_aliases_for_canonical",
             lambda: self.backend.get_aliases_for_canonical(canonical_type),
         )
-        return outcome.value if outcome.ok and outcome.value is not None else []
+        return self._map_outcome("get_aliases_for_canonical", outcome, [])
 
     def get_canonical_for_alias(self, alias_name: str) -> str | None:
         """
@@ -761,7 +796,9 @@ class CacheManager:
         outcome = self._safe_backend_call(
             "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
         )
-        return outcome.value if outcome.ok else None
+        # Failure must not claim "not found": mark degraded so handlers can
+        # phrase "alias lookup unavailable" honestly (empty vs unavailable).
+        return self._map_outcome("get_canonical_for_alias", outcome, None)
 
     def get_type_alias_info(self, type_name: str) -> dict[str, Any] | None:
         """
@@ -773,7 +810,8 @@ class CacheManager:
         outcome = self._safe_backend_call(
             "get_type_alias_info", lambda: self.backend.get_type_alias_info(type_name)
         )
-        return outcome.value if outcome.ok else None
+        # Same empty-vs-unavailable rule as get_canonical_for_alias.
+        return self._map_outcome("get_type_alias_info", outcome, None)
 
     def get_type_alias_details(self, alias_names: list[str]) -> list[dict[str, Any]]:
         """
@@ -785,7 +823,7 @@ class CacheManager:
         outcome = self._safe_backend_call(
             "get_type_alias_details", lambda: self.backend.get_type_alias_details(alias_names)
         )
-        return outcome.value if outcome.ok and outcome.value is not None else []
+        return self._map_outcome("get_type_alias_details", outcome, [])
 
     def get_all_alias_mappings(self) -> dict[str, str]:
         """
@@ -799,4 +837,4 @@ class CacheManager:
         outcome = self._safe_backend_call(
             "get_all_alias_mappings", lambda: self.backend.get_all_alias_mappings()
         )
-        return outcome.value if outcome.ok and outcome.value is not None else {}
+        return self._map_outcome("get_all_alias_mappings", outcome, {})
