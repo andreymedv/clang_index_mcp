@@ -568,9 +568,19 @@ class TestScenario4WriterStress:
         assert not writer.is_alive
 
         stats = writer.get_stats()
-        assert accepted <= 17, "at most bound+in-flight accepted"
-        assert stats.queue_size <= 16
-        assert stats.dropped_count >= 1000 - 17
+        # Cumulative accepts during the storm are not just "queue bound + 1":
+        # the writer concurrently dequeues (and fails) items, freeing slots
+        # for new accepts until write-disabled engages. Bound is therefore
+        # queue capacity + items consumable before disable + one race window
+        # where enqueue passed the write_enabled check before disable landed.
+        max_queue_size = 16
+        disable_after = 5
+        storm_bound = max_queue_size + disable_after + 2
+        assert accepted <= storm_bound, (
+            "accepted bounded by queue + pre-disable consumes + race window"
+        )
+        assert stats.queue_size <= max_queue_size
+        assert stats.dropped_count >= 1000 - storm_bound
         assert stats.write_enabled is False
         assert stats.mode == "write_disabled"
         assert stats.failed_count >= 5

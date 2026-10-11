@@ -81,10 +81,22 @@ class TestCacheWriterNeverDie(unittest.TestCase):
         writer.stop(timeout=30.0)
         self.assertFalse(writer.is_alive)
 
-        self.assertLessEqual(accepted, 17, "at most bound+in-flight accepted")
+        # Cumulative accepts during the storm are not just "queue bound + 1":
+        # the writer concurrently dequeues (and fails) items, freeing slots
+        # for new accepts until write-disabled engages. Bound is therefore
+        # queue capacity + items consumable before disable + one race window
+        # where enqueue passed the write_enabled check before disable landed.
+        max_queue_size = 16
+        disable_after = 5
+        storm_bound = max_queue_size + disable_after + 2
+        self.assertLessEqual(
+            accepted,
+            storm_bound,
+            "accepted bounded by queue + pre-disable consumes + race window",
+        )
         stats = writer.get_stats()
-        self.assertLessEqual(stats.queue_size, 16)
-        self.assertGreaterEqual(stats.dropped_count, 1000 - 17)
+        self.assertLessEqual(stats.queue_size, max_queue_size)
+        self.assertGreaterEqual(stats.dropped_count, 1000 - storm_bound)
         self.assertFalse(stats.write_enabled, "write-disabled mode must be entered")
         self.assertEqual(stats.mode, "write_disabled")
         self.assertGreaterEqual(stats.failed_count, 5)
