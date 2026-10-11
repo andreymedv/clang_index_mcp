@@ -175,7 +175,12 @@ class ProjectIndexingOrchestrator:
         cache_hits: int,
         failed_count: int,
     ) -> int:
-        """Finalize indexing by saving state and reporting summary."""
+        """Finalize indexing by saving state and reporting summary.
+
+        Cache persistence is best-effort (REQ-6.7.1): a cache-only failure never
+        aborts indexing or flips status to ERROR (REQ-10.13.3). It is reported
+        via ``cache_persisted=false`` in the progress summary.
+        """
         self.symbol_store.indexed_file_count = indexed_count
         self.cache_orchestrator.last_index_time = time.time() - start_time
 
@@ -199,14 +204,37 @@ class ProjectIndexingOrchestrator:
             )
 
         self.symbol_extractor.resolve_deferred_instantiation_bases()
-        self.cache_orchestrator.save_cache()
+        cache_persisted = self._save_cache_best_effort()
+        self._save_auxiliary_state_best_effort()
+        if not cache_persisted:
+            # Deferred retry: one extra attempt after the rest of finalization.
+            diagnostics.warning("Cache save failed; attempting one deferred retry")
+            cache_persisted = self._save_cache_best_effort()
         self.cache_orchestrator.save_progress_summary(
-            indexed_count, total_files, cache_hits, failed_count
+            indexed_count, total_files, cache_hits, failed_count, cache_persisted=cache_persisted
         )
-        self.cache_orchestrator.save_header_tracking()
-        self.cache_manager.backend.rebuild_fts()
 
         return indexed_count
+
+    def _save_cache_best_effort(self) -> bool:
+        """Persist the index cache; never raises. Returns True if written."""
+        try:
+            return bool(self.cache_orchestrator.save_cache())
+        except Exception as e:
+            diagnostics.warning(f"Cache save failed (indexing continues): {e}")
+            self.cache_orchestrator.cache_persisted = False
+            return False
+
+    def _save_auxiliary_state_best_effort(self) -> None:
+        """Persist header tracking and rebuild FTS; never raises."""
+        try:
+            self.cache_orchestrator.save_header_tracking()
+        except Exception as e:
+            diagnostics.warning(f"Header tracking save failed (indexing continues): {e}")
+        try:
+            self.cache_manager.backend.rebuild_fts()
+        except Exception as e:
+            diagnostics.warning(f"FTS rebuild failed (indexing continues): {e}")
 
     @staticmethod
     def _update_indexing_counts(success: bool, was_cached: bool) -> tuple[int, int, int]:

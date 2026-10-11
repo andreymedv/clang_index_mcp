@@ -56,6 +56,9 @@ class CacheOrchestrator:
         self.call_graph_service = call_graph_service
 
         self.cache_loaded = False
+        # True once the current index is known to be on disk (successful load or
+        # save). Set False only when a write fails — cache is best-effort (REQ-6.7.1).
+        self.cache_persisted = True
         self.last_index_time = 0.0
         self.compile_commands_hash = ""
         self.header_tracker = HeaderProcessingTracker()
@@ -348,72 +351,92 @@ class CacheOrchestrator:
             return int(self.symbol_store.indexed_file_count)  # type: ignore[no-any-return]
         return None
 
-    def save_cache(self):
-        """Save index to cache file"""
-        # Get current config file info
-        config_path = self.config.config_path
-        config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
+    def save_cache(self) -> bool:
+        """Save index to cache file.
 
-        # Get current compile_commands.json info
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compilation_env.compile_commands_manager is not None:
-            cc_path = (
-                self.project_root
-                / self.compilation_env.compile_commands_manager.compile_commands_path
+        Best-effort (REQ-6.7.1): never raises. Updates ``cache_persisted`` and
+        returns True only when the write succeeded.
+        """
+        try:
+            # Get current config file info
+            config_path = self.config.config_path
+            config_mtime = (
+                config_path.stat().st_mtime if config_path and config_path.exists() else None
             )
-            cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
-        else:
-            cc_path = None
-            cc_mtime = None
 
-        validation_context = CacheValidationContext(
-            config_file_path=config_path,
-            config_file_mtime=config_mtime,
-            compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
-            compile_commands_mtime=cc_mtime,
-        )
-        self.cache_manager.save_cache(
-            self.symbol_store.class_index,
-            self.symbol_store.function_index,
-            self.symbol_store.file_hashes,
-            self.symbol_store.indexed_file_count,
-            self.compilation_env.include_dependencies,
-            validation_context=validation_context,
-        )
+            # Get current compile_commands.json info
+            # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+            if self.compilation_env.compile_commands_manager is not None:
+                cc_path = (
+                    self.project_root
+                    / self.compilation_env.compile_commands_manager.compile_commands_path
+                )
+                cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+            else:
+                cc_path = None
+                cc_mtime = None
+
+            validation_context = CacheValidationContext(
+                config_file_path=config_path,
+                config_file_mtime=config_mtime,
+                compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
+                compile_commands_mtime=cc_mtime,
+            )
+            persisted = bool(
+                self.cache_manager.save_cache(
+                    self.symbol_store.class_index,
+                    self.symbol_store.function_index,
+                    self.symbol_store.file_hashes,
+                    self.symbol_store.indexed_file_count,
+                    self.compilation_env.include_dependencies,
+                    validation_context=validation_context,
+                )
+            )
+        except Exception as e:
+            diagnostics.warning(f"save_cache failed (indexing continues, cache preserved): {e}")
+            persisted = False
+        self.cache_persisted = persisted
+        return persisted
 
     def load_cache(self) -> bool:
-        """Load index from cache file"""
-        # Get current config file info
-        config_path = self.config.config_path
-        config_mtime = config_path.stat().st_mtime if config_path and config_path.exists() else None
+        """Load index from cache file.
 
-        # Get current compile_commands.json info
-        # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
-        if self.compilation_env.compile_commands_manager is not None:
-            cc_path = (
-                self.project_root
-                / self.compilation_env.compile_commands_manager.compile_commands_path
-            )
-            cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
-        else:
-            cc_path = None
-            cc_mtime = None
-
-        validation_context = CacheValidationContext(
-            config_file_path=config_path,
-            config_file_mtime=config_mtime,
-            compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
-            compile_commands_mtime=cc_mtime,
-        )
-        cache_data = self.cache_manager.load_cache(
-            self.compilation_env.include_dependencies,
-            validation_context=validation_context,
-        )
-        if not cache_data:
-            self.cache_loaded = False
-            return False
-
+        Never raises (REQ-6.3.3): failure is treated as a cache miss so the
+        caller proceeds to a full re-parse.
+        """
         try:
+            # Get current config file info
+            config_path = self.config.config_path
+            config_mtime = (
+                config_path.stat().st_mtime if config_path and config_path.exists() else None
+            )
+
+            # Get current compile_commands.json info
+            # Task 3.2: Skip if CompileCommandsManager not initialized (worker mode)
+            if self.compilation_env.compile_commands_manager is not None:
+                cc_path = (
+                    self.project_root
+                    / self.compilation_env.compile_commands_manager.compile_commands_path
+                )
+                cc_mtime = cc_path.stat().st_mtime if cc_path.exists() else None
+            else:
+                cc_path = None
+                cc_mtime = None
+
+            validation_context = CacheValidationContext(
+                config_file_path=config_path,
+                config_file_mtime=config_mtime,
+                compile_commands_path=cc_path if cc_path and cc_path.exists() else None,
+                compile_commands_mtime=cc_mtime,
+            )
+            cache_data = self.cache_manager.load_cache(
+                self.compilation_env.include_dependencies,
+                validation_context=validation_context,
+            )
+            if not cache_data:
+                self.cache_loaded = False
+                return False
+
             self.symbol_store.populate_indexes_from_cache(cache_data)
             self.symbol_store.rebuild_auxiliary_structures()
 
@@ -426,6 +449,7 @@ class CacheOrchestrator:
                 f"{self.symbol_store.function_name_count()} functions"
             )
             self.cache_loaded = True
+            self.cache_persisted = True
             return True
 
         except Exception as e:
@@ -434,13 +458,25 @@ class CacheOrchestrator:
             return False
 
     def save_progress_summary(
-        self, indexed_count: int, total_files: int, cache_hits: int, failed_count: int = 0
+        self,
+        indexed_count: int,
+        total_files: int,
+        cache_hits: int,
+        failed_count: int = 0,
+        cache_persisted: bool | None = None,
     ):
-        """Save a summary of indexing progress"""
+        """Save a summary of indexing progress.
+
+        ``status`` is only "complete" or "interrupted" — a cache-write failure
+        never becomes ERROR (REQ-10.13.3 reserves ERROR for task crashes);
+        it is reported via ``cache_persisted=false`` instead.
+        """
         status = "complete" if indexed_count + failed_count == total_files else "interrupted"
         # Count total symbols (not just unique names)
         class_count = self.symbol_store.total_class_symbols()
         function_count = self.symbol_store.total_function_symbols()
+        if cache_persisted is None:
+            cache_persisted = self.cache_persisted
 
         self.cache_manager.save_progress(
             total_files,
@@ -451,4 +487,5 @@ class CacheOrchestrator:
             class_count,
             function_count,
             status,
+            cache_persisted=cache_persisted,
         )

@@ -157,13 +157,26 @@ class RefreshPipeline:
         return refreshed, failed
 
     def _finalize_refresh(self, refreshed: int, deleted: int) -> None:
-        """Perform post-refresh cleanup and optimizations."""
+        """Perform post-refresh cleanup and optimizations.
+
+        Cache persistence is best-effort (REQ-6.7.1); failures never abort refresh.
+        """
         if refreshed > 0 or deleted > 0:
             self.symbol_extractor.resolve_deferred_instantiation_bases()
-            self.cache_orchestrator.save_cache()
-            self.cache_orchestrator.save_header_tracking()
+            try:
+                self.cache_orchestrator.save_cache()
+            except Exception as e:
+                diagnostics.warning(f"Cache save failed (refresh continues): {e}")
+                self.cache_orchestrator.cache_persisted = False
+            try:
+                self.cache_orchestrator.save_header_tracking()
+            except Exception as e:
+                diagnostics.warning(f"Header tracking save failed (refresh continues): {e}")
             if deleted > 0:
                 diagnostics.info(f"Removed {deleted} deleted files from indexes")
             if refreshed > 0:
-                self.cache_manager.backend.rebuild_fts()
+                try:
+                    self.cache_manager.backend.rebuild_fts()
+                except Exception as e:
+                    diagnostics.warning(f"FTS rebuild failed (refresh continues): {e}")
         self.symbol_store.indexed_file_count = len(list(self.symbol_store.iter_file_paths()))

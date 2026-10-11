@@ -702,8 +702,9 @@ class CacheManager:
         class_count: int,
         function_count: int,
         status: str = "in_progress",
+        cache_persisted: bool | None = None,
     ):
-        """Save indexing progress"""
+        """Save indexing progress. Failures are log-only (REQ-10.13.2)."""
         try:
             progress_file = self.cache_dir / "indexing_progress.json"
             progress_data = {
@@ -718,6 +719,8 @@ class CacheManager:
                 "function_count": function_count,
                 "status": status,
             }
+            if cache_persisted is not None:
+                progress_data["cache_persisted"] = cache_persisted
 
             with open(progress_file, "w") as f:
                 json.dump(progress_data, f, indent=2)
