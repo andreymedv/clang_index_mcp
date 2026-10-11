@@ -29,6 +29,26 @@ class CacheRecoveryPort(Protocol):
         """
         ...
 
+    def record_recovery(self, operation: str, attempted: bool, succeeded: bool) -> None:
+        """Record the outcome of a recovery attempt (REQ-6.8.6)."""
+        ...
+
+    def mark_degraded(self, operation: str) -> None:
+        """Mark a call as having ended degraded (REQ-6.8.6)."""
+        ...
+
+    def is_degraded(self, operation: str) -> bool:
+        """Return True if the operation's most recent call ended degraded."""
+        ...
+
+    def get_and_clear_degraded(self, operation: str) -> bool:
+        """Atomically report degraded state for the last call and clear it."""
+        ...
+
+    def last_error_for(self, operation: str) -> dict[str, Any] | None:
+        """Return the most recent error state for one operation, or None."""
+        ...
+
     def get_error_summary(self) -> dict[str, Any]:
         """Return a summary of recent errors and operations."""
         ...

@@ -468,6 +468,47 @@ class CacheManager:
         """Reset error tracking state (useful for testing)."""
         self.recovery.reset()
 
+    # ------------------------------------------------------------------
+    # Error-state channel (REQ-6.8.6): empty vs degraded distinction
+    # ------------------------------------------------------------------
+
+    def _channel_method(self, name: str):
+        """Return a recovery-port channel method, or None when unavailable.
+
+        Custom recovery implementations predating the error-state channel do
+        not expose the query API; callers fall back to safe defaults so the
+        server keeps running (REQ-10.13.x).
+        """
+        method = getattr(self.recovery, name, None)
+        return method if callable(method) else None
+
+    def mark_degraded(self, operation: str) -> None:
+        """Mark a cache call as having ended degraded (REQ-6.8.6)."""
+        marker = self._channel_method("mark_degraded")
+        if marker is not None:
+            marker(operation)
+
+    def is_degraded(self, operation: str) -> bool:
+        """Return True if the operation's most recent call ended degraded."""
+        query = self._channel_method("is_degraded")
+        return bool(query(operation)) if query is not None else False
+
+    def get_and_clear_degraded(self, operation: str) -> bool:
+        """Atomically report degraded state for the last call and clear it."""
+        query = self._channel_method("get_and_clear_degraded")
+        return bool(query(operation)) if query is not None else False
+
+    def last_error_for(self, operation: str) -> dict[str, Any] | None:
+        """Return the most recent backend error state for one operation."""
+        query = self._channel_method("last_error_for")
+        return query(operation) if query is not None else None
+
+    def record_recovery_outcome(self, operation: str, attempted: bool, succeeded: bool) -> None:
+        """Record a recovery attempt outcome in the error-state channel."""
+        recorder = self._channel_method("record_recovery")
+        if recorder is not None:
+            recorder(operation, attempted, succeeded)
+
     def log_parse_error(
         self,
         file_path: str,

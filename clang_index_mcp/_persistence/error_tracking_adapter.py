@@ -32,6 +32,21 @@ class ErrorTrackingAdapter:
     ) -> bool:
         return self._error_tracker.record_error(error_type, error_message, operation, recoverable)
 
+    def record_recovery(self, operation: str, attempted: bool, succeeded: bool) -> None:
+        self._error_tracker.record_recovery(operation, attempted, succeeded)
+
+    def mark_degraded(self, operation: str) -> None:
+        self._error_tracker.mark_degraded(operation)
+
+    def is_degraded(self, operation: str) -> bool:
+        return self._error_tracker.is_degraded(operation)
+
+    def get_and_clear_degraded(self, operation: str) -> bool:
+        return self._error_tracker.get_and_clear_degraded(operation)
+
+    def last_error_for(self, operation: str) -> dict[str, Any] | None:
+        return self._error_tracker.last_error_for(operation)
+
     def get_error_summary(self) -> dict[str, Any]:
         return self._error_tracker.get_error_summary()
 
