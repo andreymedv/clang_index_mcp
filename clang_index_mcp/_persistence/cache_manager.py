@@ -1,5 +1,6 @@
 """Cache management for C++ analyzer."""
 
+import errno
 import json
 import sqlite3
 import sys
@@ -7,7 +8,7 @@ import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar
 
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
@@ -28,6 +29,52 @@ try:
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
+ErrorClass = Literal["transient", "resource", "corruption", "other"]
+
+# Transient retry defaults (REQ-6.7.3 / REQ-9.4.5). Constructor-injectable so
+# tests and child .10 can override without patching module state.
+DEFAULT_TRANSIENT_MAX_ATTEMPTS = 3
+DEFAULT_BACKOFF_BASE_SECONDS = 0.1
+DEFAULT_BACKOFF_CAP_SECONDS = 1.0
+
+_TRANSIENT_SQLITE_MARKERS = ("database is locked", "database is busy", "database table is locked")
+_CORRUPTION_MARKERS = ("corrupt", "malformed")
+_NETWORK_TIMEOUT_ERRNOS = frozenset(
+    {errno.ETIMEDOUT, getattr(errno, "ENETUNREACH", None), getattr(errno, "EHOSTUNREACH", None)}
+    - {None}
+)
+
+
+def classify_backend_error(error: BaseException) -> ErrorClass:
+    """Classify a backend error per REQ-6.7.3.
+
+    Order matters: OperationalError is a DatabaseError subclass and
+    TimeoutError is an OSError subclass, so transient markers are checked
+    before corruption and resource.
+    """
+    message = str(error).lower()
+
+    if isinstance(error, sqlite3.OperationalError) and any(
+        marker in message for marker in _TRANSIENT_SQLITE_MARKERS
+    ):
+        return "transient"
+    if isinstance(error, TimeoutError):
+        return "transient"
+    if isinstance(error, OSError) and error.errno in _NETWORK_TIMEOUT_ERRNOS:
+        return "transient"
+    if isinstance(error, OSError) and "timed out" in message:
+        return "transient"
+
+    if isinstance(error, sqlite3.DatabaseError) and any(
+        marker in message for marker in _CORRUPTION_MARKERS
+    ):
+        return "corruption"
+
+    if isinstance(error, (PermissionError, OSError)):
+        return "resource"
+
+    return "other"
+
 
 class CacheManager:
     """Manages caching for the C++ analyzer with pluggable backends."""
@@ -37,12 +84,19 @@ class CacheManager:
     #: the wrapper.
     _max_retries_after_recovery: int = 1
 
+    transient_max_attempts: int
+    backoff_base_seconds: float
+    backoff_cap_seconds: float
+
     def __init__(
         self,
         project_root_or_identity: Path | ProjectIdentity,
         skip_schema_recreation: bool = False,
         backend: CacheBackend | None = None,
         recovery: Optional["CacheRecoveryPort"] = None,
+        transient_max_attempts: int = DEFAULT_TRANSIENT_MAX_ATTEMPTS,
+        backoff_base_seconds: float = DEFAULT_BACKOFF_BASE_SECONDS,
+        backoff_cap_seconds: float = DEFAULT_BACKOFF_CAP_SECONDS,
     ):
         """
         Initialize CacheManager with project identity.
@@ -55,6 +109,11 @@ class CacheManager:
                     is created internally (backward compatibility).
             recovery: Optional pre-built recovery/error-tracking adapter. If None,
                      an ErrorTrackingAdapter is created internally.
+            transient_max_attempts: Total attempts for transient errors (REQ-6.7.3),
+                    including the first call. Must be >= 1.
+            backoff_base_seconds: Base delay for exponential backoff between
+                    transient retries.
+            backoff_cap_seconds: Upper bound for a single backoff delay.
 
         Backward Compatibility:
             Accepts Path for backward compatibility, automatically creates ProjectIdentity
@@ -64,6 +123,9 @@ class CacheManager:
             project_root_or_identity
         )
         self._skip_schema_recreation = skip_schema_recreation
+        self.transient_max_attempts = max(1, transient_max_attempts)
+        self.backoff_base_seconds = backoff_base_seconds
+        self.backoff_cap_seconds = backoff_cap_seconds
         self.cache_dir = self._ensure_cache_dir()
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
         self.recovery = self._init_recovery(recovery)
@@ -160,7 +222,7 @@ class CacheManager:
             the check failed (best-effort; failure is marked degraded).
         """
         outcome = self._safe_backend_call(
-            "ensure_schema_current", self.backend.ensure_schema_current
+            "ensure_schema_current", lambda: self.backend.ensure_schema_current()
         )
         return self._map_outcome("ensure_schema_current", outcome, False)
 
@@ -204,93 +266,156 @@ class CacheManager:
 
     def _handle_backend_error(self, error: Exception, operation: str) -> bool:
         """
-        Handle backend errors with tracking and recovery logic.
+        Classify a backend error and apply the REQ-6.7.3 recovery policy.
 
-        Args:
-            error: Exception that occurred
-            operation: Operation that failed
+        Policy:
+            - transient: record only; bounded backoff retry is the caller's job.
+            - resource (PermissionError/OSError/ENOSPC): record and fail fast.
+              NEVER clear the cache (REQ-6.7.2 / REQ-9.4.1).
+            - corruption: backup + repair/rebuild via ``_attempt_recovery``, then
+              the caller retries once (REQ-6.7.3 / REQ-9.3.4).
 
         Returns:
-            True if recovery was attempted, False otherwise
+            True only when recovery succeeded and the operation may be retried.
+
+        Never raises: error tracking or recovery failures are swallowed so the
+        wrapper contract holds even if the recovery port misbehaves.
         """
-        # Classify error type
-        error_type = type(error).__name__
-        error_message = str(error)
+        try:
+            error_class = classify_backend_error(error)
+            error_type = type(error).__name__
+            error_message = str(error)
+            recoverable = error_class in ("transient", "other")
 
-        # Determine if error is recoverable
-        recoverable = not isinstance(
-            error,
-            (
-                sqlite3.DatabaseError,  # Database corruption
-                PermissionError,  # Permission issues
-                OSError,  # Disk full, etc.
-            ),
-        )
+            self.recovery.record_error(
+                error_type, error_message, operation, recoverable=recoverable
+            )
 
-        # Record error
-        self.recovery.record_error(error_type, error_message, operation, recoverable=recoverable)
+            if error_class == "corruption":
+                recovery_succeeded = self._attempt_recovery(error, operation)
+                self.record_recovery_outcome(
+                    operation, attempted=True, succeeded=recovery_succeeded
+                )
+                return recovery_succeeded
 
-        # For critical errors (corruption, disk full), attempt recovery
-        if not recoverable:
-            recovery_attempted = self._attempt_recovery(error, operation)
-            return recovery_attempted
+            if error_class == "resource":
+                diagnostics.error(
+                    f"Resource error in {operation} — cache preserved, no retry: "
+                    f"{error_type}: {error_message}"
+                )
+                return False
 
-        return False
+            return False
+        except Exception as handling_error:
+            diagnostics.error(
+                f"Error handling failed in {operation}: "
+                f"{type(handling_error).__name__}: {handling_error}"
+            )
+            return False
 
     def _attempt_recovery(self, error: Exception, operation: str) -> bool:
         """
-        Attempt to recover from critical error.
+        Attempt non-destructive recovery from a critical (corruption) error.
 
-        Args:
-            error: Exception that occurred
-            operation: Operation that failed
+        Corrupt cache (REQ-6.7.3 / REQ-9.3.4):
+            1. forensic backup via ``recovery.backup_database``
+            2. ``recovery.attempt_repair`` (dump/restore rebuild)
+            3. last resort ONLY when repair failed — i.e. the database is
+               unreadable beyond repair (integrity check and data dump both
+               failed): clear the live cache so a fresh one can be built.
+               This path is never taken for resource errors (PermissionError /
+               OSError / ENOSPC), which always preserve the cache (REQ-6.7.2).
 
         Returns:
-            True if recovery successful, False otherwise
-        """
-        diagnostics.warning(f"Attempting recovery from {type(error).__name__} in {operation}")
+            True if recovery succeeded and the backend is ready for a retry.
 
-        # For database corruption, try repair (sqlite3 uses both "corrupt" and "malformed")
-        if isinstance(error, sqlite3.DatabaseError) and (
-            "corrupt" in str(error).lower() or "malformed" in str(error).lower()
-        ):
+        Never raises.
+        """
+        try:
+            if classify_backend_error(error) != "corruption":
+                # Resource and other classes must not destroy the cache.
+                return False
+
+            diagnostics.warning(f"Attempting recovery from {type(error).__name__} in {operation}")
             diagnostics.info("Database corruption detected, attempting repair...")
 
-            # Create backup first
             db_path = self.cache_dir / "symbols.db"
             backup_path = self.recovery.backup_database(db_path)
-
             if not backup_path:
                 diagnostics.error("Failed to create backup before repair")
                 return False
 
-            # Attempt repair
             if self.recovery.attempt_repair(db_path):
                 diagnostics.info("Database repair successful")
-                # Reconnect to repaired database
-                try:
-                    from .._persistence.sqlite_cache_backend import SqliteCacheBackend
+                return self._reconnect_backend(db_path)
 
-                    self.backend = SqliteCacheBackend(db_path)
-                    return True
-                except Exception as e:
-                    diagnostics.error(f"Failed to reconnect after repair: {e}")
-                    return False
-            else:
-                diagnostics.error("Database repair failed")
-                return False
-
-        # For permission errors or disk full, clear cache as last resort
-        elif isinstance(error, (PermissionError, OSError)):
-            diagnostics.warning(f"Clearing cache due to {type(error).__name__}")
+            diagnostics.error("Database repair failed")
+            # LAST RESORT (documented condition): attempt_repair returned False,
+            # meaning PRAGMA integrity_check failed AND the dump-and-rebuild path
+            # failed — the cache is unreadable beyond repair. Clearing lets a
+            # fresh cache be rebuilt; the forensic backup above is left for
+            # inspection. Never used for resource errors.
+            diagnostics.warning(
+                "Cache unreadable beyond repair; clearing as last resort "
+                f"({operation}, backup at {backup_path})"
+            )
             if self.recovery.clear_cache(self.cache_dir):
                 diagnostics.info("Cache cleared successfully")
-                return True
-            else:
-                diagnostics.error("Failed to clear cache")
-                return False
+                return self._reconnect_backend(db_path)
+            diagnostics.error("Failed to clear cache")
+            return False
+        except Exception as recovery_error:
+            diagnostics.error(
+                f"Recovery attempt failed in {operation}: "
+                f"{type(recovery_error).__name__}: {recovery_error}"
+            )
+            return False
 
-        return False
+    def _reconnect_backend(self, db_path: Path) -> bool:
+        """Rebuild the backend handle against ``db_path`` after repair/clear."""
+        try:
+            from .._persistence.sqlite_cache_backend import SqliteCacheBackend
+
+            self.backend = SqliteCacheBackend(db_path)
+            return True
+        except Exception as e:
+            diagnostics.error(f"Failed to reconnect after repair: {e}")
+            return False
+
+    def _backoff_delay(self, attempt: int) -> float:
+        """Exponential backoff delay for a 1-based retry attempt number."""
+        delay = self.backoff_base_seconds * float(2 ** (attempt - 1))
+        return float(min(delay, self.backoff_cap_seconds))
+
+    def _retry_with_backoff(
+        self,
+        operation: str,
+        func: Callable[..., T],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        last_error: Exception,
+    ) -> BackendOutcome[T]:
+        """Retry a transient failure with bounded exponential backoff (REQ-6.7.3)."""
+        last = last_error
+        remaining = self.transient_max_attempts - 1
+        for attempt in range(1, remaining + 1):
+            try:
+                time.sleep(self._backoff_delay(attempt))
+            except Exception:
+                pass
+            try:
+                result = func(*args, **kwargs)
+                self.recovery.record_operation(operation)
+                return BackendOutcome(value=result)
+            except Exception as retry_error:
+                diagnostics.warning(
+                    f"Transient retry {attempt}/{remaining} failed in {operation}: "
+                    f"{type(retry_error).__name__}: {retry_error}"
+                )
+                last = retry_error
+                if classify_backend_error(retry_error) != "transient":
+                    break
+        return BackendOutcome(error=last)
 
     def _map_outcome(
         self,
@@ -355,10 +480,10 @@ class CacheManager:
         kwargs: dict[str, Any],
         error: Exception,
     ) -> BackendOutcome[T]:
-        """Handle a failed backend call without ever raising (REQ-6.8.5)."""
+        """Handle a failed backend call without ever raising (REQ-6.8.5 / REQ-6.7.3)."""
         diagnostics.error(f"Backend error in {operation}: {type(error).__name__}: {error}")
+        error_class = classify_backend_error(error)
 
-        recovery_succeeded = False
         try:
             recovery_succeeded = self._handle_backend_error(error, operation)
         except Exception as handling_error:
@@ -367,6 +492,9 @@ class CacheManager:
                 f"{type(handling_error).__name__}: {handling_error}"
             )
             return BackendOutcome(error=error)
+
+        if error_class == "transient":
+            return self._retry_with_backoff(operation, func, args, kwargs, error)
 
         if recovery_succeeded and self._max_retries_after_recovery > 0:
             try:
@@ -408,16 +536,17 @@ class CacheManager:
             compile_commands_mtime = validation_context.compile_commands_mtime
         outcome = self._safe_backend_call(
             "save_cache",
-            self.backend.save_cache,
-            class_index,
-            function_index,
-            file_hashes,
-            indexed_file_count,
-            include_dependencies,
-            config_file_path,
-            config_file_mtime,
-            compile_commands_path,
-            compile_commands_mtime,
+            lambda: self.backend.save_cache(
+                class_index,
+                function_index,
+                file_hashes,
+                indexed_file_count,
+                include_dependencies,
+                config_file_path,
+                config_file_mtime,
+                compile_commands_path,
+                compile_commands_mtime,
+            ),
         )
         return self._map_outcome("save_cache", outcome, False)
 
@@ -438,12 +567,13 @@ class CacheManager:
             compile_commands_mtime = validation_context.compile_commands_mtime
         outcome = self._safe_backend_call(
             "load_cache",
-            self.backend.load_cache,
-            include_dependencies,
-            config_file_path,
-            config_file_mtime,
-            compile_commands_path,
-            compile_commands_mtime,
+            lambda: self.backend.load_cache(
+                include_dependencies,
+                config_file_path,
+                config_file_mtime,
+                compile_commands_path,
+                compile_commands_mtime,
+            ),
         )
         # Error and genuine miss converge to the same safe action: full re-parse.
         return self._map_outcome(
@@ -466,14 +596,15 @@ class CacheManager:
         """Save parsed symbols for a single file with compilation arguments hash"""
         outcome = self._safe_backend_call(
             "save_file_cache",
-            self.backend.save_file_cache,
-            file_path,
-            symbols,
-            file_hash,
-            compile_args_hash,
-            success,
-            error_message,
-            retry_count,
+            lambda: self.backend.save_file_cache(
+                file_path,
+                symbols,
+                file_hash,
+                compile_args_hash,
+                success,
+                error_message,
+                retry_count,
+            ),
         )
         return self._map_outcome("save_file_cache", outcome, False)
 
@@ -483,10 +614,7 @@ class CacheManager:
         """Load cached data for a file if hash matches"""
         outcome = self._safe_backend_call(
             "load_file_cache",
-            self.backend.load_file_cache,
-            file_path,
-            current_hash,
-            compile_args_hash,
+            lambda: self.backend.load_file_cache(file_path, current_hash, compile_args_hash),
         )
         # Error and genuine miss converge to the same safe action: re-parse.
         return self._map_outcome(
@@ -499,7 +627,7 @@ class CacheManager:
     def remove_file_cache(self, file_path: str) -> bool:
         """Remove cached data for a deleted file"""
         outcome = self._safe_backend_call(
-            "remove_file_cache", self.backend.remove_file_cache, file_path
+            "remove_file_cache", lambda: self.backend.remove_file_cache(file_path)
         )
         return self._map_outcome("remove_file_cache", outcome, False)
 

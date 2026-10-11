@@ -14,7 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 # Import test infrastructure
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -320,7 +320,7 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         # Should now be using JSON backend
 
     def test_corruption_triggers_recovery(self):
-        """Test that corruption triggers recovery attempt"""
+        """Corruption: backup + repair + retry once (REQ-6.7.3 / REQ-9.3.4)."""
         cache_manager = self._create_cache_manager()
 
         # Record successful operations to avoid immediate fallback
@@ -330,23 +330,76 @@ class TestCacheManagerErrorHandling(unittest.TestCase):
         # Get DB path
         db_path = cache_manager.cache_dir / "symbols.db"
 
-        # Mock backend to raise corruption error
+        # Mock backend to raise corruption error once, then succeed on retry
         corruption_error = sqlite3.DatabaseError("database disk image is malformed")
-        cache_manager.backend.save_cache = Mock(side_effect=corruption_error)
+        save_mock = Mock(side_effect=[corruption_error, True])
+        cache_manager.backend.save_cache = save_mock
 
-        # Mock recovery manager
+        # Mock recovery manager (keep the fault-injected backend in place)
         self.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
         self.recovery_manager.attempt_repair = Mock(return_value=True)
+        self.recovery_manager.clear_cache = Mock(return_value=True)
+        cache_manager._reconnect_backend = Mock(return_value=True)
 
         # Attempt save (will trigger error handling)
         result = cache_manager.save_cache(
             class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
-        # Verify recovery was attempted
-        # Recovery is triggered for database corruption (detected by "corrupt" or "malformed" in message)
+        # Verify recovery was attempted and the operation was retried once
         self.recovery_manager.backup_database.assert_called_once()
         self.recovery_manager.attempt_repair.assert_called_once()
+        self.assertEqual(
+            save_mock.call_count,
+            2,
+            "Corruption path must retry the operation exactly once after recovery",
+        )
+        self.assertTrue(result, "Retry after successful repair should succeed")
+        # Last resort clear is NOT reached when repair succeeds
+        self.recovery_manager.clear_cache.assert_not_called()
+
+    def test_corruption_last_resort_clear_only_when_unrepairable(self):
+        """Clearing happens only after backup + failed repair (unreadable)."""
+        cache_manager = self._create_cache_manager()
+        db_path = cache_manager.cache_dir / "symbols.db"
+
+        corruption_error = sqlite3.DatabaseError("database disk image is malformed")
+        save_mock = Mock(side_effect=corruption_error)
+        cache_manager.backend.save_cache = save_mock
+        self.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
+        self.recovery_manager.attempt_repair = Mock(return_value=False)
+        self.recovery_manager.clear_cache = Mock(return_value=True)
+        cache_manager._reconnect_backend = Mock(return_value=True)
+
+        result = cache_manager.save_cache(
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+        )
+
+        self.assertFalse(result)
+        self.recovery_manager.backup_database.assert_called_once()
+        self.recovery_manager.attempt_repair.assert_called_once()
+        # Repair failed and DB is unreadable beyond repair -> last-resort clear
+        self.recovery_manager.clear_cache.assert_called_once()
+        # Retry after last-resort rebuild still uses the original callable
+        self.assertEqual(save_mock.call_count, 2)
+
+    def test_corruption_backup_failure_never_clears(self):
+        """If the forensic backup fails, the cache must not be cleared."""
+        cache_manager = self._create_cache_manager()
+
+        corruption_error = sqlite3.DatabaseError("database disk image is malformed")
+        cache_manager.backend.save_cache = Mock(side_effect=corruption_error)
+        self.recovery_manager.backup_database = Mock(return_value=None)
+        self.recovery_manager.attempt_repair = Mock(return_value=True)
+        self.recovery_manager.clear_cache = Mock(return_value=True)
+
+        cache_manager.save_cache(
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+        )
+
+        self.recovery_manager.backup_database.assert_called_once()
+        self.recovery_manager.attempt_repair.assert_not_called()
+        self.recovery_manager.clear_cache.assert_not_called()
 
     def test_reset_error_tracking(self):
         """Test resetting error tracking"""
@@ -408,14 +461,16 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         return cm
 
     def test_permission_error_handling(self):
-        """Test handling of permission errors"""
+        """Permission errors fail fast and NEVER clear the cache (REQ-6.7.2/9.4.1)."""
         cache_manager = self._create_cache_manager()
 
         # Mock permission error
         cache_manager.backend.save_cache = Mock(side_effect=PermissionError("Access denied"))
 
-        # Mock clear cache to succeed
+        # Mock clear cache — must not be called for resource errors
         self.recovery_manager.clear_cache = Mock(return_value=True)
+        self.recovery_manager.backup_database = Mock(return_value="x.backup")
+        self.recovery_manager.attempt_repair = Mock(return_value=True)
 
         # Attempt operation
         result = cache_manager.save_cache(
@@ -425,11 +480,20 @@ class TestErrorHandlingScenarios(unittest.TestCase):
         # Should handle error
         self.assertFalse(result, "Should return False on permission error")
 
-        # Recovery should be attempted (clear_cache is called for PermissionError)
-        self.recovery_manager.clear_cache.assert_called_once()
+        # Cache is preserved: no clearing, no recovery, no retry
+        self.recovery_manager.clear_cache.assert_not_called()
+        self.recovery_manager.backup_database.assert_not_called()
+        self.recovery_manager.attempt_repair.assert_not_called()
+        self.assertEqual(
+            cache_manager.backend.save_cache.call_count,
+            1,
+            "Resource errors must not be retried",
+        )
 
     def test_disk_full_error_handling(self):
-        """Test handling of disk full errors"""
+        """Disk-full errors fail fast, preserve cache, and log clearly (REQ-9.4.1)."""
+        from clang_index_mcp._core import diagnostics
+
         cache_manager = self._create_cache_manager()
 
         # Mock disk full error
@@ -437,41 +501,158 @@ class TestErrorHandlingScenarios(unittest.TestCase):
             side_effect=OSError("[Errno 28] No space left on device")
         )
 
-        # Mock clear cache to succeed
+        # Mock clear cache — must not be called for resource errors
         self.recovery_manager.clear_cache = Mock(return_value=True)
+        self.recovery_manager.backup_database = Mock(return_value="x.backup")
+        self.recovery_manager.attempt_repair = Mock(return_value=True)
 
         # Attempt operation
-        result = cache_manager.save_cache(
-            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
-        )
+        with patch.object(diagnostics, "error") as mock_error:
+            result = cache_manager.save_cache(
+                class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+            )
 
         # Should handle error
         self.assertFalse(result, "Should return False on disk full error")
 
-        # Recovery should be attempted (clear_cache is called for OSError)
-        self.recovery_manager.clear_cache.assert_called_once()
+        # Cache preserved, no destructive recovery, no retry
+        self.recovery_manager.clear_cache.assert_not_called()
+        self.recovery_manager.backup_database.assert_not_called()
+        self.recovery_manager.attempt_repair.assert_not_called()
+        self.assertEqual(cache_manager.backend.save_cache.call_count, 1)
 
-    def test_locked_database_retry(self):
-        """Test handling of database locked errors"""
+        # Clear diagnostic message mentioning cache preservation
+        messages = " ".join(str(call.args[0]) for call in mock_error.call_args_list)
+        self.assertIn("cache preserved", messages)
+        self.assertIn("save_cache", messages)
+
+    def test_permission_error_preserves_existing_cache_files(self):
+        """Resource errors must leave cache files on disk (REQ-6.7.2)."""
         cache_manager = self._create_cache_manager()
+        db_path = cache_manager.cache_dir / "symbols.db"
+        db_path.write_text("existing cache")
 
-        # Mock database locked error
-        cache_manager.backend.save_cache = Mock(
-            side_effect=sqlite3.OperationalError("database is locked")
+        cache_manager.backend.save_cache = Mock(side_effect=PermissionError("Access denied"))
+        self.recovery_manager.clear_cache = Mock(
+            side_effect=self.recovery_manager.clear_cache
         )
 
-        # Attempt operation
-        result = cache_manager.save_cache(
+        cache_manager.save_cache(
             class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
         )
 
+        self.assertTrue(db_path.exists(), "Cache file must survive a permission error")
+        self.recovery_manager.clear_cache.assert_not_called()
+
+    def test_locked_database_retry(self):
+        """Transient locked errors are retried with backoff then reported (REQ-6.7.3)."""
+        cache_manager = self._create_cache_manager()
+        cache_manager.transient_max_attempts = 3
+        cache_manager.backoff_base_seconds = 0.01
+
+        locked = sqlite3.OperationalError("database is locked")
+        cache_manager.backend.save_cache = Mock(side_effect=locked)
+
+        with patch(
+            "clang_index_mcp._persistence.cache_manager.time.sleep"
+        ) as mock_sleep:
+            result = cache_manager.save_cache(
+                class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+            )
+
         # Should handle error (may not succeed but won't crash)
         self.assertFalse(result, "Should return False on database locked error")
+
+        # 1 initial attempt + 2 retries = 3 calls, 2 sleeps
+        self.assertEqual(cache_manager.backend.save_cache.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
 
         # Error should be tracked
         summary = cache_manager.get_error_summary()
         self.assertGreater(summary["total_errors"], 0, "Should have tracked the error")
         self.assertGreater(summary["total_operations"], 0, "Should have tracked the operation")
+
+    def test_transient_retry_success_after_backoff(self):
+        """A transient error that heals on retry returns success without recovery."""
+        cache_manager = self._create_cache_manager()
+        cache_manager.transient_max_attempts = 3
+        cache_manager.backoff_base_seconds = 0.01
+
+        locked = sqlite3.OperationalError("database is locked")
+        cache_manager.backend.save_cache = Mock(side_effect=[locked, True])
+        self.recovery_manager.clear_cache = Mock(return_value=True)
+
+        with patch(
+            "clang_index_mcp._persistence.cache_manager.time.sleep"
+        ):
+            result = cache_manager.save_cache(
+                class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(cache_manager.backend.save_cache.call_count, 2)
+        self.recovery_manager.clear_cache.assert_not_called()
+
+    def test_transient_retry_never_clears_cache(self):
+        """Transient retries must not destroy the cache."""
+        cache_manager = self._create_cache_manager()
+        cache_manager.transient_max_attempts = 2
+        cache_manager.backoff_base_seconds = 0.01
+
+        cache_manager.backend.save_cache = Mock(
+            side_effect=sqlite3.OperationalError("database is busy")
+        )
+        self.recovery_manager.clear_cache = Mock(return_value=True)
+        self.recovery_manager.backup_database = Mock(return_value="x.backup")
+
+        with patch(
+            "clang_index_mcp._persistence.cache_manager.time.sleep"
+        ):
+            cache_manager.save_cache(
+                class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+            )
+
+        self.recovery_manager.clear_cache.assert_not_called()
+        self.recovery_manager.backup_database.assert_not_called()
+
+    def test_resource_error_records_outcome_without_recovery(self):
+        """Resource errors record the error but never attempt recovery."""
+        cache_manager = self._create_cache_manager()
+        cache_manager.backend.save_cache = Mock(side_effect=OSError(28, "No space left on device"))
+        self.recovery_manager.clear_cache = Mock(return_value=True)
+
+        cache_manager.save_cache(
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+        )
+
+        summary = cache_manager.get_error_summary()
+        self.assertGreater(summary["total_errors"], 0)
+        self.assertFalse(summary.get("recovery_attempted", False))
+        self.assertFalse(summary.get("recovery_succeeded", False))
+        self.recovery_manager.clear_cache.assert_not_called()
+
+    def test_corruption_records_recovery_outcome(self):
+        """Corruption recovery outcomes are recorded on the error-state channel."""
+        cache_manager = self._create_cache_manager()
+        db_path = cache_manager.cache_dir / "symbols.db"
+
+        corruption_error = sqlite3.DatabaseError("database disk image is malformed")
+        save_mock = Mock(side_effect=[corruption_error, True])
+        cache_manager.backend.save_cache = save_mock
+        self.recovery_manager.backup_database = Mock(return_value=str(db_path) + ".backup")
+        self.recovery_manager.attempt_repair = Mock(return_value=True)
+        cache_manager._reconnect_backend = Mock(return_value=True)
+
+        cache_manager.save_cache(
+            class_index={}, function_index={}, file_hashes={}, indexed_file_count=0
+        )
+
+        summary = cache_manager.get_error_summary()
+        self.assertTrue(summary.get("recovery_attempted"))
+        self.assertTrue(summary.get("recovery_succeeded"))
+        self.assertGreaterEqual(summary.get("recovery_attempts", 0), 1)
+        self.assertGreaterEqual(summary.get("recovery_successes", 0), 1)
+        self.assertEqual(save_mock.call_count, 2)
 
 
 if __name__ == "__main__":
