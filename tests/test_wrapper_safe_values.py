@@ -59,11 +59,12 @@ class TestWrapperSafeValueMapping(unittest.TestCase):
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def _create_cache_manager(self, backend: Mock | None = None) -> CacheManager:
+    def _create_cache_manager(self, backend: Mock | None = None, **kwargs) -> CacheManager:
         cm = CacheManager(
             self.temp_project_dir,
             backend=backend,
             recovery=self.recovery_adapter,
+            **kwargs,
         )
         self.cache_managers.append(cm)
         return cm
@@ -295,7 +296,9 @@ class TestWrapperSafeValueMapping(unittest.TestCase):
             "get_all_alias_mappings",
         ):
             setattr(backend, name, Mock(side_effect=OSError("down")))
-        cm = self._create_cache_manager(backend)
+        # High threshold so each method's failure is observed individually;
+        # short-circuit behavior is covered by tests/test_degradation_mode.py.
+        cm = self._create_cache_manager(backend, degradation_failure_threshold=100)
 
         cm.save_cache(class_index={}, function_index={}, file_hashes={}, indexed_file_count=0)
         cm.load_cache()

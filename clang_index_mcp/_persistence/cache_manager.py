@@ -10,8 +10,17 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar
 
+from .._core.error_tracking import operation_class
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
+from .._persistence.degradation import (
+    DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_FAILURE_THRESHOLD,
+    DEFAULT_PROBE_INTERVAL_SECONDS,
+    CallAdmission,
+    CircuitOpenError,
+    DegradationMode,
+)
 from .._persistence.outcome import BackendOutcome
 from .._persistence.project_identity import ProjectIdentity
 from .._symbols.model import SymbolInfo
@@ -97,6 +106,11 @@ class CacheManager:
         transient_max_attempts: int = DEFAULT_TRANSIENT_MAX_ATTEMPTS,
         backoff_base_seconds: float = DEFAULT_BACKOFF_BASE_SECONDS,
         backoff_cap_seconds: float = DEFAULT_BACKOFF_CAP_SECONDS,
+        degradation: DegradationMode | None = None,
+        degradation_failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
+        degradation_cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS,
+        degradation_probe_interval_seconds: float = DEFAULT_PROBE_INTERVAL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
     ):
         """
         Initialize CacheManager with project identity.
@@ -114,6 +128,14 @@ class CacheManager:
             backoff_base_seconds: Base delay for exponential backoff between
                     transient retries.
             backoff_cap_seconds: Upper bound for a single backoff delay.
+            degradation: Optional pre-built DegradationMode (child .10). If None,
+                    one is created from the degradation_* / clock arguments.
+            degradation_failure_threshold: Consecutive failures before a class
+                    enters Degraded (ignored when ``degradation`` is provided).
+            degradation_cooldown_seconds: Short-circuit log rate-limit and
+                    minimum delay before the first recovery probe.
+            degradation_probe_interval_seconds: Minimum delay between probes.
+            clock: Monotonic clock used by the degradation state machine.
 
         Backward Compatibility:
             Accepts Path for backward compatibility, automatically creates ProjectIdentity
@@ -126,6 +148,12 @@ class CacheManager:
         self.transient_max_attempts = max(1, transient_max_attempts)
         self.backoff_base_seconds = backoff_base_seconds
         self.backoff_cap_seconds = backoff_cap_seconds
+        self._degradation = degradation or DegradationMode(
+            failure_threshold=degradation_failure_threshold,
+            cooldown_seconds=degradation_cooldown_seconds,
+            probe_interval_seconds=degradation_probe_interval_seconds,
+            clock=clock,
+        )
         self.cache_dir = self._ensure_cache_dir()
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
         self.recovery = self._init_recovery(recovery)
@@ -438,7 +466,10 @@ class CacheManager:
             return outcome.value
         if not outcome.ok:
             self.mark_degraded(operation)
-            if log_note is not None and outcome.error is not None:
+            # Short-circuit logs are already rate-limited by DegradationMode;
+            # do not re-log every suppressed call via the per-method note.
+            is_short_circuit = isinstance(outcome.error, CircuitOpenError)
+            if log_note is not None and outcome.error is not None and not is_short_circuit:
                 diagnostics.warning(f"{log_note}: {type(outcome.error).__name__}: {outcome.error}")
         return default
 
@@ -466,12 +497,41 @@ class CacheManager:
         Returns:
             BackendOutcome carrying either the backend value or the error.
         """
+        admission = self._degradation.admit(operation)
+        if admission is CallAdmission.SHORT_CIRCUIT:
+            return self._short_circuit_outcome(operation)
         try:
             self.recovery.record_operation(operation)
             result = func(*args, **kwargs)
+            self._degradation.note_success(operation)
             return BackendOutcome(value=result)
         except Exception as error:
-            return self._resolve_backend_failure(operation, func, args, kwargs, error)
+            outcome = self._resolve_backend_failure(operation, func, args, kwargs, error)
+            if outcome.ok:
+                self._degradation.note_success(operation)
+            else:
+                entered = self._degradation.note_failure(operation)
+                if entered:
+                    diagnostics.error(
+                        f"Degradation mode entered for "
+                        f"'{operation_class(operation)}' after "
+                        f"{self._degradation.failure_threshold} consecutive failures "
+                        f"(last op: {operation})"
+                    )
+            return outcome
+
+    def _short_circuit_outcome(self, operation: str) -> BackendOutcome[Any]:
+        """Return a failed outcome without touching the backend (child .10)."""
+        if self._degradation.should_log(operation):
+            diagnostics.warning(
+                f"Cache backend short-circuited {operation}: "
+                f"'{operation_class(operation)}' class is degraded; "
+                f"returning safe value without hitting the backend"
+            )
+        self.mark_degraded(operation)
+        return BackendOutcome(
+            error=CircuitOpenError(f"circuit open for {operation}"),
+        )
 
     def _resolve_backend_failure(
         self,
@@ -704,6 +764,7 @@ class CacheManager:
         summary["total_errors"] = tracker_summary["total_errors"] + len(parse_errors)
         summary["unique_files"] = len(unique_files)
         summary["error_types"] = error_types
+        summary["degradation"] = self._degradation.get_states()
         if self._error_summary_extra_provider is not None:
             try:
                 extra = self._error_summary_extra_provider()
@@ -723,6 +784,11 @@ class CacheManager:
         write-disabled mode state on the child .3 error-summary channel.
         """
         self._error_summary_extra_provider = provider
+
+    @property
+    def degradation(self) -> DegradationMode:
+        """Per-class degradation state machine (child .10)."""
+        return self._degradation
 
     def reset_error_tracking(self):
         """Reset error tracking state (useful for testing)."""
