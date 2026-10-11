@@ -10,8 +10,14 @@ from ..context import ctx
 from ..query_policy import _create_search_result
 from ..response_formatters import suggestions
 from .execution_utils import execute_analyzer_query, execute_analyzer_search
+from .resilience import (
+    apply_alias_availability,
+    consume_alias_degradation,
+    guard_tool_handler,
+)
 
 
+@guard_tool_handler("search_classes")
 async def _handle_search_classes(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -36,6 +42,7 @@ async def _handle_search_classes(arguments: dict[str, Any]) -> list[TextContent]
     )
 
 
+@guard_tool_handler("search_functions")
 async def _handle_search_functions(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -57,6 +64,7 @@ async def _handle_search_functions(arguments: dict[str, Any]) -> list[TextConten
     )
 
 
+@guard_tool_handler("get_class_info")
 async def _handle_get_class_info(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -68,16 +76,23 @@ async def _handle_get_class_info(arguments: dict[str, Any]) -> list[TextContent]
     )
 
 
+@guard_tool_handler("get_type_alias_info")
 async def _handle_get_type_alias_info(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
-    return await execute_analyzer_query(
+    type_name = str(arguments["type_name"])
+    result = await execute_analyzer_query(
         arguments=arguments,
-        analyzer_method=lambda: analyzer.get_type_alias_info(arguments["type_name"]),
+        analyzer_method=lambda: analyzer.get_type_alias_info(type_name),
         tool_name="get_type_alias_info",
     )
+    # Empty vs unavailable (child .3 channel): never claim "no such alias"
+    # when the cache backend actually failed the lookup.
+    degraded = consume_alias_degradation(analyzer.cache_manager)
+    return apply_alias_availability(result, type_name=type_name, degraded=degraded)
 
 
+@guard_tool_handler("search_symbols")
 async def _handle_search_symbols(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -97,6 +112,7 @@ async def _handle_search_symbols(arguments: dict[str, Any]) -> list[TextContent]
     )
 
 
+@guard_tool_handler("find_in_file")
 async def _handle_find_in_file(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None

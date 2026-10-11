@@ -15,8 +15,10 @@ from ..context import ctx
 from ..query_policy import PROJECT_DIRECTORY_NOT_SET_MESSAGE
 from ..state_manager import AnalyzerState, BackgroundIndexer, IndexingProgress
 from ..tool_call_logger import ToolCallLogger
+from .resilience import guard_tool_handler
 
 
+@guard_tool_handler("set_project_directory")
 async def _handle_set_project_directory(arguments: dict[str, Any]) -> list[TextContent]:
     config_file_raw = arguments.get("config_file")
     auto_refresh = arguments.get("auto_refresh", True)
@@ -162,6 +164,7 @@ async def _run_background_refresh(refresh_mode: str):
         ctx.state_manager.transition_to(AnalyzerState.ERROR)
 
 
+@guard_tool_handler("refresh_project")
 async def _handle_refresh_project(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle refresh_project: trigger incremental or full re-indexing."""
     # 1. If analyzer is None, try to resume session from last used config
@@ -200,6 +203,7 @@ async def _handle_refresh_project(arguments: dict[str, Any]) -> list[TextContent
     ]
 
 
+@guard_tool_handler("check_system_status")
 async def _handle_check_system_status(arguments: dict[str, Any]) -> list[TextContent]:
     # Combined server diagnostics and indexing status
     status_dict = ctx.state_manager.get_status_dict()
@@ -228,6 +232,7 @@ async def _handle_check_system_status(arguments: dict[str, Any]) -> list[TextCon
     return [TextContent(type="text", text=json.dumps(status_dict, indent=2))]
 
 
+@guard_tool_handler("wait_for_indexing")
 async def _handle_wait_for_indexing(arguments: dict[str, Any]) -> list[TextContent]:
     loop = asyncio.get_event_loop()
     # Internal handler - used by sync_project and tests

@@ -10,6 +10,7 @@ from mcp.types import TextContent
 from ..context import ctx
 from ..query_policy import _create_search_result, _parse_search_scope
 from ..response_formatters import suggestions
+from .resilience import guard_tool_handler
 
 
 async def _handle_call_graph_query(
@@ -112,6 +113,7 @@ async def _handle_call_graph_query(
     return [TextContent(type="text", text=json.dumps(output, indent=2))]
 
 
+@guard_tool_handler("find_incoming_calls")
 async def _handle_find_incoming_calls(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -125,6 +127,7 @@ async def _handle_find_incoming_calls(arguments: dict[str, Any]) -> list[TextCon
     )
 
 
+@guard_tool_handler("get_outgoing_calls")
 async def _handle_get_outgoing_calls(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -138,6 +141,7 @@ async def _handle_get_outgoing_calls(arguments: dict[str, Any]) -> list[TextCont
     )
 
 
+@guard_tool_handler("get_call_sites")
 async def _handle_get_call_sites(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
@@ -156,6 +160,7 @@ async def _handle_get_call_sites(arguments: dict[str, Any]) -> list[TextContent]
     return [TextContent(type="text", text=json.dumps(output_sites, indent=2))]
 
 
+@guard_tool_handler("get_call_path")
 async def _handle_get_call_path(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None

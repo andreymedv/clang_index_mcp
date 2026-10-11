@@ -24,7 +24,7 @@ except ImportError:
     sys.exit(1)
 
 from mcp.server import Server
-from mcp.types import TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool
 
 from . import consolidated_tools  # noqa: F401
 from .tool_registry import ToolRegistry
@@ -74,6 +74,13 @@ except ImportError:
 
 from .config_validation import resolve_project_root_from_config  # noqa: E402
 from .context import ctx  # noqa: E402
+from .tool_handlers.resilience import (  # noqa: E402
+    guard_tool_handler,
+    is_error_result,
+    result_text,
+    tool_error_content,
+    tool_error_result,
+)
 
 # Initialize analyzer
 PROJECT_ROOT = os.environ.get("CPP_PROJECT_ROOT", None)
@@ -107,27 +114,46 @@ def _count_results_from_text(result_text: str) -> int:
     return 0
 
 
-def _try_log_tool_call(name: str, arguments: dict[str, Any], result: list[TextContent]) -> None:
+def _try_log_tool_call(name: str, arguments: dict[str, Any], result: Any) -> None:
     """Log a tool call for telemetry. Never raises."""
     try:
         if ctx.tool_call_logger is None or not ctx.tool_call_logger.enabled:
             return
-        result_text = result[0].text if result else ""
-        result_count = _count_results_from_text(result_text)
+        text = result_text(result)
+        result_count = _count_results_from_text(text)
         ctx.tool_call_logger.log_tool_call(
-            name, arguments, result_count, result_text, analyzer=ctx.analyzer
+            name, arguments, result_count, text, analyzer=ctx.analyzer
         )
     except Exception:
         pass  # Telemetry must never break tool calls
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-    result = cast(
-        list[TextContent], await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
+def _promote_error_payload(result: Any, name: str) -> Any:
+    """Turn a handler error payload into an MCP isError CallToolResult."""
+    if isinstance(result, CallToolResult) or not is_error_result(result):
+        return result
+    try:
+        payload = json.loads(result[0].text)
+    except (json.JSONDecodeError, IndexError, AttributeError, TypeError):
+        return result
+    return tool_error_result(
+        str(payload.get("error", "Tool call failed")),
+        tool_name=name,
+        error_type=str(payload.get("error_type", "tool_error")),
+        next_steps=payload.get("next_steps"),
     )
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict[str, Any]) -> Any:
+    try:
+        result = await ToolRegistry.call_tool("handle_tool_call_b", name, arguments)
+    except Exception as e:
+        result = tool_error_result(f"Internal error in tool '{name}': {e}", tool_name=name)
     _try_log_tool_call(name, arguments, result)
-    return result
+    # Promote well-formed error payloads to MCP isError CallToolResult at the
+    # protocol boundary; success paths stay list[TextContent].
+    return _promote_error_payload(result, name)
 
 
 # Import domain rules from focused modules.
@@ -185,37 +211,32 @@ _UNGATED_HANDLERS = {
 }
 
 
+@guard_tool_handler("tool_dispatch")
 async def _handle_tool_call(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-    try:
-        # 1. Management tools (handle their own state checks)
-        if name == "set_project_directory":
-            return await _handle_set_project_directory(arguments)
-        if name == "check_system_status":
-            return await _handle_check_system_status(arguments)
+    # 1. Management tools (handle their own state checks)
+    if name == "set_project_directory":
+        return await _handle_set_project_directory(arguments)
+    if name == "check_system_status":
+        return await _handle_check_system_status(arguments)
 
-        # 2. Check tool readiness
-        error_response = _check_tool_readiness(name)
-        if error_response:
-            return error_response
+    # 2. Check tool readiness
+    error_response = _check_tool_readiness(name)
+    if error_response:
+        return error_response
 
-        # 3. Route to specific handler
-        handlers = {tool_name: _QUERY_HANDLERS[tool_name] for tool_name in QUERY_TOOL_NAMES}
-        handlers.update(_UNGATED_HANDLERS)
+    # 3. Route to specific handler
+    handlers = {tool_name: _QUERY_HANDLERS[tool_name] for tool_name in QUERY_TOOL_NAMES}
+    handlers.update(_UNGATED_HANDLERS)
 
-        if name in handlers:
-            return await handlers[name](arguments)
+    if name in handlers:
+        return await handlers[name](arguments)
 
-        return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-    except Exception as e:
-        return [
-            TextContent(
-                type="text",
-                text=f"Internal error: {e!s}\n\n"
-                "This is a server-side issue, not a user error. "
-                "Try restarting the MCP server.",
-            )
-        ]
+    return tool_error_content(
+        f"Unknown tool: {name}",
+        tool_name=name,
+        error_type="unknown_tool",
+        next_steps=("Use list_tools to discover available tools",),
+    )
 
 
 ToolRegistry.register("_handle_tool_call", _handle_tool_call)

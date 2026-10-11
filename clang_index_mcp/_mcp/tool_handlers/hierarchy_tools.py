@@ -7,8 +7,10 @@ from mcp.types import TextContent
 
 from ..._search.hierarchy_format import convert_hierarchy_format, format_hierarchy_error
 from ..context import ctx
+from .resilience import guard_tool_handler
 
 
+@guard_tool_handler("get_class_hierarchy")
 async def _handle_get_class_hierarchy(arguments: dict[str, Any]) -> list[TextContent]:
     analyzer = ctx.analyzer
     assert analyzer is not None
