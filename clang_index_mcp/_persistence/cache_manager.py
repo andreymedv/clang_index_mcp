@@ -1,5 +1,6 @@
 """Cache management for C++ analyzer."""
 
+import errno
 import json
 import sqlite3
 import sys
@@ -7,14 +8,26 @@ import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypeVar
 
+from .._core.error_tracking import operation_class
 from .._indexing.ports.cache_backend import CacheBackend
 from .._persistence.cache_validation_context import CacheValidationContext
+from .._persistence.degradation import (
+    DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_FAILURE_THRESHOLD,
+    DEFAULT_PROBE_INTERVAL_SECONDS,
+    CallAdmission,
+    CircuitOpenError,
+    DegradationMode,
+)
+from .._persistence.outcome import BackendOutcome
 from .._persistence.project_identity import ProjectIdentity
 from .._symbols.model import SymbolInfo
 from .._symbols.ports.parser import TypeAliasRecord
 from .error_tracking_adapter import ErrorTrackingAdapter
+
+T = TypeVar("T")
 
 if TYPE_CHECKING:
     from .._persistence.ports.recovery import CacheRecoveryPort
@@ -25,9 +38,64 @@ try:
 except ImportError:
     import diagnostics  # type: ignore[no-redef]
 
+ErrorClass = Literal["transient", "resource", "corruption", "other"]
+
+# Transient retry defaults (REQ-6.7.3 / REQ-9.4.5). Constructor-injectable so
+# tests and child .10 can override without patching module state.
+DEFAULT_TRANSIENT_MAX_ATTEMPTS = 3
+DEFAULT_BACKOFF_BASE_SECONDS = 0.1
+DEFAULT_BACKOFF_CAP_SECONDS = 1.0
+
+_TRANSIENT_SQLITE_MARKERS = ("database is locked", "database is busy", "database table is locked")
+_CORRUPTION_MARKERS = ("corrupt", "malformed")
+_NETWORK_TIMEOUT_ERRNOS = frozenset(
+    {errno.ETIMEDOUT, getattr(errno, "ENETUNREACH", None), getattr(errno, "EHOSTUNREACH", None)}
+    - {None}
+)
+
+
+def classify_backend_error(error: BaseException) -> ErrorClass:
+    """Classify a backend error per REQ-6.7.3.
+
+    Order matters: OperationalError is a DatabaseError subclass and
+    TimeoutError is an OSError subclass, so transient markers are checked
+    before corruption and resource.
+    """
+    message = str(error).lower()
+
+    if isinstance(error, sqlite3.OperationalError) and any(
+        marker in message for marker in _TRANSIENT_SQLITE_MARKERS
+    ):
+        return "transient"
+    if isinstance(error, TimeoutError):
+        return "transient"
+    if isinstance(error, OSError) and error.errno in _NETWORK_TIMEOUT_ERRNOS:
+        return "transient"
+    if isinstance(error, OSError) and "timed out" in message:
+        return "transient"
+
+    if isinstance(error, sqlite3.DatabaseError) and any(
+        marker in message for marker in _CORRUPTION_MARKERS
+    ):
+        return "corruption"
+
+    if isinstance(error, (PermissionError, OSError)):
+        return "resource"
+
+    return "other"
+
 
 class CacheManager:
     """Manages caching for the C++ analyzer with pluggable backends."""
+
+    #: Extra attempts after a successful recovery (REQ-6.8.5). Epic child ent.6
+    #: can override this to plug in classification/backoff without redesigning
+    #: the wrapper.
+    _max_retries_after_recovery: int = 1
+
+    transient_max_attempts: int
+    backoff_base_seconds: float
+    backoff_cap_seconds: float
 
     def __init__(
         self,
@@ -35,6 +103,14 @@ class CacheManager:
         skip_schema_recreation: bool = False,
         backend: CacheBackend | None = None,
         recovery: Optional["CacheRecoveryPort"] = None,
+        transient_max_attempts: int = DEFAULT_TRANSIENT_MAX_ATTEMPTS,
+        backoff_base_seconds: float = DEFAULT_BACKOFF_BASE_SECONDS,
+        backoff_cap_seconds: float = DEFAULT_BACKOFF_CAP_SECONDS,
+        degradation: DegradationMode | None = None,
+        degradation_failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
+        degradation_cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS,
+        degradation_probe_interval_seconds: float = DEFAULT_PROBE_INTERVAL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
     ):
         """
         Initialize CacheManager with project identity.
@@ -47,6 +123,19 @@ class CacheManager:
                     is created internally (backward compatibility).
             recovery: Optional pre-built recovery/error-tracking adapter. If None,
                      an ErrorTrackingAdapter is created internally.
+            transient_max_attempts: Total attempts for transient errors (REQ-6.7.3),
+                    including the first call. Must be >= 1.
+            backoff_base_seconds: Base delay for exponential backoff between
+                    transient retries.
+            backoff_cap_seconds: Upper bound for a single backoff delay.
+            degradation: Optional pre-built DegradationMode (child .10). If None,
+                    one is created from the degradation_* / clock arguments.
+            degradation_failure_threshold: Consecutive failures before a class
+                    enters Degraded (ignored when ``degradation`` is provided).
+            degradation_cooldown_seconds: Short-circuit log rate-limit and
+                    minimum delay before the first recovery probe.
+            degradation_probe_interval_seconds: Minimum delay between probes.
+            clock: Monotonic clock used by the degradation state machine.
 
         Backward Compatibility:
             Accepts Path for backward compatibility, automatically creates ProjectIdentity
@@ -56,10 +145,20 @@ class CacheManager:
             project_root_or_identity
         )
         self._skip_schema_recreation = skip_schema_recreation
+        self.transient_max_attempts = max(1, transient_max_attempts)
+        self.backoff_base_seconds = backoff_base_seconds
+        self.backoff_cap_seconds = backoff_cap_seconds
+        self._degradation = degradation or DegradationMode(
+            failure_threshold=degradation_failure_threshold,
+            cooldown_seconds=degradation_cooldown_seconds,
+            probe_interval_seconds=degradation_probe_interval_seconds,
+            clock=clock,
+        )
         self.cache_dir = self._ensure_cache_dir()
         self.error_log_path = self.cache_dir / "parse_errors.jsonl"
         self.recovery = self._init_recovery(recovery)
         self.backend = backend if backend is not None else self._create_backend()
+        self._error_summary_extra_provider: Callable[[], dict[str, Any]] | None = None
 
     @staticmethod
     def _resolve_project_identity(
@@ -148,9 +247,13 @@ class CacheManager:
         and try to recreate the database simultaneously.
 
         Returns:
-            True if schema was recreated, False if it was already current.
+            True if schema was recreated, False if it was already current or
+            the check failed (best-effort; failure is marked degraded).
         """
-        return self.backend.ensure_schema_current()
+        outcome = self._safe_backend_call(
+            "ensure_schema_current", lambda: self.backend.ensure_schema_current()
+        )
+        return self._map_outcome("ensure_schema_current", outcome, False)
 
     def close(self):
         """
@@ -159,8 +262,15 @@ class CacheManager:
         This should be called when the CacheManager is no longer needed
         to properly close the database connection and avoid resource leaks.
         """
-        if hasattr(self, "backend") and self.backend is not None:
-            self.backend.close()
+        # Lifecycle teardown, not a cache entry point (REQ-6.8.7 covers cache
+        # ops). Use getattr so GC/shutdown never raises and the AST routing
+        # meta-test only has to reason about cache backend calls.
+        backend = getattr(self, "backend", None)
+        if backend is not None:
+            try:
+                backend.close()
+            except Exception:
+                pass
 
     def __enter__(self):
         """Context manager entry."""
@@ -185,97 +295,199 @@ class CacheManager:
 
     def _handle_backend_error(self, error: Exception, operation: str) -> bool:
         """
-        Handle backend errors with tracking and recovery logic.
+        Classify a backend error and apply the REQ-6.7.3 recovery policy.
 
-        Args:
-            error: Exception that occurred
-            operation: Operation that failed
+        Policy:
+            - transient: record only; bounded backoff retry is the caller's job.
+            - resource (PermissionError/OSError/ENOSPC): record and fail fast.
+              NEVER clear the cache (REQ-6.7.2 / REQ-9.4.1).
+            - corruption: backup + repair/rebuild via ``_attempt_recovery``, then
+              the caller retries once (REQ-6.7.3 / REQ-9.3.4).
 
         Returns:
-            True if recovery was attempted, False otherwise
+            True only when recovery succeeded and the operation may be retried.
+
+        Never raises: error tracking or recovery failures are swallowed so the
+        wrapper contract holds even if the recovery port misbehaves.
         """
-        # Classify error type
-        error_type = type(error).__name__
-        error_message = str(error)
+        try:
+            error_class = classify_backend_error(error)
+            error_type = type(error).__name__
+            error_message = str(error)
+            recoverable = error_class in ("transient", "other")
 
-        # Determine if error is recoverable
-        recoverable = not isinstance(
-            error,
-            (
-                sqlite3.DatabaseError,  # Database corruption
-                PermissionError,  # Permission issues
-                OSError,  # Disk full, etc.
-            ),
-        )
+            self.recovery.record_error(
+                error_type, error_message, operation, recoverable=recoverable
+            )
 
-        # Record error
-        self.recovery.record_error(error_type, error_message, operation, recoverable=recoverable)
+            if error_class == "corruption":
+                recovery_succeeded = self._attempt_recovery(error, operation)
+                self.record_recovery_outcome(
+                    operation, attempted=True, succeeded=recovery_succeeded
+                )
+                return recovery_succeeded
 
-        # For critical errors (corruption, disk full), attempt recovery
-        if not recoverable:
-            recovery_attempted = self._attempt_recovery(error, operation)
-            return recovery_attempted
+            if error_class == "resource":
+                diagnostics.error(
+                    f"Resource error in {operation} — cache preserved, no retry: "
+                    f"{error_type}: {error_message}"
+                )
+                return False
 
-        return False
+            return False
+        except Exception as handling_error:
+            diagnostics.error(
+                f"Error handling failed in {operation}: "
+                f"{type(handling_error).__name__}: {handling_error}"
+            )
+            return False
 
     def _attempt_recovery(self, error: Exception, operation: str) -> bool:
         """
-        Attempt to recover from critical error.
+        Attempt non-destructive recovery from a critical (corruption) error.
 
-        Args:
-            error: Exception that occurred
-            operation: Operation that failed
+        Corrupt cache (REQ-6.7.3 / REQ-9.3.4):
+            1. forensic backup via ``recovery.backup_database``
+            2. ``recovery.attempt_repair`` (dump/restore rebuild)
+            3. last resort ONLY when repair failed — i.e. the database is
+               unreadable beyond repair (integrity check and data dump both
+               failed): clear the live cache so a fresh one can be built.
+               This path is never taken for resource errors (PermissionError /
+               OSError / ENOSPC), which always preserve the cache (REQ-6.7.2).
 
         Returns:
-            True if recovery successful, False otherwise
-        """
-        diagnostics.warning(f"Attempting recovery from {type(error).__name__} in {operation}")
+            True if recovery succeeded and the backend is ready for a retry.
 
-        # For database corruption, try repair (sqlite3 uses both "corrupt" and "malformed")
-        if isinstance(error, sqlite3.DatabaseError) and (
-            "corrupt" in str(error).lower() or "malformed" in str(error).lower()
-        ):
+        Never raises.
+        """
+        try:
+            if classify_backend_error(error) != "corruption":
+                # Resource and other classes must not destroy the cache.
+                return False
+
+            diagnostics.warning(f"Attempting recovery from {type(error).__name__} in {operation}")
             diagnostics.info("Database corruption detected, attempting repair...")
 
-            # Create backup first
             db_path = self.cache_dir / "symbols.db"
             backup_path = self.recovery.backup_database(db_path)
-
             if not backup_path:
                 diagnostics.error("Failed to create backup before repair")
                 return False
 
-            # Attempt repair
             if self.recovery.attempt_repair(db_path):
                 diagnostics.info("Database repair successful")
-                # Reconnect to repaired database
-                try:
-                    from .._persistence.sqlite_cache_backend import SqliteCacheBackend
+                return self._reconnect_backend(db_path)
 
-                    self.backend = SqliteCacheBackend(db_path)
-                    return True
-                except Exception as e:
-                    diagnostics.error(f"Failed to reconnect after repair: {e}")
-                    return False
-            else:
-                diagnostics.error("Database repair failed")
-                return False
-
-        # For permission errors or disk full, clear cache as last resort
-        elif isinstance(error, (PermissionError, OSError)):
-            diagnostics.warning(f"Clearing cache due to {type(error).__name__}")
+            diagnostics.error("Database repair failed")
+            # LAST RESORT (documented condition): attempt_repair returned False,
+            # meaning PRAGMA integrity_check failed AND the dump-and-rebuild path
+            # failed — the cache is unreadable beyond repair. Clearing lets a
+            # fresh cache be rebuilt; the forensic backup above is left for
+            # inspection. Never used for resource errors.
+            diagnostics.warning(
+                "Cache unreadable beyond repair; clearing as last resort "
+                f"({operation}, backup at {backup_path})"
+            )
             if self.recovery.clear_cache(self.cache_dir):
                 diagnostics.info("Cache cleared successfully")
-                return True
-            else:
-                diagnostics.error("Failed to clear cache")
-                return False
+                return self._reconnect_backend(db_path)
+            diagnostics.error("Failed to clear cache")
+            return False
+        except Exception as recovery_error:
+            diagnostics.error(
+                f"Recovery attempt failed in {operation}: "
+                f"{type(recovery_error).__name__}: {recovery_error}"
+            )
+            return False
 
-        return False
+    def _reconnect_backend(self, db_path: Path) -> bool:
+        """Rebuild the backend handle against ``db_path`` after repair/clear."""
+        try:
+            from .._persistence.sqlite_cache_backend import SqliteCacheBackend
 
-    def _safe_backend_call(self, operation: str, func, *args, **kwargs):
+            self.backend = SqliteCacheBackend(db_path)
+            return True
+        except Exception as e:
+            diagnostics.error(f"Failed to reconnect after repair: {e}")
+            return False
+
+    def _backoff_delay(self, attempt: int) -> float:
+        """Exponential backoff delay for a 1-based retry attempt number."""
+        delay = self.backoff_base_seconds * float(2 ** (attempt - 1))
+        return float(min(delay, self.backoff_cap_seconds))
+
+    def _retry_with_backoff(
+        self,
+        operation: str,
+        func: Callable[..., T],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        last_error: Exception,
+    ) -> BackendOutcome[T]:
+        """Retry a transient failure with bounded exponential backoff (REQ-6.7.3)."""
+        last = last_error
+        remaining = self.transient_max_attempts - 1
+        for attempt in range(1, remaining + 1):
+            try:
+                time.sleep(self._backoff_delay(attempt))
+            except Exception:
+                pass
+            try:
+                result = func(*args, **kwargs)
+                self.recovery.record_operation(operation)
+                return BackendOutcome(value=result)
+            except Exception as retry_error:
+                diagnostics.warning(
+                    f"Transient retry {attempt}/{remaining} failed in {operation}: "
+                    f"{type(retry_error).__name__}: {retry_error}"
+                )
+                last = retry_error
+                if classify_backend_error(retry_error) != "transient":
+                    break
+        return BackendOutcome(error=last)
+
+    def _map_outcome(
+        self,
+        operation: str,
+        outcome: BackendOutcome[T],
+        default: T,
+        *,
+        log_note: str | None = None,
+    ) -> T:
+        """Map a backend outcome to a typed safe value (REQ-6.8.4).
+
+        On failure, mark the operation degraded through the error-state channel
+        so callers can distinguish "empty" from "unavailable" (REQ-6.8.6), then
+        return ``default``. On success, return the backend value, folding a
+        legitimate None into ``default`` for methods whose declared type
+        excludes None.
         """
-        Safely call a backend method with error tracking.
+        if outcome.ok and outcome.value is not None:
+            return outcome.value
+        if not outcome.ok:
+            self.mark_degraded(operation)
+            # Short-circuit logs are already rate-limited by DegradationMode;
+            # do not re-log every suppressed call via the per-method note.
+            is_short_circuit = isinstance(outcome.error, CircuitOpenError)
+            if log_note is not None and outcome.error is not None and not is_short_circuit:
+                diagnostics.warning(f"{log_note}: {type(outcome.error).__name__}: {outcome.error}")
+        return default
+
+    def _safe_backend_call(
+        self,
+        operation: str,
+        func: Callable[..., T],
+        *args: Any,
+        **kwargs: Any,
+    ) -> BackendOutcome[T]:
+        """
+        Safely call a backend method with error tracking, recovery, and retry.
+
+        Never raises and never returns bare None. Success is reported as
+        ``BackendOutcome(value=...)`` (value may legitimately be None for
+        "not found"); failure is reported as ``BackendOutcome(error=...)``.
+        After a successful recovery the call is retried once (REQ-6.8.5);
+        ``recovered`` is True only when that retried call succeeds.
 
         Args:
             operation: Operation name for tracking
@@ -283,20 +495,80 @@ class CacheManager:
             *args, **kwargs: Arguments to pass to method
 
         Returns:
-            Result from backend method, or None on error
+            BackendOutcome carrying either the backend value or the error.
         """
+        admission = self._degradation.admit(operation)
+        if admission is CallAdmission.SHORT_CIRCUIT:
+            return self._short_circuit_outcome(operation)
         try:
             self.recovery.record_operation(operation)
             result = func(*args, **kwargs)
-            return result
+            self._degradation.note_success(operation)
+            return BackendOutcome(value=result)
+        except Exception as error:
+            outcome = self._resolve_backend_failure(operation, func, args, kwargs, error)
+            if outcome.ok:
+                self._degradation.note_success(operation)
+            else:
+                entered = self._degradation.note_failure(operation)
+                if entered:
+                    diagnostics.error(
+                        f"Degradation mode entered for "
+                        f"'{operation_class(operation)}' after "
+                        f"{self._degradation.failure_threshold} consecutive failures "
+                        f"(last op: {operation})"
+                    )
+            return outcome
 
-        except Exception as e:
-            diagnostics.error(f"Backend error in {operation}: {e}")
+    def _short_circuit_outcome(self, operation: str) -> BackendOutcome[Any]:
+        """Return a failed outcome without touching the backend (child .10)."""
+        if self._degradation.should_log(operation):
+            diagnostics.warning(
+                f"Cache backend short-circuited {operation}: "
+                f"'{operation_class(operation)}' class is degraded; "
+                f"returning safe value without hitting the backend"
+            )
+        self.mark_degraded(operation)
+        return BackendOutcome(
+            error=CircuitOpenError(f"circuit open for {operation}"),
+        )
 
-            # Handle error and attempt recovery if needed
-            self._handle_backend_error(e, operation)
+    def _resolve_backend_failure(
+        self,
+        operation: str,
+        func: Callable[..., T],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        error: Exception,
+    ) -> BackendOutcome[T]:
+        """Handle a failed backend call without ever raising (REQ-6.8.5 / REQ-6.7.3)."""
+        diagnostics.error(f"Backend error in {operation}: {type(error).__name__}: {error}")
+        error_class = classify_backend_error(error)
 
-            return None
+        try:
+            recovery_succeeded = self._handle_backend_error(error, operation)
+        except Exception as handling_error:
+            diagnostics.error(
+                f"Error handling failed in {operation}: "
+                f"{type(handling_error).__name__}: {handling_error}"
+            )
+            return BackendOutcome(error=error)
+
+        if error_class == "transient":
+            return self._retry_with_backoff(operation, func, args, kwargs, error)
+
+        if recovery_succeeded and self._max_retries_after_recovery > 0:
+            try:
+                retried = func(*args, **kwargs)
+                return BackendOutcome(value=retried, recovered=True)
+            except Exception as retry_error:
+                diagnostics.error(
+                    f"Retry after recovery failed in {operation}: "
+                    f"{type(retry_error).__name__}: {retry_error}"
+                )
+                return BackendOutcome(error=retry_error)
+
+        return BackendOutcome(error=error)
 
     def get_file_hash(self, file_path: str) -> str:
         """Calculate hash of a file using chunked reads."""
@@ -323,20 +595,21 @@ class CacheManager:
             config_file_mtime = validation_context.config_file_mtime
             compile_commands_path = validation_context.compile_commands_path
             compile_commands_mtime = validation_context.compile_commands_mtime
-        result = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "save_cache",
-            self.backend.save_cache,
-            class_index,
-            function_index,
-            file_hashes,
-            indexed_file_count,
-            include_dependencies,
-            config_file_path,
-            config_file_mtime,
-            compile_commands_path,
-            compile_commands_mtime,
+            lambda: self.backend.save_cache(
+                class_index,
+                function_index,
+                file_hashes,
+                indexed_file_count,
+                include_dependencies,
+                config_file_path,
+                config_file_mtime,
+                compile_commands_path,
+                compile_commands_mtime,
+            ),
         )
-        return result if result is not None else False
+        return self._map_outcome("save_cache", outcome, False)
 
     def load_cache(
         self,
@@ -353,16 +626,23 @@ class CacheManager:
             config_file_mtime = validation_context.config_file_mtime
             compile_commands_path = validation_context.compile_commands_path
             compile_commands_mtime = validation_context.compile_commands_mtime
-        result: dict[str, Any] | None = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "load_cache",
-            self.backend.load_cache,
-            include_dependencies,
-            config_file_path,
-            config_file_mtime,
-            compile_commands_path,
-            compile_commands_mtime,
+            lambda: self.backend.load_cache(
+                include_dependencies,
+                config_file_path,
+                config_file_mtime,
+                compile_commands_path,
+                compile_commands_mtime,
+            ),
         )
-        return result
+        # Error and genuine miss converge to the same safe action: full re-parse.
+        return self._map_outcome(
+            "load_cache",
+            outcome,
+            None,
+            log_note="load_cache failed; treating as cache miss",
+        )
 
     def save_file_cache(
         self,
@@ -375,19 +655,42 @@ class CacheManager:
         retry_count: int = 0,
     ) -> bool:
         """Save parsed symbols for a single file with compilation arguments hash"""
-        return self.backend.save_file_cache(
-            file_path, symbols, file_hash, compile_args_hash, success, error_message, retry_count
+        outcome = self._safe_backend_call(
+            "save_file_cache",
+            lambda: self.backend.save_file_cache(
+                file_path,
+                symbols,
+                file_hash,
+                compile_args_hash,
+                success,
+                error_message,
+                retry_count,
+            ),
         )
+        return self._map_outcome("save_file_cache", outcome, False)
 
     def load_file_cache(
         self, file_path: str, current_hash: str, compile_args_hash: str | None = None
     ) -> dict[str, Any] | None:
         """Load cached data for a file if hash matches"""
-        return self.backend.load_file_cache(file_path, current_hash, compile_args_hash)
+        outcome = self._safe_backend_call(
+            "load_file_cache",
+            lambda: self.backend.load_file_cache(file_path, current_hash, compile_args_hash),
+        )
+        # Error and genuine miss converge to the same safe action: re-parse.
+        return self._map_outcome(
+            "load_file_cache",
+            outcome,
+            None,
+            log_note="load_file_cache failed; treating as cache miss",
+        )
 
     def remove_file_cache(self, file_path: str) -> bool:
         """Remove cached data for a deleted file"""
-        return self.backend.remove_file_cache(file_path)
+        outcome = self._safe_backend_call(
+            "remove_file_cache", lambda: self.backend.remove_file_cache(file_path)
+        )
+        return self._map_outcome("remove_file_cache", outcome, False)
 
     def save_progress(
         self,
@@ -399,8 +702,9 @@ class CacheManager:
         class_count: int,
         function_count: int,
         status: str = "in_progress",
+        cache_persisted: bool | None = None,
     ):
-        """Save indexing progress"""
+        """Save indexing progress. Failures are log-only (REQ-10.13.2)."""
         try:
             progress_file = self.cache_dir / "indexing_progress.json"
             progress_data = {
@@ -415,6 +719,8 @@ class CacheManager:
                 "function_count": function_count,
                 "status": status,
             }
+            if cache_persisted is not None:
+                progress_data["cache_persisted"] = cache_persisted
 
             with open(progress_file, "w") as f:
                 json.dump(progress_data, f, indent=2)
@@ -461,12 +767,76 @@ class CacheManager:
         summary["total_errors"] = tracker_summary["total_errors"] + len(parse_errors)
         summary["unique_files"] = len(unique_files)
         summary["error_types"] = error_types
+        summary["degradation"] = self._degradation.get_states()
+        if self._error_summary_extra_provider is not None:
+            try:
+                extra = self._error_summary_extra_provider()
+                if extra is not None:
+                    summary["cache_writer"] = extra
+            except Exception:
+                pass
 
         return summary
+
+    def set_error_summary_extra_provider(
+        self, provider: Callable[[], dict[str, Any]] | None
+    ) -> None:
+        """Register a callback merged into get_error_summary (additive keys).
+
+        Used by the background cache writer to expose failure counters and
+        write-disabled mode state on the child .3 error-summary channel.
+        """
+        self._error_summary_extra_provider = provider
+
+    @property
+    def degradation(self) -> DegradationMode:
+        """Per-class degradation state machine (child .10)."""
+        return self._degradation
 
     def reset_error_tracking(self):
         """Reset error tracking state (useful for testing)."""
         self.recovery.reset()
+
+    # ------------------------------------------------------------------
+    # Error-state channel (REQ-6.8.6): empty vs degraded distinction
+    # ------------------------------------------------------------------
+
+    def _channel_method(self, name: str):
+        """Return a recovery-port channel method, or None when unavailable.
+
+        Custom recovery implementations predating the error-state channel do
+        not expose the query API; callers fall back to safe defaults so the
+        server keeps running (REQ-10.13.x).
+        """
+        method = getattr(self.recovery, name, None)
+        return method if callable(method) else None
+
+    def mark_degraded(self, operation: str) -> None:
+        """Mark a cache call as having ended degraded (REQ-6.8.6)."""
+        marker = self._channel_method("mark_degraded")
+        if marker is not None:
+            marker(operation)
+
+    def is_degraded(self, operation: str) -> bool:
+        """Return True if the operation's most recent call ended degraded."""
+        query = self._channel_method("is_degraded")
+        return bool(query(operation)) if query is not None else False
+
+    def get_and_clear_degraded(self, operation: str) -> bool:
+        """Atomically report degraded state for the last call and clear it."""
+        query = self._channel_method("get_and_clear_degraded")
+        return bool(query(operation)) if query is not None else False
+
+    def last_error_for(self, operation: str) -> dict[str, Any] | None:
+        """Return the most recent backend error state for one operation."""
+        query = self._channel_method("last_error_for")
+        return query(operation) if query is not None else None
+
+    def record_recovery_outcome(self, operation: str, attempted: bool, succeeded: bool) -> None:
+        """Record a recovery attempt outcome in the error-state channel."""
+        recorder = self._channel_method("record_recovery")
+        if recorder is not None:
+            recorder(operation, attempted, succeeded)
 
     def log_parse_error(
         self,
@@ -634,10 +1004,15 @@ class CacheManager:
         Returns:
             Number of aliases successfully saved
         """
-        result: int = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "save_type_aliases_batch", lambda: self.backend.save_type_aliases_batch(aliases)
         )
-        return result
+        return self._map_outcome(
+            "save_type_aliases_batch",
+            outcome,
+            0,
+            log_note=f"save_type_aliases_batch failed; {len(aliases)} aliases not persisted",
+        )
 
     def get_aliases_for_canonical(self, canonical_type: str) -> list[str]:
         """
@@ -651,11 +1026,11 @@ class CacheManager:
         Returns:
             List of alias names
         """
-        result: list[str] = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_aliases_for_canonical",
             lambda: self.backend.get_aliases_for_canonical(canonical_type),
         )
-        return result
+        return self._map_outcome("get_aliases_for_canonical", outcome, [])
 
     def get_canonical_for_alias(self, alias_name: str) -> str | None:
         """
@@ -669,10 +1044,12 @@ class CacheManager:
         Returns:
             Canonical type string, or None if not found
         """
-        result: str | None = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_canonical_for_alias", lambda: self.backend.get_canonical_for_alias(alias_name)
         )
-        return result
+        # Failure must not claim "not found": mark degraded so handlers can
+        # phrase "alias lookup unavailable" honestly (empty vs unavailable).
+        return self._map_outcome("get_canonical_for_alias", outcome, None)
 
     def get_type_alias_info(self, type_name: str) -> dict[str, Any] | None:
         """
@@ -681,10 +1058,11 @@ class CacheManager:
         Returns:
             Dict with canonical_type, aliases, and metadata, or None if not found.
         """
-        result: dict[str, Any] | None = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_type_alias_info", lambda: self.backend.get_type_alias_info(type_name)
         )
-        return result
+        # Same empty-vs-unavailable rule as get_canonical_for_alias.
+        return self._map_outcome("get_type_alias_info", outcome, None)
 
     def get_type_alias_details(self, alias_names: list[str]) -> list[dict[str, Any]]:
         """
@@ -693,10 +1071,10 @@ class CacheManager:
         Returns:
             List of alias detail dicts.
         """
-        result: list[dict[str, Any]] = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_type_alias_details", lambda: self.backend.get_type_alias_details(alias_names)
         )
-        return result
+        return self._map_outcome("get_type_alias_details", outcome, [])
 
     def get_all_alias_mappings(self) -> dict[str, str]:
         """
@@ -707,7 +1085,7 @@ class CacheManager:
         Returns:
             Dictionary mapping alias names to canonical types
         """
-        result: dict[str, str] = self._safe_backend_call(
+        outcome = self._safe_backend_call(
             "get_all_alias_mappings", lambda: self.backend.get_all_alias_mappings()
         )
-        return result
+        return self._map_outcome("get_all_alias_mappings", outcome, {})

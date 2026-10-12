@@ -213,6 +213,7 @@ sequenceDiagram
 | Call sites | Extract and return via `Future` | Atomically replace per-file entries in SQLite | SQLite |
 | Type aliases | Write batch directly to SQLite | — | SQLite |
 | File cache | Skip write; return cache metadata | Enqueue to background `CacheWriterThread` | SQLite |
+| Type-alias write failure | Return as DATA flag (`cache_write_ok`); never raise | Log and keep in-memory results | — |
 | Parse errors | Append directly to JSONL | Read on demand | JSONL file |
 | Processed headers | Return via `Future` | Update `HeaderProcessingTracker` | In-memory + `header_tracker.json` |
 
@@ -223,7 +224,7 @@ Call sites go through the main process because they require atomic per-file repl
 - Workers parse and extract independently. They never hold the main process `index_lock`.
 - `SymbolExtractor` collects parser results during AST traversal and applies them in a single `bulk_write_symbols()` call under one lock acquisition.
 - The main process `index_lock` is held only for the brief merge of one file's results.
-- Per-file cache writes are serialized through one background `CacheWriterThread` that owns its own SQLite connection; SQLite WAL mode handles the single-writer contention.
+- Per-file cache writes are serialized through one background `CacheWriterThread` that owns its own SQLite connection; SQLite WAL mode handles the single-writer contention. The writer never dies on a write exception, uses a bounded queue with drop-and-count, and enters write-disabled mode after consecutive failures until a backend probe re-enables it.
 - SQLite WAL mode separates readers from writers; a busy handler resolves short conflicts.
 
 ### Synchronization Primitives
@@ -236,7 +237,7 @@ Call sites go through the main process because they require atomic per-file repl
 | `_tools_event` | `threading.Event` | Tool-call priority over indexing | `_mcp/state_manager.py` |
 | `_indexed_event` | `threading.Event` | Completion signal for indexing | `_mcp/state_manager.py` |
 | SQLite WAL + busy handler | SQLite | Persistent cache | `_persistence/sqlite_cache_backend.py` |
-| `WorkerResultMerger` cache writer queue | `queue.SimpleQueue` | Pending per-file cache writes | `_indexing/worker_result_merger.py` |
+| `CacheWriterThread` queue | `queue.Queue` (bounded) | Pending per-file cache writes | `_indexing/cache_writer.py` |
 | Header tracker lock | `threading.Lock` | `HeaderProcessingTracker` state | `_persistence/header_tracker.py` |
 
 ### Indexing vs Query Synchronization

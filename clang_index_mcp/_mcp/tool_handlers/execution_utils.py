@@ -16,6 +16,7 @@ from mcp.types import TextContent
 from ..context import ctx
 from ..query_policy import _create_search_result, _parse_search_scope
 from ..state_manager import EnhancedQueryResult
+from .resilience import attach_collection_degraded_note, consume_alias_degradation
 
 
 async def execute_analyzer_search(
@@ -103,7 +104,11 @@ async def execute_analyzer_search(
     if results and next_steps_func:
         enhanced_result.next_steps = next_steps_func(results, arguments=arguments)
 
-    return [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+    output = [TextContent(type="text", text=json.dumps(enhanced_result.to_dict(), indent=2))]
+    # Search expansion may have consulted the alias cache; if those reads were
+    # degraded, add a note so empty expansions are not read as "no such alias".
+    degraded = consume_alias_degradation(getattr(analyzer, "cache_manager", None))
+    return attach_collection_degraded_note(output, degraded=degraded)
 
 
 async def execute_analyzer_query(

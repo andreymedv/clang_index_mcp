@@ -6,30 +6,16 @@ and header-tracking state produced by worker processes back into the main proces
 indexes.
 """
 
-import queue
 import threading
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from .._core import diagnostics
+from .cache_writer import CacheWriteRequest, CacheWriterStats, CacheWriterThread
 
 if TYPE_CHECKING:
     from .._persistence.cache_orchestrator import CacheOrchestrator
     from .._search.call_graph_service import CallGraphService
     from .._symbols.symbol_index_store import SymbolIndexStore
-
-
-@dataclass
-class _CacheWriteRequest:
-    """Per-file cache data handed off to the background writer thread."""
-
-    file_path: str
-    symbols: list[Any]
-    file_hash: str
-    compile_args_hash: str | None
-    success: bool
-    error_message: str | None
-    retry_count: int
 
 
 class WorkerResultMerger:
@@ -53,8 +39,7 @@ class WorkerResultMerger:
         self.call_graph_service = call_graph_service
         self.cache_orchestrator = cache_orchestrator
 
-        self._cache_queue: queue.SimpleQueue | None = None
-        self._cache_writer_thread: threading.Thread | None = None
+        self._cache_writer: CacheWriterThread | None = None
         self._cache_writer_lock = threading.Lock()
 
     def _get_project_identity(self) -> Any | None:
@@ -64,75 +49,55 @@ class WorkerResultMerger:
             return None
         return getattr(cache_manager, "project_identity", None)
 
+    def _build_cache_writer(self) -> CacheWriterThread | None:
+        """Create the background writer, or None when no project identity exists."""
+        identity = self._get_project_identity()
+        if identity is None:
+            diagnostics.warning(
+                "Cannot start background cache writer: no project identity available"
+            )
+            return None
+
+        def factory() -> Any:
+            from .._persistence.cache_manager import CacheManager
+
+            # Secondary connection: primary backend owns schema lifecycle.
+            return CacheManager(identity, skip_schema_recreation=True)
+
+        return CacheWriterThread(factory, error_recorder=self._record_writer_error)
+
+    def _record_writer_error(self, error_type: str, message: str, operation: str) -> None:
+        """Feed writer failures into the main process error-state channel (write class)."""
+        cache_manager = getattr(self.cache_orchestrator, "cache_manager", None)
+        recovery = getattr(cache_manager, "recovery", None) if cache_manager else None
+        if recovery is None:
+            return
+        try:
+            recovery.record_error(error_type, message, operation, recoverable=True)
+        except Exception:
+            pass
+
     def _ensure_cache_writer_started(self) -> None:
         """Start the background cache writer thread on first use."""
         with self._cache_writer_lock:
-            if self._cache_writer_thread is not None:
+            if self._cache_writer is not None:
                 return
-
-            identity = self._get_project_identity()
-            if identity is None:
-                diagnostics.warning(
-                    "Cannot start background cache writer: no project identity available"
-                )
+            writer = self._build_cache_writer()
+            if writer is None:
                 return
+            writer.start()
+            self._cache_writer = writer
+            self._register_writer_stats()
 
-            q: queue.SimpleQueue = queue.SimpleQueue()
-            self._cache_queue = q
-            t = threading.Thread(
-                target=self._cache_writer_thread_target,
-                args=(identity, q),
-                daemon=True,
-                name="CacheWriter",
-            )
-            t.start()
-            self._cache_writer_thread = t
-
-    def _cache_writer_thread_target(self, identity: Any, q: queue.SimpleQueue) -> None:
-        """Background thread target: own a cache connection and write file caches.
-
-        The writer is a secondary connection in the main process: the primary
-        backend owns the schema lifecycle, so recreation is skipped (the same
-        mode worker processes use). A transient lock during init then retries
-        instead of wiping the database.
-        """
-        from .._persistence.cache_manager import CacheManager
-
-        try:
-            cache_manager = CacheManager(identity, skip_schema_recreation=True)
-        except Exception as e:
-            diagnostics.error(f"Background cache writer failed to initialize: {e}")
+    def _register_writer_stats(self) -> None:
+        """Expose writer counters via get_error_summary (additive cache_writer key)."""
+        cache_manager = getattr(self.cache_orchestrator, "cache_manager", None)
+        writer = self._cache_writer
+        if cache_manager is None or writer is None:
             return
-
-        try:
-            while True:
-                try:
-                    item = q.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-                if item is None:
-                    break
-                self._write_one(cache_manager, item)
-        finally:
-            try:
-                cache_manager.close()
-            except Exception:
-                pass
-
-    def _write_one(self, cache_manager: Any, item: _CacheWriteRequest) -> None:
-        """Persist a single file's cache from the background thread."""
-        try:
-            cache_manager.save_file_cache(
-                item.file_path,
-                item.symbols,
-                item.file_hash,
-                item.compile_args_hash,
-                item.success,
-                item.error_message,
-                item.retry_count,
-            )
-        except Exception as e:
-            diagnostics.error(f"Background cache write failed for {item.file_path}: {e}")
+        setter = getattr(cache_manager, "set_error_summary_extra_provider", None)
+        if callable(setter):
+            setter(lambda: writer.get_stats().as_dict())
 
     def _enqueue_file_cache(
         self,
@@ -150,8 +115,44 @@ class WorkerResultMerger:
         started (e.g. in tests with a mock orchestrator).
         """
         self._ensure_cache_writer_started()
-        q = self._cache_queue
-        if q is None:
+        writer = self._cache_writer
+        if writer is None:
+            self._save_file_cache_sync(
+                file_path,
+                symbols,
+                file_hash,
+                compile_args_hash,
+                success,
+                error_message,
+                retry_count,
+            )
+            return
+
+        request = CacheWriteRequest(
+            file_path=file_path,
+            symbols=symbols,
+            file_hash=file_hash,
+            compile_args_hash=compile_args_hash,
+            success=success,
+            error_message=error_message,
+            retry_count=retry_count,
+        )
+        if not writer.enqueue(request):
+            # Dropped (write-disabled or full): keep indexing healthy; the
+            # drop is already counted in writer stats (REQ-6.7.1).
+            diagnostics.debug(f"Cache write dropped for {file_path}")
+
+    def _save_file_cache_sync(
+        self,
+        file_path: str,
+        symbols: list[Any],
+        file_hash: str,
+        compile_args_hash: str | None,
+        success: bool,
+        error_message: str | None,
+        retry_count: int,
+    ) -> None:
+        try:
             self.cache_orchestrator.save_file_cache(
                 file_path,
                 symbols,
@@ -161,19 +162,8 @@ class WorkerResultMerger:
                 error_message=error_message,
                 retry_count=retry_count,
             )
-            return
-
-        q.put(
-            _CacheWriteRequest(
-                file_path=file_path,
-                symbols=symbols,
-                file_hash=file_hash,
-                compile_args_hash=compile_args_hash,
-                success=success,
-                error_message=error_message,
-                retry_count=retry_count,
-            )
-        )
+        except Exception as e:
+            diagnostics.error(f"Background cache write failed for {file_path}: {e}")
 
     def merge_worker_result(self, result: tuple, file_path: str):
         """Merge symbols and call sites from a worker process result.
@@ -193,7 +183,14 @@ class WorkerResultMerger:
             compile_args_hash,
             error_message,
             retry_count,
-        ) = result
+        ) = result[:10]
+        cache_write_ok = bool(result[10]) if len(result) > 10 else True
+        if not cache_write_ok:
+            # Worker-side write failures are DATA, never an exception (child .8).
+            diagnostics.warning(
+                f"Worker reported cache write failure for {file_path}; "
+                "in-memory results are kept"
+            )
 
         if success and symbols:
             with self.symbol_store.index_lock:
@@ -244,20 +241,20 @@ class WorkerResultMerger:
         self.merge_worker_result(res, file_path)
         return success
 
+    def get_cache_writer_stats(self) -> CacheWriterStats | None:
+        """Return background-writer counters, or None when the writer never started."""
+        with self._cache_writer_lock:
+            writer = self._cache_writer
+        return writer.get_stats() if writer is not None else None
+
     def flush_cache_writes(self) -> None:
         """Flush any pending per-file cache writes and stop the background writer."""
         with self._cache_writer_lock:
-            t = self._cache_writer_thread
-            q = self._cache_queue
-            if t is None or q is None:
-                return
-            q.put(None)
-            self._cache_writer_thread = None
-            self._cache_queue = None
-
-        t.join(timeout=120.0)
-        if t.is_alive():
-            diagnostics.warning("Background cache writer did not finish within timeout")
+            writer = self._cache_writer
+            self._cache_writer = None
+        if writer is None:
+            return
+        writer.stop()
 
     def close(self) -> None:
         """Stop the background cache writer and release resources."""

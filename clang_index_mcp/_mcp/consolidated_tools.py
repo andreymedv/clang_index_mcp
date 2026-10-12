@@ -23,6 +23,7 @@ from typing import Any, cast
 from mcp.types import TextContent, Tool
 
 from .._mcp.tool_registry import ToolRegistry
+from .tool_handlers.resilience import guard_tool_handler
 
 # ---------------------------------------------------------------
 # Passthrough: tools delegated to internal handlers without translation
@@ -617,6 +618,7 @@ def list_tools_b() -> list[Tool]:
 # ---------------------------------------------------------------
 
 
+@guard_tool_handler("tool_dispatch_b")
 async def handle_tool_call_b(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Dispatch consolidated tool calls, delegating to internal handlers."""
 
